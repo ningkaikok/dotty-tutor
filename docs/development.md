@@ -183,3 +183,22 @@ git push -u origin feat/your-change
 
 请通过 Pull Request 合并到 `main`，并在修改用户可见行为、配置或文档时同步更新
 [`CHANGELOG.md`](../CHANGELOG.md)。
+
+## 自动生成 CHANGELOG
+
+项目使用 [git-cliff](https://git-cliff.org/) 根据 Conventional Commits 更新
+`CHANGELOG.md` 的 `Unreleased` 区域，不会覆盖已有版本记录。分类规则与项目开发规范一致：
+
+- `feat` → `Added`
+- `fix` → `Fixed`
+- `perf`、`refactor` → `Changed`
+- `docs`、`style`、`chore`、`test` 不写入 CHANGELOG
+
+本地安装 `git-cliff` 后运行：
+
+```bash
+scripts/generate-changelog.sh
+```
+
+GitHub Actions 会在 `main` 更新后自动生成变更记录，并创建一个
+`chore/generated-changelog` Pull Request。合并前请检查用户视角措辞、重复条目和版本范围。
