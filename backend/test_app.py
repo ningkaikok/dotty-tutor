@@ -1,0 +1,394 @@
+from __future__ import annotations
+
+import unittest
+import os
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+
+from app import HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact
+from review_runtime import formula_anomaly_score, normalize_ocr_question
+from storage import TutorStore
+
+
+STEPS = [
+    {"text": "方程两边同时减去 3。", "speechText": "先做移项。"},
+    {"text": "化简得到 2x = 8。", "speechText": "现在得到 2x 等于 8。"},
+    {"text": "两边同时除以 2。", "speechText": "求出未知数。"},
+    {"text": "最终得到 x = 4。", "speechText": "检查答案。"},
+]
+
+
+class EquationConflictTests(unittest.TestCase):
+    def test_detects_same_left_side_with_wrong_result(self) -> None:
+        self.assertEqual(equation_conflict("我得到 2x = 14", STEPS), ("2x=14", "2x=8"))
+
+    def test_accepts_matching_intermediate_equation(self) -> None:
+        self.assertIsNone(equation_conflict("我得到 2x = 8", STEPS))
+
+    def test_ignores_answer_without_comparable_equation(self) -> None:
+        self.assertIsNone(equation_conflict("我不知道下一步", STEPS))
+
+    def test_detects_non_equivalent_step_from_original_question(self) -> None:
+        generic_steps = [{"text": "先移项。", "speechText": "继续计算。"}]
+        self.assertEqual(
+            equation_conflict("我得到 2x = 14", generic_steps, "解方程 2x + 3 = 11"),
+            ("2x=14", "2x+3=11"),
+        )
+
+    def test_accepts_equivalent_transformation(self) -> None:
+        self.assertTrue(equivalent_linear_equations("2x + 3 = 11", "2x = 8"))
+        self.assertTrue(equivalent_linear_equations("2x + 3 = 11", "x = 4"))
+
+
+class TutorResponseTests(unittest.TestCase):
+    def test_answer_mode_marks_known_correct_conclusion(self) -> None:
+        reply = build_reply(HelpRequest(
+            questionId="geometry-perpendicular-bisector",
+            studentInput="点 P 在 AB 的垂直平分线上",
+            mode="answer",
+        ))
+        self.assertEqual(reply.source, "answer-check")
+        self.assertEqual(reply.guideContext["assessment"], "correct")
+
+    def test_help_mode_advances_one_hint_level(self) -> None:
+        reply = build_reply(HelpRequest(
+            questionId="geometry-perpendicular-bisector",
+            studentInput="我不知道怎么开始",
+            mode="help",
+        ))
+        self.assertEqual(reply.source, "stored-guide-card")
+        self.assertEqual(reply.nextHintLevel, 1)
+
+
+class BatchQuestionTests(unittest.TestCase):
+    def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
+        with TemporaryDirectory() as directory:
+            payload = {
+                "question": {"id": "q2"},
+                "lessonSteps": [],
+                "architecture": {},
+                "modelRun": {"provider": "mock", "model": "test", "fallback": False},
+            }
+            pdf_uploads["test-upload"] = {
+                "status": "complete",
+                "directory": Path(directory),
+                "result": {
+                    "ocrRun": {"provider": "mineru"},
+                    "extraction": {"questionCount": 1},
+                    "batches": [
+                        {"id": "batch-001", "startPage": 1, "endPage": 5, "status": "processed"},
+                        {"id": "batch-002", "startPage": 6, "endPage": 10, "status": "queued"},
+                    ],
+                },
+                "batchPayloads": {},
+            }
+            try:
+                with (
+                    patch("app.ocr_runtime.should_use_mineru", return_value=True),
+                    patch("app.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
+                    patch("app.generate_lesson", return_value=(payload, [], payload["modelRun"])),
+                    patch("app.store.save_questions"),
+                    patch("app.store.save_job"),
+                ):
+                    response = process_pdf_batch("test-upload", "batch-002")
+                self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
+                self.assertEqual(response["batch"]["status"], "processed")
+                self.assertEqual(resolve.call_args.args[3:5], (4, 9))
+            finally:
+                pdf_uploads.pop("test-upload", None)
+
+
+class PersistentStoreTests(unittest.TestCase):
+    def test_completed_pdf_and_questions_survive_store_recreation(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            first_store = TutorStore()
+            upload_directory = first_store.upload_root / "persisted-upload"
+            upload_directory.mkdir()
+            (upload_directory / "source.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
+            payload = {
+                "question": {"id": "persisted-question"},
+                "lessonSteps": [],
+                "architecture": {},
+                "modelRun": {"provider": "mock", "model": "test", "fallback": False},
+            }
+            result = {
+                "importId": "pdf-persisted",
+                "filename": "book.pdf",
+                "extraction": {"questionCount": 1, "chapter": "测试章节"},
+                "questionPayload": payload,
+            }
+            job = {
+                "uploadId": "persisted-upload",
+                "filename": "book.pdf",
+                "contentType": "application/pdf",
+                "size": 18,
+                "chunkSize": 1024,
+                "totalChunks": 1,
+                "sourceText": "",
+                "directory": upload_directory,
+                "status": "complete",
+                "progress": 100,
+                "message": "完成",
+                "startedAt": 1.0,
+                "updatedAt": 2.0,
+                "completedAt": 2.0,
+                "result": result,
+            }
+            first_store.save_job(job)
+            guide_cards = [{"hint": "持久化提示"}]
+            first_store.save_question("persisted-upload", "batch-001", payload, guide_cards)
+
+            restored = TutorStore().load_job("persisted-upload")
+            self.assertIsNotNone(restored)
+            self.assertEqual(restored["result"]["importId"], "pdf-persisted")
+            self.assertEqual(restored["batchPayloads"]["batch-001"]["question"]["id"], "persisted-question")
+            self.assertEqual(restored["batchGuideCards"]["batch-001"][0]["hint"], "持久化提示")
+
+    def test_resolves_database_directory_after_project_move(self) -> None:
+        with TemporaryDirectory() as directory:
+            data_root = Path(directory) / "data"
+            with patch.dict(os.environ, {"DOTTY_DATA_DIR": str(data_root)}):
+                store = TutorStore()
+                current_upload = data_root / "uploads" / "moved-upload"
+                current_upload.mkdir(parents=True)
+                legacy_path = Path("/Users/kiki/work/fluid-agent-demo/tutor-demo/data/uploads/moved-upload")
+                self.assertEqual(store._resolve_directory(str(legacy_path)), current_upload.resolve())
+
+    def test_saves_multiple_questions_in_one_batch_transaction(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+            upload_directory = store.upload_root / "atomic-upload"
+            upload_directory.mkdir()
+            job = {
+                "uploadId": "atomic-upload", "filename": "book.pdf", "contentType": "application/pdf",
+                "size": 1, "chunkSize": 1, "totalChunks": 1, "directory": upload_directory,
+                "status": "complete", "progress": 100, "message": "完成", "startedAt": 1.0,
+                "updatedAt": 1.0, "completedAt": 1.0, "result": {"importId": "atomic"},
+            }
+            store.save_job(job)
+            first = {"question": {"id": "q1"}}
+            second = {"question": {"id": "q2"}}
+            store.save_questions("atomic-upload", [("batch-q1", first, []), ("batch-q2", second, [])])
+            restored = store.load_job("atomic-upload")
+            self.assertEqual(set(restored["batchPayloads"]), {"batch-q1", "batch-q2"})
+
+
+class QuestionExtractionTests(unittest.TestCase):
+    def test_content_blocks_preserve_stem_image_before_options(self) -> None:
+        payload = {"question": {
+            "prompt": r"比较 $a$ 与 $b$ 的大小",
+            "options": [r"$a>b$", r"$a=b$", r"$a<b$", "无法确定"],
+            "imageUrls": ["/api/uploads/u/assets/batch/q2.jpg"],
+        }}
+        source = "2.比较大小\n![](images/q2.jpg)\n(A)甲 (B)乙 (C)丙 (D)丁"
+        blocks = build_question_content_blocks(payload, source, ["images/q2.jpg"])
+        self.assertEqual([block["type"] for block in blocks], ["text", "math", "text", "math", "text", "image", "options"])
+        self.assertEqual(blocks[-2]["role"], "stem")
+
+    def test_content_blocks_bind_option_images_inside_options(self) -> None:
+        urls = [f"/api/uploads/u/assets/batch/{letter}.jpg" for letter in "abcd"]
+        payload = {"question": {
+            "prompt": "选择圆柱",
+            "options": ["(A)", "(B)", "(C)", "(D)"],
+            "imageUrls": urls,
+            "optionImageUrls": urls,
+        }}
+        source_images = [f"images/{letter}.jpg" for letter in "abcd"]
+        blocks = build_question_content_blocks(payload, "选择圆柱\n(A)\n(B)\n(C)\n(D)", source_images)
+        self.assertEqual([block["type"] for block in blocks], ["text", "options"])
+        self.assertEqual([item["imageUrl"] for item in blocks[-1]["items"]], urls)
+
+    def test_quality_gate_rejects_cross_question_image(self) -> None:
+        payload = {"question": {
+            "prompt": "无图题",
+            "options": [],
+            "imageUrls": ["/api/uploads/u/assets/batch/wrong.jpg"],
+        }}
+        apply_question_quality_gate(payload, "3.无图题", [])
+        self.assertEqual(payload["quality"]["status"], "needs_review")
+        self.assertEqual(payload["question"]["publicationStatus"], "needs_review")
+        self.assertTrue(any("图片归属" in error for error in payload["quality"]["errors"]))
+
+    def test_quality_gate_accepts_valid_math_choice_question(self) -> None:
+        payload = {"question": {
+            "prompt": r"方程 $x+1=2$ 的解是",
+            "options": [r"$x=1$", r"$x=2$", r"$x=3$", r"$x=4$"],
+            "imageUrls": [],
+        }}
+        source = r"1.方程 $x+1=2$ 的解是 (A)$x=1$ (B)$x=2$ (C)$x=3$ (D)$x=4$"
+        quality = apply_question_quality_gate(payload, source, [])
+        self.assertEqual(quality["status"], "ready")
+        self.assertEqual(payload["question"]["publicationStatus"], "ready")
+
+    def test_limits_each_ocr_batch_to_five_questions(self) -> None:
+        markdown = "\n".join(f"{number}.这是第{number}道完整测试题。" for number in range(1, 9))
+        self.assertEqual(
+            [number for number, _, _ in limited_question_sources(markdown)],
+            ["1", "2", "3", "4", "5"],
+        )
+
+    def test_writes_exact_post_ocr_model_prompt_artifact(self) -> None:
+        sources = [("1", "1.测试题。", [])]
+        with TemporaryDirectory() as directory:
+            path = write_model_prompt_artifact(Path(directory), sources)
+            content = path.read_text(encoding="utf-8")
+        self.assertIn("MinerU 不使用自然语言提示词", content)
+        self.assertIn("1.测试题。", content)
+        self.assertIn("imageReferences", content)
+
+    def test_binds_four_source_images_to_abcd_options(self) -> None:
+        payload = {
+            "question": {
+                "prompt": "下列几何体中，是圆柱的为\n\n(A)\n\n(B)\n\n(C)\n\n(D)",
+                "options": ["(A)", "(B)", "(C)", "(D)"],
+                "imageUrls": [f"/assets/{letter}.jpg" for letter in "abcd"],
+            }
+        }
+        source = "\n".join(
+            f"![](images/{letter}.jpg)\n({letter.upper()})" for letter in "abcd"
+        )
+        normalize_image_choice_question(
+            payload,
+            source,
+            [f"images/{letter}.jpg" for letter in "abcd"],
+        )
+        self.assertEqual(payload["question"]["optionImageUrls"], payload["question"]["imageUrls"])
+        self.assertNotIn("(A)", payload["question"]["prompt"])
+
+    def test_splits_all_numbered_questions_before_answers(self) -> None:
+        markdown = """
+1.第一道选择题，题干和选项都在这里。
+(A)甲 (B)乙 (C)丙 (D)丁
+2.第二道题，包含一个小问。
+(1)求出答案。
+3.第三道题。
+# 参考答案
+1.(A)
+2.略
+"""
+        blocks = split_question_sources(markdown)
+        self.assertEqual([number for number, _, _ in blocks], ["1", "2", "3"])
+        self.assertIn("(1)求出答案", blocks[1][1])
+        self.assertNotIn("参考答案", "\n".join(block for _, block, _ in blocks))
+
+    def test_selects_one_complete_illustrated_question_before_answers(self) -> None:
+        markdown = """
+上一页残留的(2)小问
+18.计算 1+1。
+19.如图，证明四边形 ABCD 是菱形。
+(1)证明第一步；
+(2)求线段 OE。
+![](images/geometry.jpg)
+20.解方程 x+1=2。
+# 参考答案
+19.【答案】略。
+"""
+        number, block, images = select_complete_question_source(markdown)
+        self.assertEqual(number, "19")
+        self.assertIn("(2)求线段 OE", block)
+        self.assertNotIn("20.解方程", block)
+        self.assertEqual(images, ["images/geometry.jpg"])
+
+    def test_question_images_follow_markdown_reference_order(self) -> None:
+        payload = {"question": {"imageReferences": ["images/a.jpg", "images/b.jpg"]}}
+        batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
+        ocr_run = {
+            "imageUrls": [
+                "/api/uploads/u/assets/batch-001/b.jpg",
+                "/api/uploads/u/assets/batch-001/a.jpg",
+            ]
+        }
+        attach_question_source(payload, batch, ocr_run)
+        self.assertEqual(
+            payload["question"]["imageUrls"],
+            [
+                "/api/uploads/u/assets/batch-001/a.jpg",
+                "/api/uploads/u/assets/batch-001/b.jpg",
+            ],
+        )
+
+    def test_source_image_references_override_model_order(self) -> None:
+        payload = {"question": {"imageReferences": ["images/b.jpg", "images/a.jpg"]}}
+        batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
+        ocr_run = {"imageUrls": ["/api/uploads/u/assets/batch-001/a.jpg", "/api/uploads/u/assets/batch-001/b.jpg"]}
+        attach_question_source(payload, batch, ocr_run, ["images/a.jpg", "images/b.jpg"])
+        self.assertEqual(
+            [url.rsplit("/", 1)[-1] for url in payload["question"]["imageUrls"]],
+            ["a.jpg", "b.jpg"],
+        )
+
+    def test_question_without_image_reference_does_not_inherit_batch_images(self) -> None:
+        payload = {"question": {"imageReferences": []}}
+        batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
+        ocr_run = {"imageUrls": ["/api/uploads/u/assets/batch-001/q1-a.jpg"]}
+        attach_question_source(payload, batch, ocr_run)
+        self.assertEqual(payload["question"]["imageUrls"], [])
+
+    def test_recovers_stacked_equation_solution_choices(self) -> None:
+        payload = {"question": {"prompt": "broken", "options": ["(A)", "(B)", "(C)", "(D)"]}}
+        source = (
+            r"3. 方程式 $\begin{array}{c}x-y=3\\3x-8y=14\end{array}$ 的解为 "
+            r"$x=-1$ $x=1$ $x=-2$ $x=2$ (A) (B) (C) (D) y=2 y=-2 y=1 y=-1"
+        )
+        normalize_stacked_equation_choices(payload, source)
+        self.assertEqual(
+            payload["question"]["options"],
+            [r"$x=-1,\;y=2$", r"$x=1,\;y=-2$", r"$x=-2,\;y=1$", r"$x=2,\;y=-1$"],
+        )
+        self.assertNotIn("(A)", payload["question"]["prompt"])
+
+    def test_restores_text_choices_when_reviewer_returns_only_labels(self) -> None:
+        payload = {"question": {"options": ["A", "B", "C", "D"]}}
+        source = (
+            r"5. 若一个外角是 $6 0 ^ { \circ }$，内角和为"
+            r"(A) $3 6 0 ^ { \circ }$ (B) $5 4 0 ^ { \circ }$ "
+            r"(C) $7 2 0 ^ { \circ }$ (D) $9 0 0 ^ { \circ }$"
+        )
+        normalize_text_choices_from_source(payload, source)
+        self.assertIn("360", payload["question"]["options"][0])
+        self.assertIn("900", payload["question"]["options"][3])
+
+    def test_splits_concatenated_text_choices_from_reviewer(self) -> None:
+        payload = {
+            "question": {
+                "options": [
+                    r"(A) |a| > 4 (B) c-b > 0 (C) ac > 0 (D) a+c > 0"
+                ]
+            }
+        }
+        source = r"2. 实数 a、b、c 的位置如图所示，正确的结论是 (A) ... (B) ... (C) ... (D) ..."
+        normalize_text_choices_from_source(payload, source)
+        self.assertEqual(
+            payload["question"]["options"],
+            [
+                r"(A) |a| > 4",
+                r"(B) c-b > 0",
+                r"(C) ac > 0",
+                r"(D) a+c > 0",
+            ],
+        )
+
+    def test_repairs_json_control_escape_inside_latex_command(self) -> None:
+        self.assertEqual(normalize_model_math_text("$60^\text{°}$"), r"$60^\text{°}$")
+
+
+class OcrReviewNormalizationTests(unittest.TestCase):
+    def test_normalizes_mineru_formula_wrappers(self) -> None:
+        source = (
+            r"21.如图，$\mathsf { A B / / D C }$ R $\mathsf { A B } { = } \mathsf { A D }$。"
+            "\n\n"
+            r"(2)若 ${ \mathsf { A B } } { = } \sqrt { 5 } , ~ { \mathsf { B D } } { = } 2$。"
+        )
+        normalized = normalize_ocr_question(source)
+        self.assertIn(r"$AB \parallel DC$", normalized)
+        self.assertIn(r"$AB = \sqrt{5}, BD = 2$", normalized)
+        self.assertEqual(formula_anomaly_score(normalized), 0)
+
+    def test_detects_json_escape_control_characters_inside_formula(self) -> None:
+        broken = "$AB \nparallel DC$ and $CE \x08ot AB$ and $\\root 5 \x0crom{5}$"
+        self.assertGreater(formula_anomaly_score(broken), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
