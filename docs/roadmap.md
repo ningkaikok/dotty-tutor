@@ -41,12 +41,14 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化和互动辅导�
 
 ## P1：协作与质量
 
-- [ ] `LICENSE`、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md` 和 `SECURITY.md`。
-- [ ] Issue/PR 模板、CODEOWNERS 和 main 分支 Ruleset。
+- [x] `LICENSE`、`CONTRIBUTING.md`、`CODE_OF_CONDUCT.md` 和 `SECURITY.md`。
+- [x] Issue/PR 模板和 CODEOWNERS。
+- [ ] main 分支 Ruleset。
 - [ ] Python Ruff/类型检查和前端 ESLint/Prettier。
 - [ ] 前端单元测试和 Playwright 端到端测试。
 - [ ] CI 中增加真实 PostgreSQL 集成测试。
-- [ ] Dependabot、依赖审查、CodeQL 和 Actions SHA 固定。
+- [x] Dependabot 自动依赖更新。
+- [ ] 依赖审查、CodeQL 和 Actions SHA 固定。
 - [ ] Python 可复现依赖锁定。
 - [ ] API 错误脱敏和管理员调试入口。
 

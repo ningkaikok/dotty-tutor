@@ -1,0 +1,80 @@
+name: Bug 报告
+description: 报告可以稳定复现的软件缺陷
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。安全漏洞请使用 Security Advisory 私下报告，不要填写公开 Issue。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: Release、Tag 或提交 SHA
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: 组件
+      options:
+        - 前端交互
+        - FastAPI / API
+        - PDF 上传
+        - OCR / MinerU
+        - 模型生成或审校
+        - PostgreSQL / 持久化
+        - TTS
+        - Docker / 部署
+        - 文档
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤
+      description: 提供最小、稳定且不包含敏感数据的复现步骤
+      placeholder: |
+        1. 启动……
+        2. 上传……
+        3. 点击……
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 操作系统、浏览器、Python/Node/Docker、数据库和模型 provider
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: 请先移除密钥、个人信息和受版权保护的教材内容
+      render: shell
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: 提交确认
+      options:
+        - label: 我已搜索现有 Issue，确认没有重复报告
+          required: true
+        - label: 该问题不是需要私下报告的安全漏洞
+          required: true
