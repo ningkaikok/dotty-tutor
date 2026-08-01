@@ -45,7 +45,24 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    env:
+      POSTGRES_PASSWORD: ci-only-password
+      WEB_PORT: "8080"
     steps:
       - uses: actions/checkout@v4
-      - name: Build backend image
-        run: docker build -f Dockerfile.backend -t dotty-tutor-api:ci .
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+      - name: Build Docker images
+        run: docker compose build api web
+      - name: Start Docker Compose stack
+        run: docker compose up --detach
+      - name: Verify web and API health
+        run: |
+          timeout 120 bash -c 'until curl --fail --silent http://127.0.0.1:8080/healthz; do sleep 2; done'
+          curl --fail --silent http://127.0.0.1:8080/api/health
+      - name: Print Docker logs on failure
+        if: failure()
+        run: docker compose logs
+      - name: Stop Docker Compose stack
+        if: always()
+        run: docker compose down --volumes

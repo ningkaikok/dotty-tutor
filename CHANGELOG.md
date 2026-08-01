@@ -6,6 +6,8 @@
 
 ### Added
 
+- 新增完整 Docker Compose 部署：PostgreSQL、FastAPI、React/Nginx、健康检查、持久化卷、Docker 环境模板和宿主模型服务连接配置。
+- 新增前端多阶段 Dockerfile、Nginx 同源 API 代理和 `.dockerignore`，避免将本地虚拟环境、模型权重与数据目录发送到构建上下文。
 - 新增 `CHANGELOG.md`，并在 README 顶部增加变更记录入口。
 - 新增 SQLAlchemy/psycopg PostgreSQL 存储层和 `DATABASE_URL` 配置。
 - 新增 `backend/migrate_sqlite_to_postgres.py`，支持幂等迁移旧 SQLite 数据。
@@ -18,6 +20,7 @@
 
 ### Changed
 
+- GitHub Actions Docker job 改为校验 Compose、构建前后端镜像、启动完整服务并检查 Web/API 健康状态。
 - 将 683 行内部交付式 README 重构为面向开源用户的项目首页，并拆分系统架构、本地开发、API、部署运维和路线图文档；移除本机绝对路径，补充 CI Badge、截图、快速开始和统一文档导航。
 - 重新启动本地后端服务，使选项解析修复立即生效。
 - 评审当前项目架构和真实调用链，并在 README 中补充组件图、职责边界、单页/PDF 导入、生成审校、Help、TTS、持久化、回退逻辑及架构限制。

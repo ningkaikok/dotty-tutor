@@ -49,12 +49,32 @@ PDF / 扫描教材
 
 ## 快速开始
 
-需要 Python 3.12、Node.js 20+ 和 PostgreSQL。模型、MinerU 和本地 TTS 都是可选组件。
+最简单的体验方式是使用 Docker Desktop 或 Docker Engine + Compose：
 
 ```bash
 git clone https://github.com/ningkaikok/dotty-tutor.git
 cd dotty-tutor
 
+cp .env.docker.example .env
+# 编辑 .env，为 POSTGRES_PASSWORD 设置一个长且只包含 URL 安全字符的随机密码
+docker compose up --build --detach
+```
+
+打开 <http://localhost:8080>。默认 Compose 使用 Mock 模型，不会下载模型权重；PostgreSQL
+和教材文件分别保存在命名卷中。
+
+```bash
+docker compose ps
+docker compose logs --follow api
+docker compose down
+```
+
+`docker compose down` 会保留数据卷。完整 Docker 配置、外部模型连接和生产部署说明见
+[部署与运维](docs/deployment.md)。
+
+不使用 Docker 时，需要 Python 3.12、Node.js 20+ 和 PostgreSQL：
+
+```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 
@@ -72,7 +92,7 @@ npm ci
 npm run dev
 ```
 
-打开 <http://localhost:5174>。完整环境变量、模型和 OCR 配置见
+本地开发地址是 <http://localhost:5174>。完整环境变量、模型和 OCR 配置见
 [本地开发指南](docs/development.md)。
 
 ## 文档
@@ -92,7 +112,8 @@ npm run dev
 cd frontend && npm run build
 ```
 
-GitHub Actions 会在每次推送和 Pull Request 中运行后端测试、前端构建和后端容器构建。
+GitHub Actions 会在每次推送和 Pull Request 中运行后端测试、前端构建，以及完整 Docker
+Compose 构建和健康检查。
 
 ## 项目状态
 

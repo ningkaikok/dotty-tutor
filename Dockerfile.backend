@@ -8,12 +8,21 @@ WORKDIR /app
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
-COPY backend /app/backend
-RUN mkdir -p /data/uploads
+RUN groupadd --system dotty \
+    && useradd --system --gid dotty --home-dir /app --shell /usr/sbin/nologin dotty \
+    && mkdir -p /data/uploads \
+    && chown -R dotty:dotty /app /data
+
+COPY --chown=dotty:dotty backend /app/backend
 
 ENV DOTTY_DATA_DIR=/data
 WORKDIR /app/backend
 EXPOSE 8010
+
+USER dotty
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=3)" || exit 1
 
 # This image contains the API only. Run Ollama, MinerU and Qwen3-TTS as
 # separate services and configure their URLs/commands through the environment.

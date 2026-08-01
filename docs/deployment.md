@@ -205,18 +205,117 @@ sudo systemctl reload nginx
 
 ## Docker
 
-项目根目录的 `Dockerfile.backend` 只构建 API，不包含 Ollama、MinerU 或 Qwen3-TTS：
+Docker 部署包含：
+
+| 文件 | 作用 |
+| --- | --- |
+| `compose.yaml` | 编排 PostgreSQL、FastAPI 和前端 Nginx |
+| `Dockerfile.backend` | 构建单 worker、非 root 用户运行的 API 镜像 |
+| `Dockerfile.frontend` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
+| `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
+| `.env.docker.example` | Docker 环境变量模板 |
+| `.dockerignore` | 排除虚拟环境、模型、数据和构建产物 |
+
+### 一键启动
+
+需要 Docker Engine 24+ 和 Docker Compose v2：
 
 ```bash
-docker build -f Dockerfile.backend -t dotty-tutor-api .
-docker run --rm -p 8010:8010 \
-  --env-file /path/to/backend.env \
-  -v /srv/dotty-tutor/data:/data \
-  dotty-tutor-api
+git clone https://github.com/ningkaikok/dotty-tutor.git
+cd dotty-tutor
+cp .env.docker.example .env
 ```
 
-容器内的 `DATABASE_URL` 不能使用 `127.0.0.1` 指向宿主数据库，应使用 Docker 网络服务名或
-云数据库地址。
+编辑 `.env`，至少替换 `POSTGRES_PASSWORD`。由于 Compose 会把密码放入数据库 URL，建议
+使用较长的字母、数字、下划线和短横线组合；不要使用需要 URL 编码的字符。
+
+```bash
+docker compose config
+docker compose up --build --detach
+docker compose ps
+```
+
+打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。默认服务拓扑：
+
+```text
+localhost:8080
+  → web（Nginx + React）
+       → api:8010（FastAPI）
+            → db:5432（PostgreSQL）
+```
+
+API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会等待数据库和
+API 健康后再启动依赖服务。
+
+### 日志与状态
+
+```bash
+docker compose ps
+docker compose logs --follow api
+docker compose logs --follow db
+curl -fsS http://127.0.0.1:8080/healthz
+curl -fsS http://127.0.0.1:8080/api/health
+```
+
+### 停止与更新
+
+```bash
+# 停止服务，保留 PostgreSQL 和教材资源卷
+docker compose down
+
+# 拉取代码并重建
+git pull --ff-only
+docker compose up --build --detach
+```
+
+不要在没有备份时执行 `docker compose down --volumes`，它会删除数据库和教材资源卷。
+
+### 数据卷
+
+- `postgres_data`：PostgreSQL 数据目录。
+- `dotty_data`：上传 PDF、Markdown、题图和其他教材资源。
+
+查看实际卷名：
+
+```bash
+docker volume ls --filter name=dotty-tutor
+```
+
+生产环境建议把数据库替换为托管 PostgreSQL，并把教材资源层替换为对象存储；Compose 命名卷
+主要用于单机内测。
+
+### 连接宿主模型服务
+
+基础 Compose 默认使用 Mock 生成和审校，确保没有 GPU 和模型权重也能启动。要连接运行在
+Docker 宿主机上的 Ollama 或 Qwen3-TTS，在 `.env` 中修改：
+
+```dotenv
+MODEL_PROVIDER=ollama
+MODEL_NAME=qwen2.5:3b
+REVIEW_PROVIDER=ollama
+REVIEW_MODEL=qwen2.5:7b
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+
+TTS_PROVIDER=qwen
+QWEN_TTS_URL=http://host.docker.internal:8020
+```
+
+Compose 已把 `host.docker.internal` 映射到宿主机。Ollama 和 Qwen3-TTS 必须监听 Docker
+可访问的地址，并通过主机防火墙限制访问。基础 API 镜像不包含 MinerU、Qwen 权重或 Codex
+CLI；这些重型运行时应部署为独立服务或通过专用镜像接入。
+
+### 域名和 HTTPS
+
+Docker 内的 Nginx 只提供 HTTP。公网部署时应在 Compose 前增加云负载均衡、Caddy、Traefik
+或宿主 Nginx，用于 TLS 证书和域名转发，同时设置：
+
+```dotenv
+CORS_ORIGINS=https://tutor.example.com
+TRUSTED_HOSTS=tutor.example.com
+WEB_PORT=8080
+```
+
+只向公网开放外层代理的 443 端口，不直接暴露数据库、API 或模型服务。
 
 ## 发布验收
 
