@@ -12,6 +12,9 @@ Qwen3-TTS 和 Azure Speech。
 
 ## 安装后端
 
+如果只想快速体验完整服务，优先使用 README 中的 Docker Compose 方法。本节用于需要热更新、
+调试后端或接入本地模型的开发环境。
+
 ```bash
 git clone https://github.com/ningkaikok/dotty-tutor.git
 cd dotty-tutor
