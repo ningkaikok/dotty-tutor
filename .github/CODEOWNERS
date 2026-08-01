@@ -1,0 +1,10 @@
+# Default ownership
+* @ningkaikok
+
+# Major areas
+/backend/ @ningkaikok
+/frontend/ @ningkaikok
+/docs/ @ningkaikok
+/.github/ @ningkaikok
+/Dockerfile* @ningkaikok
+/compose.yaml @ningkaikok

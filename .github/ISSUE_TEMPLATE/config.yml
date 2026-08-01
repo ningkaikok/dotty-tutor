@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞报告
+    url: https://github.com/ningkaikok/dotty-tutor/security/advisories/new
+    about: 请通过私有 Security Advisory 报告安全问题
+  - name: 支持说明
+    url: https://github.com/ningkaikok/dotty-tutor/blob/main/SUPPORT.md
+    about: 提问前请阅读支持范围和问题提交方式

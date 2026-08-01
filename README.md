@@ -1,6 +1,8 @@
 # Dotty Tutor
 
 [![CI](https://github.com/ningkaikok/dotty-tutor/actions/workflows/ci.yml/badge.svg)](https://github.com/ningkaikok/dotty-tutor/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ningkaikok/dotty-tutor)](https://github.com/ningkaikok/dotty-tutor/releases)
+[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 
@@ -103,6 +105,9 @@ npm run dev
 - [部署与运维](docs/deployment.md)
 - [路线图与生产边界](docs/roadmap.md)
 - [模型与系统测试报告](docs/model-evaluation-report.md)
+- [参与贡献](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+- [支持说明](SUPPORT.md)
 - [变更记录](CHANGELOG.md)
 
 ## 测试
@@ -126,5 +131,11 @@ Compose 构建和健康检查。
 请优先通过 Issue 讨论问题和方案，代码修改使用独立分支并通过 Pull Request 合并。提交前请
 运行后端测试和前端构建，不要提交 `.env`、模型权重、教材文件、`data/` 或构建产物。
 
-项目的贡献指南、行为准则、安全策略和开源许可证正在补充中；许可证确定前，请不要假定
-仓库内容可以不受限制地复制或再分发。
+参与前请阅读[贡献指南](CONTRIBUTING.md)和[行为准则](CODE_OF_CONDUCT.md)。安全漏洞请按照
+[安全策略](SECURITY.md)私下报告，不要创建公开 Issue。
+
+## 许可证
+
+除非文件中另有声明，本项目的代码和原创文档使用
+[Apache License 2.0](LICENSE) 授权。第三方依赖、模型、教材和用户上传内容分别遵循其原始
+许可证或权利声明，不因本仓库许可证而自动获得授权。
