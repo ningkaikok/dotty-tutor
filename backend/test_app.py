@@ -152,7 +152,7 @@ class PersistentStoreTests(unittest.TestCase):
                 store = TutorStore()
                 current_upload = data_root / "uploads" / "moved-upload"
                 current_upload.mkdir(parents=True)
-                legacy_path = Path("/Users/kiki/work/fluid-agent-demo/tutor-demo/data/uploads/moved-upload")
+                legacy_path = Path("/Users/example/legacy/tutor-demo/data/uploads/moved-upload")
                 self.assertEqual(store._resolve_directory(str(legacy_path)), current_upload.resolve())
 
     def test_saves_multiple_questions_in_one_batch_transaction(self) -> None:
