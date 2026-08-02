@@ -7,6 +7,10 @@ Semantic Versioning。
 
 后续变更将在这里累计。
 
+### Fixed
+
+- 修复使用 Codex 生成题目时结构化输出校验失败并回退 Mock 的问题。
+
 ## [0.2.0] - 2026-08-02
 
 ### Added

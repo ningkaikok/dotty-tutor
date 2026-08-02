@@ -49,6 +49,12 @@ class TutorResponseTests(unittest.TestCase):
         )
         self.assertIn("assessment", HELP_SCHEMA["properties"])
 
+    def test_lesson_schema_requires_every_declared_root_property(self) -> None:
+        self.assertEqual(
+            set(LESSON_SCHEMA["properties"]),
+            set(LESSON_SCHEMA["required"]),
+        )
+
     def test_answer_mode_marks_known_correct_conclusion(self) -> None:
         reply = build_reply(HelpRequest(
             questionId="geometry-perpendicular-bisector",
