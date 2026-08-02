@@ -18,6 +18,7 @@ from question_contracts import (
     OcrSelectionRequest,
     TtsRequest,
 )
+from observability import log_event
 
 
 def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]]) -> APIRouter:
@@ -31,7 +32,9 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
     @router.get("/api/health")
     def health() -> dict[str, str]:
         if not store.ping():
+            log_event("service.health.failed", level=40, dependency="database")
             raise HTTPException(status_code=503, detail="数据库不可用")
+        log_event("service.health.ok", level=10, database=store.backend)
         return {"status": "ok", "database": store.backend}
 
     @router.get("/api/tts/status")
@@ -50,6 +53,7 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
                 data = response.read().decode("utf-8")
             return {"provider": "qwen3-tts", "available": True, "detail": data}
         except (OSError, urllib.error.URLError):
+            log_event("tts.health.failed", level=30, provider="qwen3-tts")
             return {"provider": "browser", "available": False, "detail": "Qwen3-TTS 服务未启动，前端将回退到浏览器语音"}
 
     def synthesize_azure_tts(request: TtsRequest) -> Response:
@@ -97,7 +101,17 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
             with urllib.request.urlopen(proxy_request, timeout=180) as response:
                 audio = response.read()
         except (OSError, urllib.error.URLError) as error:
+            log_event(
+                "tts.request.failed",
+                level=40,
+                provider="qwen3-tts",
+                text_length=len(request.text),
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
             raise HTTPException(status_code=503, detail=f"Qwen3-TTS 暂不可用：{error}") from error
+        log_event("tts.request.completed", provider="qwen3-tts", text_length=len(request.text), audio_bytes=len(audio))
         return Response(content=audio, media_type="audio/wav")
 
     @router.get("/api/models")
@@ -107,8 +121,11 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
     @router.post("/api/models/select")
     def select_model(request: ModelSelectionRequest) -> dict[str, Any]:
         try:
-            return runtime.select(request.provider, request.model)
+            result = runtime.select(request.provider, request.model)
+            log_event("model.selection.changed", provider=request.provider, model=request.model)
+            return result
         except ValueError as error:
+            log_event("model.selection.failed", level=30, provider=request.provider, model=request.model, error=str(error)[:200])
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @router.get("/api/ocr")
@@ -118,8 +135,11 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
     @router.post("/api/ocr/select")
     def select_ocr_provider(request: OcrSelectionRequest) -> dict[str, Any]:
         try:
-            return ocr_runtime.select(request.provider)
+            result = ocr_runtime.select(request.provider)
+            log_event("ocr.selection.changed", provider=request.provider)
+            return result
         except ValueError as error:
+            log_event("ocr.selection.failed", level=30, provider=request.provider, error=str(error)[:200])
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @router.get("/api/question")

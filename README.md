@@ -81,7 +81,12 @@ docker compose down
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 
-createdb dotty_tutor
+createuser --pwprompt dotty_app
+createdb -O dotty_app dotty_tutor
+
+cp .env.example .env
+# 编辑 .env，填写 POSTGRES_PASSWORD 后导出到当前 shell
+set -a; source .env; set +a
 cd backend
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
   ../.venv/bin/python -m uvicorn app:app --reload --port 8010
@@ -104,6 +109,7 @@ npm run dev
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
 - [部署与运维](docs/deployment.md)
+- [日志与运行监控](docs/observability.md)
 - [路线图与生产边界](docs/roadmap.md)
 - [模型与系统测试报告](docs/model-evaluation-report.md)
 - [参与贡献](CONTRIBUTING.md)

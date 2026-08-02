@@ -4,6 +4,8 @@ services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
+    ports:
+      - 127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dotty}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
@@ -29,6 +31,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dotty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dotty_tutor}
       DOTTY_DATA_DIR: /data
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-mock}

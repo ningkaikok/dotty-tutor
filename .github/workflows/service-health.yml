@@ -1,0 +1,68 @@
+name: Service health
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    name: Check deployed API
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+      status: ${{ steps.check.outputs.status }}
+    steps:
+      - id: check
+        name: Check API health endpoint
+        env:
+          SERVICE_HEALTH_URL: ${{ secrets.SERVICE_HEALTH_URL }}
+          SERVICE_HEALTH_TOKEN: ${{ secrets.SERVICE_HEALTH_TOKEN }}
+        run: |
+          if [ -z "$SERVICE_HEALTH_URL" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "status=skipped" >> "$GITHUB_OUTPUT"
+            echo "SERVICE_HEALTH_URL is not configured; skipping deployed-service check."
+            exit 0
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          status=success
+          if [ -n "$SERVICE_HEALTH_TOKEN" ]; then
+            curl --fail --silent --show-error --max-time 15 \
+              --retry 2 --retry-delay 5 --retry-max-time 30 \
+              -H "Authorization: Bearer $SERVICE_HEALTH_TOKEN" \
+              "$SERVICE_HEALTH_URL" >/dev/null || status=failure
+          else
+            curl --fail --silent --show-error --max-time 15 \
+              --retry 2 --retry-delay 5 --retry-max-time 30 \
+              "$SERVICE_HEALTH_URL" >/dev/null || status=failure
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          if [ "$status" = "failure" ]; then
+            echo "Deployed API health check failed."
+          else
+            echo "Deployed API health check passed."
+          fi
+
+  notify:
+    name: Notify Feishu on outage
+    runs-on: ubuntu-latest
+    needs: health
+    if: >-
+      ${{ always() && needs.health.outputs.configured == 'true' &&
+      needs.health.outputs.status == 'failure' }}
+    steps:
+      - name: Send outage notification
+        uses: ningkaikok/feishu-notify-action@v1
+        with:
+          webhook-url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          webhook-secret: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          title: "Dotty Tutor 服务告警"
+          results: >-
+            {
+              "生产 API 健康检查": "failure"
+            }

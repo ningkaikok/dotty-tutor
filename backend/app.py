@@ -52,6 +52,7 @@ from question_contracts import (
     PdfUploadInitRequest,
     TutorReply,
 )
+from observability import log_event, request_id_var
 
 
 app = FastAPI(title="Dotty Tutor", version="0.1.0")
@@ -83,13 +84,40 @@ if trusted_hosts:
 async def add_security_headers(request: Request, call_next):
     """Add low-risk browser hardening and a request correlation header."""
     request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault("X-Frame-Options", "DENY")
-    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Permissions-Policy", "microphone=(self)")
-    return response
+    token = request_id_var.set(request_id)
+    started = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as error:
+        log_event(
+            "http.request.failed",
+            level=40,
+            method=request.method,
+            path=request.url.path,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            error_type=type(error).__name__,
+            exc_info=True,
+        )
+        raise
+    finally:
+        if response is not None:
+            response.headers["X-Request-ID"] = request_id
+            response.headers.setdefault("X-Content-Type-Options", "nosniff")
+            response.headers.setdefault("X-Frame-Options", "DENY")
+            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            response.headers.setdefault("Permissions-Policy", "microphone=(self)")
+            status_code = response.status_code
+            log_event(
+                "http.request",
+                level=30 if status_code >= 400 else 20,
+                method=request.method,
+                path=request.url.path,
+                status_code=status_code,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
+        request_id_var.reset(token)
 
 
 ALLOWED_UPLOAD_SUFFIXES = {
@@ -224,6 +252,7 @@ def resolve_ocr_text(
     asset_url_prefix: str = "",
 ) -> tuple[str, dict[str, Any]]:
     if source_text.strip():
+        log_event("ocr.completed", provider="manual", mode="pasted-text", fallback=False)
         return source_text.strip(), {
             "requestedProvider": "manual",
             "provider": "manual",
@@ -234,15 +263,32 @@ def resolve_ocr_text(
 
     requested = ocr_runtime.selection.provider
     if source_path and ocr_runtime.should_use_mineru():
+        log_event(
+            "ocr.started",
+            provider=requested,
+            start_page=start_page + 1,
+            end_page=None if end_page is None else end_page + 1,
+        )
         try:
-            return ocr_runtime.parse(
+            result = ocr_runtime.parse(
                 source_path,
                 start_page,
                 end_page,
                 asset_dir,
                 asset_url_prefix,
             )
+            log_event("ocr.completed", provider=result[1].get("provider"), fallback=False)
+            return result
         except Exception as error:
+            log_event(
+                "ocr.failed",
+                level=40,
+                provider=requested,
+                fallback=bool(extracted_text),
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
             return extracted_text, {
                 "requestedProvider": requested,
                 "provider": "pypdf" if extracted_text else "none",
@@ -252,6 +298,12 @@ def resolve_ocr_text(
                 "output": "text",
             }
 
+    log_event(
+        "ocr.completed",
+        provider="pypdf" if extracted_text else "none",
+        mode="text-layer" if extracted_text else "no-text-layer",
+        fallback=False,
+    )
     return extracted_text, {
         "requestedProvider": requested,
         "provider": "pypdf" if extracted_text else "none",
@@ -399,7 +451,14 @@ def process_question_sources(
     model_runs: list[dict[str, Any]] = []
     review_runs: list[dict[str, Any]] = []
     total = max(1, len(question_sources))
+    log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"))
     for index, (number, block, images) in enumerate(question_sources):
+        log_event(
+            "question.started",
+            batch_id=batch.get("id"),
+            question_number=number or index + 1,
+            image_count=len(images),
+        )
         payload, guide_cards, model_run = generate_lesson(block)
         attach_question_source(payload, batch, ocr_run, images)
         if number:
@@ -439,11 +498,22 @@ def process_question_sources(
                 min(94, 88 + round(((index + 1) / total) * 6)),
                 f"正在处理第 {index + 1}/{len(question_sources)} 道题",
             )
+        log_event(
+            "question.completed",
+            batch_id=batch.get("id"),
+            question_number=number or index + 1,
+            question_type=payload.get("question", {}).get("questionType"),
+            model_provider=model_run.get("provider"),
+            review_provider=review_run.get("provider"),
+        )
+    log_event("question.batch.completed", question_count=len(payloads), batch_id=batch.get("id"))
     return payloads, guide_cards_list, model_runs, review_runs
 
 
 def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
     selection = runtime.selection
+    started = time.perf_counter()
+    log_event("model.generation.started", provider=selection.provider, model=selection.model)
     source = source_text.strip()[:16_000]
     if not source:
         source = f"{QUESTION['prompt']}\n已知条件：{'；'.join(QUESTION['givens'])}"
@@ -457,6 +527,7 @@ def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[
         run = mock_model_run()
         payload = question_payload(model_run=run)
         lesson_store[QUESTION["id"]] = {"payload": payload, "guideCards": GUIDE_CARDS}
+        log_event("model.generation.completed", provider="mock", duration_ms=round((time.perf_counter() - started) * 1000, 1))
         return payload, GUIDE_CARDS, run
 
     try:
@@ -465,6 +536,17 @@ def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[
         run = mock_model_run(selection.provider, str(error))
         payload = question_payload(model_run=run)
         lesson_store[QUESTION["id"]] = {"payload": payload, "guideCards": GUIDE_CARDS}
+        log_event(
+            "model.generation.failed",
+            level=40,
+            provider=selection.provider,
+            model=selection.model,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            fallback=True,
+            error_type=type(error).__name__,
+            error=str(error)[:300],
+            exc_info=True,
+        )
         return payload, GUIDE_CARDS, run
 
     question_id = f"generated-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}"
@@ -568,6 +650,13 @@ def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[
 
     payload = question_payload(question, lesson_steps, run)
     lesson_store[question_id] = {"payload": payload, "guideCards": guide_cards}
+    log_event(
+        "model.generation.completed",
+        provider=run.get("provider"),
+        model=run.get("model"),
+        duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        question_type=question_type,
+    )
     return payload, guide_cards, run
 
 
@@ -842,11 +931,19 @@ def update_upload_job(
     progress: int,
     message: str,
 ) -> None:
+    previous_status = job.get("status")
     job["status"] = status
     job["progress"] = max(0, min(progress, 100))
     job["message"] = message
     job["updatedAt"] = time.time()
     store.save_job(job)
+    log_event(
+        "upload.status.changed" if previous_status != status else "upload.progress",
+        level=20 if previous_status != status else 10,
+        upload_id=job.get("uploadId"),
+        status=status,
+        progress=job.get("progress", 0),
+    )
 
 
 def validate_pdf_envelope(path: Path) -> None:
@@ -892,6 +989,13 @@ async def import_textbook(
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="教材页不能超过 10 MB")
 
+    log_event(
+        "textbook.import.started",
+        filename=filename,
+        content_type=content_type or "unknown",
+        size_bytes=len(content),
+    )
+
     extracted_text = ""
     if suffix == ".pdf" or content_type == "application/pdf":
         try:
@@ -909,6 +1013,13 @@ async def import_textbook(
         lesson_source, ocr_run = resolve_ocr_text(sourceText, extracted_text)
     payload, guide_cards, model_run = generate_lesson(lesson_source)
     digest = hashlib.sha256(content).hexdigest()
+    log_event(
+        "textbook.import.completed",
+        filename=filename,
+        size_bytes=len(content),
+        ocr_provider=ocr_run.get("provider"),
+        model_provider=model_run.get("provider"),
+    )
     return {
         "importId": f"page-{digest[:12]}",
         "filename": filename,
@@ -966,6 +1077,13 @@ def init_pdf_upload(request: PdfUploadInitRequest) -> dict:
     }
     pdf_uploads[upload_id] = job
     store.save_job(job)
+    log_event(
+        "upload.initialized",
+        upload_id=upload_id,
+        filename=filename,
+        size_bytes=request.size,
+        total_chunks=request.totalChunks,
+    )
     return upload_status(job)
 
 
@@ -996,6 +1114,15 @@ async def upload_pdf_chunk(upload_id: str, index: int, request: Request) -> dict
         round(uploaded_count / job["totalChunks"] * 20),
         f"已上传 {uploaded_count}/{job['totalChunks']} 个分块",
     )
+    log_event(
+        "upload.chunk.received",
+        level=10,
+        upload_id=upload_id,
+        chunk_index=index,
+        chunk_bytes=len(content),
+        uploaded_chunks=uploaded_count,
+        total_chunks=job["totalChunks"],
+    )
     return {
         "uploadId": upload_id,
         "index": index,
@@ -1012,6 +1139,7 @@ def get_pdf_upload_status(upload_id: str) -> dict:
 @app.post("/api/uploads/{upload_id}/complete")
 def complete_pdf_upload(upload_id: str) -> dict:
     job = upload_job(upload_id)
+    log_event("upload.processing.started", upload_id=upload_id, filename=job.get("filename"))
     if job["status"] == "complete" and job.get("result"):
         return job["result"]
 
@@ -1049,6 +1177,15 @@ def complete_pdf_upload(upload_id: str) -> dict:
             raise ValueError("PDF 没有页面")
     except Exception as error:
         update_upload_job(job, "failed", 28, f"PDF 校验失败：{error}")
+        log_event(
+            "upload.processing.failed",
+            level=40,
+            upload_id=upload_id,
+            stage="pdf-validation",
+            error_type=type(error).__name__,
+            error=str(error)[:300],
+            exc_info=True,
+        )
         raise HTTPException(status_code=422, detail=f"PDF 无法解析：{error}") from error
 
     update_upload_job(job, "splitting", 35, f"校验完成，共 {page_count} 页；正在规划处理批次")
@@ -1167,18 +1304,37 @@ def complete_pdf_upload(upload_id: str) -> dict:
         list(zip(question_keys, payloads, guide_cards_list)),
     )
     update_upload_job(job, "complete", 100, f"首批 {preview_pages} 页已拆分为 {len(payloads)} 道题，其余批次可按需处理")
+    log_event(
+        "upload.processing.completed",
+        upload_id=upload_id,
+        page_count=page_count,
+        batch_count=len(batches),
+        question_count=len(payloads),
+        ocr_provider=ocr_run.get("provider"),
+    )
     return result
 
 
 @app.post("/api/help", response_model=TutorReply)
 def get_help(request: HelpRequest) -> TutorReply:
-    return generate_model_reply(request)
+    started = time.perf_counter()
+    reply = generate_model_reply(request)
+    log_event(
+        "help.completed",
+        question_id=request.questionId,
+        mode=request.mode,
+        source=reply.source,
+        assessment=reply.guideContext.get("assessment"),
+        duration_ms=round((time.perf_counter() - started) * 1000, 1),
+    )
+    return reply
 
 
 @app.post("/api/uploads/{upload_id}/batches/{batch_id}/process")
 def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dict:
     """OCR one queued five-page range and add its generated exercise to the bank."""
     job = upload_job(upload_id)
+    log_event("upload.batch.started", upload_id=upload_id, batch_id=batch_id, force=force)
     result = job.get("result")
     if job.get("status") != "complete" or not result:
         raise HTTPException(status_code=409, detail="请先完成教材首批处理")
@@ -1294,6 +1450,13 @@ def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dic
             100,
             f"批次 {batch['startPage']}-{batch['endPage']} 页已更新 {len(payloads)} 道题",
         )
+        log_event(
+            "upload.batch.completed",
+            upload_id=upload_id,
+            batch_id=batch_id,
+            question_count=len(payloads),
+            ocr_provider=ocr_run.get("provider"),
+        )
         return {
             "batch": batch,
             "questionPayload": payload,
@@ -1308,11 +1471,29 @@ def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dic
         batch["status"] = "failed"
         batch["error"] = str(error.detail)
         update_upload_job(job, "complete", 100, f"批次处理失败，已保留原题：{error.detail}")
+        log_event(
+            "upload.batch.failed",
+            level=40,
+            upload_id=upload_id,
+            batch_id=batch_id,
+            error_type=type(error).__name__,
+            error=str(error.detail)[:300],
+            exc_info=True,
+        )
         raise
     except Exception as error:
         batch["status"] = "failed"
         batch["error"] = str(error)
         update_upload_job(job, "complete", 100, f"批次处理失败，已保留原题：{error}")
+        log_event(
+            "upload.batch.failed",
+            level=40,
+            upload_id=upload_id,
+            batch_id=batch_id,
+            error_type=type(error).__name__,
+            error=str(error)[:300],
+            exc_info=True,
+        )
         raise HTTPException(status_code=422, detail=f"批次处理失败：{error}") from error
     finally:
         processing.discard(batch_id)

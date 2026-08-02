@@ -27,22 +27,24 @@ python3.12 -m venv .venv
 创建本地数据库：
 
 ```bash
-createdb dotty_tutor
+createuser --pwprompt dotty_app
+createdb -O dotty_app dotty_tutor
 ```
 
-默认连接为 `postgresql+psycopg:///dotty_tutor`。使用密码或非本机数据库时设置：
-
-```bash
-export DATABASE_URL="postgresql+psycopg://user:password@127.0.0.1:5432/dotty_tutor"
-```
-
-可以复制环境变量模板后按需修改，但不要提交真实密钥：
+本地开发也建议使用显式密码连接。复制模板并填写同一组数据库凭据：
 
 ```bash
 cp .env.example .env
+# 编辑 .env，替换 replace-with-long-random-password
+set -a
+source .env
+set +a
 ```
 
-当前应用不会自动读取 `.env`；开发时需要在 shell 中导出变量，或使用自己选择的环境加载工具。
+也可以只设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
+`POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高。不要提交真实密钥：
+
+`.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
 启动 FastAPI：
 
@@ -75,7 +77,13 @@ npm run dev
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `DATABASE_URL` | `postgresql+psycopg:///dotty_tutor` | PostgreSQL 连接地址 |
+| `DATABASE_URL` | 由 `POSTGRES_*` 组装 | PostgreSQL 连接地址；优先使用 |
+| `POSTGRES_HOST` | `127.0.0.1` | PostgreSQL 主机 |
+| `POSTGRES_PORT` | `5432` | PostgreSQL 端口 |
+| `POSTGRES_USER` | `dotty_app` | 应用数据库用户 |
+| `POSTGRES_PASSWORD` | 空 | 应用数据库密码；设置后启用显式密码连接 |
+| `POSTGRES_DB` | `dotty_tutor` | 数据库名称 |
+| `POSTGRES_SSLMODE` | 空 | 云数据库可设为 `require` |
 | `DOTTY_DATA_DIR` | 项目下 `data/` | PDF、Markdown 和题图目录 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
@@ -180,6 +188,9 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
+
+后端默认以 JSON 输出结构化运行日志，使用 `LOG_LEVEL=DEBUG` 可以临时查看分块上传等细节；
+事件字段和生产健康检查工作流见[日志与运行监控](observability.md)。
 
 ### 配置飞书 CI 通知
 
