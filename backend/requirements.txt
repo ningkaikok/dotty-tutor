@@ -2,5 +2,5 @@ fastapi>=0.141.1,<1
 pypdf>=6.14.2,<7
 python-multipart>=0.0.20,<1
 psycopg[binary]>=3.3.4,<4
-SQLAlchemy>=2.0,<3
+SQLAlchemy>=2.0.51,<3
 uvicorn[standard]>=0.52.0,<1
