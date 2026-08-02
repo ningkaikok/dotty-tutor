@@ -54,6 +54,18 @@ PDF / 扫描教材
 
 ## 快速开始
 
+本地开发推荐使用“本机服务 + Docker PostgreSQL”：这样可以直接复用本机的 Codex 登录、MinerU
+环境和 Qwen3-TTS 模型缓存。
+
+```bash
+cp .env.docker.example .env
+cp .env.local.example .env.local
+# 将 .env.local 的 POSTGRES_PASSWORD 改成 .env 中相同的值
+scripts/dev-local.sh
+```
+
+打开 <http://localhost:5174>。完整 Docker Compose 仍适合 CI、演示和发布验证：
+
 最简单的体验方式是使用 Docker Desktop 或 Docker Engine + Compose：
 
 ```bash
