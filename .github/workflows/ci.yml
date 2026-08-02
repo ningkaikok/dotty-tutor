@@ -94,3 +94,28 @@ jobs:
       - name: Stop Docker Compose stack
         if: always()
         run: docker compose down --volumes
+
+  feishu-notify:
+    name: Notify Feishu
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, e2e, docker]
+    # Do not expose the webhook secret to pull requests from forks. The action
+    # also exits successfully when the repository secrets are not configured.
+    if: >-
+      ${{ always() &&
+      (github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository) }}
+    steps:
+      - name: Send CI result to Feishu
+        uses: ningkaikok/feishu-notify-action@v1
+        with:
+          webhook-url: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          webhook-secret: ${{ secrets.FEISHU_WEBHOOK_SECRET }}
+          title: "Dotty Tutor CI"
+          results: >-
+            {
+              "后端测试": "${{ needs.backend.result }}",
+              "前端构建": "${{ needs.frontend.result }}",
+              "Playwright": "${{ needs.e2e.result }}",
+              "Docker": "${{ needs.docker.result }}"
+            }

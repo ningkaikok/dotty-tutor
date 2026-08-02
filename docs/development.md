@@ -177,7 +177,26 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 截图和视频，便于下载排查。浏览器探索可以使用 Computer Use，稳定回归统一使用 Playwright。
 
 当前 CI 会并行运行后端单元测试、前端 TypeScript/生产构建、Playwright 浏览器冒烟测试和后端
-Docker 镜像构建。
+Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
+仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
+飞书 Webhook。
+
+### 配置飞书 CI 通知
+
+在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加：
+
+- `FEISHU_WEBHOOK_URL`：飞书群自定义机器人的 Webhook 地址；
+- `FEISHU_WEBHOOK_SECRET`：机器人启用签名校验时填写，否则可不添加。
+
+也可以使用 GitHub CLI：
+
+```bash
+gh secret set FEISHU_WEBHOOK_URL
+gh secret set FEISHU_WEBHOOK_SECRET
+```
+
+工作流引用 [ningkaikok/feishu-notify-action](https://github.com/ningkaikok/feishu-notify-action)，
+每个仓库和飞书群建议使用独立机器人，不要在多个项目之间共享 Webhook。
 
 ## 分支与提交
 
