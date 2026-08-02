@@ -8,9 +8,12 @@ import subprocess
 import tempfile
 import urllib.error
 import urllib.request
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
+
+from observability import log_event
 
 
 Provider = Literal["ollama", "codex", "mock"]
@@ -97,10 +100,31 @@ class ModelRuntime:
         selection = ModelSelection(self.selection.provider, self.selection.model)
         if selection.provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
-        if selection.provider == "ollama":
-            result = self._ollama_json(selection.model, prompt, schema, max_tokens)
-        else:
-            result = self._codex_json(selection.model, prompt, schema)
+        started = time.perf_counter()
+        log_event("model.request.started", provider=selection.provider, model=selection.model)
+        try:
+            if selection.provider == "ollama":
+                result = self._ollama_json(selection.model, prompt, schema, max_tokens)
+            else:
+                result = self._codex_json(selection.model, prompt, schema)
+        except Exception as error:
+            log_event(
+                "model.request.failed",
+                level=40,
+                provider=selection.provider,
+                model=selection.model,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise
+        log_event(
+            "model.request.completed",
+            provider=selection.provider,
+            model=selection.model,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
         return result, {
             "requestedProvider": selection.provider,
             "provider": selection.provider,
@@ -120,10 +144,33 @@ class ModelRuntime:
         images = image_paths or []
         if provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
-        if provider == "ollama":
-            result = self._ollama_json(model, prompt, schema, max_tokens, images)
-        else:
-            result = self._codex_json(model, prompt, schema, images)
+        started = time.perf_counter()
+        log_event("model.review.started", provider=provider, model=model, image_count=len(images))
+        try:
+            if provider == "ollama":
+                result = self._ollama_json(model, prompt, schema, max_tokens, images)
+            else:
+                result = self._codex_json(model, prompt, schema, images)
+        except Exception as error:
+            log_event(
+                "model.review.failed",
+                level=30,
+                provider=provider,
+                model=model,
+                image_count=len(images),
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise
+        log_event(
+            "model.review.completed",
+            provider=provider,
+            model=model,
+            image_count=len(images),
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
         return result, {
             "requestedProvider": provider,
             "provider": provider,

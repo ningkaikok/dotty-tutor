@@ -26,6 +26,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection, Engine
+from observability import log_event
 
 
 DEFAULT_POSTGRES_URL = "postgresql+psycopg:///dotty_tutor"
@@ -147,7 +148,15 @@ class TutorStore:
             with self.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
             return True
-        except Exception:
+        except Exception as error:
+            log_event(
+                "database.ping.failed",
+                level=40,
+                database=self.backend if hasattr(self, "engine") else "unknown",
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
             return False
 
     def _ensure_initialized(self) -> None:
