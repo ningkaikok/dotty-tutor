@@ -94,7 +94,7 @@ export async function requestHelp(input: {
   studentInput: string;
   hintLevel: number;
   mode: "answer" | "help";
-  interactionResult?: { connections: string[][] };
+  interactionResult?: Record<string, unknown>;
 }): Promise<TutorReply> {
   return parse<TutorReply>(
     await fetch("/api/help", {

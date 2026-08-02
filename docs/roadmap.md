@@ -46,6 +46,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化和互动辅导�
 - [ ] main 分支 Ruleset。
 - [ ] Python Ruff/类型检查和前端 ESLint/Prettier。
 - [x] Playwright 端到端冒烟测试（导入、选择题、判断题、画线题和 Help 交互）。
+- [x] 第一优先级题型：多选、填空、数值/公式题及确定性答案核对。
 - [ ] CI 中增加真实 PostgreSQL 集成测试。
 - [x] Dependabot 自动依赖更新。
 - [ ] 依赖审查、CodeQL 和 Actions SHA 固定。

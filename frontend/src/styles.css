@@ -185,6 +185,10 @@ h2 { letter-spacing: -0.025em; }
 .true-false-options .question-option { justify-content: center; min-height: 62px; font-size: 17px; font-weight: 700; }
 .true-false-options .option-label { flex: 0 0 auto; font-size: 22px; }
 .question-options .option-label { flex: 0 0 34px; font-weight: 700; color: #1b9a72; }
+.fill-blank-answers, .numeric-answer-field { display: grid; gap: 12px; margin: 4px 0 20px; }
+.fill-blank-field, .numeric-answer-field { display: flex; align-items: center; gap: 10px; color: #405149; font-weight: 700; }
+.fill-blank-field input, .numeric-answer-field input { min-width: 0; flex: 1; padding: 11px 12px; border: 1px solid #cbd5ce; border-radius: 9px; color: #24372f; background: #fff; }
+.fill-blank-field small, .numeric-answer-field small { color: #748078; font-weight: 500; }
 .question-options li img { display: block; max-width: min(100%, 360px); max-height: 190px; object-fit: contain; border-radius: 6px; background: white; }
 .question-options.image-options { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .question-options.image-options li { align-items: flex-start; min-height: 210px; }

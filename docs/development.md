@@ -172,8 +172,8 @@ npx playwright install chromium   # 首次运行或浏览器版本更新时执�
 npm run test:e2e
 ```
 
-Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API mock 覆盖导入、选题、判断题、
-画线题和 Help 交互；不会调用本地模型、OCR 或数据库。失败时 CI 会保留 HTML 报告、trace、
+Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API mock 覆盖导入、选择/多选题、判断题、
+填空题、数值题、画线题和 Help 交互；不会调用本地模型、OCR 或数据库。失败时 CI 会保留 HTML 报告、trace、
 截图和视频，便于下载排查。浏览器探索可以使用 Computer Use，稳定回归统一使用 Playwright。
 
 当前 CI 会并行运行后端单元测试、前端 TypeScript/生产构建、Playwright 浏览器冒烟测试和后端

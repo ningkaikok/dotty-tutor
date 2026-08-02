@@ -58,6 +58,22 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 `/api/help` 会返回回复文本、判定结果、引导上下文、下一提示层级、画布动作和实际模型运行信息。
 
+结构化题型的作答字段：
+
+```json
+{
+  "questionType": "fill-blank",
+  "blanks": [
+    {"id": "blank-1", "answerType": "numeric", "correctAnswers": ["4"], "tolerance": 0, "unit": ""}
+  ]
+}
+```
+
+- `multi-select`：前端提交 `interactionResult.selectedOptions`，后端比较完整的 `correctAnswers` 集合。
+- `fill-blank`：前端提交 `interactionResult.blankAnswers`，逐空比较文本或数值。
+- `numeric`：前端提交 `interactionResult.numericAnswer`，按 `answerSpec.tolerance` 判定数值误差。
+- 没有明确答案规格的题目继续交给模型和分层引导卡处理。
+
 ## 资源与教材库
 
 | 方法 | 路径 | 说明 |
