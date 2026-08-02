@@ -4,8 +4,11 @@
 Semantic Versioning。
 
 ## [Unreleased]
-
-后续变更将在这里累计。
+### Added
+- questions: Add structured priority question types (#25)
+- observability: Add structured runtime logs and health alerts (#27)
+- observability: Add structured runtime logs and health alerts (#26)
+- learning: Add programmable lesson runtime (#29)
 
 ## [0.2.0] - 2026-08-02
 
