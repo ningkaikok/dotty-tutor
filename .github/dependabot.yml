@@ -21,6 +21,9 @@ updates:
         update-types:
           - minor
           - patch
+      frontend-major-stack:
+        update-types:
+          - major
 
   - package-ecosystem: github-actions
     directory: /
