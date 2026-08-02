@@ -24,6 +24,8 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
 - 选择题、多选题、判断题、填空题、数值/公式题、简答题和画线题交互。
 - 填空题支持多空答案；数值题支持容差；多选题支持完整选项集合校验。
 - 基于学生当前答案的分层 Help 提示。
+- 可编程课程内容块、可扩展渲染器和分步课程播放器。
+- 学习会话、作答记录与知识点掌握度反馈。
 - Azure Speech、Qwen3-TTS 和浏览器语音三级回退。
 - PostgreSQL JSONB 持久化题目、审校结果和引导卡。
 
@@ -43,7 +45,7 @@ PDF / 扫描教材
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | React 18、TypeScript、Vite、KaTeX |
+| 前端 | React 19、TypeScript、Vite、KaTeX |
 | API | FastAPI、Pydantic、Uvicorn |
 | 数据 | PostgreSQL、SQLAlchemy、JSONB、本地文件资源 |
 | OCR | MinerU、pypdf |
@@ -108,6 +110,7 @@ npm run dev
 - [系统架构与调用流程](docs/architecture.md)
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
+- [可编程课程与学习闭环](docs/programmable-learning.md)
 - [部署与运维](docs/deployment.md)
 - [日志与运行监控](docs/observability.md)
 - [路线图与生产边界](docs/roadmap.md)

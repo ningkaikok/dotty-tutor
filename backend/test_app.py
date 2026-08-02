@@ -161,6 +161,7 @@ class BatchQuestionTests(unittest.TestCase):
                     patch("app.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
                     patch("app.generate_lesson", return_value=(payload, [], payload["modelRun"])),
                     patch("app.store.save_questions"),
+                    patch("app.store.save_lesson"),
                     patch("app.store.save_job"),
                 ):
                     response = process_pdf_batch("test-upload", "batch-002")

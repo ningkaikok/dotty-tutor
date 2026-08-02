@@ -72,7 +72,63 @@ batch_questions = Table(
     Column("created_at", Float, nullable=False),
 )
 
+lesson_documents = Table(
+    "lesson_documents",
+    metadata,
+    Column("lesson_id", String(128), primary_key=True),
+    Column("source_upload_id", String(64)),
+    Column("title", Text, nullable=False),
+    Column("version", Integer, nullable=False, default=1),
+    Column("status", String(32), nullable=False, default="draft"),
+    Column("knowledge_points_json", json_document, nullable=False, default=list),
+    Column("blocks_json", json_document, nullable=False, default=list),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+)
+
+learning_sessions = Table(
+    "learning_sessions",
+    metadata,
+    Column("session_id", String(64), primary_key=True),
+    Column("learner_id", String(128), nullable=False),
+    Column("lesson_id", String(128), nullable=False),
+    Column("started_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+)
+
+exercise_attempts = Table(
+    "exercise_attempts",
+    metadata,
+    Column("attempt_id", String(64), primary_key=True),
+    Column(
+        "session_id",
+        String(64),
+        ForeignKey("learning_sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("question_id", String(128), nullable=False),
+    Column("knowledge_point", String(160), nullable=False),
+    Column("response_json", json_document, nullable=False, default=dict),
+    Column("assessment", String(32), nullable=False),
+    Column("hint_level", Integer, nullable=False, default=0),
+    Column("duration_ms", Integer, nullable=False, default=0),
+    Column("created_at", Float, nullable=False),
+)
+
+mastery_states = Table(
+    "mastery_states",
+    metadata,
+    Column("learner_id", String(128), primary_key=True),
+    Column("knowledge_point", String(160), primary_key=True),
+    Column("score", Float, nullable=False, default=0),
+    Column("attempt_count", Integer, nullable=False, default=0),
+    Column("correct_count", Integer, nullable=False, default=0),
+    Column("last_practiced_at", Float, nullable=False),
+)
+
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
+Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
+Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())
 
 
 def normalize_database_url(value: str) -> str:
@@ -389,6 +445,168 @@ class TutorStore:
             })
         return items
 
+    def save_lesson(self, document: dict[str, Any]) -> dict[str, Any]:
+        self._ensure_initialized()
+        now = time.time()
+        existing = self.load_lesson(document["lessonId"])
+        values = {
+            "lesson_id": document["lessonId"],
+            "source_upload_id": document.get("sourceUploadId"),
+            "title": document["title"],
+            "version": document.get("version", 1),
+            "status": document.get("status", "draft"),
+            "knowledge_points_json": document.get("knowledgePoints", []),
+            "blocks_json": document.get("blocks", []),
+            "created_at": existing.get("createdAt", now) if existing else now,
+            "updated_at": now,
+        }
+        with self.engine.begin() as connection:
+            self._upsert(
+                connection,
+                lesson_documents,
+                values,
+                ["lesson_id"],
+                [
+                    "source_upload_id", "title", "version", "status",
+                    "knowledge_points_json", "blocks_json", "updated_at",
+                ],
+            )
+        return self.load_lesson(document["lessonId"]) or document
+
+    def load_lesson(self, lesson_id: str) -> dict[str, Any] | None:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(lesson_documents).where(lesson_documents.c.lesson_id == lesson_id)
+            ).mappings().first()
+        if not row:
+            return None
+        return {
+            "lessonId": row["lesson_id"],
+            "sourceUploadId": row["source_upload_id"],
+            "title": row["title"],
+            "version": row["version"],
+            "status": row["status"],
+            "knowledgePoints": decode_json(row["knowledge_points_json"]),
+            "blocks": decode_json(row["blocks_json"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def create_learning_session(
+        self,
+        *,
+        session_id: str,
+        learner_id: str,
+        lesson_id: str,
+        started_at: float,
+    ) -> dict[str, Any]:
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            connection.execute(learning_sessions.insert().values(
+                session_id=session_id,
+                learner_id=learner_id,
+                lesson_id=lesson_id,
+                started_at=started_at,
+                updated_at=started_at,
+            ))
+        return {
+            "sessionId": session_id,
+            "learnerId": learner_id,
+            "lessonId": lesson_id,
+            "startedAt": started_at,
+        }
+
+    def record_exercise_attempt(
+        self,
+        *,
+        attempt_id: str,
+        session_id: str,
+        question_id: str,
+        knowledge_point: str,
+        response: dict[str, Any],
+        assessment: str,
+        hint_level: int,
+        duration_ms: int,
+        created_at: float,
+    ) -> dict[str, Any]:
+        self._ensure_initialized()
+        target = {"correct": 1.0, "partial": 0.55, "incorrect": 0.0}[assessment]
+        with self.engine.begin() as connection:
+            session = connection.execute(
+                select(learning_sessions).where(learning_sessions.c.session_id == session_id)
+            ).mappings().first()
+            if not session:
+                raise LookupError("学习会话不存在")
+            connection.execute(exercise_attempts.insert().values(
+                attempt_id=attempt_id,
+                session_id=session_id,
+                question_id=question_id,
+                knowledge_point=knowledge_point,
+                response_json=response,
+                assessment=assessment,
+                hint_level=hint_level,
+                duration_ms=duration_ms,
+                created_at=created_at,
+            ))
+            current = connection.execute(
+                select(mastery_states).where(
+                    mastery_states.c.learner_id == session["learner_id"],
+                    mastery_states.c.knowledge_point == knowledge_point,
+                )
+            ).mappings().first()
+            previous_score = float(current["score"]) if current else 0.0
+            attempt_count = int(current["attempt_count"]) + 1 if current else 1
+            correct_count = int(current["correct_count"]) + (1 if assessment == "correct" else 0) if current else (1 if assessment == "correct" else 0)
+            score = round(previous_score * 0.7 + target * 0.3, 4)
+            self._upsert(
+                connection,
+                mastery_states,
+                {
+                    "learner_id": session["learner_id"],
+                    "knowledge_point": knowledge_point,
+                    "score": score,
+                    "attempt_count": attempt_count,
+                    "correct_count": correct_count,
+                    "last_practiced_at": created_at,
+                },
+                ["learner_id", "knowledge_point"],
+                ["score", "attempt_count", "correct_count", "last_practiced_at"],
+            )
+            connection.execute(
+                learning_sessions.update()
+                .where(learning_sessions.c.session_id == session_id)
+                .values(updated_at=created_at)
+            )
+        return {
+            "attemptId": attempt_id,
+            "mastery": {
+                "learnerId": session["learner_id"],
+                "knowledgePoint": knowledge_point,
+                "score": score,
+                "attemptCount": attempt_count,
+                "correctCount": correct_count,
+                "lastPracticedAt": created_at,
+            },
+        }
+
+    def list_mastery(self, learner_id: str) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                select(mastery_states)
+                .where(mastery_states.c.learner_id == learner_id)
+                .order_by(mastery_states.c.last_practiced_at.desc())
+            ).mappings().all()
+        return [{
+            "learnerId": row["learner_id"],
+            "knowledgePoint": row["knowledge_point"],
+            "score": row["score"],
+            "attemptCount": row["attempt_count"],
+            "correctCount": row["correct_count"],
+            "lastPracticedAt": row["last_practiced_at"],
+        } for row in rows]
+
     def counts(self) -> dict[str, int]:
         """Return row counts for migration verification and diagnostics."""
         self._ensure_initialized()
@@ -401,6 +619,15 @@ class TutorStore:
                 ) or 0,
                 "batch_questions": connection.scalar(
                     select(func.count()).select_from(batch_questions)
+                ) or 0,
+                "lesson_documents": connection.scalar(
+                    select(func.count()).select_from(lesson_documents)
+                ) or 0,
+                "learning_sessions": connection.scalar(
+                    select(func.count()).select_from(learning_sessions)
+                ) or 0,
+                "exercise_attempts": connection.scalar(
+                    select(func.count()).select_from(exercise_attempts)
                 ) or 0,
             }
 
