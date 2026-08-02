@@ -104,6 +104,7 @@ npm run dev
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
 - [部署与运维](docs/deployment.md)
+- [日志与运行监控](docs/observability.md)
 - [路线图与生产边界](docs/roadmap.md)
 - [模型与系统测试报告](docs/model-evaluation-report.md)
 - [参与贡献](CONTRIBUTING.md)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import io
 import os
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -17,6 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from qwen_tts import Qwen3TTSModel
+
+from observability import log_event
 
 
 app = FastAPI(title="Qwen3-TTS local service")
@@ -57,16 +60,19 @@ def get_model() -> tuple[Qwen3TTSModel, str]:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {
+    payload = {
         "provider": "qwen3-tts",
         "model": MODEL_NAME,
         "device": _device(),
         "loaded": get_model.cache_info().currsize > 0,
     }
+    log_event("tts.service.health", level=10, device=payload["device"], loaded=payload["loaded"])
+    return payload
 
 
 @app.post("/tts")
 def tts(request: TtsRequest) -> Response:
+    started = time.perf_counter()
     try:
         model, _device_name = get_model()
         wavs, sample_rate = model.generate_custom_voice(
@@ -77,8 +83,24 @@ def tts(request: TtsRequest) -> Response:
         )
         output = io.BytesIO()
         sf.write(output, wavs[0], sample_rate, format="WAV")
-        return Response(content=output.getvalue(), media_type="audio/wav")
+        audio = output.getvalue()
+        log_event(
+            "tts.service.request.completed",
+            text_length=len(request.text),
+            audio_bytes=len(audio),
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
+        return Response(content=audio, media_type="audio/wav")
     except Exception as error:  # noqa: BLE001 - surface model errors to the proxy
+        log_event(
+            "tts.service.request.failed",
+            level=40,
+            text_length=len(request.text),
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            error_type=type(error).__name__,
+            error=str(error)[:300],
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"Qwen3-TTS 生成失败：{error}") from error
 
 

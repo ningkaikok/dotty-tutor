@@ -181,6 +181,9 @@ Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各�
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 
+后端默认以 JSON 输出结构化运行日志，使用 `LOG_LEVEL=DEBUG` 可以临时查看分块上传等细节；
+事件字段和生产健康检查工作流见[日志与运行监控](observability.md)。
+
 ### 配置飞书 CI 通知
 
 在 GitHub 仓库的 **Settings → Secrets and variables → Actions** 中添加：
