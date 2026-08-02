@@ -10,6 +10,33 @@ Qwen3-TTS 和 Azure Speech。
 - PostgreSQL 16+
 - 可选：Ollama、MinerU、Qwen3-TTS、Codex CLI
 
+## 推荐开发模式：本机服务 + Docker PostgreSQL
+
+日常开发建议让 FastAPI、React、MinerU、Qwen3-TTS 和 Codex CLI 都运行在本机，
+只使用 Docker 提供 PostgreSQL。这样可以直接复用本机登录态、模型缓存和 Apple Silicon
+MPS，不需要把凭据或虚拟环境复制进 API 容器。
+
+```bash
+cp .env.docker.example .env
+# 确保 .env 中 POSTGRES_PASSWORD 已填写
+cp .env.local.example .env.local
+# 将 .env.local 的 POSTGRES_PASSWORD 改成 .env 中相同的值
+
+scripts/dev-local.sh
+```
+
+脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 Vite 和 Qwen3-TTS。打开
+<http://localhost:5174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
+
+本机 Codex、MinerU 和 Qwen3-TTS 的状态可以分别检查：
+
+```bash
+codex --version
+.mineru-venv/bin/mineru --help
+curl -fsS http://127.0.0.1:8020/health
+curl -fsS http://127.0.0.1:8010/api/health
+```
+
 ## 安装后端
 
 如果只想快速体验完整服务，优先使用 README 中的 Docker Compose 方法。本节用于需要热更新、
@@ -31,7 +58,7 @@ createuser --pwprompt dotty_app
 createdb -O dotty_app dotty_tutor
 ```
 
-本地开发也建议使用显式密码连接。复制模板并填写同一组数据库凭据：
+如果不使用上面的启动脚本，本地开发也可以使用显式密码连接。复制模板并填写同一组数据库凭据：
 
 ```bash
 cp .env.example .env
@@ -98,7 +125,9 @@ npm run dev
 | `TTS_PROVIDER` | `auto` | `auto`、`azure` 或 `qwen` |
 | `QWEN_TTS_URL` | `http://127.0.0.1:8020` | Qwen3-TTS 服务地址 |
 
-完整示例见项目根目录的 [`.env.example`](../.env.example)。
+完整示例见项目根目录的 [`.env.example`](../.env.example)。本机开发专用配置见
+[`.env.local.example`](../.env.local.example)；完整 Docker 配置见
+[`.env.docker.example`](../.env.docker.example)。
 
 ## Ollama
 
