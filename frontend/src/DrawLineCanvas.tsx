@@ -46,7 +46,12 @@ export function DrawLineCanvas({ interaction, connections, onChange }: DrawLineC
           return <line key={`${first}-${second}`} x1={from.x * 100} y1={from.y * 100} x2={to.x * 100} y2={to.y * 100} className="draw-line-created" />;
         })}
         {points.map((point) => (
-          <g key={point.id} className={`draw-line-point ${start === point.id ? "active" : ""}`} onClick={() => connect(point.id)}>
+          <g
+            key={point.id}
+            className={`draw-line-point ${start === point.id ? "active" : ""}`}
+            data-testid={`draw-point-${point.id}`}
+            onClick={() => connect(point.id)}
+          >
             <circle cx={point.x * 100} cy={point.y * 100} r="4.4" />
             <text x={point.x * 100 + 5} y={point.y * 100 - 5}>{point.label}</text>
           </g>

@@ -17,6 +17,8 @@ backend/.venv/
 frontend/node_modules/
 frontend/dist/
 frontend/*.tsbuildinfo
+frontend/playwright-report/
+frontend/test-results/
 frontend/vite.config.js
 frontend/vite.config.d.ts
 data/
