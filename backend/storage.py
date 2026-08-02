@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from sqlalchemy import (
     BigInteger,
@@ -83,6 +84,21 @@ def normalize_database_url(value: str) -> str:
     return value
 
 
+def build_postgres_url_from_env() -> str:
+    """Build an explicit password URL when POSTGRES_* variables are provided."""
+    password = os.getenv("POSTGRES_PASSWORD", "")
+    if not password:
+        return DEFAULT_POSTGRES_URL
+    user = quote(os.getenv("POSTGRES_USER", "dotty_app"), safe="")
+    encoded_password = quote(password, safe="")
+    host = os.getenv("POSTGRES_HOST", "127.0.0.1")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    database = quote(os.getenv("POSTGRES_DB", "dotty_tutor"), safe="")
+    sslmode = os.getenv("POSTGRES_SSLMODE", "")
+    query = f"?sslmode={quote(sslmode, safe='')}" if sslmode else ""
+    return f"postgresql+psycopg://{user}:{encoded_password}@{host}:{port}/{database}{query}"
+
+
 def decode_json(value: Any) -> Any:
     """Read both native PostgreSQL JSONB values and legacy SQLite JSON text."""
     if isinstance(value, str):
@@ -119,7 +135,7 @@ class TutorStore:
         # ordinary local development now defaults to PostgreSQL.
         if not configured_url and os.getenv("DOTTY_DATA_DIR"):
             configured_url = f"sqlite+pysqlite:///{self.root / 'dotty.sqlite3'}"
-        self.database_url = normalize_database_url(configured_url or DEFAULT_POSTGRES_URL)
+        self.database_url = normalize_database_url(configured_url or build_postgres_url_from_env())
         self.database_path = (
             Path(self.database_url.removeprefix("sqlite+pysqlite:///"))
             if self.database_url.startswith("sqlite+pysqlite:///")

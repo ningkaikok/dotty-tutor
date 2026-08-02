@@ -64,7 +64,7 @@ sudo chmod 600 /etc/dotty-tutor/backend.env
 `/etc/dotty-tutor/backend.env` 示例：
 
 ```dotenv
-DATABASE_URL=postgresql+psycopg://dotty_app:password@db.example.com:5432/dotty_tutor?sslmode=require
+DATABASE_URL=postgresql+psycopg://dotty_app:replace-with-url-encoded-password@db.example.com:5432/dotty_tutor?sslmode=require
 DOTTY_DATA_DIR=/srv/dotty-tutor/data
 CORS_ORIGINS=https://tutor.example.com
 TRUSTED_HOSTS=tutor.example.com

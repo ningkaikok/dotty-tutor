@@ -81,7 +81,12 @@ docker compose down
 python3.12 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 
-createdb dotty_tutor
+createuser --pwprompt dotty_app
+createdb -O dotty_app dotty_tutor
+
+cp .env.example .env
+# 编辑 .env，填写 POSTGRES_PASSWORD 后导出到当前 shell
+set -a; source .env; set +a
 cd backend
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
   ../.venv/bin/python -m uvicorn app:app --reload --port 8010
