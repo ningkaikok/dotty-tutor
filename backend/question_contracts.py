@@ -210,8 +210,8 @@ LESSON_SCHEMA = {
         },
     },
     "required": [
-        "chapter", "knowledgePoint", "questionNumber", "questionType", "prompt", "correctAnswer",
-        "interaction", "givens", "options", "imageReferences",
+        "chapter", "knowledgePoint", "questionNumber", "questionType", "selectionMode", "prompt",
+        "correctAnswer", "correctAnswers", "blanks", "answerSpec", "interaction", "givens", "options", "imageReferences",
         "lessonSteps", "guideCards",
     ],
 }
