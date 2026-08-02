@@ -10,6 +10,7 @@ import io
 import os
 import time
 from functools import lru_cache
+from threading import Lock
 from typing import Any
 
 import soundfile as sf
@@ -37,6 +38,9 @@ class TtsRequest(BaseModel):
     instruct: str = Field(default=DEFAULT_INSTRUCT, max_length=200)
 
 
+_generation_lock = Lock()
+
+
 def _device() -> str:
     configured = os.getenv("QWEN_TTS_DEVICE", "auto").lower()
     if configured != "auto":
@@ -58,6 +62,44 @@ def get_model() -> tuple[Qwen3TTSModel, str]:
     return model, device
 
 
+@lru_cache(maxsize=128)
+def _synthesize_audio(text: str, speaker: str, instruct: str) -> bytes:
+    """Generate once per narration and reuse audio during lesson replay."""
+    with _generation_lock:
+        model, _device_name = get_model()
+        wavs, sample_rate = model.generate_custom_voice(
+            text=text,
+            language="Chinese",
+            speaker=speaker,
+            instruct=instruct,
+        )
+        output = io.BytesIO()
+        sf.write(output, wavs[0], sample_rate, format="WAV")
+        return output.getvalue()
+
+
+@app.on_event("startup")
+def warm_model() -> None:
+    """Load weights during service startup instead of delaying the first lesson."""
+    started = time.perf_counter()
+    try:
+        get_model()
+        log_event(
+            "tts.service.warmed",
+            level=10,
+            device=_device(),
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+        )
+    except Exception as error:  # noqa: BLE001 - health endpoint will expose the failure
+        log_event(
+            "tts.service.warm.failed",
+            level=40,
+            error_type=type(error).__name__,
+            error=str(error)[:300],
+            exc_info=True,
+        )
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     payload = {
@@ -74,20 +116,14 @@ def health() -> dict[str, Any]:
 def tts(request: TtsRequest) -> Response:
     started = time.perf_counter()
     try:
-        model, _device_name = get_model()
-        wavs, sample_rate = model.generate_custom_voice(
-            text=request.text,
-            language="Chinese",
-            speaker=request.speaker,
-            instruct=request.instruct,
-        )
-        output = io.BytesIO()
-        sf.write(output, wavs[0], sample_rate, format="WAV")
-        audio = output.getvalue()
+        before = _synthesize_audio.cache_info().hits
+        audio = _synthesize_audio(request.text.strip(), request.speaker, request.instruct)
+        cache_hit = _synthesize_audio.cache_info().hits > before
         log_event(
             "tts.service.request.completed",
             text_length=len(request.text),
             audio_bytes=len(audio),
+            cache_hit=cache_hit,
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
         return Response(content=audio, media_type="audio/wav")
