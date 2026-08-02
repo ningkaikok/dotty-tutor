@@ -229,6 +229,9 @@ cp .env.docker.example .env
 编辑 `.env`，至少替换 `POSTGRES_PASSWORD`。由于 Compose 会把密码放入数据库 URL，建议
 使用较长的字母、数字、下划线和短横线组合；不要使用需要 URL 编码的字符。
 
+PostgreSQL 默认只绑定宿主机 `127.0.0.1:15432`，便于本机数据库工具访问且不会暴露到局域网。
+连接用户、密码和数据库名分别来自 `POSTGRES_USER`、`POSTGRES_PASSWORD` 和 `POSTGRES_DB`。
+
 ```bash
 docker compose config
 docker compose up --build --detach
