@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { speak } from "../speech";
+import { playSpeech, preloadSpeech, stopSpeech } from "../speech";
 import type { CanvasAction, LessonBlock, QuestionPayload } from "../types";
 import { lessonDocumentFromPayload } from "./lessonDocument";
 import { renderLessonBlock } from "./rendererRegistry";
@@ -34,20 +34,39 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
   };
 
   useEffect(() => {
+    stopSpeech();
     setStep(0);
     setPlaying(false);
     activateBlock(playableBlocks[0]);
+    if (playableBlocks[0]) void preloadSpeech(blockNarration(playableBlocks[0]));
+
+    return stopSpeech;
   }, [document.lessonId]);
 
   useEffect(() => {
     if (!playing || !current) return;
-    activateBlock(current);
-    void speak(blockNarration(current));
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    const narration = blockNarration(current);
+    const next = playableBlocks[step + 1];
+
+    void (async () => {
+      // Fetch before changing the canvas, then keep the next narration warm
+      // while the current audio is playing.
+      await preloadSpeech(narration);
+      if (cancelled) return;
+      if (next) void preloadSpeech(blockNarration(next));
+      await playSpeech(narration, () => {
+        if (!cancelled) activateBlock(current);
+      });
+      if (cancelled) return;
       if (step >= playableBlocks.length - 1) setPlaying(false);
       else setStep((value) => value + 1);
-    }, 4300);
-    return () => window.clearTimeout(timer);
+    })();
+
+    return () => {
+      cancelled = true;
+      stopSpeech();
+    };
   }, [current, onActionChange, playableBlocks.length, playing, step]);
 
   if (!current) return null;
@@ -75,6 +94,7 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
               key={block.id}
               className={index === step ? "active" : ""}
               onClick={() => {
+                stopSpeech();
                 setStep(index);
                 activateBlock(block);
                 setPlaying(false);
