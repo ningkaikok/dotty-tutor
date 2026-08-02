@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { processPdfBatch, requestHelp } from "./api";
 import { GeometryCanvas } from "./GeometryCanvas";
-import { DrawLineCanvas } from "./DrawLineCanvas";
-import MathText from "./MathText";
-import { QuestionContent } from "./QuestionContent";
+import { QuestionAnswer } from "./components/QuestionAnswer";
 import { TextbookImport } from "./TextbookImport";
 import type { CanvasAction, QuestionPayload, TextbookImportResult, TutorReply } from "./types";
 import "./styles.css";
@@ -60,7 +58,9 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [canvasAction, setCanvasAction] = useState<CanvasAction>(INITIAL_ACTION);
   const [studentInput, setStudentInput] = useState("");
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
+  const [numericAnswer, setNumericAnswer] = useState("");
   const [drawConnections, setDrawConnections] = useState<Array<[string, string]>>([]);
   const [hintLevel, setHintLevel] = useState(0);
   const [reply, setReply] = useState<TutorReply | null>(null);
@@ -77,7 +77,9 @@ export default function App() {
     setPlaying(false);
     setCanvasAction(INITIAL_ACTION);
     setStudentInput("");
-    setSelectedOption(null);
+    setSelectedOptions([]);
+    setBlankAnswers({});
+    setNumericAnswer("");
     setDrawConnections([]);
     setHintLevel(0);
     setReply(null);
@@ -109,8 +111,21 @@ export default function App() {
 
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
-    const isDrawQuestion = payload.question.questionType === "draw-line";
-    if (mode === "answer" && !studentInput.trim() && (!isDrawQuestion || !drawConnections.length)) {
+    const questionType = payload.question.questionType;
+    const isDrawQuestion = questionType === "draw-line";
+    const structuredResult = questionType === "fill-blank"
+      ? { blankAnswers }
+      : questionType === "numeric"
+        ? { numericAnswer }
+        : questionType === "multi-select" || questionType === "choice" || questionType === "true-false"
+          ? { selectedOptions }
+          : isDrawQuestion ? { connections: drawConnections } : undefined;
+    const submittedInput = studentInput
+      || (questionType === "fill-blank" ? Object.values(blankAnswers).join("；") : "")
+      || (questionType === "numeric" ? numericAnswer : "")
+      || (selectedOptions.length ? `我选择${selectedOptions.join("、")}` : "")
+      || (isDrawQuestion ? "我完成了画线作答" : "");
+    if (mode === "answer" && !submittedInput.trim() && (!isDrawQuestion || !drawConnections.length)) {
       setInteractionError("请先写下你的答案或推导步骤");
       return;
     }
@@ -119,10 +134,10 @@ export default function App() {
     try {
       const response = await requestHelp({
         questionId: payload.question.id,
-        studentInput: studentInput || "我完成了画线作答",
+        studentInput: submittedInput,
         hintLevel,
         mode,
-        interactionResult: isDrawQuestion ? { connections: drawConnections } : undefined,
+        interactionResult: structuredResult,
       });
       setReply(response);
       setHintLevel(response.nextHintLevel);
@@ -136,8 +151,12 @@ export default function App() {
   };
 
   const selectOption = (label: string, answerText: string) => {
-    setSelectedOption(label);
-    setStudentInput(`我选择${label}${answerText ? `：${answerText}` : ""}`);
+    const isMultiple = payload?.question.questionType === "multi-select" || payload?.question.selectionMode === "multiple";
+    const next = isMultiple
+      ? (selectedOptions.includes(label) ? selectedOptions.filter((item) => item !== label) : [...selectedOptions, label])
+      : [label];
+    setSelectedOptions(next);
+    setStudentInput(`我选择${next.join("、")}${answerText && !isMultiple ? `：${answerText}` : ""}`);
     setReply(null);
     setInteractionError("");
   };
@@ -239,24 +258,11 @@ export default function App() {
 
   if (!currentStep) return <main className="center-state">正在加载数字教材…</main>;
 
-  const inferredImageOptions =
-    payload.question.imageUrls?.length === 4
-    && payload.question.options?.length === 4
-    && payload.question.options.every((option, index) => option.trim() === `(${String.fromCharCode(65 + index)})`);
-  const hasImageOptions = Boolean(payload.question.optionImageUrls?.length || inferredImageOptions);
-  const displayedPrompt = (() => {
-    let prompt = payload.question.prompt;
-    // Older persisted payloads may still contain textual choices in prompt.
-    if (payload.question.options?.length) {
-      prompt = prompt.replace(/\(A\)[\s\S]*$/, "").trim();
-    }
-    if (hasImageOptions) {
-      prompt = prompt.replace(/(^|\n)\s*\([A-D]\)\s*(?=\n|$)/g, "\n");
-    }
-    return prompt.replace(/\n{3,}/g, "\n\n").trim();
-  })();
-  const isTrueFalse = payload.question.questionType === "true-false";
   const isDrawLine = payload.question.questionType === "draw-line";
+  const hasStructuredAnswer = selectedOptions.length > 0
+    || Object.values(blankAnswers).some((value) => value.trim())
+    || Boolean(numericAnswer.trim())
+    || drawConnections.length > 0;
 
   return (
     <main className="app-shell">
@@ -382,79 +388,23 @@ export default function App() {
               )}
             </div>
           )}
-          {isDrawLine && payload.question.interaction ? (
-            <DrawLineCanvas
-              interaction={payload.question.interaction}
-              connections={drawConnections}
-              onChange={setDrawConnections}
-            />
-          ) : isTrueFalse ? (
-            <div className="question-options true-false-options">
-              {["正确", "错误"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={`question-option ${selectedOption === label ? "selected" : ""}`}
-                  onClick={() => selectOption(label, label)}
-                  aria-pressed={selectedOption === label}
-                >
-                  <span className="option-label">{label === "正确" ? "✓" : "✕"}</span>
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          ) : payload.question.contentBlocks?.length ? (
-            <QuestionContent
-              blocks={payload.question.contentBlocks}
-              selectedOption={selectedOption}
-              onSelectOption={selectOption}
-            />
-          ) : (<>
-          <MathText text={displayedPrompt} className="question-prompt" block />
-          {payload.question.imageUrls && payload.question.imageUrls.length > 0 &&
-            !hasImageOptions &&
-            !(payload.question.options ?? []).some((option) => /!\[[^\]]*\]\(([^)]+)\)/.test(option)) && (
-            <div className="question-images">
-              {payload.question.imageUrls.map((url, index) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer" title="打开原始题图">
-                  <img src={url} alt={`题目对应图片 ${index + 1}`} loading="lazy" />
-                </a>
-              ))}
-            </div>
-          )}
-          {payload.question.options && payload.question.options.length > 0 && (
-            <ol className={`question-options ${hasImageOptions ? "image-options" : ""}`}>
-              {payload.question.options.map((option, index) => {
-                const imageOption = /!\[[^\]]*\]\(([^)]+)\)/.exec(option);
-                const label = `(${String.fromCharCode(65 + index)})`;
-                const answerText = option.replace(/^\([A-D]\)\s*/, "").replace(/!\[[^\]]*\]\(([^)]+)\)/, "").trim();
-                const optionImage = payload.question.optionImageUrls?.[index]
-                  ?? (inferredImageOptions ? payload.question.imageUrls?.[index] : null)
-                  ?? (imageOption ? payload.question.imageUrls?.[index] ?? imageOption[1] : null);
-                return (
-                  <li key={`${option}-${index}`}>
-                    <button
-                      type="button"
-                      className={`question-option ${selectedOption === label ? "selected" : ""}`}
-                      onClick={() => selectOption(label, answerText)}
-                      aria-pressed={selectedOption === label}
-                    >
-                      <span className="option-label">{label}</span>
-                      {optionImage ? (
-                        <img src={optionImage} alt={`选项${String.fromCharCode(65 + index)}`} loading="lazy" />
-                      ) : (
-                        <MathText text={option.replace(/^\([A-D]\)\s*/, "")} />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-          {selectedOption && (
-            <p className="selected-option">已选择 {selectedOption}，确认后点击“提交回答”。</p>
-          )}
-          </>)}
+          <QuestionAnswer
+            question={payload.question}
+            selectedOptions={selectedOptions}
+            blankAnswers={blankAnswers}
+            numericAnswer={numericAnswer}
+            drawConnections={drawConnections}
+            onSelectOption={selectOption}
+            onBlankChange={(id, value) => {
+              setBlankAnswers((current) => ({ ...current, [id]: value }));
+              setStudentInput("");
+            }}
+            onNumericChange={(value) => {
+              setNumericAnswer(value);
+              setStudentInput("");
+            }}
+            onDrawConnectionsChange={setDrawConnections}
+          />
           {payload.quality && (payload.quality.errors.length > 0 || payload.quality.warnings.length > 0) && (
             <details className="quality-details">
               <summary>结构质量门禁 · {payload.quality.errors.length} 个错误 · {payload.quality.warnings.length} 个警告</summary>
@@ -497,7 +447,7 @@ export default function App() {
           />
           <div className="answer-actions">
             <button className="ghost" onClick={() => setStudentInput("我不知道怎么开始")}>我卡住了</button>
-            <button className="ghost submit-answer" disabled={loading || (!studentInput.trim() && (!isDrawLine || !drawConnections.length))} onClick={() => void askTutor("answer")}>
+            <button className="ghost submit-answer" disabled={loading || (!studentInput.trim() && !hasStructuredAnswer)} onClick={() => void askTutor("answer")}>
               {loading ? "正在分析…" : isDrawLine ? "提交作图" : "提交回答"}
             </button>
             <button className="help-button" disabled={loading} onClick={() => void askTutor("help")}>

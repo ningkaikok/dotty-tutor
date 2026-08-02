@@ -42,11 +42,17 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 组件 | 主要文件 | 责任边界 |
 | --- | --- | --- |
 | 上传与模型选择 | `frontend/src/TextbookImport.tsx` | 文件校验、分块续传、进度轮询、运行时选择和教材库入口 |
-| 学习与交互 | `frontend/src/App.tsx` | 题目导航、四步讲解、作答、Help 和语音播放 |
+| 学习编排 | `frontend/src/App.tsx` | 题目导航、状态管理、四步讲解和 Help 请求编排 |
+| 题型作答 | `frontend/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
+| 题目展示 | `frontend/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `frontend/src/api.ts`、`frontend/src/types.ts` | `/api` 请求封装和前后端类型 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
-| 主编排服务 | `backend/app.py` | API、上传、生成、标准化、质量门禁、Help 和 TTS 路由 |
+| API 入口与上传编排 | `backend/app.py` | FastAPI 初始化、教材上传、PDF 批次和跨模块调用编排 |
+| 题目契约 | `backend/question_contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
+| 题目流水线 | `backend/question_pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
+| 确定性判题 | `backend/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
+| 运行时路由 | `backend/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
 | 模型适配 | `backend/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
 | OCR 适配 | `backend/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 双模型审校 | `backend/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
@@ -124,11 +130,14 @@ OCR 题块
 
 前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果：
 
-1. 判断题优先使用明确答案做确定性判题。
-2. 画线题比较 `requiredConnections` 与学生连接集合。
-3. 其他题先检查学生等式是否与题干或标准步骤冲突。
-4. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
-5. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
+1. 多选题比较 `selectedOptions` 与 `correctAnswers` 的完整集合。
+2. 填空题逐空比较文本、数值或公式答案，可配置 `tolerance` 和 `unit`。
+3. 数值题使用 `answerSpec` 做数值容差或等价文本核对。
+4. 判断题优先使用明确答案做确定性判题。
+5. 画线题比较 `requiredConnections` 与学生连接集合。
+6. 其他题先检查学生等式是否与题干或标准步骤冲突。
+7. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
+8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
 ## TTS 回退
 

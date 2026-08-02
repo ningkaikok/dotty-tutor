@@ -67,14 +67,44 @@ export interface QuestionInteraction {
   requiredConnections: string[][];
 }
 
+export type QuestionType =
+  | "choice"
+  | "multi-select"
+  | "true-false"
+  | "short-answer"
+  | "fill-blank"
+  | "numeric"
+  | "draw-line";
+
+export interface BlankSpec {
+  id: string;
+  label: string;
+  answerType: "text" | "numeric" | "expression";
+  correctAnswers?: string[];
+  tolerance?: number;
+  unit?: string;
+}
+
+export interface AnswerSpec {
+  answerType: "numeric" | "expression";
+  expected: string;
+  accepted?: string[];
+  tolerance?: number;
+  unit?: string;
+}
+
 export interface Question {
   id: string;
-  questionType?: "choice" | "true-false" | "short-answer" | "draw-line";
+  questionType?: QuestionType;
+  selectionMode?: "single" | "multiple";
   chapter: string;
   knowledgePoint: string;
   questionNumber?: string;
   prompt: string;
   correctAnswer?: string;
+  correctAnswers?: string[];
+  blanks?: BlankSpec[];
+  answerSpec?: AnswerSpec;
   interaction?: QuestionInteraction;
   givens: string[];
   options?: string[];

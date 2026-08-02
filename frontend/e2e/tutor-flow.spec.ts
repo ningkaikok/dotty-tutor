@@ -86,6 +86,40 @@ const drawLineQuestion = payload({
   },
 });
 
+const multiSelectQuestion = payload({
+  id: "pw-multi-select",
+  questionType: "multi-select",
+  chapter: "第二章",
+  knowledgePoint: "集合交集",
+  questionNumber: "4",
+  prompt: "下列选项中属于集合 A 的元素有（多选）。",
+  givens: ["选择所有正确选项"],
+  options: ["(A) 1", "(B) 2", "(C) 3"],
+  correctAnswers: ["(A)", "(C)"],
+});
+
+const fillBlankQuestion = payload({
+  id: "pw-fill-blank",
+  questionType: "fill-blank",
+  chapter: "第二章",
+  knowledgePoint: "基础运算",
+  questionNumber: "5",
+  prompt: "填空：2 + 2 = ____。",
+  givens: ["填写最终结果"],
+  blanks: [{ id: "blank-1", label: "第 1 空", answerType: "numeric", correctAnswers: ["4"] }],
+});
+
+const numericQuestion = payload({
+  id: "pw-numeric",
+  questionType: "numeric",
+  chapter: "第二章",
+  knowledgePoint: "近似值",
+  questionNumber: "6",
+  prompt: "π 取两位小数约为多少？",
+  givens: ["答案允许误差 0.01"],
+  answerSpec: { answerType: "numeric", expected: "3.14", tolerance: 0.01, unit: "" },
+});
+
 const importResult = {
   importId: "pw-import",
   filename: "playwright-fixture.png",
@@ -117,7 +151,16 @@ const importResult = {
   questionPayloads: [choiceQuestion, trueFalseQuestion, drawLineQuestion],
 };
 
-async function mockApi(page: Page) {
+const priorityImportResult = {
+  ...importResult,
+  importId: "pw-priority-import",
+  filename: "playwright-priority-fixture.png",
+  extraction: { ...importResult.extraction, knowledgePoint: "第一优先级题型", questionCount: 3 },
+  questionPayload: multiSelectQuestion,
+  questionPayloads: [multiSelectQuestion, fillBlankQuestion, numericQuestion],
+};
+
+async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
       json: {
@@ -145,7 +188,7 @@ async function mockApi(page: Page) {
     await route.fulfill({ json: { items: [] } });
   });
   await page.route("**/api/textbook/import", async (route) => {
-    await route.fulfill({ json: importResult });
+    await route.fulfill({ json: result });
   });
   await page.route("**/api/help", async (route) => {
     await route.fulfill({
@@ -197,6 +240,37 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.locator("line.draw-line-created")).toHaveCount(1);
     await expect(page.getByText("已画 1 条线")).toBeVisible();
     await page.getByRole("button", { name: "提交作图" }).click();
+    await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
+  });
+
+  test("第一优先级题型支持多选、填空和数值答案", async ({ page }) => {
+    await mockApi(page, priorityImportResult);
+    await page.goto("/");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "playwright-priority-fixture.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("fixture"),
+    });
+    await page.getByRole("button", { name: "开始数字化" }).click();
+    await page.getByRole("button", { name: "进入动态教材 →" }).click();
+
+    await expect(page.getByRole("heading", { name: "集合交集" })).toBeVisible();
+    await page.getByRole("button", { name: /\(A\).*1/ }).click();
+    await page.getByRole("button", { name: /\(C\).*3/ }).click();
+    await expect(page.getByText("已选择 (A)、(C)")).toBeVisible();
+    await page.getByRole("button", { name: "提交回答" }).click();
+    await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
+
+    await page.getByRole("button", { name: "下一题" }).click();
+    await expect(page.getByRole("heading", { name: "基础运算" })).toBeVisible();
+    await page.getByRole("textbox", { name: "第 1 空" }).fill("4");
+    await page.getByRole("button", { name: "提交回答" }).click();
+    await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
+
+    await page.getByRole("button", { name: "下一题" }).click();
+    await expect(page.getByRole("heading", { name: "近似值" })).toBeVisible();
+    await page.getByRole("textbox", { name: "数值答案" }).fill("3.145");
+    await page.getByRole("button", { name: "提交回答" }).click();
     await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
   });
 });

@@ -4,12 +4,12 @@
 [![Release](https://img.shields.io/github/v/release/ningkaikok/dotty-tutor)](https://github.com/ningkaikok/dotty-tutor/releases)
 [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![React 18](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 
 面向中文教材的 AI 数字化与互动辅导平台。
 
 Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校记录的结构化题目，并通过
-分步讲解、选择/判断/简答/画线交互和中文语音，帮助学生完成练习。
+分步讲解、选择/多选/判断/填空/数值/简答/画线交互和中文语音，帮助学生完成练习。
 
 > 当前项目处于 MVP 阶段，适合本地体验和受控内测，暂不建议将匿名 API 直接暴露到公网。
 
@@ -21,7 +21,8 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
 - MinerU OCR、PDF 文字层解析与公式/题图提取。
 - Ollama、Codex CLI 和 Mock 三种题目生成路径。
 - 文本与视觉双模型审校，以及确定性结构质量门禁。
-- 选择题、判断题、简答题和画线题交互。
+- 选择题、多选题、判断题、填空题、数值/公式题、简答题和画线题交互。
+- 填空题支持多空答案；数值题支持容差；多选题支持完整选项集合校验。
 - 基于学生当前答案的分层 Help 提示。
 - Azure Speech、Qwen3-TTS 和浏览器语音三级回退。
 - PostgreSQL JSONB 持久化题目、审校结果和引导卡。

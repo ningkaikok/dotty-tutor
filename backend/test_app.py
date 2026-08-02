@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app import HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact
+from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
 from review_runtime import formula_anomaly_score, normalize_ocr_question
 from storage import TutorStore
 
@@ -42,6 +42,13 @@ class EquationConflictTests(unittest.TestCase):
 
 
 class TutorResponseTests(unittest.TestCase):
+    def test_lesson_schema_includes_priority_question_types(self) -> None:
+        self.assertEqual(
+            set(LESSON_SCHEMA["properties"]["questionType"]["enum"]),
+            {"choice", "multi-select", "true-false", "short-answer", "fill-blank", "numeric", "draw-line"},
+        )
+        self.assertIn("assessment", HELP_SCHEMA["properties"])
+
     def test_answer_mode_marks_known_correct_conclusion(self) -> None:
         reply = build_reply(HelpRequest(
             questionId="geometry-perpendicular-bisector",
@@ -59,6 +66,71 @@ class TutorResponseTests(unittest.TestCase):
         ))
         self.assertEqual(reply.source, "stored-guide-card")
         self.assertEqual(reply.nextHintLevel, 1)
+
+    def test_numeric_answer_uses_tolerance_without_model_call(self) -> None:
+        lesson_store["numeric-test"] = {
+            "payload": {"question": {
+                "id": "numeric-test",
+                "questionType": "numeric",
+                "knowledgePoint": "近似值",
+                "answerSpec": {"answerType": "numeric", "expected": "3.14", "tolerance": 0.01},
+            }},
+            "guideCards": [],
+        }
+        try:
+            reply = generate_model_reply(HelpRequest(
+                questionId="numeric-test",
+                studentInput="3.145",
+                mode="answer",
+                interactionResult={"numericAnswer": "3.145"},
+            ))
+            self.assertEqual(reply.source, "answer-check")
+            self.assertEqual(reply.guideContext["assessment"], "correct")
+        finally:
+            lesson_store.pop("numeric-test", None)
+
+    def test_fill_blank_checks_each_answer(self) -> None:
+        lesson_store["blank-test"] = {
+            "payload": {"question": {
+                "id": "blank-test",
+                "questionType": "fill-blank",
+                "knowledgePoint": "基础运算",
+                "blanks": [
+                    {"id": "a", "answerType": "numeric", "correctAnswers": ["4"]},
+                    {"id": "b", "answerType": "text", "correctAnswers": ["平方"]},
+                ],
+            }},
+            "guideCards": [],
+        }
+        try:
+            reply = generate_model_reply(HelpRequest(
+                questionId="blank-test",
+                mode="answer",
+                interactionResult={"blankAnswers": {"a": "4.0", "b": "平方"}},
+            ))
+            self.assertEqual(reply.guideContext["assessment"], "correct")
+        finally:
+            lesson_store.pop("blank-test", None)
+
+    def test_multi_select_requires_the_complete_set(self) -> None:
+        lesson_store["multi-test"] = {
+            "payload": {"question": {
+                "id": "multi-test",
+                "questionType": "multi-select",
+                "knowledgePoint": "集合",
+                "correctAnswers": ["(A)", "(C)"],
+            }},
+            "guideCards": [],
+        }
+        try:
+            reply = generate_model_reply(HelpRequest(
+                questionId="multi-test",
+                mode="answer",
+                interactionResult={"selectedOptions": ["(A)", "(C)"]},
+            ))
+            self.assertEqual(reply.guideContext["assessment"], "correct")
+        finally:
+            lesson_store.pop("multi-test", None)
 
 
 class BatchQuestionTests(unittest.TestCase):

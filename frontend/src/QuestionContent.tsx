@@ -7,6 +7,8 @@ type InlineBlock = TextContentBlock | MathContentBlock;
 interface QuestionContentProps {
   blocks: QuestionContentBlock[];
   selectedOption?: string | null;
+  selectedOptions?: string[];
+  multiple?: boolean;
   onSelectOption?: (label: string, answerText: string) => void;
 }
 
@@ -22,7 +24,7 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
   );
 }
 
-export function QuestionContent({ blocks, selectedOption, onSelectOption }: QuestionContentProps) {
+export function QuestionContent({ blocks, selectedOption, selectedOptions = [], multiple = false, onSelectOption }: QuestionContentProps) {
   const nodes: ReactNode[] = [];
   let inlineBlocks: InlineBlock[] = [];
 
@@ -60,12 +62,12 @@ export function QuestionContent({ blocks, selectedOption, onSelectOption }: Ques
           <li key={item.label}>
             <button
               type="button"
-              className={`question-option ${selectedOption === item.label ? "selected" : ""}`}
+              className={`question-option ${(multiple ? selectedOptions.includes(item.label) : selectedOption === item.label) ? "selected" : ""}`}
               onClick={() => onSelectOption?.(
                 item.label,
                 item.contentBlocks.map((content) => content.type === "text" ? content.text : content.latex).join(" "),
               )}
-              aria-pressed={selectedOption === item.label}
+              aria-pressed={multiple ? selectedOptions.includes(item.label) : selectedOption === item.label}
             >
               <span className="option-label">{item.label}</span>
               {item.imageUrl ? (
