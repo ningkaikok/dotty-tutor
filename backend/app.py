@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import os
 import re
 import shutil
 import tempfile
@@ -12,9 +11,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi import File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
@@ -22,8 +19,9 @@ from model_runtime import runtime
 from ocr_runtime import runtime as ocr_runtime
 from review_runtime import runtime_reviewer
 from storage import store
-from answer_evaluator import evaluate_structured_answer
 from runtime_routes import build_runtime_router
+from learning_routes import build_learning_router
+from lesson_contracts import lesson_document_from_payload
 from question_pipeline import (
     apply_question_quality_gate,
     build_lesson_prompt,
@@ -42,7 +40,6 @@ from question_pipeline import (
     write_model_prompt_artifact,
 )
 from question_contracts import (
-    CANVAS_ACTIONS,
     GUIDE_CARDS,
     HELP_SCHEMA,
     LESSON_SCHEMA,
@@ -52,72 +49,14 @@ from question_contracts import (
     PdfUploadInitRequest,
     TutorReply,
 )
-from observability import log_event, request_id_var
+from observability import log_event
+from application import create_app
+from upload_registry import UploadRegistry
+from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations, mock_model_run
+from tutor_engine import TutorEngine
 
 
-app = FastAPI(title="Dotty Tutor", version="0.1.0")
-
-
-def csv_env(name: str, default: str) -> list[str]:
-    """Read a comma-separated environment variable without empty entries."""
-    value = os.getenv(name, default)
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-cors_origins = csv_env(
-    "CORS_ORIGINS",
-    "http://localhost:5174,http://127.0.0.1:5174",
-)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
-)
-
-trusted_hosts = csv_env("TRUSTED_HOSTS", "")
-if trusted_hosts:
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
-
-
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Add low-risk browser hardening and a request correlation header."""
-    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
-    token = request_id_var.set(request_id)
-    started = time.perf_counter()
-    response = None
-    try:
-        response = await call_next(request)
-        return response
-    except Exception as error:
-        log_event(
-            "http.request.failed",
-            level=40,
-            method=request.method,
-            path=request.url.path,
-            duration_ms=round((time.perf_counter() - started) * 1000, 1),
-            error_type=type(error).__name__,
-            exc_info=True,
-        )
-        raise
-    finally:
-        if response is not None:
-            response.headers["X-Request-ID"] = request_id
-            response.headers.setdefault("X-Content-Type-Options", "nosniff")
-            response.headers.setdefault("X-Frame-Options", "DENY")
-            response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-            response.headers.setdefault("Permissions-Policy", "microphone=(self)")
-            status_code = response.status_code
-            log_event(
-                "http.request",
-                level=30 if status_code >= 400 else 20,
-                method=request.method,
-                path=request.url.path,
-                status_code=status_code,
-                duration_ms=round((time.perf_counter() - started) * 1000, 1),
-            )
-        request_id_var.reset(token)
+app = create_app()
 
 
 ALLOWED_UPLOAD_SUFFIXES = {
@@ -129,72 +68,19 @@ PDF_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 PDF_CHUNK_BYTES = 5 * 1024 * 1024
 PDF_BATCH_PAGES = 5
 PDF_TAIL_CHECK_BYTES = 64 * 1024
-UPLOAD_ROOT = store.upload_root
-pdf_uploads: dict[str, dict[str, Any]] = {}
 lesson_store: dict[str, dict[str, Any]] = {}
-def mock_model_run(requested_provider: str = "mock", error: str | None = None) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "requestedProvider": requested_provider,
-        "provider": "mock",
-        "model": "static-demo",
-        "fallback": requested_provider != "mock",
-    }
-    if error:
-        result["error"] = error
-    return result
-
-
-def build_reply(
-    request: HelpRequest,
-    guide_cards: list[dict[str, Any]] | None = None,
-    model_run: dict[str, Any] | None = None,
-) -> TutorReply:
-    normalized = request.studentInput.strip().lower()
-    correct_markers = ("垂直平分线", "perpendicular bisector")
-    cards = guide_cards or GUIDE_CARDS
-    run = model_run or mock_model_run()
-
-    if any(marker in normalized for marker in correct_markers):
-        guide_context = {
-            "assessment": "correct",
-            "stuckAt": "学生已经提出正确猜想，需要补全证明。",
-            "knowledge": ["全等三角形", "垂直平分线"],
-            "hint": "不要停在结论；用 PA = PB、AM = BM 和公共边 PM 说明理由。",
-            "question": "你能用 SSS 全等把这个结论证明完整吗？",
-        }
-        return TutorReply(
-            reply="这个猜想是对的。先别急着结束：请说明三角形 PAM 与 PBM 为什么全等。",
-            guideContext=guide_context,
-            nextHintLevel=min(request.hintLevel + 1, 3),
-            canvasAction="show-triangles",
-            source="answer-check",
-            modelRun=run,
-        )
-
-    card = cards[min(request.hintLevel, len(cards) - 1)]
-    stuck_markers = ("不知道", "不会", "没思路", "卡住", "don't know", "stuck")
-    has_attempt = bool(normalized) and not any(marker in normalized for marker in stuck_markers)
-    if request.mode == "answer" and has_attempt:
-        prefix = "我会先核对你写的这一步。"
-    else:
-        prefix = "我看到你已经写了一些思路。" if has_attempt else "没关系，我们只往前走一步。"
-    reply = f"{prefix}{card['hint']}\n\n{card['question']}"
-    return TutorReply(
-        reply=reply,
-        guideContext={
-            "assessment": "partial" if has_attempt else "incorrect",
-            "stuckAt": card["stuckAt"],
-            "knowledge": card["knowledge"],
-            "hint": card["hint"],
-            "question": card["question"],
-        },
-        nextHintLevel=min(request.hintLevel + 1, 3),
-        canvasAction=card["canvasAction"],
-        source="stored-guide-card",
-        modelRun=run,
-    )
-
-
+UPLOAD_ROOT = store.upload_root
+upload_registry = UploadRegistry(
+    store=store,
+    lesson_store=lesson_store,
+    default_guide_cards=GUIDE_CARDS,
+    pdf_tail_check_bytes=PDF_TAIL_CHECK_BYTES,
+)
+pdf_uploads = upload_registry.uploads
+upload_job = upload_registry.get
+upload_status = upload_registry.status
+update_upload_job = upload_registry.update
+validate_pdf_envelope = upload_registry.validate_pdf_envelope
 def question_payload(
     question: dict[str, Any] | None = None,
     lesson_steps: list[dict[str, Any]] | None = None,
@@ -213,6 +99,7 @@ def question_payload(
 
 
 app.include_router(build_runtime_router(store=store, question_payload=question_payload))
+app.include_router(build_learning_router(store=store))
 
 
 def safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -311,79 +198,6 @@ def resolve_ocr_text(
         "fallback": False,
         "output": "text",
     }
-
-
-EQUATION_PATTERN = re.compile(
-    r"(?<![0-9A-Za-z])([0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*\s*=\s*"
-    r"-?\s*[0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*)(?![0-9A-Za-z])"
-)
-
-
-def linear_equation_form(equation: str) -> tuple[float, float] | None:
-    if equation.count("=") != 1:
-        return None
-
-    def expression_form(expression: str) -> tuple[float, float] | None:
-        normalized = expression.replace(" ", "").replace("*", "")
-        terms = re.findall(r"[+-]?[^+-]+", normalized)
-        coefficient = 0.0
-        constant = 0.0
-        try:
-            for term in terms:
-                if term.endswith("x"):
-                    shown = term[:-1]
-                    coefficient += 1.0 if shown in ("", "+") else -1.0 if shown == "-" else float(shown)
-                elif "x" in term or not term:
-                    return None
-                else:
-                    constant += float(term)
-        except ValueError:
-            return None
-        return coefficient, constant
-
-    left, right = equation.split("=", 1)
-    left_form = expression_form(left)
-    right_form = expression_form(right)
-    if not left_form or not right_form:
-        return None
-    return left_form[0] - right_form[0], left_form[1] - right_form[1]
-
-
-def equivalent_linear_equations(first: str, second: str) -> bool | None:
-    first_form = linear_equation_form(first)
-    second_form = linear_equation_form(second)
-    if not first_form or not second_form:
-        return None
-    first_a, first_b = first_form
-    second_a, second_b = second_form
-    if abs(first_a) < 1e-9 or abs(second_a) < 1e-9:
-        return None
-    return abs(first_a * second_b - second_a * first_b) < 1e-7
-
-
-def equation_conflict(
-    student_input: str,
-    lesson_steps: list[dict[str, Any]],
-    question_prompt: str = "",
-) -> tuple[str, str] | None:
-    student_equations = [re.sub(r"\s+", "", item) for item in EQUATION_PATTERN.findall(student_input)]
-    question_equations = [re.sub(r"\s+", "", item) for item in EQUATION_PATTERN.findall(question_prompt)]
-    for student_equation in student_equations:
-        for question_equation in question_equations:
-            equivalent = equivalent_linear_equations(student_equation, question_equation)
-            if equivalent is False:
-                return student_equation, question_equation
-
-    reference_text = "\n".join(
-        f"{step.get('text', '')} {step.get('speechText', '')}" for step in lesson_steps
-    )
-    reference_equations = [re.sub(r"\s+", "", item) for item in EQUATION_PATTERN.findall(reference_text)]
-    for student_equation in student_equations:
-        student_left = student_equation.split("=", 1)[0]
-        for reference_equation in reference_equations:
-            if reference_equation.split("=", 1)[0] == student_left and reference_equation != student_equation:
-                return student_equation, reference_equation
-    return None
 
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
@@ -719,249 +533,12 @@ def review_lesson_payload(
     return reviewed_payload, review_run
 
 
+tutor_engine = TutorEngine(lesson_store=lesson_store, runtime=runtime, guide_cards=GUIDE_CARDS)
+
+
 def generate_model_reply(request: HelpRequest) -> TutorReply:
-    stored = lesson_store.get(request.questionId)
-    if stored and request.mode == "answer":
-        question = stored["payload"].get("question", {})
-        structured = evaluate_structured_answer(
-            question,
-            request.studentInput,
-            request.interactionResult,
-        )
-        if structured:
-            return TutorReply(
-                reply=structured["reply"],
-                guideContext={
-                    key: structured[key]
-                    for key in ("assessment", "stuckAt", "knowledge", "hint", "question")
-                },
-                nextHintLevel=min(request.hintLevel + 1, 3),
-                canvasAction="show-base",
-                source="answer-check",
-                modelRun=mock_model_run(),
-            )
-        if question.get("questionType") == "true-false" and question.get("correctAnswer"):
-            expected = str(question["correctAnswer"]).strip().lower()
-            submitted = request.studentInput.strip().lower()
-            selected = "正确" if "正确" in submitted or "true" in submitted else "错误" if "错误" in submitted or "false" in submitted else ""
-            if selected:
-                is_correct = selected.lower() == expected
-                assessment = "correct" if is_correct else "incorrect"
-                reply = (
-                    f"回答正确，答案是“{question['correctAnswer']}”。请再说说题干中的哪个条件支持这个判断。"
-                    if is_correct else
-                    f"这次选择不对，正确答案是“{question['correctAnswer']}”。请回到题干，找出能验证这句话的条件。"
-                )
-                return TutorReply(
-                    reply=reply,
-                    guideContext={
-                        "assessment": assessment,
-                        "stuckAt": "需要根据题干条件判断命题真伪。",
-                        "knowledge": [question.get("knowledgePoint", "概念判断")],
-                        "hint": "圈出题干中的关键条件，再逐项核对命题。",
-                        "question": "题干中的哪条条件能支持你的判断？",
-                    },
-                    nextHintLevel=min(request.hintLevel + 1, 3),
-                    canvasAction="show-base",
-                    source="answer-check",
-                    modelRun=mock_model_run(),
-                )
-    if stored and request.mode == "answer":
-        question = stored["payload"].get("question", {})
-        if question.get("questionType") == "draw-line":
-            interaction = question.get("interaction") or {}
-            required = {
-                tuple(sorted(pair))
-                for pair in interaction.get("requiredConnections", [])
-                if isinstance(pair, list) and len(pair) == 2
-            }
-            submitted = {
-                tuple(sorted(pair))
-                for pair in request.interactionResult.get("connections", [])
-                if isinstance(pair, list) and len(pair) == 2
-            }
-            if required:
-                is_correct = required.issubset(submitted)
-                assessment = "correct" if is_correct else "partial" if submitted else "incorrect"
-                reply = (
-                    "连接正确。请说明这条线段为什么满足题目要求。"
-                    if is_correct else
-                    "还差一点：检查是否连接了题目要求的两个端点，再试一次。"
-                )
-                return TutorReply(
-                    reply=reply,
-                    guideContext={
-                        "assessment": assessment,
-                        "stuckAt": "需要把题目中的几何关系落实为图上的连线。",
-                        "knowledge": [question.get("knowledgePoint", "几何作图")],
-                        "hint": interaction.get("instruction", "先找出题目要求连接的两个点。"),
-                        "question": "你连接的线段对应题目中的哪条几何关系？",
-                    },
-                    nextHintLevel=min(request.hintLevel + 1, 3),
-                    canvasAction="show-triangles",
-                    source="answer-check",
-                    modelRun=mock_model_run(),
-                )
-    if not stored or runtime.selection.provider == "mock":
-        cards = stored["guideCards"] if stored else GUIDE_CARDS
-        return build_reply(request, cards)
-
-    payload = stored["payload"]
-    cards = stored["guideCards"]
-    current_card = cards[min(request.hintLevel, len(cards) - 1)]
-    conflict = equation_conflict(
-        request.studentInput,
-        payload["lessonSteps"],
-        payload["question"]["prompt"],
-    )
-    conflict_instruction = ""
-    if conflict:
-        conflict_instruction = (
-            f"系统校验发现学生写的 {conflict[0]} 与标准步骤 {conflict[1]} 冲突。"
-            "assessment 必须为 incorrect，绝对不能说这一步正确；只提示学生回查符号和算术。"
-        )
-    prompt = f"""
-你正在辅导下面这道题。先用标准讲解脚本独立核对学生的每一步计算，再判断卡点。
-
-题目：{payload['question']['prompt']}
-已知条件：{'；'.join(payload['question']['givens'])}
-标准讲解脚本：{json_dumps(payload['lessonSteps'])}
-当前提示层级：{request.hintLevel}
-候选引导卡：{json_dumps(current_card)}
-学生输入：{request.studentInput.strip() or '学生没有输入内容'}
-学生交互作答结果：{json_dumps(request.interactionResult) if request.interactionResult else '无'}
-用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
-系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
-
-要求：
-1. assessment 必须是 correct、partial 或 incorrect。
-2. 特别核对移项符号、算术和单位；只有确实正确时才能说“对”或表扬该步骤。
-3. 如果错误，温和但明确指出哪一步不成立，然后给一个不泄露最终答案的提示。
-4. 如果用户是请求提示，只引导下一步，不给最终答案；如果是提交回答，先明确判断再引导修改或继续。
-5. reply 应像真人老师一样简短，最后提一个学生可以继续回答的问题。
-""".strip()
-    selection = runtime.selection
-    try:
-        generated, run = runtime.generate_json(prompt, HELP_SCHEMA, max_tokens=450)
-    except Exception as error:
-        return build_reply(
-            request,
-            cards,
-            mock_model_run(selection.provider, str(error)),
-        )
-
-    action = generated.get("canvasAction")
-    if action not in CANVAS_ACTIONS:
-        action = current_card["canvasAction"]
-    assessment = generated.get("assessment", "partial")
-    reply_text = safe_text(generated.get("reply"), current_card["hint"], 1000)
-    if conflict:
-        assessment = "incorrect"
-        reply_text = (
-            f"这里需要再核对一下：你写的 {conflict[0]} 与前一步推导不一致。"
-            "先别继续除法，请重新检查移项后的符号和右边的计算，你能重算这一行吗？"
-        )
-        action = current_card["canvasAction"]
-    return TutorReply(
-        reply=reply_text,
-        guideContext={
-            "assessment": assessment,
-            "stuckAt": safe_text(generated.get("stuckAt"), current_card["stuckAt"], 300),
-            "knowledge": safe_string_list(generated.get("knowledge"), current_card["knowledge"]),
-            "hint": safe_text(generated.get("hint"), current_card["hint"], 500),
-            "question": safe_text(generated.get("question"), current_card["question"], 500),
-        },
-        nextHintLevel=min(request.hintLevel + 1, 3),
-        canvasAction=action,
-        source="model-generated",
-        modelRun=run,
-    )
-
-
-def json_dumps(value: Any) -> str:
-    import json
-
-    return json.dumps(value, ensure_ascii=False)
-
-
-def upload_job(upload_id: str) -> dict[str, Any]:
-    job = pdf_uploads.get(upload_id)
-    if not job:
-        job = store.load_job(upload_id)
-        if job:
-            pdf_uploads[upload_id] = job
-            for batch_id, payload in job.get("batchPayloads", {}).items():
-                lesson_store[payload["question"]["id"]] = {
-                    "payload": payload,
-                    "guideCards": job.get("batchGuideCards", {}).get(batch_id) or GUIDE_CARDS,
-                }
-    if not job:
-        raise HTTPException(status_code=404, detail="上传任务不存在")
-    return job
-
-
-def upload_status(job: dict[str, Any]) -> dict:
-    uploaded = sorted(
-        int(path.stem.split("-")[-1])
-        for path in job["directory"].glob("chunk-*.part")
-    )
-    result = {
-        "uploadId": job["uploadId"],
-        "filename": job["filename"],
-        "size": job["size"],
-        "chunkSize": job["chunkSize"],
-        "totalChunks": job["totalChunks"],
-        "uploadedChunks": uploaded,
-        "status": job["status"],
-        "progress": job.get("progress", 0),
-        "message": job.get("message", ""),
-        "elapsedSeconds": round(
-            ((job.get("completedAt") or time.time()) - job["startedAt"]),
-            1,
-        ),
-    }
-    if job.get("result"):
-        result["result"] = job["result"]
-    return result
-
-
-def update_upload_job(
-    job: dict[str, Any],
-    status: str,
-    progress: int,
-    message: str,
-) -> None:
-    previous_status = job.get("status")
-    job["status"] = status
-    job["progress"] = max(0, min(progress, 100))
-    job["message"] = message
-    job["updatedAt"] = time.time()
-    store.save_job(job)
-    log_event(
-        "upload.status.changed" if previous_status != status else "upload.progress",
-        level=20 if previous_status != status else 10,
-        upload_id=job.get("uploadId"),
-        status=status,
-        progress=job.get("progress", 0),
-    )
-
-
-def validate_pdf_envelope(path: Path) -> None:
-    """Reject truncated/non-PDF files before handing them to a PDF parser."""
-    with path.open("rb") as pdf_file:
-        header = pdf_file.read(8)
-        pdf_file.seek(max(0, path.stat().st_size - PDF_TAIL_CHECK_BYTES))
-        tail = pdf_file.read()
-
-    if not header.startswith(b"%PDF-"):
-        raise ValueError("文件头不是有效的 PDF（缺少 %PDF- 标记）")
-    if b"%%EOF" not in tail:
-        size_mb = path.stat().st_size / 1024 / 1024
-        raise ValueError(
-            "文件缺少 PDF 结束标记（%%EOF）。"
-            f"分块已完整合并为 {size_mb:.1f} MB，因此原 PDF 很可能下载不完整或导出中断；"
-            "请重新下载，或用系统的“打印 → 存储为 PDF”生成新文件后重试"
-        )
+    """Compatibility wrapper for routes and existing tests."""
+    return tutor_engine.reply(request)
 
 
 @app.post("/api/textbook/import")
@@ -1303,6 +880,12 @@ def complete_pdf_upload(upload_id: str) -> dict:
         upload_id,
         list(zip(question_keys, payloads, guide_cards_list)),
     )
+    for item, cards in zip(payloads, guide_cards_list):
+        store.save_lesson(lesson_document_from_payload(
+            item,
+            source_upload_id=upload_id,
+            guide_cards=cards,
+        ))
     update_upload_job(job, "complete", 100, f"首批 {preview_pages} 页已拆分为 {len(payloads)} 道题，其余批次可按需处理")
     log_event(
         "upload.processing.completed",
@@ -1430,6 +1013,12 @@ def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dic
             upload_id,
             list(zip(question_keys, payloads, guide_cards_list)),
         )
+        for item, cards in zip(payloads, guide_cards_list):
+            store.save_lesson(lesson_document_from_payload(
+                item,
+                source_upload_id=upload_id,
+                guide_cards=cards,
+            ))
         for key, item, cards in zip(question_keys, payloads, guide_cards_list):
             job["batchPayloads"][key] = item
             job.setdefault("batchGuideCards", {})[key] = cards

@@ -161,6 +161,32 @@ const priorityImportResult = {
 };
 
 async function mockApi(page: Page, result = importResult) {
+  await page.route("**/api/learning/sessions/*/attempts", async (route) => {
+    await route.fulfill({
+      json: {
+        attemptId: "pw-attempt",
+        mastery: {
+          learnerId: "local-demo",
+          knowledgePoint: "数轴上的大小比较",
+          score: 0.165,
+          attemptCount: 1,
+          correctCount: 0,
+          lastPracticedAt: 1,
+        },
+      },
+    });
+  });
+  await page.route("**/api/learning/sessions", async (route) => {
+    const request = route.request().postDataJSON() as { learnerId: string; lessonId: string };
+    await route.fulfill({
+      json: {
+        sessionId: "pw-session",
+        learnerId: request.learnerId,
+        lessonId: request.lessonId,
+        startedAt: 1,
+      },
+    });
+  });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
       json: {
@@ -227,6 +253,7 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByText("已选择 (B)" )).toBeVisible();
     await page.getByRole("button", { name: "Help · 下一步提示" }).click();
     await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
+    await expect(page.getByText("掌握度 17%")).toBeVisible();
 
     await page.getByRole("button", { name: "下一题" }).click();
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();

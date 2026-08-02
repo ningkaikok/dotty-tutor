@@ -39,8 +39,15 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `POST` | `/api/lessons` | 校验并保存带版本的可编程课程文档 |
+| `GET` | `/api/lessons/{lessonId}` | 读取课程内容块和发布状态 |
+| `POST` | `/api/learning/sessions` | 创建学习者与课程关联的学习会话 |
+| `POST` | `/api/learning/sessions/{sessionId}/attempts` | 保存作答并更新知识点掌握度 |
+| `GET` | `/api/learning/mastery/{learnerId}` | 查询学习者的知识点掌握度 |
 | `POST` | `/api/help` | 判定学生答案或返回下一层提示 |
 | `POST` | `/api/tts` | 调用 Azure Speech 或代理 Qwen3-TTS |
+
+课程块 Schema、渲染器扩展方式和掌握度计算见[可编程课程与学习闭环](programmable-learning.md)。
 
 Help 示例：
 

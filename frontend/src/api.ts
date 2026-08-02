@@ -1,4 +1,4 @@
-import type { BatchProcessResult, LibraryItem, ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, PdfUploadTask, QuestionPayload, TextbookImportResult, TutorReply } from "./types";
+import type { BatchProcessResult, LearningSession, LibraryItem, MasteryState, ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, PdfUploadTask, QuestionPayload, TextbookImportResult, TutorReply } from "./types";
 
 async function parse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null) as (T & { detail?: string }) | null;
@@ -118,4 +118,29 @@ export async function loadLibrary(): Promise<LibraryItem[]> {
 
 export async function loadLibraryItem(uploadId: string): Promise<TextbookImportResult> {
   return parse<TextbookImportResult>(await fetch(`/api/library/${uploadId}`, { cache: "no-store" }));
+}
+
+export async function createLearningSession(input: { learnerId: string; lessonId: string }): Promise<LearningSession> {
+  return parse<LearningSession>(await fetch("/api/learning/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }));
+}
+
+export async function recordExerciseAttempt(sessionId: string, input: {
+  questionId: string;
+  knowledgePoint: string;
+  response: Record<string, unknown>;
+  assessment: "correct" | "partial" | "incorrect";
+  hintLevel: number;
+  durationMs: number;
+}): Promise<{ attemptId: string; mastery: MasteryState }> {
+  return parse<{ attemptId: string; mastery: MasteryState }>(
+    await fetch(`/api/learning/sessions/${sessionId}/attempts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }),
+  );
 }

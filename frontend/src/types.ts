@@ -132,6 +132,89 @@ export interface LessonStep {
   action: CanvasAction;
 }
 
+export interface DiagramLessonBlock {
+  id: string;
+  type: "diagram";
+  title: string;
+  payload: {
+    renderer: "geometry";
+    action: CanvasAction;
+    text: string;
+    speechText: string;
+  };
+}
+
+export interface MarkdownLessonBlock {
+  id: string;
+  type: "markdown";
+  title: string;
+  payload: { markdown: string };
+}
+
+export interface FormulaLessonBlock {
+  id: string;
+  type: "formula";
+  title: string;
+  payload: { latex: string };
+}
+
+export interface AnimationLessonBlock {
+  id: string;
+  type: "animation";
+  title: string;
+  payload: { src: string; poster?: string; caption?: string };
+}
+
+export interface AnnotationLessonBlock {
+  id: string;
+  type: "annotation";
+  title: string;
+  payload: { text: string };
+}
+
+export interface QuizLessonBlock {
+  id: string;
+  type: "quiz";
+  title: string;
+  payload: { questionId: string };
+}
+
+export interface HintLessonBlock {
+  id: string;
+  type: "hint";
+  title: string;
+  payload: { level: number; hint: string; question?: string };
+}
+
+export type LessonBlock = DiagramLessonBlock | MarkdownLessonBlock | FormulaLessonBlock
+  | AnimationLessonBlock | AnnotationLessonBlock | QuizLessonBlock | HintLessonBlock;
+
+export interface LessonDocument {
+  lessonId: string;
+  title: string;
+  version: number;
+  status: "draft" | "review" | "published" | "archived";
+  sourceUploadId?: string;
+  knowledgePoints: string[];
+  blocks: LessonBlock[];
+}
+
+export interface LearningSession {
+  sessionId: string;
+  learnerId: string;
+  lessonId: string;
+  startedAt: number;
+}
+
+export interface MasteryState {
+  learnerId: string;
+  knowledgePoint: string;
+  score: number;
+  attemptCount: number;
+  correctCount: number;
+  lastPracticedAt: number;
+}
+
 export interface QuestionPayload {
   question: Question;
   lessonSteps: LessonStep[];

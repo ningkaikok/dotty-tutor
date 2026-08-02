@@ -14,10 +14,12 @@ flowchart LR
 
   subgraph Backend["后端编排层"]
     API --> Pipeline["上传、出题与辅导流水线"]
+    API --> Learning["课程与学习记录"]
     Pipeline --> OCR["OCR Runtime"]
     Pipeline --> Model["Model Runtime"]
     Pipeline --> Review["Review Runtime"]
     Pipeline --> Store["TutorStore"]
+    Learning --> Store
     API --> TTS["TTS Router"]
     Review --> Model
   end
@@ -42,13 +44,20 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 组件 | 主要文件 | 责任边界 |
 | --- | --- | --- |
 | 上传与模型选择 | `frontend/src/TextbookImport.tsx` | 文件校验、分块续传、进度轮询、运行时选择和教材库入口 |
-| 学习编排 | `frontend/src/App.tsx` | 题目导航、状态管理、四步讲解和 Help 请求编排 |
+| 页面编排 | `frontend/src/App.tsx` | 教材、当前题目、会话和跨组件状态编排 |
+| 课程播放器 | `frontend/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
+| 内容块注册表 | `frontend/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
+| 练习工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 题目导航、作答、质量信息和辅导反馈 |
 | 题型作答 | `frontend/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
 | 题目展示 | `frontend/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `frontend/src/api.ts`、`frontend/src/types.ts` | `/api` 请求封装和前后端类型 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
-| API 入口与上传编排 | `backend/app.py` | FastAPI 初始化、教材上传、PDF 批次和跨模块调用编排 |
+| API 入口与上传编排 | `backend/app.py` | 教材上传、PDF 批次和跨模块调用编排 |
+| 应用工厂 | `backend/application.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
+| 上传状态注册 | `backend/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
+| 课程与学习路由 | `backend/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
+| 可编程课程契约 | `backend/lesson_contracts.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `backend/question_contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
 | 题目流水线 | `backend/question_pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `backend/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
@@ -140,6 +149,9 @@ OCR 题块
 7. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
 8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
+判定完成后，前端将作答、耗时、提示层级和判定写入当前学习会话；后端同步更新知识点掌握度，
+前端在页头显示最新分数。详细契约见[可编程课程与学习闭环](programmable-learning.md)。
+
 ## TTS 回退
 
 ```text
@@ -156,9 +168,14 @@ POST /api/tts
 - `upload_jobs.result_json` 保存上传任务和教材结果。
 - `batch_questions.payload_json` 保存结构化题目和审校信息。
 - `guide_cards_json` 保存分层提示。
+- `lesson_documents` 保存带版本的课程内容块。
+- `learning_sessions`、`exercise_attempts` 和 `mastery_states` 保存学习闭环数据。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。
 - 内存中的任务和题目只作为读取缓存，未命中时从 PostgreSQL 恢复。
 
 生产版本边界和改造优先级见[路线图](roadmap.md)。
+
+目标架构和后续 worker 拆分可在
+[Figma 架构图](https://www.figma.com/board/2ngUQNSgI0V27SEcBQKfzF)中查看。
