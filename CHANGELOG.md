@@ -8,6 +8,7 @@ Semantic Versioning。
 - tts: Cache narration and sync lesson playback (#35)
 ### Fixed
 - model: Require all lesson schema fields (#32)
+- storage: 数据库缺少 `POSTGRES_PASSWORD` 而回退到本机 socket 连接时输出告警日志，避免连错数据库却无提示。
 
 ## [0.2.0] - 2026-08-02
 

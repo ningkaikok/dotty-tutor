@@ -144,6 +144,17 @@ def build_postgres_url_from_env() -> str:
     """Build an explicit password URL when POSTGRES_* variables are provided."""
     password = os.getenv("POSTGRES_PASSWORD", "")
     if not password:
+        # Falling back to the local socket is silent otherwise, so a partial env
+        # (e.g. POSTGRES_PORT set but no password, or .env.local never sourced)
+        # connects to whatever local PostgreSQL is listening instead of the
+        # intended Docker/remote instance. Make that visible in the logs.
+        log_event(
+            "storage.postgres.socket_fallback",
+            level=30,
+            reason="POSTGRES_PASSWORD 未设置",
+            url=DEFAULT_POSTGRES_URL,
+            hint="如需连接 Docker/远程 PostgreSQL，请设置 POSTGRES_PASSWORD 等变量或 DATABASE_URL（本地开发用 scripts/dev-local.sh 会读取 .env.local）",
+        )
         return DEFAULT_POSTGRES_URL
     user = quote(os.getenv("POSTGRES_USER", "dotty_app"), safe="")
     encoded_password = quote(password, safe="")
