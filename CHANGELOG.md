@@ -4,11 +4,15 @@
 Semantic Versioning。
 
 ## [Unreleased]
+### Added
+- practice: 重新生成题目按钮旁显示当前使用的模型，方便确认换模型前的效果。
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
+- tts: Prefetch narration for every lesson step on load (#37)
 ### Fixed
 - model: Require all lesson schema fields (#32)
 - model: 修复真实模型（非 mock）成功生成讲解步骤时因缺少导入而报错，导致题目重新生成/下一批次处理失败。
+- storage: 数据库缺少 `POSTGRES_PASSWORD` 而回退到本机 socket 连接时输出告警日志，避免连错数据库却无提示。
 
 ## [0.2.0] - 2026-08-02
 

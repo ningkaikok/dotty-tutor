@@ -38,7 +38,9 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
     setStep(0);
     setPlaying(false);
     activateBlock(playableBlocks[0]);
-    if (playableBlocks[0]) void preloadSpeech(blockNarration(playableBlocks[0]));
+    // Local TTS synthesis can take longer than a single step's playback, so queue
+    // every step's narration as soon as the lesson loads instead of just the next one.
+    for (const block of playableBlocks) void preloadSpeech(blockNarration(block));
 
     return stopSpeech;
   }, [document.lessonId]);
@@ -98,6 +100,7 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
                 setStep(index);
                 activateBlock(block);
                 setPlaying(false);
+                void preloadSpeech(blockNarration(block));
               }}
               aria-label={`切换到步骤 ${index + 1}`}
               aria-current={index === step ? "step" : undefined}
