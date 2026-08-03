@@ -30,8 +30,8 @@ body::before {
 .topbar span { color: #6d776f; font-size: 13px; }
 .status { margin-left: auto; padding: 8px 12px; border: 1px solid #b8d8cb; border-radius: 999px; color: #276d55; font-size: 13px; background: #e8f4ee; }
 .status i { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #28a575; }
-.topbar .active-model { padding: 7px 10px; border-radius: 999px; color: #256b53; background: #e4f1eb; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; }
-.topbar .active-model.fallback { color: #995b1d; background: #f7eadb; }
+.active-model { padding: 7px 10px; border-radius: 999px; color: #256b53; background: #e4f1eb; font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
+.active-model.fallback { color: #995b1d; background: #f7eadb; }
 .source-strip { display: flex; align-items: center; gap: 9px; margin: -4px 0 18px; padding: 11px 15px; border: 1px solid rgba(34, 57, 47, 0.1); border-radius: 14px; background: rgba(251, 250, 246, 0.7); color: #647069; font-size: 12px; }
 .source-strip strong { color: #24372f; font-weight: 600; }
 .source-strip b { color: #b0aea6; }
