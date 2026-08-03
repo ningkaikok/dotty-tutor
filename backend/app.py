@@ -40,6 +40,7 @@ from question_pipeline import (
     write_model_prompt_artifact,
 )
 from question_contracts import (
+    CANVAS_ACTIONS,
     GUIDE_CARDS,
     HELP_SCHEMA,
     LESSON_SCHEMA,

@@ -6,7 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
+from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_lesson, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, runtime, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
+from model_runtime import ModelSelection
+from question_contracts import CANVAS_ACTIONS
 from review_runtime import formula_anomaly_score, normalize_ocr_question
 from storage import TutorStore
 
@@ -137,6 +139,37 @@ class TutorResponseTests(unittest.TestCase):
             self.assertEqual(reply.guideContext["assessment"], "correct")
         finally:
             lesson_store.pop("multi-test", None)
+
+
+class LessonGenerationTests(unittest.TestCase):
+    def test_normalizes_a_successful_real_model_response(self) -> None:
+        """Regression test: generate_lesson used CANVAS_ACTIONS without importing it,
+        so any real (non-mock) model call that succeeded raised NameError."""
+        original_selection = runtime.selection
+        runtime.selection = ModelSelection("codex", "default")
+        generated = {
+            "questionType": "short-answer",
+            "prompt": "解方程 2x + 3 = 11",
+            "lessonSteps": [{"title": "移项", "text": "两边同时减 3", "speechText": "先移项"}],
+        }
+        payload = None
+        try:
+            with patch("app.runtime.generate_json", return_value=(generated, {"provider": "codex", "model": "default", "fallback": False})):
+                payload, guide_cards, run = generate_lesson("解方程 2x + 3 = 11")
+        finally:
+            runtime.selection = original_selection
+            if payload:
+                lesson_store.pop(payload["question"]["id"], None)
+
+        self.assertEqual(run["provider"], "codex")
+        self.assertEqual(
+            [step["action"] for step in payload["lessonSteps"]],
+            CANVAS_ACTIONS,
+        )
+        self.assertEqual(
+            [card["canvasAction"] for card in guide_cards],
+            [CANVAS_ACTIONS[1], CANVAS_ACTIONS[2], CANVAS_ACTIONS[3]],
+        )
 
 
 class BatchQuestionTests(unittest.TestCase):
