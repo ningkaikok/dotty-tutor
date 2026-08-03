@@ -19,6 +19,7 @@ from question_contracts import (
     TtsRequest,
 )
 from observability import log_event
+from response_schemas import HealthResponse, ModelCatalog, OcrCatalog, QuestionPayload, TtsStatusResponse
 
 
 def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]]) -> APIRouter:
@@ -29,7 +30,7 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
     azure_speech_region = os.getenv("AZURE_SPEECH_REGION", "")
     azure_speech_voice = os.getenv("AZURE_SPEECH_VOICE", "zh-CN-XiaoxiaoNeural")
 
-    @router.get("/api/health")
+    @router.get("/api/health", response_model=HealthResponse)
     def health() -> dict[str, str]:
         if not store.ping():
             log_event("service.health.failed", level=40, dependency="database")
@@ -37,7 +38,7 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
         log_event("service.health.ok", level=10, database=store.backend)
         return {"status": "ok", "database": store.backend}
 
-    @router.get("/api/tts/status")
+    @router.get("/api/tts/status", response_model=TtsStatusResponse)
     def tts_status() -> dict[str, Any]:
         if tts_provider in {"auto", "azure"} and azure_speech_key and azure_speech_region:
             return {
@@ -114,11 +115,11 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
         log_event("tts.request.completed", provider="qwen3-tts", text_length=len(request.text), audio_bytes=len(audio))
         return Response(content=audio, media_type="audio/wav")
 
-    @router.get("/api/models")
+    @router.get("/api/models", response_model=ModelCatalog)
     def get_models() -> dict[str, Any]:
         return runtime.catalog()
 
-    @router.post("/api/models/select")
+    @router.post("/api/models/select", response_model=ModelCatalog)
     def select_model(request: ModelSelectionRequest) -> dict[str, Any]:
         try:
             result = runtime.select(request.provider, request.model)
@@ -128,11 +129,11 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
             log_event("model.selection.failed", level=30, provider=request.provider, model=request.model, error=str(error)[:200])
             raise HTTPException(status_code=400, detail=str(error)) from error
 
-    @router.get("/api/ocr")
+    @router.get("/api/ocr", response_model=OcrCatalog)
     def get_ocr_providers() -> dict[str, Any]:
         return ocr_runtime.catalog()
 
-    @router.post("/api/ocr/select")
+    @router.post("/api/ocr/select", response_model=OcrCatalog)
     def select_ocr_provider(request: OcrSelectionRequest) -> dict[str, Any]:
         try:
             result = ocr_runtime.select(request.provider)
@@ -142,7 +143,7 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
             log_event("ocr.selection.failed", level=30, provider=request.provider, error=str(error)[:200])
             raise HTTPException(status_code=400, detail=str(error)) from error
 
-    @router.get("/api/question")
+    @router.get("/api/question", response_model=QuestionPayload)
     def get_question() -> dict[str, Any]:
         return question_payload()
 

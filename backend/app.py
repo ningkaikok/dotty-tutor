@@ -54,6 +54,13 @@ from application import create_app
 from upload_registry import UploadRegistry
 from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations, mock_model_run
 from tutor_engine import TutorEngine
+from response_schemas import (
+    BatchProcessResult,
+    LibraryListResponse,
+    PdfUploadTask,
+    TextbookImportResult,
+    UploadChunkAck,
+)
 
 
 app = create_app()
@@ -541,7 +548,7 @@ def generate_model_reply(request: HelpRequest) -> TutorReply:
     return tutor_engine.reply(request)
 
 
-@app.post("/api/textbook/import")
+@app.post("/api/textbook/import", response_model=TextbookImportResult)
 async def import_textbook(
     file: UploadFile = File(...),
     sourceText: str = Form(default="", max_length=20_000),
@@ -624,7 +631,7 @@ async def import_textbook(
     }
 
 
-@app.post("/api/uploads/init")
+@app.post("/api/uploads/init", response_model=PdfUploadTask)
 def init_pdf_upload(request: PdfUploadInitRequest) -> dict:
     filename = Path(request.filename).name
     if Path(filename).suffix.lower() != ".pdf" and request.contentType != "application/pdf":
@@ -664,7 +671,7 @@ def init_pdf_upload(request: PdfUploadInitRequest) -> dict:
     return upload_status(job)
 
 
-@app.put("/api/uploads/{upload_id}/chunks/{index}")
+@app.put("/api/uploads/{upload_id}/chunks/{index}", response_model=UploadChunkAck)
 async def upload_pdf_chunk(upload_id: str, index: int, request: Request) -> dict:
     job = upload_job(upload_id)
     if job["status"] == "complete":
@@ -708,12 +715,12 @@ async def upload_pdf_chunk(upload_id: str, index: int, request: Request) -> dict
     }
 
 
-@app.get("/api/uploads/{upload_id}/status")
+@app.get("/api/uploads/{upload_id}/status", response_model=PdfUploadTask)
 def get_pdf_upload_status(upload_id: str) -> dict:
     return upload_status(upload_job(upload_id))
 
 
-@app.post("/api/uploads/{upload_id}/complete")
+@app.post("/api/uploads/{upload_id}/complete", response_model=TextbookImportResult)
 def complete_pdf_upload(upload_id: str) -> dict:
     job = upload_job(upload_id)
     log_event("upload.processing.started", upload_id=upload_id, filename=job.get("filename"))
@@ -913,7 +920,7 @@ def get_help(request: HelpRequest) -> TutorReply:
     return reply
 
 
-@app.post("/api/uploads/{upload_id}/batches/{batch_id}/process")
+@app.post("/api/uploads/{upload_id}/batches/{batch_id}/process", response_model=BatchProcessResult)
 def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dict:
     """OCR one queued five-page range and add its generated exercise to the bank."""
     job = upload_job(upload_id)
@@ -1117,12 +1124,12 @@ def get_pdf_artifact(upload_id: str, batch_id: str, filename: str) -> FileRespon
     )
 
 
-@app.get("/api/library")
+@app.get("/api/library", response_model=LibraryListResponse)
 def list_textbook_library() -> dict:
     return {"items": store.list_imports()}
 
 
-@app.get("/api/library/{upload_id}")
+@app.get("/api/library/{upload_id}", response_model=TextbookImportResult)
 def get_textbook_library_item(upload_id: str) -> dict:
     job = upload_job(upload_id)
     result = job.get("result")

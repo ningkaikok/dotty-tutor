@@ -6,6 +6,7 @@ Semantic Versioning。
 ## [Unreleased]
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
+- api: 后端全部接口改为声明 `response_model`，换来自动校验和精确的 OpenAPI 文档，动态/模型生成内容仍允许未声明字段通过而不是丢弃。
 ### Fixed
 - model: Require all lesson schema fields (#32)
 

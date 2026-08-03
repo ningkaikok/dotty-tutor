@@ -10,25 +10,26 @@ from fastapi import APIRouter, HTTPException
 
 from lesson_contracts import ExerciseAttemptCreate, LearningSessionCreate, LessonDocument
 from observability import log_event
+from response_schemas import ExerciseAttemptResult, LearningSession, LessonDocumentResponse, MasteryListResponse
 
 
 def build_learning_router(*, store: Any) -> APIRouter:
     router = APIRouter(prefix="/api")
 
-    @router.post("/lessons")
+    @router.post("/lessons", response_model=LessonDocumentResponse)
     def save_lesson(document: LessonDocument) -> dict[str, Any]:
         saved = store.save_lesson(document.model_dump())
         log_event("lesson.saved", lesson_id=document.lessonId, version=document.version, status=document.status)
         return saved
 
-    @router.get("/lessons/{lesson_id}")
+    @router.get("/lessons/{lesson_id}", response_model=LessonDocumentResponse)
     def get_lesson(lesson_id: str) -> dict[str, Any]:
         lesson = store.load_lesson(lesson_id)
         if not lesson:
             raise HTTPException(status_code=404, detail="课程不存在")
         return lesson
 
-    @router.post("/learning/sessions")
+    @router.post("/learning/sessions", response_model=LearningSession)
     def create_learning_session(request: LearningSessionCreate) -> dict[str, Any]:
         session = store.create_learning_session(
             session_id=uuid.uuid4().hex,
@@ -39,7 +40,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
         log_event("learning.session.started", session_id=session["sessionId"], lesson_id=request.lessonId)
         return session
 
-    @router.post("/learning/sessions/{session_id}/attempts")
+    @router.post("/learning/sessions/{session_id}/attempts", response_model=ExerciseAttemptResult)
     def record_exercise_attempt(session_id: str, request: ExerciseAttemptCreate) -> dict[str, Any]:
         try:
             result = store.record_exercise_attempt(
@@ -64,7 +65,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
         )
         return result
 
-    @router.get("/learning/mastery/{learner_id}")
+    @router.get("/learning/mastery/{learner_id}", response_model=MasteryListResponse)
     def list_mastery(learner_id: str) -> dict[str, Any]:
         return {"learnerId": learner_id, "items": store.list_mastery(learner_id)}
 
