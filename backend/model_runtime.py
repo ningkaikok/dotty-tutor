@@ -20,6 +20,13 @@ Provider = Literal["ollama", "codex", "mock"]
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 
+def codex_command() -> str:
+    """Codex CLI is sometimes only available bundled inside another app (e.g.
+    the ChatGPT desktop app's Resources folder) rather than on PATH as "codex".
+    """
+    return os.getenv("CODEX_COMMAND", "codex")
+
+
 @dataclass
 class ModelSelection:
     provider: Provider
@@ -263,7 +270,7 @@ class ModelRuntime:
             output_path = root / "response.json"
             schema_path.write_text(json.dumps(schema, ensure_ascii=False), encoding="utf-8")
             command = [
-                "codex", "exec",
+                codex_command(), "exec",
                 "--ephemeral",
                 "--ignore-user-config",
                 "--ignore-rules",
