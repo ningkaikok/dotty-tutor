@@ -743,6 +743,26 @@ def complete_pdf_upload(upload_id: str) -> dict:
         update_upload_job(job, "failed", 22, "合并后的 PDF 大小校验失败")
         raise HTTPException(status_code=400, detail="合并后的 PDF 大小校验失败")
 
+    # Reject a re-upload of identical content before spending OCR/generation on
+    # it. The content SHA-256 is carried in importId, so a completed match means
+    # the same textbook already exists in the library.
+    content_import_id = f"pdf-{digest.hexdigest()[:12]}"
+    existing = store.find_completed_import(content_import_id, exclude_upload_id=upload_id)
+    if existing:
+        update_upload_job(job, "duplicate", 22, f"内容与已有教材重复：{existing['filename']}")
+        shutil.rmtree(job["directory"], ignore_errors=True)
+        pdf_uploads.pop(upload_id, None)
+        log_event(
+            "upload.duplicate.rejected",
+            upload_id=upload_id,
+            duplicate_of=existing["uploadId"],
+            filename=job.get("filename"),
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=f"这本教材已存在（{existing['filename']}），请在教材库中打开，或删除后再重新上传。",
+        )
+
     update_upload_job(job, "validating", 28, "文件合并完成，正在读取 PDF 页数")
     try:
         validate_pdf_envelope(source_path)

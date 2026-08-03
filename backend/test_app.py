@@ -261,6 +261,32 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertFalse(store.soft_delete_import("delete-upload"))
             self.assertFalse(store.soft_delete_import("missing-upload"))
 
+    def test_find_completed_import_matches_content_hash(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+
+            def make_job(upload_id: str, status: str) -> dict:
+                updir = store.upload_root / upload_id
+                updir.mkdir(parents=True, exist_ok=True)
+                return {
+                    "uploadId": upload_id, "filename": "same.pdf", "contentType": "application/pdf",
+                    "size": 10, "chunkSize": 1024, "totalChunks": 1, "sourceText": "",
+                    "directory": updir, "status": status, "progress": 100, "message": "",
+                    "startedAt": 1.0, "updatedAt": 2.0, "completedAt": 2.0,
+                    "result": {"importId": "pdf-deadbeef1234", "filename": "same.pdf", "extraction": {}, "questionPayload": {}},
+                }
+
+            store.save_job(make_job("first-upload", "complete"))
+            # A completed import with the same content hash is found (excluding self).
+            match = store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="second-upload")
+            self.assertEqual(match["uploadId"], "first-upload")
+            # It excludes the in-progress upload itself and unknown hashes.
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="first-upload"))
+            self.assertIsNone(store.find_completed_import("pdf-other00000"))
+            # A soft-deleted original no longer blocks re-uploading the same file.
+            store.soft_delete_import("first-upload")
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234"))
+
     def test_resolves_database_directory_after_project_move(self) -> None:
         with TemporaryDirectory() as directory:
             data_root = Path(directory) / "data"

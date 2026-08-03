@@ -6,6 +6,7 @@ Semantic Versioning。
 ## [Unreleased]
 ### Added
 - library: 支持从教材库删除教材（软删除，可恢复），删除前需二次确认。
+- upload: 上传内容完全相同的教材时会被识别为重复并拦截提示，避免生成重复教材。
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
 - nav: 学习页新增显眼的"返回教材库"按钮，不再只能通过右上角文件名返回。

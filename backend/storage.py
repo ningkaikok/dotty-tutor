@@ -445,6 +445,33 @@ class TutorStore:
             })
         return items
 
+    def find_completed_import(self, import_id: str, *, exclude_upload_id: str | None = None) -> dict[str, Any] | None:
+        """Return an existing completed import with the same content hash.
+
+        ``import_id`` embeds the PDF content SHA-256 (``pdf-<hash>``), so a match
+        means the same file has already been processed. Only ``complete`` records
+        count, so a soft-deleted textbook does not block re-uploading it.
+        """
+        if not import_id:
+            return None
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            condition = [
+                upload_jobs.c.import_id == import_id,
+                upload_jobs.c.status == "complete",
+            ]
+            if exclude_upload_id:
+                condition.append(upload_jobs.c.upload_id != exclude_upload_id)
+            row = connection.execute(
+                select(upload_jobs.c.upload_id, upload_jobs.c.filename)
+                .where(*condition)
+                .order_by(upload_jobs.c.updated_at.asc())
+                .limit(1)
+            ).mappings().first()
+        if not row:
+            return None
+        return {"uploadId": row["upload_id"], "filename": row["filename"]}
+
     def soft_delete_import(self, upload_id: str) -> bool:
         """Mark an import as deleted so it drops out of the library.
 
