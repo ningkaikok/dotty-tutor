@@ -6,6 +6,7 @@ Semantic Versioning。
 ## [Unreleased]
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
+- api: 错误响应改为 RFC 7807 Problem Details 格式（`application/problem+json`），`detail` 字段内容不变。
 ### Fixed
 - model: Require all lesson schema fields (#32)
 

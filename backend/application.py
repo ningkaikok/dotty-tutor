@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from observability import log_event, request_id_var
+from problem_details import register_problem_handlers
 
 
 def _csv_env(name: str, default: str) -> list[str]:
@@ -20,6 +21,7 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Dotty Tutor", version="0.2.0")
+    register_problem_handlers(app)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_csv_env(
