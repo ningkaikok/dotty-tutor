@@ -4,16 +4,10 @@
 Semantic Versioning。
 
 ## [Unreleased]
-
-后续变更将在这里累计。
-
-### Fixed
-
-- 修复使用 Codex 生成题目时结构化输出校验失败并回退 Mock 的问题。
-
 ### Changed
-
-- 优化 Qwen3-TTS 预热与音频缓存，并让讲解动画按语音实际播放时序切换。
+- tts: Cache narration and sync lesson playback (#35)
+### Fixed
+- model: Require all lesson schema fields (#32)
 
 ## [0.2.0] - 2026-08-02
 
