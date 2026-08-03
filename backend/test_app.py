@@ -6,7 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
+from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_lesson, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, runtime, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
+from model_runtime import ModelSelection
+from question_contracts import CANVAS_ACTIONS
 from review_runtime import formula_anomaly_score, normalize_ocr_question
 from storage import TutorStore
 
@@ -139,6 +141,37 @@ class TutorResponseTests(unittest.TestCase):
             lesson_store.pop("multi-test", None)
 
 
+class LessonGenerationTests(unittest.TestCase):
+    def test_normalizes_a_successful_real_model_response(self) -> None:
+        """Regression test: generate_lesson used CANVAS_ACTIONS without importing it,
+        so any real (non-mock) model call that succeeded raised NameError."""
+        original_selection = runtime.selection
+        runtime.selection = ModelSelection("codex", "default")
+        generated = {
+            "questionType": "short-answer",
+            "prompt": "解方程 2x + 3 = 11",
+            "lessonSteps": [{"title": "移项", "text": "两边同时减 3", "speechText": "先移项"}],
+        }
+        payload = None
+        try:
+            with patch("app.runtime.generate_json", return_value=(generated, {"provider": "codex", "model": "default", "fallback": False})):
+                payload, guide_cards, run = generate_lesson("解方程 2x + 3 = 11")
+        finally:
+            runtime.selection = original_selection
+            if payload:
+                lesson_store.pop(payload["question"]["id"], None)
+
+        self.assertEqual(run["provider"], "codex")
+        self.assertEqual(
+            [step["action"] for step in payload["lessonSteps"]],
+            CANVAS_ACTIONS,
+        )
+        self.assertEqual(
+            [card["canvasAction"] for card in guide_cards],
+            [CANVAS_ACTIONS[1], CANVAS_ACTIONS[2], CANVAS_ACTIONS[3]],
+        )
+
+
 class BatchQuestionTests(unittest.TestCase):
     def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
         with TemporaryDirectory() as directory:
@@ -223,6 +256,69 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertEqual(restored["result"]["importId"], "pdf-persisted")
             self.assertEqual(restored["batchPayloads"]["batch-001"]["question"]["id"], "persisted-question")
             self.assertEqual(restored["batchGuideCards"]["batch-001"][0]["hint"], "持久化提示")
+
+    def test_soft_deleted_import_drops_from_library_but_keeps_data(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+            upload_directory = store.upload_root / "delete-upload"
+            upload_directory.mkdir()
+            payload = {"question": {"id": "delete-question"}, "lessonSteps": []}
+            job = {
+                "uploadId": "delete-upload",
+                "filename": "book.pdf",
+                "contentType": "application/pdf",
+                "size": 18,
+                "chunkSize": 1024,
+                "totalChunks": 1,
+                "sourceText": "",
+                "directory": upload_directory,
+                "status": "complete",
+                "progress": 100,
+                "message": "完成",
+                "startedAt": 1.0,
+                "updatedAt": 2.0,
+                "completedAt": 2.0,
+                "result": {"importId": "pdf-delete", "filename": "book.pdf", "extraction": {"questionCount": 1}, "questionPayload": payload},
+            }
+            store.save_job(job)
+            store.save_question("delete-upload", "batch-001", payload, [])
+            self.assertEqual(len(store.list_imports()), 1)
+
+            self.assertTrue(store.soft_delete_import("delete-upload"))
+            # Dropped from the library, but the row and questions stay recoverable.
+            self.assertEqual(store.list_imports(), [])
+            restored = store.load_job("delete-upload")
+            self.assertEqual(restored["status"], "deleted")
+            self.assertIn("batch-001", restored["batchPayloads"])
+            # Deleting an already-deleted import is a no-op.
+            self.assertFalse(store.soft_delete_import("delete-upload"))
+            self.assertFalse(store.soft_delete_import("missing-upload"))
+
+    def test_find_completed_import_matches_content_hash(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+
+            def make_job(upload_id: str, status: str) -> dict:
+                updir = store.upload_root / upload_id
+                updir.mkdir(parents=True, exist_ok=True)
+                return {
+                    "uploadId": upload_id, "filename": "same.pdf", "contentType": "application/pdf",
+                    "size": 10, "chunkSize": 1024, "totalChunks": 1, "sourceText": "",
+                    "directory": updir, "status": status, "progress": 100, "message": "",
+                    "startedAt": 1.0, "updatedAt": 2.0, "completedAt": 2.0,
+                    "result": {"importId": "pdf-deadbeef1234", "filename": "same.pdf", "extraction": {}, "questionPayload": {}},
+                }
+
+            store.save_job(make_job("first-upload", "complete"))
+            # A completed import with the same content hash is found (excluding self).
+            match = store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="second-upload")
+            self.assertEqual(match["uploadId"], "first-upload")
+            # It excludes the in-progress upload itself and unknown hashes.
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="first-upload"))
+            self.assertIsNone(store.find_completed_import("pdf-other00000"))
+            # A soft-deleted original no longer blocks re-uploading the same file.
+            store.soft_delete_import("first-upload")
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234"))
 
     def test_resolves_database_directory_after_project_move(self) -> None:
         with TemporaryDirectory() as directory:

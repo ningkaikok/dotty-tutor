@@ -44,6 +44,12 @@ export default function App() {
     setInteractionError("");
   };
 
+  const returnToLibrary = () => {
+    resetLearningState();
+    setPayload(null);
+    setTextbookImport(null);
+  };
+
   useEffect(() => {
     if (!payload) {
       setLearningSessionId("");
@@ -222,6 +228,7 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
+        <button className="back-home" onClick={returnToLibrary} title="返回教材库">← 教材库</button>
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
@@ -229,12 +236,8 @@ export default function App() {
         </div>
         <button
           className="status"
-          onClick={() => {
-            resetLearningState();
-            setPayload(null);
-            setTextbookImport(null);
-          }}
-          title="重新上传教材"
+          onClick={returnToLibrary}
+          title="返回教材库并重新上传"
         ><i /> {textbookImport.filename}</button>
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
