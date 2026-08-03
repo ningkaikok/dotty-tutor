@@ -15,6 +15,7 @@ Semantic Versioning。
 - storage: 消除数据库配置的两个静默踩坑 (#40)
 - model: Import CANVAS_ACTIONS to fix real-model lesson generation (#41)
 - model: Allow overriding the Codex CLI path via CODEX_COMMAND (#43)
+- ci: Add TestClient dependency (#47)
 
 ## [0.2.0] - 2026-08-02
 
