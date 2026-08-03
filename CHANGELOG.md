@@ -8,6 +8,7 @@ Semantic Versioning。
 - tts: Cache narration and sync lesson playback (#35)
 ### Fixed
 - model: Require all lesson schema fields (#32)
+- model: 修复真实模型（非 mock）成功生成讲解步骤时因缺少导入而报错，导致题目重新生成/下一批次处理失败。
 
 ## [0.2.0] - 2026-08-02
 
