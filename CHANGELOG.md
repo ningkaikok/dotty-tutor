@@ -6,7 +6,7 @@ Semantic Versioning。
 ## [Unreleased]
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
-- tts: Prefetch every lesson step's narration on load instead of only the next step
+- tts: Prefetch narration for every lesson step on load (#37)
 ### Fixed
 - model: Require all lesson schema fields (#32)
 
