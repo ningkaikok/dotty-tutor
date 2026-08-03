@@ -72,9 +72,15 @@ export function PracticeWorkspace({
             <span className="eyebrow">课后练习 · 题目 {questionIndex + 1}/{questionCount}</span>
             <div className="question-navigation">
               {textbookImport.uploadId && (
-                <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate}>
-                  {loadingQuestion ? "生成中…" : "重新生成本题"}
-                </button>
+                <>
+                  <span
+                    className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}
+                    title="重新生成会使用当前选择的模型；如需更换，请返回教材库重新选择模型"
+                  >{payload.modelRun.provider} · {payload.modelRun.model}</span>
+                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate}>
+                    {loadingQuestion ? "生成中…" : "重新生成本题"}
+                  </button>
+                </>
               )}
               <button className="ghost compact" disabled={questionIndex === 0 || loadingQuestion} onClick={onPrevious}>上一题</button>
               <button

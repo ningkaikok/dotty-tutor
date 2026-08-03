@@ -4,6 +4,8 @@
 Semantic Versioning。
 
 ## [Unreleased]
+### Added
+- practice: 重新生成题目按钮旁显示当前使用的模型，方便确认换模型前的效果。
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
 ### Fixed
