@@ -120,6 +120,10 @@ export async function loadLibraryItem(uploadId: string): Promise<TextbookImportR
   return parse<TextbookImportResult>(await fetch(`/api/library/${uploadId}`, { cache: "no-store" }));
 }
 
+export async function deleteLibraryItem(uploadId: string): Promise<void> {
+  await parse<{ status: string }>(await fetch(`/api/library/${uploadId}`, { method: "DELETE" }));
+}
+
 export async function createLearningSession(input: { learnerId: string; lessonId: string }): Promise<LearningSession> {
   return parse<LearningSession>(await fetch("/api/learning/sessions", {
     method: "POST",

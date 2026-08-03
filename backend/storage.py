@@ -445,6 +445,26 @@ class TutorStore:
             })
         return items
 
+    def soft_delete_import(self, upload_id: str) -> bool:
+        """Mark an import as deleted so it drops out of the library.
+
+        The row, generated questions and lesson data are kept intact, so the
+        textbook stays recoverable; only ``status`` moves to ``deleted`` and
+        ``list_imports`` already filters to ``complete`` records.
+        """
+        self._ensure_initialized()
+        now = time.time()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                upload_jobs.update()
+                .where(
+                    upload_jobs.c.upload_id == upload_id,
+                    upload_jobs.c.status != "deleted",
+                )
+                .values(status="deleted", updated_at=now)
+            )
+        return result.rowcount > 0
+
     def save_lesson(self, document: dict[str, Any]) -> dict[str, Any]:
         self._ensure_initialized()
         now = time.time()

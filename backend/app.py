@@ -1122,10 +1122,26 @@ def list_textbook_library() -> dict:
     return {"items": store.list_imports()}
 
 
+@app.delete("/api/library/{upload_id}")
+def delete_textbook_library_item(upload_id: str) -> dict:
+    job = upload_job(upload_id)
+    if not store.soft_delete_import(upload_id):
+        raise HTTPException(status_code=404, detail="教材不存在或已删除")
+    # Drop cached lesson payloads and the upload job so the textbook stops
+    # surfacing immediately; the underlying rows and files stay recoverable.
+    for payload in job.get("batchPayloads", {}).values():
+        lesson_store.pop(payload["question"]["id"], None)
+    upload_registry.uploads.pop(upload_id, None)
+    log_event("library.item.deleted", upload_id=upload_id, filename=job.get("filename"))
+    return {"status": "deleted", "uploadId": upload_id}
+
+
 @app.get("/api/library/{upload_id}")
 def get_textbook_library_item(upload_id: str) -> dict:
     job = upload_job(upload_id)
     result = job.get("result")
+    if job.get("status") == "deleted":
+        raise HTTPException(status_code=404, detail="教材已删除")
     if job.get("status") != "complete" or not result:
         raise HTTPException(status_code=409, detail="这本教材尚未处理完成")
     restored = dict(result)

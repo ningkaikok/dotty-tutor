@@ -4,8 +4,11 @@
 Semantic Versioning。
 
 ## [Unreleased]
+### Added
+- library: 支持从教材库删除教材（软删除，可恢复），删除前需二次确认。
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
+- nav: 学习页新增显眼的"返回教材库"按钮，不再只能通过右上角文件名返回。
 ### Fixed
 - model: Require all lesson schema fields (#32)
 

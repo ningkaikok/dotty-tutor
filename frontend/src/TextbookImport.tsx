@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { completePdfUpload, importTextbook, initPdfUpload, loadLibrary, loadLibraryItem, loadModels, loadOcrProviders, loadPdfUploadStatus, selectModel, selectOcrProvider, uploadPdfChunk } from "./api";
+import { completePdfUpload, deleteLibraryItem, importTextbook, initPdfUpload, loadLibrary, loadLibraryItem, loadModels, loadOcrProviders, loadPdfUploadStatus, selectModel, selectOcrProvider, uploadPdfChunk } from "./api";
 import type { LibraryItem, ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, PdfUploadTask, TextbookImportResult } from "./types";
 
 interface TextbookImportProps {
@@ -57,6 +57,7 @@ export function TextbookImport({ onContinue }: TextbookImportProps) {
   const [processingTask, setProcessingTask] = useState<PdfUploadTask | null>(null);
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoadingId, setLibraryLoadingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     loadModels().then(setModels).catch((modelError) => {
@@ -285,30 +286,54 @@ export function TextbookImport({ onContinue }: TextbookImportProps) {
             <span>{library.length} 本</span>
           </div>
           <div className="library-list">
-            {library.map((item) => (
-              <button
-                key={item.uploadId}
-                disabled={Boolean(libraryLoadingId)}
-                onClick={async () => {
-                  setLibraryLoadingId(item.uploadId);
-                  setError("");
-                  try {
-                    onContinue(await loadLibraryItem(item.uploadId));
-                  } catch (libraryError) {
-                    setError(libraryError instanceof Error ? libraryError.message : "教材打开失败");
-                  } finally {
-                    setLibraryLoadingId("");
-                  }
-                }}
-              >
-                <span className="library-pdf">PDF</span>
-                <span>
-                  <strong>{item.filename}</strong>
-                  <small>{item.chapter} · {item.pageCount ?? "?"} 页 · {item.questionCount} 道题</small>
-                </span>
-                <b>{libraryLoadingId === item.uploadId ? "读取中…" : "继续学习 →"}</b>
-              </button>
-            ))}
+            {library.map((item) => {
+              const busy = Boolean(libraryLoadingId) || Boolean(deletingId);
+              return (
+                <div className="library-item" key={item.uploadId}>
+                  <button
+                    className="library-open"
+                    disabled={busy}
+                    onClick={async () => {
+                      setLibraryLoadingId(item.uploadId);
+                      setError("");
+                      try {
+                        onContinue(await loadLibraryItem(item.uploadId));
+                      } catch (libraryError) {
+                        setError(libraryError instanceof Error ? libraryError.message : "教材打开失败");
+                      } finally {
+                        setLibraryLoadingId("");
+                      }
+                    }}
+                  >
+                    <span className="library-pdf">PDF</span>
+                    <span>
+                      <strong>{item.filename}</strong>
+                      <small>{item.chapter} · {item.pageCount ?? "?"} 页 · {item.questionCount} 道题</small>
+                    </span>
+                    <b>{libraryLoadingId === item.uploadId ? "读取中…" : "继续学习 →"}</b>
+                  </button>
+                  <button
+                    className="library-delete"
+                    disabled={busy}
+                    title="从教材库移除"
+                    aria-label={`删除教材 ${item.filename}`}
+                    onClick={async () => {
+                      if (!window.confirm(`确定从教材库移除「${item.filename}」吗？\n题目和学习记录会保留在库中，之后可以恢复。`)) return;
+                      setDeletingId(item.uploadId);
+                      setError("");
+                      try {
+                        await deleteLibraryItem(item.uploadId);
+                        setLibrary((current) => current.filter((entry) => entry.uploadId !== item.uploadId));
+                      } catch (libraryError) {
+                        setError(libraryError instanceof Error ? libraryError.message : "教材删除失败");
+                      } finally {
+                        setDeletingId("");
+                      }
+                    }}
+                  >{deletingId === item.uploadId ? "删除中…" : "删除"}</button>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
