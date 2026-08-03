@@ -5,20 +5,16 @@ Semantic Versioning。
 
 ## [Unreleased]
 ### Added
-- library: 支持从教材库删除教材（软删除，可恢复），删除前需二次确认。
-- upload: 上传内容完全相同的教材时会被识别为重复并拦截提示，避免生成重复教材。
-### Changed
-- tts: Cache narration and sync lesson playback (#35)
-- nav: 学习页新增显眼的"返回教材库"按钮，不再只能通过右上角文件名返回。
-- practice: 重新生成题目按钮旁显示当前使用的模型，方便确认换模型前的效果。
+- practice: Show active model next to the regenerate button (#42)
+- library: 教材库删除、去重与返回导航 (#39)
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
 - tts: Prefetch narration for every lesson step on load (#37)
 ### Fixed
 - model: Require all lesson schema fields (#32)
-- model: 支持通过 `CODEX_COMMAND` 指定 Codex CLI 路径，兼容仅内置在其他应用（如 ChatGPT 桌面版）里、未加入 PATH 的安装方式。
-- model: 修复真实模型（非 mock）成功生成讲解步骤时因缺少导入而报错，导致题目重新生成/下一批次处理失败。
-- storage: 数据库缺少 `POSTGRES_PASSWORD` 而回退到本机 socket 连接时输出告警日志，避免连错数据库却无提示。
+- storage: 消除数据库配置的两个静默踩坑 (#40)
+- model: Import CANVAS_ACTIONS to fix real-model lesson generation (#41)
+- model: Allow overriding the Codex CLI path via CODEX_COMMAND (#43)
 
 ## [0.2.0] - 2026-08-02
 
