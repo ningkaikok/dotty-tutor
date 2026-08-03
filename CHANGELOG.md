@@ -8,6 +8,7 @@ Semantic Versioning。
 - tts: Cache narration and sync lesson playback (#35)
 ### Fixed
 - model: Require all lesson schema fields (#32)
+- model: 支持通过 `CODEX_COMMAND` 指定 Codex CLI 路径，兼容仅内置在其他应用（如 ChatGPT 桌面版）里、未加入 PATH 的安装方式。
 
 ## [0.2.0] - 2026-08-02
 
