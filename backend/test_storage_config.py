@@ -26,3 +26,17 @@ class StorageConfigTests(unittest.TestCase):
     def test_keeps_socket_default_without_password(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(build_postgres_url_from_env(), "postgresql+psycopg:///dotty_tutor")
+
+    def test_warns_when_falling_back_to_socket(self) -> None:
+        with patch.dict(os.environ, {"POSTGRES_PORT": "15432"}, clear=True), \
+                patch("storage.log_event") as log_event:
+            build_postgres_url_from_env()
+        log_event.assert_called_once()
+        self.assertEqual(log_event.call_args.args[0], "storage.postgres.socket_fallback")
+        self.assertEqual(log_event.call_args.kwargs["level"], 30)
+
+    def test_does_not_warn_when_password_present(self) -> None:
+        with patch.dict(os.environ, {"POSTGRES_PASSWORD": "secret"}, clear=True), \
+                patch("storage.log_event") as log_event:
+            build_postgres_url_from_env()
+        log_event.assert_not_called()
