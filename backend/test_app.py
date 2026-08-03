@@ -224,6 +224,69 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertEqual(restored["batchPayloads"]["batch-001"]["question"]["id"], "persisted-question")
             self.assertEqual(restored["batchGuideCards"]["batch-001"][0]["hint"], "持久化提示")
 
+    def test_soft_deleted_import_drops_from_library_but_keeps_data(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+            upload_directory = store.upload_root / "delete-upload"
+            upload_directory.mkdir()
+            payload = {"question": {"id": "delete-question"}, "lessonSteps": []}
+            job = {
+                "uploadId": "delete-upload",
+                "filename": "book.pdf",
+                "contentType": "application/pdf",
+                "size": 18,
+                "chunkSize": 1024,
+                "totalChunks": 1,
+                "sourceText": "",
+                "directory": upload_directory,
+                "status": "complete",
+                "progress": 100,
+                "message": "完成",
+                "startedAt": 1.0,
+                "updatedAt": 2.0,
+                "completedAt": 2.0,
+                "result": {"importId": "pdf-delete", "filename": "book.pdf", "extraction": {"questionCount": 1}, "questionPayload": payload},
+            }
+            store.save_job(job)
+            store.save_question("delete-upload", "batch-001", payload, [])
+            self.assertEqual(len(store.list_imports()), 1)
+
+            self.assertTrue(store.soft_delete_import("delete-upload"))
+            # Dropped from the library, but the row and questions stay recoverable.
+            self.assertEqual(store.list_imports(), [])
+            restored = store.load_job("delete-upload")
+            self.assertEqual(restored["status"], "deleted")
+            self.assertIn("batch-001", restored["batchPayloads"])
+            # Deleting an already-deleted import is a no-op.
+            self.assertFalse(store.soft_delete_import("delete-upload"))
+            self.assertFalse(store.soft_delete_import("missing-upload"))
+
+    def test_find_completed_import_matches_content_hash(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+            store = TutorStore()
+
+            def make_job(upload_id: str, status: str) -> dict:
+                updir = store.upload_root / upload_id
+                updir.mkdir(parents=True, exist_ok=True)
+                return {
+                    "uploadId": upload_id, "filename": "same.pdf", "contentType": "application/pdf",
+                    "size": 10, "chunkSize": 1024, "totalChunks": 1, "sourceText": "",
+                    "directory": updir, "status": status, "progress": 100, "message": "",
+                    "startedAt": 1.0, "updatedAt": 2.0, "completedAt": 2.0,
+                    "result": {"importId": "pdf-deadbeef1234", "filename": "same.pdf", "extraction": {}, "questionPayload": {}},
+                }
+
+            store.save_job(make_job("first-upload", "complete"))
+            # A completed import with the same content hash is found (excluding self).
+            match = store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="second-upload")
+            self.assertEqual(match["uploadId"], "first-upload")
+            # It excludes the in-progress upload itself and unknown hashes.
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234", exclude_upload_id="first-upload"))
+            self.assertIsNone(store.find_completed_import("pdf-other00000"))
+            # A soft-deleted original no longer blocks re-uploading the same file.
+            store.soft_delete_import("first-upload")
+            self.assertIsNone(store.find_completed_import("pdf-deadbeef1234"))
+
     def test_resolves_database_directory_after_project_move(self) -> None:
         with TemporaryDirectory() as directory:
             data_root = Path(directory) / "data"
