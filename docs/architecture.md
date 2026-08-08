@@ -1,6 +1,7 @@
 # 系统架构与调用流程
 
-本文描述 Dotty Tutor 当前 MVP 的组件边界、核心调用链、持久化方式和运行限制。
+本文描述 Dotty Tutor 当前 MVP 的组件边界、核心调用链、持久化方式和运行限制。产品包含教材互动学习
+和 AI 错题陪练两个入口；第一阶段共用前后端基础设施，但保持页面和业务流程分离。
 
 ## 总体架构
 
@@ -9,7 +10,11 @@ TTS 都由后端编排，浏览器不直接接触模型密钥或本地模型进�
 
 ```mermaid
 flowchart LR
-  User["学生 / 教师"] --> Web["React + Vite :5174"]
+  User["学生 / 教师"] --> Home["产品首页 /"]
+  Home --> Textbooks["教材互动学习 /textbooks"]
+  Home --> Mistakes["AI 错题陪练 /mistakes"]
+  Textbooks --> Web["React + Vite :5174"]
+  Mistakes -. "后续阶段接入错题 API" .-> Web
   Web -->|"/api/*"| API["FastAPI :8010"]
 
   subgraph Backend["后端编排层"]
@@ -39,12 +44,19 @@ flowchart LR
 Vite 开发服务器在 `5174` 端口运行，并把 `/api` 代理到 FastAPI 的 `8010` 端口。
 Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选外部服务。
 
+当前前端使用轻量 History API 路由，不增加路由运行时依赖。Vite 开发服务器与生产 Nginx 都会把
+`/textbooks`、`/mistakes` 等直接访问回退到 `index.html`。第一阶段的 `/mistakes` 是独立产品骨架，
+尚未增加错题数据库表和后端接口。
+
 ## 组件职责
 
 | 组件 | 主要文件 | 责任边界 |
 | --- | --- | --- |
+| 产品路由 | `frontend/src/App.tsx` | 根入口、History API 路由与页面标题；不持有教材或错题业务状态 |
+| 产品首页 | `frontend/src/apps/home/ProductHome.tsx` | 展示教材学习与错题陪练两个独立入口 |
+| 教材页面编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、会话和跨组件状态编排 |
+| 错题陪练入口 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 第一阶段产品骨架和后续学习流程说明 |
 | 上传与模型选择 | `frontend/src/TextbookImport.tsx` | 文件校验、分块续传、进度轮询、运行时选择和教材库入口 |
-| 页面编排 | `frontend/src/App.tsx` | 教材、当前题目、会话和跨组件状态编排 |
 | 课程播放器 | `frontend/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `frontend/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 练习工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 题目导航、作答、质量信息和辅导反馈 |
@@ -71,7 +83,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 ## 页面初始化
 
-上传页首次加载时并行调用：
+根路径只渲染产品入口，不调用后端。进入 `/textbooks` 后，上传页首次加载时并行调用：
 
 1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
@@ -176,6 +188,8 @@ POST /api/tts
 - 内存中的任务和题目只作为读取缓存，未命中时从 PostgreSQL 恢复。
 
 生产版本边界和改造优先级见[路线图](roadmap.md)。
+错题域的数据模型、智能体状态机和代码复用边界见
+[AI 错题陪练产品规划](mistake-coach-plan.md)。
 
 目标架构和后续 worker 拆分可在
 [Figma 架构图](https://www.figma.com/board/2ngUQNSgI0V27SEcBQKfzF)中查看。

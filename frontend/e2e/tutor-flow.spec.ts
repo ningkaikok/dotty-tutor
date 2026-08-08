@@ -233,10 +233,30 @@ async function mockApi(page: Page, result = importResult) {
   });
 }
 
+test.describe("产品入口", () => {
+  test("可在教材学习和错题陪练之间导航并直接访问子路径", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/");
+
+    await expect(page.getByRole("heading", { name: "选择你的学习入口" })).toBeVisible();
+    await page.getByRole("button", { name: "进入教材学习" }).click();
+    await expect(page).toHaveURL(/\/textbooks$/);
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+
+    await page.getByRole("button", { name: "全部功能" }).click();
+    await page.getByRole("button", { name: "查看错题陪练" }).click();
+    await expect(page).toHaveURL(/\/mistakes$/);
+    await expect(page.getByRole("heading", { name: "AI 错题陪练", exact: true })).toBeVisible();
+
+    await page.goto("/mistakes");
+    await expect(page.getByText("下一阶段：错题拍照与确认")).toBeVisible();
+  });
+});
+
 test.describe("教材辅导核心交互", () => {
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
     await mockApi(page);
-    await page.goto("/");
+    await page.goto("/textbooks");
 
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({
@@ -272,7 +292,7 @@ test.describe("教材辅导核心交互", () => {
 
   test("第一优先级题型支持多选、填空和数值答案", async ({ page }) => {
     await mockApi(page, priorityImportResult);
-    await page.goto("/");
+    await page.goto("/textbooks");
     await page.locator('input[type="file"]').setInputFiles({
       name: "playwright-priority-fixture.png",
       mimeType: "image/png",
