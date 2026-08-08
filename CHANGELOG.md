@@ -5,9 +5,9 @@ Semantic Versioning。
 
 ## [Unreleased]
 ### Added
-- product: 增加教材互动学习与 AI 错题陪练的独立入口，并提供错题闭环的阶段规划
 - practice: Show active model next to the regenerate button (#42)
 - library: 教材库删除、去重与返回导航 (#39)
+- product: Add dual learning entrances (#49)
 ### Changed
 - tts: Cache narration and sync lesson playback (#35)
 - tts: Prefetch narration for every lesson step on load (#37)
