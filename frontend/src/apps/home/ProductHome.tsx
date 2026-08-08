@@ -1,8 +1,8 @@
-interface ProductHomeProps {
-  onNavigate: (route: "/textbooks" | "/mistakes") => void;
-}
+import { useNavigate } from "react-router";
 
-export function ProductHome({ onNavigate }: ProductHomeProps) {
+export function ProductHome() {
+  const navigate = useNavigate();
+
   return (
     <main className="product-home">
       <header className="product-home-header">
@@ -33,22 +33,22 @@ export function ProductHome({ onNavigate }: ProductHomeProps) {
             <li>多题型交互与确定性判题</li>
             <li>分层提示、课程播放与语音</li>
           </ul>
-          <button onClick={() => onNavigate("/textbooks")}>进入教材学习</button>
+          <button onClick={() => navigate("/textbooks")}>进入教材学习</button>
         </article>
 
         <article className="product-entry-card planned">
           <div className="entry-card-heading">
             <span className="entry-index">02</span>
-            <span className="entry-status">分阶段建设</span>
+            <span className="entry-status">录题已可用</span>
           </div>
           <h2>AI 错题陪练</h2>
-          <p>拍下错题，识别错误原因，由单题智能体持续追问、提示并验证是否真正掌握。</p>
+          <p>拍下错题，修正确认题目和错误原因；后续由单题智能体持续追问、提示并验证掌握。</p>
           <ul>
             <li>错题归类到教材章节与知识点</li>
             <li>概念、审题、计算等错误诊断</li>
             <li>连续答对验证与复习计划</li>
           </ul>
-          <button onClick={() => onNavigate("/mistakes")}>查看错题陪练</button>
+          <button onClick={() => navigate("/mistakes")}>查看错题陪练</button>
         </article>
       </section>
     </main>

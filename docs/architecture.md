@@ -1,7 +1,7 @@
 # 系统架构与调用流程
 
 本文描述 Dotty Tutor 当前 MVP 的组件边界、核心调用链、持久化方式和运行限制。产品包含教材互动学习
-和 AI 错题陪练两个入口；第一阶段共用前后端基础设施，但保持页面和业务流程分离。
+和 AI 错题陪练两个入口；两者共用 OCR、题目生成和数据库基础设施，但保持页面、路由和业务存储分离。
 
 ## 总体架构
 
@@ -14,7 +14,7 @@ flowchart LR
   Home --> Textbooks["教材互动学习 /textbooks"]
   Home --> Mistakes["AI 错题陪练 /mistakes"]
   Textbooks --> Web["React + Vite :5174"]
-  Mistakes -. "后续阶段接入错题 API" .-> Web
+  Mistakes --> Web
   Web -->|"/api/*"| API["FastAPI :8010"]
 
   subgraph Backend["后端编排层"]
@@ -26,6 +26,7 @@ flowchart LR
     Pipeline --> Store["TutorStore"]
     Learning --> Store
     API --> TTS["TTS Router"]
+    API --> MistakeStore["MistakeStore"]
     Review --> Model
   end
 
@@ -35,6 +36,8 @@ flowchart LR
   Model --> Codex["Codex CLI"]
   Model --> Mock["Mock 回退"]
   Store --> PostgreSQL["PostgreSQL"]
+  MistakeStore --> PostgreSQL
+  MistakeStore --> MistakeFiles["错题原图 / 题图"]
   Store --> Files["PDF / Markdown / 题图"]
   TTS --> Azure["Azure Speech"]
   TTS --> Qwen["Qwen3-TTS :8020"]
@@ -44,19 +47,22 @@ flowchart LR
 Vite 开发服务器在 `5174` 端口运行，并把 `/api` 代理到 FastAPI 的 `8010` 端口。
 Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选外部服务。
 
-当前前端使用轻量 History API 路由，不增加路由运行时依赖。Vite 开发服务器与生产 Nginx 都会把
-`/textbooks`、`/mistakes` 等直接访问回退到 `index.html`。第一阶段的 `/mistakes` 是独立产品骨架，
-尚未增加错题数据库表和后端接口。
+当前前端使用 React Router 的声明式浏览器路由，并按产品入口动态加载代码。路由匹配、动态参数、
+前进后退和未知路径回退不再由项目自行维护。Vite 开发服务器与生产 Nginx 都会把
+`/textbooks`、`/mistakes` 等直接访问回退到 `index.html`。
 
 ## 组件职责
 
 | 组件 | 主要文件 | 责任边界 |
 | --- | --- | --- |
-| 产品路由 | `frontend/src/App.tsx` | 根入口、History API 路由与页面标题；不持有教材或错题业务状态 |
+| 产品路由 | `frontend/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `frontend/src/apps/home/ProductHome.tsx` | 展示教材学习与错题陪练两个独立入口 |
 | 教材页面编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、会话和跨组件状态编排 |
-| 错题陪练入口 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 第一阶段产品骨架和后续学习流程说明 |
-| 上传与模型选择 | `frontend/src/TextbookImport.tsx` | 文件校验、分块续传、进度轮询、运行时选择和教材库入口 |
+| 错题陪练编排 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
+| 错题页面组件 | `frontend/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
+| 教材导入页面 | `frontend/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
+| 教材导入状态机 | `frontend/src/apps/textbook/import/useTextbookImport.ts` | 初始化、分块续传、轮询、运行时切换与错误状态 |
+| 教材导入组件 | `frontend/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、上传区和处理结果展示 |
 | 课程播放器 | `frontend/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `frontend/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 练习工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 题目导航、作答、质量信息和辅导反馈 |
@@ -65,7 +71,11 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | API 契约 | `frontend/src/api.ts`、`frontend/src/types.ts` | `/api` 请求封装和前后端类型 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
-| API 入口与上传编排 | `backend/app.py` | 教材上传、PDF 批次和跨模块调用编排 |
+| ASGI 组合根 | `backend/app.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
+| 教材 HTTP 工作流 | `backend/textbook_routes.py` | 单页导入、PDF 分块/批次状态机、教材库和 Help 接口 |
+| 教材 OCR 编排 | `backend/textbook_ocr.py` | 手工原文、MinerU 与 pypdf 的选择、回退和审计记录 |
+| 课程生成 | `backend/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
+| OCR 题源切分 | `backend/question_source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
 | 应用工厂 | `backend/application.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `backend/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `backend/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
@@ -80,6 +90,26 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 持久化 | `backend/storage.py` | PostgreSQL 元数据和本地文件资源恢复 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `backend/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
+| 错题路由与契约 | `backend/mistake_routes.py`、`mistake_contracts.py` | 图片校验、错题确认和稳定错误原因枚举 |
+| 错题识别适配 | `backend/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
+| 错题持久化 | `backend/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
+
+## 错题录入与确认
+
+```text
+浏览器选择或拍摄单张图片
+  → Canvas 按学生选择裁切
+  → POST /api/mistakes/import
+  → 原图写入 data/mistakes/{mistakeId}
+  → 复用 MinerU OCR 与结构化题目生成
+  → mistake_items 保存题目快照和运行信息（待确认）
+  → 学生修正题干、学段、章节、知识点和原答案
+  → 选择错误原因并 PATCH 确认（待掌握）
+```
+
+错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张通用 `TutorStore`。它与教材域
+共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。当前只建立录入数据，不创建
+对话线程或复习任务。
 
 ## 页面初始化
 
@@ -182,9 +212,11 @@ POST /api/tts
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
 - `learning_sessions`、`exercise_attempts` 和 `mastery_states` 保存学习闭环数据。
+- `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。
+- `data/mistakes/{mistakeId}/` 保存错题原图和识别产生的题图。
 - 内存中的任务和题目只作为读取缓存，未命中时从 PostgreSQL 恢复。
 
 生产版本边界和改造优先级见[路线图](roadmap.md)。

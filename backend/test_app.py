@@ -196,12 +196,12 @@ class BatchQuestionTests(unittest.TestCase):
             }
             try:
                 with (
-                    patch("app.ocr_runtime.should_use_mineru", return_value=True),
-                    patch("app.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
-                    patch("app.generate_lesson", return_value=(payload, [], payload["modelRun"])),
-                    patch("app.store.save_questions"),
-                    patch("app.store.save_lesson"),
-                    patch("app.store.save_job"),
+                    patch("textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
+                    patch("textbook_routes.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
+                    patch("textbook_routes.generate_lesson", return_value=(payload, [], payload["modelRun"])),
+                    patch("textbook_routes.store.save_questions"),
+                    patch("textbook_routes.store.save_lesson"),
+                    patch("textbook_routes.store.save_job"),
                 ):
                     response = process_pdf_batch("test-upload", "batch-002")
                 self.assertEqual(response["questionPayload"]["question"]["id"], "q2")

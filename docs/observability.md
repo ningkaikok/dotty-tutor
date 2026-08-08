@@ -24,6 +24,13 @@ systemd、Loki、ELK 或云日志服务采集。
 - `question.batch.*`、`question.*`：题目批次、题型、审校提供商和处理结果。
 - `help.completed`：提示请求的模式、判定结果、来源和耗时。
 
+### 错题处理链路
+
+- `mistake.import.started` / `mistake.import.completed`：图片大小、OCR 和模型 provider。
+- `mistake.import.failed`：错题识别失败类型；失败上传目录会自动清理。
+- `mistake.confirmed`：确认后的知识点和错误原因，不记录学生答案或题干全文。
+- `mistake.archived`：错题归档状态变化。
+
 ## 日志格式
 
 示例：

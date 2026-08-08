@@ -233,9 +233,68 @@ async function mockApi(page: Page, result = importResult) {
   });
 }
 
+async function mockMistakeApi(page: Page) {
+  let items: Array<Record<string, unknown>> = [];
+  const pendingItem = {
+    mistakeId: "mistake-pw-1",
+    learnerId: "local-demo",
+    sourceFilename: "mistake-fixture.png",
+    contentType: "image/png",
+    sourceImageUrl: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+    questionPayload: {
+      question: {
+        id: "mistake-question-pw-1",
+        questionType: "short-answer",
+        chapter: "一元一次方程",
+        knowledgePoint: "移项",
+        prompt: "解方程 $x + 1 = 3$",
+        givens: [],
+        options: [],
+        imageUrls: [],
+      },
+      lessonSteps: [],
+      architecture: {},
+      modelRun,
+    },
+    guideCards: [],
+    ocrRun: { requestedProvider: "manual", provider: "manual", mode: "fixture", fallback: false, output: "text" },
+    modelRun,
+    originalAnswer: "x = 1",
+    subject: "数学",
+    gradeBand: "初中",
+    chapter: "一元一次方程",
+    knowledgePoint: "移项",
+    notes: "",
+    status: "pending_confirmation",
+    createdAt: 1,
+    updatedAt: 1,
+  };
+
+  await page.route("**/api/mistakes?*", async (route) => {
+    await route.fulfill({ json: { learnerId: "local-demo", items } });
+  });
+  await page.route("**/api/mistakes/import", async (route) => {
+    items = [pendingItem];
+    await route.fulfill({ json: pendingItem });
+  });
+  await page.route("**/api/mistakes/mistake-pw-1", async (route) => {
+    if (route.request().method() === "PATCH") {
+      const confirmation = route.request().postDataJSON() as Record<string, unknown>;
+      items = [{ ...pendingItem, ...confirmation, status: "unmastered", confirmedAt: 2, updatedAt: 2 }];
+      await route.fulfill({ json: items[0] });
+      return;
+    }
+    await route.fulfill({ json: items[0] ?? pendingItem });
+  });
+  await page.route("**/api/mistakes/mistake-pw-1/archive", async (route) => {
+    await route.fulfill({ json: { ...items[0], status: "archived" } });
+  });
+}
+
 test.describe("产品入口", () => {
   test("可在教材学习和错题陪练之间导航并直接访问子路径", async ({ page }) => {
     await mockApi(page);
+    await mockMistakeApi(page);
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "选择你的学习入口" })).toBeVisible();
@@ -246,10 +305,38 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: "全部功能" }).click();
     await page.getByRole("button", { name: "查看错题陪练" }).click();
     await expect(page).toHaveURL(/\/mistakes$/);
-    await expect(page.getByRole("heading", { name: "AI 错题陪练", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
 
     await page.goto("/mistakes");
-    await expect(page.getByText("下一阶段：错题拍照与确认")).toBeVisible();
+    await expect(page.getByRole("button", { name: "录入一道错题" })).toBeVisible();
+  });
+
+  test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
+    await mockMistakeApi(page);
+    await page.goto("/mistakes");
+
+    await page.getByRole("button", { name: "录入一道错题" }).click();
+    await expect(page).toHaveURL(/\/mistakes\/capture$/);
+    await page.getByLabel("选择错题图片").setInputFiles({
+      name: "mistake-fixture.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=", "base64"),
+    });
+    await expect(page.getByRole("region", { name: "裁切错题图片" })).toBeVisible();
+    await page.getByLabel("裁去上方").fill("5");
+    await page.getByLabel(/你当时写的答案/).fill("x = 1");
+    await page.getByLabel(/题目文字/).fill("解方程 x + 1 = 3");
+    await page.getByRole("button", { name: "识别并进入确认" }).click();
+
+    await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/confirm$/);
+    await expect(page.getByRole("heading", { name: "确认题目与错误原因" })).toBeVisible();
+    await expect(page.getByLabel("题干与公式")).toHaveValue("解方程 $x + 1 = 3$");
+    await page.getByRole("radio", { name: /计算失误/ }).check();
+    await page.getByRole("button", { name: "确认并保存到错题本" }).click();
+
+    await expect(page).toHaveURL(/\/mistakes$/);
+    await expect(page.getByText("计算失误", { exact: true })).toBeVisible();
+    await expect(page.getByText("待掌握", { exact: true }).first()).toBeVisible();
   });
 });
 

@@ -26,7 +26,7 @@ def create_app() -> FastAPI:
             "CORS_ORIGINS",
             "http://localhost:5174,http://127.0.0.1:5174",
         ),
-        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
     )
     trusted_hosts = _csv_env("TRUSTED_HOSTS", "")
@@ -59,7 +59,7 @@ def create_app() -> FastAPI:
                 response.headers.setdefault("X-Content-Type-Options", "nosniff")
                 response.headers.setdefault("X-Frame-Options", "DENY")
                 response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-                response.headers.setdefault("Permissions-Policy", "microphone=(self)")
+                response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self)")
                 status_code = response.status_code
                 log_event(
                     "http.request",
