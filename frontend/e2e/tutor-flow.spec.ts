@@ -385,6 +385,13 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
       interactionResult: Record<string, unknown>;
     };
     const current = variations[variations.length - 1];
+    const correctStreak = variations.filter((item) => item.status === "answered").length + 1;
+    const mastery = {
+      correctStreak,
+      requiredCorrect: 2,
+      mastered: correctStreak >= 2,
+      answeredCount: correctStreak,
+    };
     const answered = {
       ...current,
       status: "answered",
@@ -392,8 +399,12 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
       response: answer,
       feedback: "回答正确，你已经能独立完成这类移项。",
       answeredAt: 7,
+      mastery,
     };
     variations = variations.map((item) => item.variationId === current.variationId ? answered : item);
+    if (mastery.mastered) {
+      items = items.map((item) => ({ ...item, status: "mastered", updatedAt: 7 }));
+    }
     await route.fulfill({ json: answered });
   });
 }
@@ -474,6 +485,17 @@ test.describe("产品入口", () => {
 
     await expect(page.getByText("回答正确", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "生成下一道" })).toBeVisible();
+
+    await page.getByRole("button", { name: "生成下一道" }).click();
+    await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
+    await page.getByRole("button", { name: "提交验证答案" }).click();
+    await expect(page.getByText("已通过掌握验证")).toBeVisible();
+    await expect(page.getByText("连续答对 2 / 2")).toBeVisible();
+
+    await page.getByRole("button", { name: "← 我的错题本" }).click();
+    await page.getByRole("button", { name: /进阶本 1/ }).click();
+    await expect(page.getByText("已掌握", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();
   });
 });
 

@@ -172,6 +172,10 @@ concept | reading | calculation | missing_step | unknown | careless
 返回 `409`；生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
 正确性仍由答案结构和确定性判题器决定。
 
+作答响应额外包含 `mastery.correctStreak`、`requiredCorrect`、`answeredCount` 和 `mastered`。连续两次
+判定为 `correct` 后，服务把错题状态从 `unmastered` 更新为 `mastered`；任意非正确结果都会自然中断
+连续记录。次数由已保存的验证题推导，不接受客户端传入。
+
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
 `/api/review` 仍是后续规划，用于进阶本和复习任务；变式验证已使用上述独立 API。

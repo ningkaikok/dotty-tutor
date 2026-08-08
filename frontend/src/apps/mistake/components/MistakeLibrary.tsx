@@ -1,4 +1,5 @@
 import MathText from "../../../MathText";
+import { useState } from "react";
 import type { MistakeItem } from "../../../types";
 
 interface MistakeLibraryProps {
@@ -21,8 +22,13 @@ const ERROR_LABELS: Record<string, string> = {
 };
 
 export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
+  const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
+  const masteredCount = items.filter((item) => item.status === "mastered").length;
+  const visibleItems = items.filter((item) => activeBook === "advanced"
+    ? item.status === "mastered"
+    : item.status !== "mastered");
 
   return (
     <>
@@ -36,24 +42,33 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
       </section>
 
       <section className="mistake-summary" aria-label="错题统计">
-        <div><strong>{items.length}</strong><span>全部错题</span></div>
-        <div><strong>{pendingCount}</strong><span>待确认</span></div>
         <div><strong>{unmasteredCount}</strong><span>待掌握</span></div>
+        <div><strong>{pendingCount}</strong><span>待确认</span></div>
+        <div><strong>{masteredCount}</strong><span>进阶本</span></div>
       </section>
+
+      <nav className="mistake-book-tabs" aria-label="错题本分类">
+        <button className={activeBook === "mistakes" ? "active" : ""} onClick={() => setActiveBook("mistakes")}>
+          错题本 <span>{pendingCount + unmasteredCount}</span>
+        </button>
+        <button className={activeBook === "advanced" ? "active" : ""} onClick={() => setActiveBook("advanced")}>
+          进阶本 <span>{masteredCount}</span>
+        </button>
+      </nav>
 
       {error && <p className="mistake-error" role="alert">{error}</p>}
       {loading ? (
         <div className="mistake-empty">正在读取错题本…</div>
-      ) : items.length === 0 ? (
+      ) : visibleItems.length === 0 ? (
         <section className="mistake-empty">
           <span className="empty-sheet" aria-hidden="true" />
-          <h2>还没有错题</h2>
-          <p>从一道最近做错的初中数学题开始，先建立最小学习闭环。</p>
-          <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入第一题</button>
+          <h2>{activeBook === "advanced" ? "还没有进入进阶本的题目" : "还没有错题"}</h2>
+          <p>{activeBook === "advanced" ? "连续答对两道不同变式题后，题目会自动出现在这里。" : "从一道最近做错的初中数学题开始，先建立最小学习闭环。"}</p>
+          {activeBook === "mistakes" && <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入第一题</button>}
         </section>
       ) : (
         <section className="mistake-list" aria-label="错题列表">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <article key={item.mistakeId} className="mistake-list-item">
               <img src={item.sourceImageUrl} alt="错题原图" loading="lazy" />
               <div className="mistake-list-content">
@@ -69,7 +84,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
               </div>
               <div className="mistake-list-actions">
                 {item.status !== "pending_confirmation" && (
-                  <button className="primary" onClick={() => onTutor(item)}>开始陪练</button>
+                  <button className="primary" onClick={() => onTutor(item)}>{item.status === "mastered" ? "查看验证记录" : "开始陪练"}</button>
                 )}
                 <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
                 <button className="danger" onClick={() => onArchive(item)}>归档</button>
