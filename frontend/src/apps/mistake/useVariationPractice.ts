@@ -1,27 +1,7 @@
 import { useEffect, useState } from "react";
 import { answerVariation, createVariation, listVariations } from "../../api";
-import type { Question, VariationExercise } from "../../types";
-
-function buildAnswer(
-  question: Question,
-  selectedOptions: string[],
-  blankAnswers: Record<string, string>,
-  numericAnswer: string,
-) {
-  if (question.questionType === "fill-blank") {
-    return {
-      content: Object.values(blankAnswers).join("；"),
-      interactionResult: { blankAnswers },
-    };
-  }
-  if (question.questionType === "numeric") {
-    return { content: numericAnswer, interactionResult: { numericAnswer } };
-  }
-  return {
-    content: selectedOptions.length ? `我选择${selectedOptions.join("、")}` : "",
-    interactionResult: { selectedOptions },
-  };
-}
+import type { VariationExercise } from "../../types";
+import { buildStructuredAnswer } from "./structuredAnswer";
 
 /** Manage one scored attempt without mixing it into free-form tutor messages. */
 export function useVariationPractice(mistakeId: string) {
@@ -78,7 +58,7 @@ export function useVariationPractice(mistakeId: string) {
 
   const submit = async () => {
     if (!active || active.status !== "ready" || submitting) return;
-    const answer = buildAnswer(active.questionPayload.question, selectedOptions, blankAnswers, numericAnswer);
+    const answer = buildStructuredAnswer(active.questionPayload.question, selectedOptions, blankAnswers, numericAnswer);
     if (!answer.content.trim()) {
       setError("请先输入或选择答案");
       return;

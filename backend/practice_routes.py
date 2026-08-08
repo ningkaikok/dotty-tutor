@@ -18,6 +18,7 @@ def build_practice_router(
     tutoring_store: Any,
     variation_store: Any,
     variation_service: Any,
+    review_store: Any,
 ) -> APIRouter:
     router = APIRouter(tags=["practice"])
 
@@ -105,6 +106,11 @@ def build_practice_router(
                 "mistake.mastered",
                 mistake_id=item["mistakeId"],
                 answered_count=mastery["answeredCount"],
+            )
+            saved["reviewTasks"] = review_store.schedule(
+                mistake_id=promoted["mistakeId"],
+                learner_id=promoted["learnerId"],
+                base_time=saved["answeredAt"],
             )
         saved["mastery"] = mastery
         log_event(

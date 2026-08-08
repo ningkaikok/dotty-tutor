@@ -35,6 +35,8 @@ from question_source import (
     select_complete_question_source,
     split_question_sources,
 )
+from review_routes import build_review_router
+from review_store import ReviewStore
 from runtime_routes import build_runtime_router
 from storage import store
 from stateful_tutor import StatefulTutor
@@ -78,9 +80,16 @@ app.include_router(build_tutoring_router(
 # later mastery/review policy independent from free-form chat history.
 variation_store = VariationStore(engine=store.engine)
 variation_service = VariationService(generator=generate_lesson)
+review_store = ReviewStore(engine=store.engine)
 app.include_router(build_practice_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,
     variation_store=variation_store,
+    variation_service=variation_service,
+    review_store=review_store,
+))
+app.include_router(build_review_router(
+    mistake_store=mistake_store,
+    review_store=review_store,
     variation_service=variation_service,
 ))

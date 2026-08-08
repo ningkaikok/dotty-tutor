@@ -104,6 +104,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 辅导持久化 | `backend/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `backend/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `backend/variation_store.py` | 保存不可重复提交的题目快照、结构化答案和判题结果 |
+| 间隔复习 | `backend/review_routes.py`、`review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
 ## 错题录入与确认
 
@@ -123,6 +124,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 辅导线程。完成陪练后，独立的 `VariationStore` 保存验证题和一次性作答，避免自由对话被误算为掌握证据。
 连续正确次数由 `VariationStore` 从已作答记录反向计算；达到两次时 `MistakeStore` 只负责执行明确的
 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
+掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
+快照和答案，不参与首次掌握连续计数；`/api/progress` 只从错题状态与复习证据实时聚合统计。
 
 ## 有状态单题陪练
 
