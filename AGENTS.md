@@ -110,6 +110,9 @@ docs(deploy): clarify Docker setup
 只要提交信息遵循上述格式，就可以使用 `git-cliff`、Release Please 或类似工具自动生成初稿；
 自动生成后仍需人工检查措辞、重复项和对用户的实际影响。
 
+不要配置在每次 `main` 推送后覆盖 `Unreleased` 区域或自动创建 CHANGELOG PR 的工作流。发布准备时可在
+`release/*` 分支运行 `scripts/generate-changelog.sh`，人工审校后再提交。
+
 ## 验证与交付
 
 提交 PR 前至少运行：

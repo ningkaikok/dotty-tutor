@@ -296,10 +296,10 @@ git push -u origin feat/your-change
 请通过 Pull Request 合并到 `main`，并在修改用户可见行为、配置或文档时同步更新
 [`CHANGELOG.md`](../CHANGELOG.md)。
 
-## 自动生成 CHANGELOG
+## 手动生成 CHANGELOG 初稿
 
-项目使用 [git-cliff](https://git-cliff.org/) 根据 Conventional Commits 更新
-`CHANGELOG.md` 的 `Unreleased` 区域，不会覆盖已有版本记录。分类规则与项目开发规范一致：
+项目保留 [git-cliff](https://git-cliff.org/) 作为发布准备工具，根据 Conventional Commits 生成
+`CHANGELOG.md` 的 `Unreleased` 初稿，不会覆盖已有版本记录。分类规则与项目开发规范一致：
 
 - `feat` → `Added`
 - `fix` → `Fixed`
@@ -312,5 +312,15 @@ git push -u origin feat/your-change
 scripts/generate-changelog.sh
 ```
 
-GitHub Actions 会在 `main` 更新后自动生成变更记录，并创建一个
-`chore/generated-changelog` Pull Request。合并前请检查用户视角措辞、重复条目和版本范围。
+默认会先同步远程版本 Tag，并只扫描“最新 Tag 到当前提交”的范围，避免旧版本条目再次进入 `Unreleased`。
+离线或需要指定范围时，可运行 `scripts/generate-changelog.sh v0.3.0..HEAD`。
+
+请只在准备发布或整理一组用户可见改动时运行。脚本会替换 `Unreleased` 区域，因此运行后必须检查：
+
+- 将英文提交摘要改写为中文用户视角描述。
+- 合并重复条目，并删除只有内部实现意义的内容。
+- 确认没有把上一个正式版本已经发布的内容重新加入。
+- 在 `release/*` 分支或对应功能 PR 中提交审核后的结果。
+
+仓库不再在 `main` 推送后自动创建 CHANGELOG PR。自动流程无法判断用户影响，会重复扫描最新 Tag 后的
+提交，并可能覆盖已经人工整理的文案。
