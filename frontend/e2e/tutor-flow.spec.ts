@@ -233,7 +233,7 @@ async function mockApi(page: Page, result = importResult) {
   });
 }
 
-async function mockMistakeApi(page: Page) {
+async function mockMistakeApi(page: Page, startConfirmed = false) {
   let items: Array<Record<string, unknown>> = [];
   const pendingItem = {
     mistakeId: "mistake-pw-1",
@@ -269,6 +269,29 @@ async function mockMistakeApi(page: Page) {
     createdAt: 1,
     updatedAt: 1,
   };
+  const confirmedItem = {
+    ...pendingItem,
+    errorReason: "calculation",
+    status: "unmastered",
+    confirmedAt: 2,
+    updatedAt: 2,
+  };
+  if (startConfirmed) items = [confirmedItem];
+
+  let tutorStage = "diagnose";
+  let tutorMessages: Array<Record<string, unknown>> = [];
+  const tutorThread = () => ({
+    threadId: "thread-pw-1",
+    mistakeId: "mistake-pw-1",
+    learnerId: "local-demo",
+    stage: tutorStage,
+    summary: "",
+    hintLevel: 0,
+    messageCount: tutorMessages.length,
+    messages: tutorMessages,
+    createdAt: 3,
+    updatedAt: 3,
+  });
 
   await page.route("**/api/mistakes?*", async (route) => {
     await route.fulfill({ json: { learnerId: "local-demo", items } });
@@ -288,6 +311,41 @@ async function mockMistakeApi(page: Page) {
   });
   await page.route("**/api/mistakes/mistake-pw-1/archive", async (route) => {
     await route.fulfill({ json: { ...items[0], status: "archived" } });
+  });
+  await page.route("**/api/mistakes/mistake-pw-1/thread", async (route) => {
+    await route.fulfill({ json: tutorThread() });
+  });
+  await page.route("**/api/tutor/threads/thread-pw-1", async (route) => {
+    await route.fulfill({ json: tutorThread() });
+  });
+  await page.route("**/api/tutor/threads/thread-pw-1/messages", async (route) => {
+    const request = route.request().postDataJSON() as { content: string };
+    tutorStage = "explain";
+    tutorMessages = [
+      {
+        messageId: "student-pw-1", threadId: "thread-pw-1", role: "student",
+        content: request.content, inputMode: "text", action: {}, modelRun: {}, createdAt: 4,
+      },
+      {
+        messageId: "assistant-pw-1", threadId: "thread-pw-1", role: "assistant",
+        content: "先检查移项后符号是否改变，再重新算一次。", inputMode: "text",
+        assessment: "incorrect", action: {}, modelRun, createdAt: 5,
+      },
+    ];
+    await route.fulfill({
+      json: {
+        thread: tutorThread(),
+        reply: {
+          reply: "先检查移项后符号是否改变，再重新算一次。",
+          guideContext: { assessment: "incorrect" }, nextHintLevel: 1,
+          canvasAction: "show-base", source: "answer-check", modelRun,
+        },
+        action: {
+          type: "advance_stage", previousStage: "diagnose", nextStage: "explain",
+          assessment: "incorrect", prompt: "移项时符号如何变化？",
+        },
+      },
+    });
   });
 }
 
@@ -337,6 +395,22 @@ test.describe("产品入口", () => {
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByText("计算失误", { exact: true })).toBeVisible();
     await expect(page.getByText("待掌握", { exact: true }).first()).toBeVisible();
+  });
+
+  test("可从错题本恢复单题线程并完成一轮有状态陪练", async ({ page }) => {
+    await mockMistakeApi(page, true);
+    await page.goto("/mistakes");
+
+    await page.getByRole("button", { name: "开始陪练" }).click();
+    await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/tutor$/);
+    await expect(page.getByText("定位卡点")).toBeVisible();
+    await page.getByLabel("继续回答或描述你的想法").fill("我算出 x = 1");
+    await page.getByRole("button", { name: "提交这一轮" }).click();
+
+    await expect(page.getByText("我算出 x = 1")).toBeVisible();
+    await expect(page.getByText("先检查移项后符号是否改变，再重新算一次。")).toBeVisible();
+    await expect(page.getByText("解释误区")).toBeVisible();
+    await expect(page.getByText("需要修正")).toBeVisible();
   });
 });
 

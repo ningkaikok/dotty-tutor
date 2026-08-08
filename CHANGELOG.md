@@ -4,23 +4,34 @@
 Semantic Versioning。
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-08-08
+
 ### Added
-- mistake: 支持拍照或选择错题图片、裁切识别范围、修正确认题目归类，并将错误原因保存到个人错题本
-- product: 增加教材互动学习与 AI 错题陪练的独立入口，并提供错题闭环的阶段规划
-- practice: Show active model next to the regenerate button (#42)
-- library: 教材库删除、去重与返回导航 (#39)
-- product: Add dual learning entrances (#49)
+
+- 增加教材互动学习与 AI 错题陪练两个独立入口。
+- 支持拍照或选择错题图片、裁切识别范围、修正确认题目归类，并保存错误原因。
+- 为每道已确认错题增加可恢复的独立辅导线程和持久化消息历史。
+- 增加定位卡点、解释误区、引导练习和准备验证四阶段多轮陪练。
+- 多轮陪练复用选择、多选、判断、填空、数值和画线结构化作答与确定性判题。
+- 教材库支持内容去重、软删除和返回导航。
+- 练习页面显示当前使用的模型。
+
 ### Changed
-- architecture: 使用 React Router 统一页面导航，并将教材导入状态机、OCR、题源解析和课程生成拆为可独立维护的模块
-- web: 按产品入口加载教材学习和错题陪练资源，减少首次打开时的脚本体积
-- tts: Cache narration and sync lesson playback (#35)
-- tts: Prefetch narration for every lesson step on load (#37)
+
+- 使用 React Router 统一导航，并按产品入口延迟加载页面资源。
+- 将前端 API 与类型按教材、错题、辅导、运行时和学习领域拆分，同时保留兼容门面。
+- 将数据库配置、关系表声明、教材库路由和批次题目处理从大文件拆为可独立阅读的模块。
+- 多轮提示只携带状态摘要和最近必要消息，避免上下文无限增长。
+- 缓存并预取课程语音，使讲解音频与步骤切换更稳定。
+
 ### Fixed
-- model: Require all lesson schema fields (#32)
-- storage: 消除数据库配置的两个静默踩坑 (#40)
-- model: Import CANVAS_ACTIONS to fix real-model lesson generation (#41)
-- model: Allow overriding the Codex CLI path via CODEX_COMMAND (#43)
-- ci: Add TestClient dependency (#47)
+
+- 修复模型结构化输出缺少必填字段时请求失败的问题。
+- 修复真实模型生成路径缺少画布动作常量的问题。
+- 修复数据库环境变量不完整时静默连接到错误实例的问题。
+- 支持通过 `CODEX_COMMAND` 指定 Codex CLI 路径。
+- 拒绝看似包含结构化字段、实际没有任何作答内容的空提交。
 
 ## [0.2.0] - 2026-08-02
 
@@ -75,6 +86,7 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.1.0

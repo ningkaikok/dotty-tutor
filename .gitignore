@@ -10,7 +10,7 @@ output/
 htmlcov/
 *.log
 .playwright-cli/
-backend/__pycache__/
+**/__pycache__/
 backend/.venv/
 .mineru-venv/
 .qwen3-tts-venv/

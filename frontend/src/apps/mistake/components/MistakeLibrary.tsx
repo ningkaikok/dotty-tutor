@@ -7,6 +7,7 @@ interface MistakeLibraryProps {
   error: string;
   onCapture: () => void;
   onOpen: (item: MistakeItem) => void;
+  onTutor: (item: MistakeItem) => void;
   onArchive: (item: MistakeItem) => void;
 }
 
@@ -19,7 +20,7 @@ const ERROR_LABELS: Record<string, string> = {
   careless: "粗心大意",
 };
 
-export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onArchive }: MistakeLibraryProps) {
+export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
 
@@ -67,6 +68,9 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onArc
                 <small>{item.chapter} · {item.knowledgePoint}</small>
               </div>
               <div className="mistake-list-actions">
+                {item.status !== "pending_confirmation" && (
+                  <button className="primary" onClick={() => onTutor(item)}>开始陪练</button>
+                )}
                 <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
                 <button className="danger" onClick={() => onArchive(item)}>归档</button>
               </div>

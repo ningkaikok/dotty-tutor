@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import math
-import re
 import shutil
 import tempfile
 import time
@@ -22,33 +21,22 @@ from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
 from lesson_contracts import lesson_document_from_payload
+from library_routes import build_library_router
 from lesson_generation import (
-    attach_question_source,
     generate_lesson,
     generate_model_reply,
     lesson_store,
-    review_lesson_payload,
 )
 from observability import log_event
 from ocr_runtime import runtime as ocr_runtime
 from question_contracts import GUIDE_CARDS, HelpRequest, PdfUploadInitRequest, TutorReply
-from question_pipeline import (
-    apply_question_quality_gate,
-    normalize_image_choice_question,
-    normalize_model_math_text,
-    normalize_stacked_equation_choices,
-    normalize_text_choice_labels,
-    normalize_text_choices_from_source,
-    strip_choice_text_from_prompt,
-    write_model_prompt_artifact,
-)
+from question_pipeline import write_model_prompt_artifact
+from question_processing import process_question_sources
 from question_source import (
     MARKDOWN_IMAGE_PATTERN,
     MAX_QUESTIONS_PER_BATCH,
     limited_question_sources,
-    question_image_paths,
     question_key,
-    safe_string_list,
     split_question_sources,
 )
 from storage import store
@@ -80,77 +68,6 @@ upload_status = upload_registry.status
 update_upload_job = upload_registry.update
 validate_pdf_envelope = upload_registry.validate_pdf_envelope
 
-
-def process_question_sources(
-    question_sources: list[tuple[str, str, list[str]]],
-    batch: dict[str, Any],
-    ocr_run: dict[str, Any],
-    asset_dir: Path,
-    job: dict[str, Any] | None = None,
-) -> tuple[list[dict[str, Any]], list[list[dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Generate, attach, review and return every question in one OCR batch."""
-    payloads: list[dict[str, Any]] = []
-    guide_cards_list: list[list[dict[str, Any]]] = []
-    model_runs: list[dict[str, Any]] = []
-    review_runs: list[dict[str, Any]] = []
-    total = max(1, len(question_sources))
-    log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"))
-    for index, (number, block, images) in enumerate(question_sources):
-        log_event(
-            "question.started",
-            batch_id=batch.get("id"),
-            question_number=number or index + 1,
-            image_count=len(images),
-        )
-        payload, guide_cards, model_run = generate_lesson(block)
-        attach_question_source(payload, batch, ocr_run, images)
-        if number:
-            payload["question"]["questionNumber"] = number
-        payload["question"]["sourceQuestionKey"] = question_key(batch["id"], number, index)
-        payload, review_run = review_lesson_payload(
-            payload,
-            block,
-            question_image_paths(asset_dir, images),
-            guide_cards,
-        )
-        normalize_stacked_equation_choices(payload, block)
-        normalize_text_choices_from_source(
-            payload, str(payload["question"].get("prompt", ""))
-        )
-        normalize_text_choices_from_source(payload, block)
-        reviewed_options = normalize_text_choice_labels(
-            safe_string_list(payload["question"].get("options"), [], 6)
-        )
-        reviewed_options = [normalize_model_math_text(option) for option in reviewed_options]
-        payload["question"]["options"] = reviewed_options
-        payload["question"]["prompt"] = normalize_model_math_text(
-            strip_choice_text_from_prompt(
-                str(payload["question"].get("prompt", "")), reviewed_options
-            )
-        )
-        normalize_image_choice_question(payload, block, images)
-        apply_question_quality_gate(payload, block, images)
-        payloads.append(payload)
-        guide_cards_list.append(guide_cards)
-        model_runs.append(model_run)
-        review_runs.append(review_run)
-        if job is not None:
-            update_upload_job(
-                job,
-                "generating",
-                min(94, 88 + round(((index + 1) / total) * 6)),
-                f"正在处理第 {index + 1}/{len(question_sources)} 道题",
-            )
-        log_event(
-            "question.completed",
-            batch_id=batch.get("id"),
-            question_number=number or index + 1,
-            question_type=payload.get("question", {}).get("questionType"),
-            model_provider=model_run.get("provider"),
-            review_provider=review_run.get("provider"),
-        )
-    log_event("question.batch.completed", question_count=len(payloads), batch_id=batch.get("id"))
-    return payloads, guide_cards_list, model_runs, review_runs
 
 @router.post("/api/textbook/import")
 async def import_textbook(
@@ -468,6 +385,7 @@ def complete_pdf_upload(upload_id: str) -> dict:
         ocr_run,
         asset_dir,
         job,
+        update_upload_job,
     )
     payload = payloads[0]
     guide_cards = guide_cards_list[0]
@@ -643,6 +561,7 @@ def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dic
             ocr_run,
             asset_dir,
             job,
+            update_upload_job,
         )
         payload = payloads[0]
         guide_cards = guide_cards_list[0]
@@ -760,43 +679,8 @@ def get_pdf_artifact(upload_id: str, batch_id: str, filename: str) -> FileRespon
     )
 
 
-@router.get("/api/library")
-def list_textbook_library() -> dict:
-    """List non-deleted completed imports from PostgreSQL."""
-    return {"items": store.list_imports()}
-
-
-@router.delete("/api/library/{upload_id}")
-def delete_textbook_library_item(upload_id: str) -> dict:
-    """Soft-delete library metadata while keeping recoverable files and rows."""
-    job = upload_job(upload_id)
-    if not store.soft_delete_import(upload_id):
-        raise HTTPException(status_code=404, detail="教材不存在或已删除")
-    # Drop cached lesson payloads and the upload job so the textbook stops
-    # surfacing immediately; the underlying rows and files stay recoverable.
-    for payload in job.get("batchPayloads", {}).values():
-        lesson_store.pop(payload["question"]["id"], None)
-    upload_registry.uploads.pop(upload_id, None)
-    log_event("library.item.deleted", upload_id=upload_id, filename=job.get("filename"))
-    return {"status": "deleted", "uploadId": upload_id}
-
-
-@router.get("/api/library/{upload_id}")
-def get_textbook_library_item(upload_id: str) -> dict:
-    """Restore persisted questions and sort them by source question number."""
-    job = upload_job(upload_id)
-    result = job.get("result")
-    if job.get("status") == "deleted":
-        raise HTTPException(status_code=404, detail="教材已删除")
-    if job.get("status") != "complete" or not result:
-        raise HTTPException(status_code=409, detail="这本教材尚未处理完成")
-    restored = dict(result)
-    def question_sort_key(item: dict[str, Any]) -> tuple[int, str]:
-        number = str(item.get("question", {}).get("questionNumber", ""))
-        match = re.search(r"\d+", number)
-        return (int(match.group()) if match else 10**9, number)
-
-    payloads = sorted(job.get("batchPayloads", {}).values(), key=question_sort_key)
-    restored["questionPayloads"] = payloads or [result["questionPayload"]]
-    restored["questionPayload"] = restored["questionPayloads"][0]
-    return restored
+router.include_router(build_library_router(
+    store=store,
+    upload_registry=upload_registry,
+    lesson_store=lesson_store,
+))

@@ -1,0 +1,143 @@
+import type { LessonStep } from "./lesson";
+import type { ModelRun, ReviewRun } from "./runtime";
+
+/** Drawing states understood by the current geometry renderer. */
+export type CanvasAction =
+  | "show-base"
+  | "show-point-p"
+  | "show-triangles"
+  | "show-bisector";
+
+export interface TextContentBlock {
+  id: string;
+  type: "text";
+  text: string;
+  sourceOrder: number;
+}
+
+export interface MathContentBlock {
+  id: string;
+  type: "math";
+  latex: string;
+  display: boolean;
+  sourceOrder: number;
+}
+
+export interface ImageContentBlock {
+  id: string;
+  type: "image";
+  url: string;
+  assetId: string;
+  sourceReference: string;
+  role: "stem";
+  sourceOrder: number;
+}
+
+export interface OptionContentItem {
+  label: string;
+  contentBlocks: Array<TextContentBlock | MathContentBlock>;
+  imageUrl?: string;
+  assetId?: string;
+}
+
+export interface OptionsContentBlock {
+  id: string;
+  type: "options";
+  items: OptionContentItem[];
+  sourceOrder: number;
+}
+
+export type QuestionContentBlock =
+  | TextContentBlock
+  | MathContentBlock
+  | ImageContentBlock
+  | OptionsContentBlock;
+
+export interface QualityReport {
+  status: "ready" | "needs_review";
+  errors: string[];
+  warnings: string[];
+  validatorVersion: string;
+  validatedAt: number;
+}
+
+export interface InteractionPoint {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+}
+
+export interface QuestionInteraction {
+  type: "none" | "draw-line";
+  instruction: string;
+  points: InteractionPoint[];
+  requiredConnections: string[][];
+}
+
+export type QuestionType =
+  | "choice"
+  | "multi-select"
+  | "true-false"
+  | "short-answer"
+  | "fill-blank"
+  | "numeric"
+  | "draw-line";
+
+export interface BlankSpec {
+  id: string;
+  label: string;
+  answerType: "text" | "numeric" | "expression";
+  correctAnswers?: string[];
+  tolerance?: number;
+  unit?: string;
+}
+
+export interface AnswerSpec {
+  answerType: "numeric" | "expression";
+  expected: string;
+  accepted?: string[];
+  tolerance?: number;
+  unit?: string;
+}
+
+/** Stable question contract shared by textbook lessons and mistake tutoring. */
+export interface Question {
+  id: string;
+  questionType?: QuestionType;
+  selectionMode?: "single" | "multiple";
+  chapter: string;
+  knowledgePoint: string;
+  questionNumber?: string;
+  prompt: string;
+  correctAnswer?: string;
+  correctAnswers?: string[];
+  blanks?: BlankSpec[];
+  answerSpec?: AnswerSpec;
+  interaction?: QuestionInteraction;
+  givens: string[];
+  options?: string[];
+  imageUrls?: string[];
+  optionImageUrls?: string[];
+  contentBlocks?: QuestionContentBlock[];
+  publicationStatus?: "ready" | "needs_review";
+  sourceEvidence?: {
+    questionNumber: string;
+    sourceHash: string;
+    imageReferences: string[];
+  };
+  sourceArtifactUrl?: string;
+  promptArtifactUrl?: string;
+  sourceBatchId?: string;
+  sourcePages?: { start: number; end: number };
+  visualContext?: Array<{ description: string; facts: string[]; conflicts: string[] }>;
+}
+
+export interface QuestionPayload {
+  question: Question;
+  lessonSteps: LessonStep[];
+  architecture: Record<string, string>;
+  modelRun: ModelRun;
+  review?: ReviewRun;
+  quality?: QualityReport;
+}

@@ -92,8 +92,8 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
 - 当前存储层首次启动会执行 `create_all()`；正式多版本发布前必须引入 Alembic。
-- 升级已有 PostgreSQL 时，可依次执行 `backend/migrations/001_programmable_learning.sql` 和
-  `backend/migrations/002_mistake_capture.sql`；执行前先备份数据库。
+- 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
+  `002_mistake_capture.sql` 和 `003_stateful_tutoring.sql`；执行前先备份数据库。
 
 ## 启动前检查
 
@@ -362,7 +362,8 @@ sudo systemctl restart dotty-tutor-api
 sudo systemctl reload nginx
 ```
 
-当前错题录入表可以使用 `backend/migrations/002_mistake_capture.sql` 幂等创建。引入 Alembic 后，
+错题录入与多轮辅导表可以使用 `backend/migrations/002_mistake_capture.sql` 和
+`backend/migrations/003_stateful_tutoring.sql` 幂等创建。引入 Alembic 后，
 应在 API 重启前运行 `alembic upgrade head`，并为失败迁移准备回滚方案。
 
 ## GitHub CI

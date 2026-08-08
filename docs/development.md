@@ -109,6 +109,7 @@ npm run dev
 | <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
 | <http://localhost:5174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
 | `http://localhost:5174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
+| `http://localhost:5174/mistakes/{id}/tutor` | 恢复该错题的有状态多轮陪练 |
 
 入口使用 React Router；Vite 和 `docker/nginx.conf` 均已配置 SPA 回退，因此可直接打开子路径。
 
@@ -120,8 +121,19 @@ npm run dev
 - 修改 OCR 回退：`backend/textbook_ocr.py`；MinerU 子进程细节在 `ocr_runtime.py`。
 - 修改模型题目结构：`lesson_generation.py`、`question_contracts.py` 和 `question_pipeline.py`。
 - 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
+- 修改多轮状态：`backend/stateful_tutor.py`、`tutoring_routes.py`、`tutoring_store.py` 和
+  `frontend/src/apps/mistake/useMistakeTutor.ts`。
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
+
+阶段三数据库表可显式创建：
+
+```bash
+psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
+```
+
+开发环境仍会通过 SQLAlchemy `create_all()` 幂等创建缺失表；显式 SQL 便于学习和部署审查，不能替代
+生产环境中的正式迁移版本管理。
 
 ## 常用环境变量
 
