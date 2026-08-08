@@ -34,9 +34,13 @@ dotty-tutor/
 │   ├── mistake_*.py            # 错题契约、路由、识别适配和存储
 │   ├── tutoring_*.py           # 多轮线程契约、路由和消息存储
 │   ├── stateful_tutor.py       # 受约束状态机和有限上下文
-│   ├── persistence/            # 数据库 URL、兼容处理和关系表声明
+│   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
+│   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
+│   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
+│   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
+│   │   └── schema.py           # SQLAlchemy 关系表声明
 │   ├── *_runtime.py            # 模型、OCR、审校等外部能力适配器
-│   ├── storage.py              # 教材与学习记录的 PostgreSQL 存储
+│   ├── storage.py              # 兼容导出门面；不再承载 SQL 实现
 │   └── migrations/             # 可审查的 SQL 迁移
 ├── frontend/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
@@ -92,7 +96,8 @@ textbook_routes.py（HTTP、上传状态）
   → textbook_ocr.py（手工文本 → MinerU → pypdf）
   → question_source.py（按题号切分 Markdown）
   → question_processing.py（生成、审校、确定性修复和质量门禁）
-  → storage.py（题目、课程和上传任务）
+  → persistence/textbook_store.py（题目和上传任务）
+  → persistence/learning_store.py（生成后的课程文档）
 ```
 
 `question_processing.py` 已经与 FastAPI 解耦，未来 Worker 可以直接复用。`textbook_routes.py` 目前仍
@@ -231,8 +236,8 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 ## 已知架构债务
 
 - PDF 完成和批次处理仍在 HTTP 请求中同步执行；题目处理已独立，任务调度仍应迁移 Worker。
-- `storage.py` 仍以兼容门面提供教材、课程和学习记录 CRUD；数据库配置与表结构已拆出，后续按真实
-  变更频率继续迁移领域 Store，避免一次性抽象过度。
+- `storage.py` 仅为旧调用方提供兼容门面；新代码应直接依赖 `TextbookStore` 或 `LearningStore`，并继续
+  保持错题、陪练仓储各自独立。
 - `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。
 - 模型/OCR 的运行时选择是进程级全局状态，不适合多用户公网服务。
 - 文件资源仍保存在本地目录，横向扩容前需要对象存储。
