@@ -11,6 +11,9 @@ const INITIAL_ACTION: CanvasAction = "show-base";
 const QUESTION_LIMIT = 5;
 
 export function TextbookApp() {
+  // This route component is the textbook product's orchestration boundary. It
+  // owns question/session state; child components remain controlled renderers
+  // and never call the backend directly.
   const navigate = useNavigate();
   const onExit = () => navigate("/");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
@@ -33,6 +36,8 @@ export function TextbookApp() {
   const [masteryScore, setMasteryScore] = useState<number | null>(null);
 
   const resetLearningState = () => {
+    // Question-scoped state must move together. Resetting only the visible text
+    // would leak an old structured answer or audio step into the next question.
     stopSpeech();
     setCanvasAction(INITIAL_ACTION);
     setStudentInput("");
@@ -105,6 +110,8 @@ export function TextbookApp() {
       setCanvasAction(response.canvasAction);
       speak(response.reply.replace(/\n/g, " "));
       if (learningSessionId && response.guideContext.assessment) {
+        // Mastery telemetry is intentionally fire-and-forget: recording failure
+        // must not hide an otherwise valid tutor response from the student.
         void recordExerciseAttempt(learningSessionId, {
           questionId: payload.question.id,
           knowledgePoint: payload.question.knowledgePoint,
@@ -146,6 +153,8 @@ export function TextbookApp() {
       return;
     }
     if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= QUESTION_LIMIT) return;
+    // Later five-page ranges are generated lazily. The demo stays responsive
+    // after the first batch and only spends OCR/model time when the learner asks.
     const nextBatch = textbookImport.batches?.find((batch) => batch.status === "queued");
     if (!nextBatch) return;
     setLoadingQuestion(true);

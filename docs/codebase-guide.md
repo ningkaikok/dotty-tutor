@@ -63,6 +63,9 @@ dotty-tutor/
 `api.ts` 和 `types.ts` 只负责统一导出。初学者可以继续从一个门面导入；需要理解某个业务域时，再进入
 `api/mistakes.ts`、`api/tutoring.ts` 或对应的 `types/` 文件，调用方不必同步迁移。
 
+如果希望按完整用户路径学习前端状态归属、可恢复上传、题型复用和 TTS 竞态处理，参见
+[前端架构学习指南](frontend-learning-guide.md)。
+
 ## 后端依赖方向
 
 ```mermaid

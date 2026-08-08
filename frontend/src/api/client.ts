@@ -1,4 +1,9 @@
-/** Parse the shared JSON error envelope used by every frontend API module. */
+/**
+ * Parse the shared JSON error envelope used by every frontend API module.
+ *
+ * Keeping response normalization here prevents individual product modules from
+ * disagreeing about FastAPI's `detail` field or silently accepting empty JSON.
+ */
 export async function parse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null) as (T & { detail?: string }) | null;
   if (!response.ok) {

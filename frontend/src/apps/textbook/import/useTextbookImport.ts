@@ -42,6 +42,9 @@ interface UseTextbookImportOptions {
  * does not risk breaking resumable uploads.
  */
 export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOptions) {
+  // Refs hold mutable upload control data that should survive renders without
+  // causing a render for every uploaded chunk. User-visible snapshots still use
+  // state below, so React remains the source of truth for presentation.
   const pdfTaskRef = useRef<{ task: PdfUploadTask; uploaded: Set<number> } | null>(null);
   const pauseRequested = useRef(false);
   const [file, setFile] = useState<File | null>(null);
@@ -105,6 +108,8 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     pauseRequested.current = false;
     setPhase("uploading");
     const { task, uploaded } = current;
+    // The Set comes from the server's resumable status. Skipping known indexes
+    // lets the same function handle first upload, pause/resume and page reload.
     for (let index = 0; index < task.totalChunks; index += 1) {
       if (pauseRequested.current) return;
       if (uploaded.has(index)) continue;
@@ -127,7 +132,9 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     });
 
     // The completion request does the work synchronously today. Polling is a
-    // read-only companion request that keeps the progress card responsive.
+    // read-only companion request that keeps the progress card responsive. It
+    // can be removed when completion becomes a queued Worker task; the rest of
+    // this state machine and the UI contract do not need to change.
     let keepPolling = true;
     const polling = (async () => {
       while (keepPolling) {

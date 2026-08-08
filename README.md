@@ -128,6 +128,7 @@ npm run dev
 - [系统架构与调用流程](docs/architecture.md)
 - [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
 - [后端架构学习指南](docs/backend-learning-guide.md)
+- [前端架构学习指南](docs/frontend-learning-guide.md)
 - [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
