@@ -5,6 +5,10 @@ Semantic Versioning。
 
 ## [Unreleased]
 
+后续用户可见改动将在这里累计，发布版本时再固化为具体版本条目。
+
+## [0.4.0] - 2026-08-08
+
 ### Added
 
 - 错题完成单题陪练后，可按错误原因生成基础、同类和迁移三个层级的变式验证题，并保存每次确定性判题结果。
@@ -97,7 +101,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.1.0
