@@ -5,6 +5,10 @@ Semantic Versioning。
 
 ## [Unreleased]
 
+后续用户可见改动将在这里累计，发布版本时再固化为具体版本条目。
+
+## [0.5.0] - 2026-08-09
+
 ### Added
 
 - 新增独立学生学习空间，统一进入互动试卷、个人错题本和掌握复习，学生端不再展示教材上传与模型配置。
@@ -107,7 +111,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.2.0
