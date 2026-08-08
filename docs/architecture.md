@@ -120,8 +120,9 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张通用 `TutorStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
-辅导线程。完成陪练后，独立的 `VariationStore` 保存验证题和一次性作答，避免自由对话被误算为掌握证据；
-连续正确策略和复习任务仍由后续阶段四提交完成。
+辅导线程。完成陪练后，独立的 `VariationStore` 保存验证题和一次性作答，避免自由对话被误算为掌握证据。
+连续正确次数由 `VariationStore` 从已作答记录反向计算；达到两次时 `MistakeStore` 只负责执行明确的
+`unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 
 ## 有状态单题陪练
 

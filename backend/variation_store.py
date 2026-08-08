@@ -129,6 +129,24 @@ class VariationStore:
             ).all()
         return len(rows)
 
+    def mastery_summary(self, mistake_id: str, *, required: int = 2) -> dict[str, Any]:
+        """Derive the current streak from evidence instead of a mutable counter."""
+        attempts = [
+            item for item in self.list_for_mistake(mistake_id)
+            if item["status"] == "answered"
+        ]
+        streak = 0
+        for attempt in reversed(attempts):
+            if attempt["assessment"] != "correct":
+                break
+            streak += 1
+        return {
+            "correctStreak": streak,
+            "requiredCorrect": required,
+            "mastered": streak >= required,
+            "answeredCount": len(attempts),
+        }
+
     def answer(
         self,
         variation_id: str,

@@ -187,6 +187,32 @@ class MistakeStore:
             )
         return self.get(mistake_id)
 
+    def mark_mastered(self, mistake_id: str) -> dict[str, Any] | None:
+        """Promote a confirmed mistake after objective validation succeeds.
+
+        The store does not decide *when* a learner has mastered a question;
+        that policy is derived from immutable variation attempts in the
+        practice route. Keeping the transition here makes the write explicit.
+        """
+        self._ensure_initialized()
+        current = self.get(mistake_id)
+        if not current:
+            return None
+        if current["status"] == "mastered":
+            return current
+        if current["status"] != "unmastered":
+            return None
+        with self.engine.begin() as connection:
+            connection.execute(
+                mistake_items.update()
+                .where(
+                    mistake_items.c.mistake_id == mistake_id,
+                    mistake_items.c.status == "unmastered",
+                )
+                .values(status="mastered", updated_at=time.time())
+            )
+        return self.get(mistake_id)
+
     def source_path(self, mistake_id: str) -> Path | None:
         item = self.get(mistake_id)
         if not item:

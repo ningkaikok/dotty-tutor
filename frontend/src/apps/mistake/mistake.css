@@ -17,6 +17,10 @@
 .mistake-summary strong, .mistake-summary span { display: block; }
 .mistake-summary strong { color: #183f31; font-size: 28px; }
 .mistake-summary span { margin-top: 4px; color: #738078; font-size: 12px; }
+.mistake-book-tabs { display: flex; gap: 8px; margin: 4px 0 18px; padding: 5px; border-radius: 14px; background: #e9ece8; }
+.mistake-book-tabs button { flex: 1; padding: 10px 14px; border: 0; border-radius: 10px; color: #66736b; background: transparent; font-weight: 750; }
+.mistake-book-tabs button.active { color: #174d3b; background: #fff; box-shadow: 0 3px 12px rgba(40,55,47,.08); }
+.mistake-book-tabs span { margin-left: 5px; color: #869089; font-size: 11px; }
 .mistake-empty { display: grid; place-items: center; min-height: 280px; padding: 34px; border: 1px dashed #bfc7c1; border-radius: 22px; color: #657169; background: rgba(251, 250, 246, .72); text-align: center; }
 .mistake-empty h2 { margin: 14px 0 8px; color: #263b31; }
 .mistake-empty p { max-width: 460px; line-height: 1.65; }
@@ -131,6 +135,8 @@
 .variation-feedback.correct { color: #12694f; background: #dff4e9; }
 .variation-feedback.incorrect { color: #9a4c30; background: #fae9df; }
 .variation-feedback p { margin: 5px 0 0; }
+.mastery-progress { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-top: 12px; padding: 12px 14px; border: 1px solid #bcdccc; border-radius: 12px; color: #1c624d; background: #eaf7f1; }
+.mastery-progress p { flex-basis: 100%; margin: 2px 0 0; color: #4f6d61; font-size: 12px; }
 .variation-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 
 @media (max-width: 820px) {

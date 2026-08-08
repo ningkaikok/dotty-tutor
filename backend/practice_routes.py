@@ -96,6 +96,17 @@ def build_practice_router(
         )
         if not saved:
             raise HTTPException(status_code=409, detail="这道变式题已经提交过")
+        mastery = variation_store.mastery_summary(item["mistakeId"])
+        if mastery["mastered"]:
+            promoted = mistake_store.mark_mastered(item["mistakeId"])
+            if not promoted:
+                raise HTTPException(status_code=409, detail="错题状态已变化，请刷新后重试")
+            log_event(
+                "mistake.mastered",
+                mistake_id=item["mistakeId"],
+                answered_count=mastery["answeredCount"],
+            )
+        saved["mastery"] = mastery
         log_event(
             "variation.answered",
             mistake_id=item["mistakeId"],

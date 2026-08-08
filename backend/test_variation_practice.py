@@ -157,6 +157,29 @@ class VariationPracticeTests(unittest.TestCase):
         listed = self.client.get("/api/mistakes/mistake-1/variations").json()
         self.assertEqual(len(listed["items"]), 2)
 
+    def test_two_consecutive_correct_answers_promote_mistake(self) -> None:
+        self._advance_thread_to_verify()
+        first = self.client.post("/api/mistakes/mistake-1/variations").json()
+        first_result = self.client.post(f"/api/variations/{first['variationId']}/answer", json={
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        }).json()
+        self.assertEqual(first_result["mastery"]["correctStreak"], 1)
+        self.assertFalse(first_result["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "unmastered")
+
+        second = self.client.post("/api/mistakes/mistake-1/variations").json()
+        second_result = self.client.post(f"/api/variations/{second['variationId']}/answer", json={
+            "content": "我仍然选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        }).json()
+
+        self.assertEqual(second_result["mastery"]["correctStreak"], 2)
+        self.assertTrue(second_result["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
+        blocked = self.client.post("/api/mistakes/mistake-1/variations")
+        self.assertEqual(blocked.status_code, 409)
+
 
 if __name__ == "__main__":
     unittest.main()

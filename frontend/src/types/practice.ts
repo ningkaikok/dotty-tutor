@@ -30,4 +30,10 @@ export interface VariationExercise {
   feedback: string;
   createdAt: number;
   answeredAt?: number;
+  mastery?: {
+    correctStreak: number;
+    requiredCorrect: number;
+    mastered: boolean;
+    answeredCount: number;
+  };
 }

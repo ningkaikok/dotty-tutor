@@ -60,17 +60,24 @@ export function VariationPractice({ mistakeId }: VariationPracticeProps) {
           <p>{state.active.feedback}</p>
         </div>
       )}
+      {answered && state.active.mastery && (
+        <div className="mastery-progress" role="status">
+          <strong>{state.active.mastery.mastered ? "已通过掌握验证" : "继续验证掌握"}</strong>
+          <span>连续答对 {state.active.mastery.correctStreak} / {state.active.mastery.requiredCorrect}</span>
+          {state.active.mastery.mastered && <p>这道题已从错题本进入进阶本，后续会按计划安排复习。</p>}
+        </div>
+      )}
       {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
       <div className="variation-actions">
-        {answered ? (
+        {answered && !state.active.mastery?.mastered ? (
           <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
             {state.submitting ? "正在生成…" : "生成下一道"}
           </button>
-        ) : (
+        ) : !answered ? (
           <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.submit()}>
             {state.submitting ? "正在判定…" : "提交验证答案"}
           </button>
-        )}
+        ) : null}
       </div>
     </section>
   );
