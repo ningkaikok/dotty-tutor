@@ -149,6 +149,18 @@ short-answer           → 页面提供自由文本区
 
 API 层不显示 Toast，也不修改页面状态。Hook 或 Page 决定错误应该显示在哪里，以及是否允许重试。
 
+### 8.1 阶段四页面怎样保持组件简单
+
+错题闭环仍遵守 Page、Hook、API 和展示组件四层：
+
+- `MistakeProgress` 只布局统计、任务列表和知识点进度。
+- `useReviewProgress` 负责并行读取、任务状态更新和统一错误状态。
+- `ReviewTaskCard` 只管理当前题的临时输入并渲染可复用 `QuestionAnswer`。
+- `structuredAnswer.ts` 把选择、填空和数值控件统一转换为后端契约。
+
+因此复习题没有复制教材页或变式题的作答判断逻辑。未来增加新的结构化题型时，应先扩展共享答案转换，
+再让各业务页面复用，而不是在每个 Card 中分别拼请求 JSON。
+
 ## 9. 可编程课程和 Renderer Registry
 
 `LessonBlock` 是 TypeScript 判别联合。每种内容块都有固定的 `type` 和 `payload`：

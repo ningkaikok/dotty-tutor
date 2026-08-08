@@ -5,24 +5,29 @@ import type { MistakeItem } from "../../types";
 import { MistakeCapture } from "./components/MistakeCapture";
 import { MistakeConfirm } from "./components/MistakeConfirm";
 import { MistakeLibrary } from "./components/MistakeLibrary";
+import { MistakeProgress } from "./components/MistakeProgress";
 import { MistakeTutor } from "./components/MistakeTutor";
 import "./mistake.css";
 
 type MistakeScreen =
   | { name: "library" }
   | { name: "capture" }
+  | { name: "progress" }
   | { name: "confirm"; mistakeId: string }
   | { name: "tutor"; mistakeId: string };
 
 export function MistakeCoachApp() {
   const navigate = useNavigate();
   const captureMatch = useMatch("/mistakes/capture");
+  const progressMatch = useMatch("/mistakes/progress");
   const confirmMatch = useMatch("/mistakes/:mistakeId/confirm");
   const tutorMatch = useMatch("/mistakes/:mistakeId/tutor");
   const screen: MistakeScreen = tutorMatch?.params.mistakeId
     ? { name: "tutor", mistakeId: tutorMatch.params.mistakeId }
     : confirmMatch?.params.mistakeId
     ? { name: "confirm", mistakeId: confirmMatch.params.mistakeId }
+    : progressMatch
+      ? { name: "progress" }
     : captureMatch
       ? { name: "capture" }
       : { name: "library" };
@@ -72,7 +77,7 @@ export function MistakeCoachApp() {
           {screen.name === "library" ? "← 全部功能" : "← 我的错题本"}
         </button>
         <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
-        <span className="phase-badge">{screen.name === "tutor" ? "PHASE 03" : "PHASE 02"}</span>
+        <span className="phase-badge">{screen.name === "tutor" || screen.name === "progress" ? "PHASE 04" : "PHASE 02"}</span>
       </header>
 
       {screen.name === "library" && (
@@ -81,6 +86,7 @@ export function MistakeCoachApp() {
           loading={loading}
           error={error}
           onCapture={() => open("/mistakes/capture")}
+          onProgress={() => open("/mistakes/progress")}
           onOpen={(item) => {
             setSelected(item);
             open(`/mistakes/${item.mistakeId}/confirm`);
@@ -96,6 +102,8 @@ export function MistakeCoachApp() {
           }}
         />
       )}
+
+      {screen.name === "progress" && <MistakeProgress />}
 
       {screen.name === "capture" && (
         <MistakeCapture

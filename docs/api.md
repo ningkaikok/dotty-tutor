@@ -176,8 +176,19 @@ concept | reading | calculation | missing_step | unknown | careless
 判定为 `correct` 后，服务把错题状态从 `unmastered` 更新为 `mastered`；任意非正确结果都会自然中断
 连续记录。次数由已保存的验证题推导，不接受客户端传入。
 
-本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
+## 间隔复习与学习进度
 
-`/api/review` 仍是后续规划，用于进阶本和复习任务；变式验证已使用上述独立 API。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 1/3/7 天复习任务和服务器时间 |
+| `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
+| `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案并保存确定性判题结果 |
+| `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率和知识点聚合 |
+
+错题首次变为 `mastered` 时，以第二次正确作答时间为基准，幂等创建三个任务。相同错题和间隔有唯一
+约束，网络重试不会重复排期。任务状态依次为 `scheduled → ready → completed`；已完成任务不能重复
+提交。当前 MVP 允许提前开始未来任务，方便个人演示和主动复习。
+
+本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
 具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。

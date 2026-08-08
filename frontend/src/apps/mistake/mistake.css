@@ -11,6 +11,8 @@
 .mistake-primary-action { padding: 14px 20px; border: 0; border-radius: 13px; color: #fff; background: #183f31; font-weight: 750; box-shadow: 0 10px 24px rgba(24, 63, 49, .16); }
 .mistake-primary-action:hover:not(:disabled) { background: #245b46; }
 .mistake-primary-action:disabled { color: #9ba49f; background: #dfe3df; box-shadow: none; }
+.mistake-hero-actions { display: flex; align-items: center; gap: 9px; }
+.mistake-hero-actions > button:first-child { padding: 13px 16px; border: 1px solid #b9c9c0; border-radius: 13px; color: #235c47; background: #f4f8f5; font-weight: 700; }
 .mistake-primary-action.compact { flex: 0 0 auto; width: auto; }
 .mistake-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
 .mistake-summary div { padding: 18px 20px; border: 1px solid rgba(34, 57, 47, .11); border-radius: 16px; background: rgba(251, 250, 246, .92); }
@@ -138,9 +140,35 @@
 .mastery-progress { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-top: 12px; padding: 12px 14px; border: 1px solid #bcdccc; border-radius: 12px; color: #1c624d; background: #eaf7f1; }
 .mastery-progress p { flex-basis: 100%; margin: 2px 0 0; color: #4f6d61; font-size: 12px; }
 .variation-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.progress-page { padding-bottom: 40px; }
+.progress-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }
+.progress-summary div { padding: 18px; border: 1px solid #dbe3dd; border-radius: 16px; background: #fff; }
+.progress-summary strong, .progress-summary span { display: block; }
+.progress-summary strong { color: #174b39; font-size: 26px; }
+.progress-summary span { margin-top: 4px; color: #728078; font-size: 11px; }
+.progress-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 18px; align-items: start; }
+.progress-grid h2 { color: #203c30; font-size: 18px; }
+.review-task-card, .knowledge-progress-card { margin-bottom: 11px; padding: 17px; border: 1px solid #dce4de; border-radius: 16px; background: rgba(255,255,252,.94); }
+.review-task-card > header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
+.review-task-card > header strong, .review-task-card > header span { display: block; }
+.review-task-card > header div > span { margin-top: 3px; color: #7d887f; font-size: 11px; }
+.review-due, .review-upcoming { padding: 5px 8px; border-radius: 999px; font-size: 10px; }
+.review-due { color: #a25428; background: #f8e7d7; }
+.review-upcoming { color: #36705d; background: #e4f2eb; }
+.review-question { margin-bottom: 12px; padding: 14px; border-radius: 12px; background: #f6f8f5; }
+.review-result { padding: 11px 12px; border-radius: 11px; }
+.review-result.correct { color: #17694f; background: #e1f4ea; }
+.review-result.incorrect { color: #994f32; background: #fae9e0; }
+.review-result p { margin: 5px 0 0; }
+.knowledge-progress-card { position: sticky; top: 18px; }
+.knowledge-progress-card > div { margin-top: 16px; }
+.knowledge-progress-card span { display: flex; justify-content: space-between; gap: 10px; }
+.knowledge-progress-card small { color: #78847c; }
+.knowledge-progress-card progress { width: 100%; margin-top: 7px; accent-color: #1b9a72; }
+.mistake-empty.compact { min-height: 150px; }
 
 @media (max-width: 820px) {
-  .mistake-cropper, .mistake-confirm-grid, .tutor-layout { grid-template-columns: 1fr; }
+  .mistake-cropper, .mistake-confirm-grid, .tutor-layout, .progress-grid { grid-template-columns: 1fr; }
   .mistake-source-card { position: static; }
   .tutor-question-card { position: static; }
   .mistake-list-item { grid-template-columns: 100px minmax(0, 1fr); }
@@ -152,6 +180,8 @@
   .mistake-shell { width: calc(100% - 24px); margin-top: 16px; }
   .mistake-brand strong { display: none; }
   .mistake-library-hero { align-items: stretch; flex-direction: column; margin-top: 62px; }
+  .mistake-hero-actions { align-items: stretch; flex-direction: column-reverse; }
+  .progress-summary { grid-template-columns: repeat(2, 1fr); }
   .mistake-library-hero h1, .mistake-section-heading h1 { font-size: 40px; }
   .mistake-summary { gap: 7px; }
   .mistake-summary div { padding: 13px; }

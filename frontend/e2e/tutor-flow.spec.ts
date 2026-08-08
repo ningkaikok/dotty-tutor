@@ -281,6 +281,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
   let tutorStage = startVerify ? "verify" : "diagnose";
   let tutorMessages: Array<Record<string, unknown>> = [];
   let variations: Array<Record<string, unknown>> = [];
+  let reviewTasks: Array<Record<string, unknown>> = [];
   const tutorThread = () => ({
     threadId: "thread-pw-1",
     mistakeId: "mistake-pw-1",
@@ -404,8 +405,72 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
     variations = variations.map((item) => item.variationId === current.variationId ? answered : item);
     if (mastery.mastered) {
       items = items.map((item) => ({ ...item, status: "mastered", updatedAt: 7 }));
+      reviewTasks = [1, 3, 7].map((intervalDays, index) => ({
+        taskId: `review-pw-${intervalDays}`,
+        mistakeId: "mistake-pw-1",
+        learnerId: "local-demo",
+        intervalDays,
+        dueAt: index === 0 ? 900 : 1000 + intervalDays * 86400,
+        status: "scheduled",
+        modelRun: {},
+        response: {},
+        feedback: "",
+        createdAt: 8,
+      }));
     }
     await route.fulfill({ json: answered });
+  });
+  await page.route("**/api/reviews?*", async (route) => {
+    await route.fulfill({ json: { items: reviewTasks, serverTime: 1000 } });
+  });
+  await page.route("**/api/progress?*", async (route) => {
+    const completed = reviewTasks.filter((task) => task.status === "completed");
+    const mastered = items.filter((item) => item.status === "mastered").length;
+    await route.fulfill({ json: {
+      learnerId: "local-demo",
+      totalMistakes: items.length,
+      masteredCount: mastered,
+      masteryRate: items.length ? mastered / items.length : 0,
+      dueReviewCount: reviewTasks.filter((task) => task.status !== "completed" && Number(task.dueAt) <= 1000).length,
+      completedReviewCount: completed.length,
+      reviewAccuracy: completed.length ? 1 : 0,
+      knowledgePoints: items.length ? [{ knowledgePoint: "移项", total: 1, mastered }] : [],
+    } });
+  });
+  await page.route("**/api/reviews/*/start", async (route) => {
+    const taskId = /\/api\/reviews\/([^/]+)\/start/.exec(route.request().url())?.[1];
+    const current = reviewTasks.find((task) => task.taskId === taskId) ?? reviewTasks[0];
+    const started = {
+      ...current,
+      status: "ready",
+      questionPayload: payload({
+        id: "review-question-pw",
+        questionType: "choice",
+        chapter: "一元一次方程",
+        knowledgePoint: "移项",
+        prompt: "复习：解方程 $x + 4 = 9$。",
+        givens: [],
+        options: ["(A) x = 5", "(B) x = 13"],
+        correctAnswers: ["A"],
+      }),
+      startedAt: 1000,
+    };
+    reviewTasks = reviewTasks.map((task) => task.taskId === current.taskId ? started : task);
+    await route.fulfill({ json: started });
+  });
+  await page.route("**/api/reviews/*/answer", async (route) => {
+    const taskId = /\/api\/reviews\/([^/]+)\/answer/.exec(route.request().url())?.[1];
+    const current = reviewTasks.find((task) => task.taskId === taskId) ?? reviewTasks[0];
+    const completed = {
+      ...current,
+      status: "completed",
+      assessment: "correct",
+      feedback: "复习正确，请继续保持。",
+      response: route.request().postDataJSON(),
+      completedAt: 1001,
+    };
+    reviewTasks = reviewTasks.map((task) => task.taskId === current.taskId ? completed : task);
+    await route.fulfill({ json: completed });
   });
 }
 
@@ -496,6 +561,14 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: /进阶本 1/ }).click();
     await expect(page.getByText("已掌握", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();
+
+    await page.getByRole("button", { name: "查看学习进度" }).click();
+    await expect(page.getByRole("heading", { name: "掌握与复习" })).toBeVisible();
+    await expect(page.getByText("100%").first()).toBeVisible();
+    await page.getByRole("button", { name: "开始复习" }).click();
+    await page.getByRole("button", { name: /\(A\).*x = 5/ }).click();
+    await page.getByRole("button", { name: "提交复习答案" }).click();
+    await expect(page.getByText("复习正确", { exact: true })).toBeVisible();
   });
 });
 

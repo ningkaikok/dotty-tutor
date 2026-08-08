@@ -11,6 +11,7 @@ from sqlalchemy import create_engine
 
 from mistake_store import MistakeStore
 from practice_routes import build_practice_router
+from review_store import ReviewStore
 from tutoring_store import TutoringStore
 from variation_service import VariationService
 from variation_store import VariationStore
@@ -47,12 +48,14 @@ class VariationPracticeTests(unittest.TestCase):
         self.mistakes = MistakeStore(engine=self.engine, data_root=self.temporary.name)
         self.threads = TutoringStore(engine=self.engine)
         self.variations = VariationStore(engine=self.engine)
+        self.reviews = ReviewStore(engine=self.engine)
         app = FastAPI()
         app.include_router(build_practice_router(
             mistake_store=self.mistakes,
             tutoring_store=self.threads,
             variation_store=self.variations,
             variation_service=VariationService(generator=fake_generator),
+            review_store=self.reviews,
         ))
         self.client = TestClient(app)
         self._create_confirmed_mistake()
@@ -177,6 +180,8 @@ class VariationPracticeTests(unittest.TestCase):
         self.assertEqual(second_result["mastery"]["correctStreak"], 2)
         self.assertTrue(second_result["mastery"]["mastered"])
         self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
+        self.assertEqual([task["intervalDays"] for task in second_result["reviewTasks"]], [1, 3, 7])
+        self.assertEqual(len(self.reviews.list_for_mistake("mistake-1")), 3)
         blocked = self.client.post("/api/mistakes/mistake-1/variations")
         self.assertEqual(blocked.status_code, 409)
 

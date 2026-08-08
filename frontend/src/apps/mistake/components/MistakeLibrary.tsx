@@ -10,6 +10,7 @@ interface MistakeLibraryProps {
   onOpen: (item: MistakeItem) => void;
   onTutor: (item: MistakeItem) => void;
   onArchive: (item: MistakeItem) => void;
+  onProgress: () => void;
 }
 
 const ERROR_LABELS: Record<string, string> = {
@@ -21,7 +22,7 @@ const ERROR_LABELS: Record<string, string> = {
   careless: "粗心大意",
 };
 
-export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
+export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive, onProgress }: MistakeLibraryProps) {
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
@@ -38,7 +39,10 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
           <h1>我的错题本</h1>
           <p>先确认 AI 的识别与归类，再进入后续陪练。数据不确认，就不让错误继续传播。</p>
         </div>
-        <button className="mistake-primary-action compact" onClick={onCapture}>录入一道错题</button>
+        <div className="mistake-hero-actions">
+          <button onClick={onProgress}>查看学习进度</button>
+          <button className="mistake-primary-action compact" onClick={onCapture}>录入一道错题</button>
+        </div>
       </section>
 
       <section className="mistake-summary" aria-label="错题统计">
