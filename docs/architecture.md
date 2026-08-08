@@ -75,7 +75,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `backend/app.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
-| 教材 HTTP 工作流 | `backend/textbook_routes.py` | 单页导入、PDF 分块/批次状态机和 Help 接口 |
+| 教材 HTTP 边界 | `backend/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
+| 教材处理服务 | `backend/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
 | 批次题目处理 | `backend/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
 | 教材库路由 | `backend/library_routes.py` | 教材列表、恢复和软删除 |
 | 教材 OCR 编排 | `backend/textbook_ocr.py` | 手工原文、MinerU 与 pypdf 的选择、回退和审计记录 |

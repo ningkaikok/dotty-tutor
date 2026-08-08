@@ -23,7 +23,8 @@ dotty-tutor/
 ├── backend/                    # FastAPI、领域编排、适配器和测试
 │   ├── app.py                  # ASGI 组合根；只装配，不写业务逻辑
 │   ├── application.py          # 中间件、安全头、CORS、请求日志
-│   ├── textbook_routes.py      # 教材 HTTP 工作流和 PDF 状态机
+│   ├── textbook_routes.py      # 教材 HTTP、分块接收和文件响应
+│   ├── textbook_processing.py  # PDF 合并、OCR、生成和批次编排服务
 │   ├── question_processing.py  # 可被 HTTP/Worker 复用的批次题目处理
 │   ├── library_routes.py       # 教材库读取与软删除
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
@@ -93,6 +94,7 @@ flowchart LR
 
 ```text
 textbook_routes.py（HTTP、上传状态）
+  → textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr.py（手工文本 → MinerU → pypdf）
   → question_source.py（按题号切分 Markdown）
   → question_processing.py（生成、审校、确定性修复和质量门禁）
@@ -100,9 +102,9 @@ textbook_routes.py（HTTP、上传状态）
   → persistence/learning_store.py（生成后的课程文档）
 ```
 
-`question_processing.py` 已经与 FastAPI 解耦，未来 Worker 可以直接复用。`textbook_routes.py` 目前仍
-包含 PDF 合并和按批次处理同步状态机；迁移后台任务时，应以“完成上传任务”和“处理一个批次”为
-两个任务函数继续拆出，而不是按每个 HTTP 端点创建一个类。
+`TextbookProcessingService` 和 `question_processing.py` 已把长流程与 APIRouter 分离。当前 Route 仍同步
+调用服务；迁移后台任务时，Worker 可分别调用 `complete_upload()` 和 `process_batch()`，不需要复制业务
+逻辑，也不应按每个 HTTP 端点创建一个类。
 
 ### 错题链路
 
@@ -235,7 +237,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ## 已知架构债务
 
-- PDF 完成和批次处理仍在 HTTP 请求中同步执行；题目处理已独立，任务调度仍应迁移 Worker。
+- PDF 完成和批次处理已有独立应用服务，但仍由 HTTP 请求同步调用；只有真实耗时影响部署时才引入 Worker。
 - `storage.py` 仅为旧调用方提供兼容门面；新代码应直接依赖 `TextbookStore` 或 `LearningStore`，并继续
   保持错题、陪练仓储各自独立。
 - `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。
