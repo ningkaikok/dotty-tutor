@@ -90,4 +90,5 @@ sequenceDiagram
 - `animation` 只负责播放已有资源，尚未引入 Manim 渲染 worker、对象存储和任务队列。
 - 掌握度尚未包含遗忘曲线、题目难度、猜测概率和跨题知识图谱。
 - `mistake_items` 保存错题录入和确认结果，`tutor_threads` 与 `tutor_messages` 独立保存多轮状态、
-  摘要和必要消息；变式验证与复习任务模型仍属于下一阶段。
+  摘要和必要消息；变式验证与复习任务使用独立的 `variation_exercises`、`review_tasks` 表和 API，
+  不改变课程学习会话的掌握度模型。
