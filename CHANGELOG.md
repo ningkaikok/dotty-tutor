@@ -9,6 +9,7 @@ Semantic Versioning。
 - product: 增加教材互动学习与 AI 错题陪练的独立入口，并提供错题闭环的阶段规划
 - practice: Show active model next to the regenerate button (#42)
 - library: 教材库删除、去重与返回导航 (#39)
+- product: Add dual learning entrances (#49)
 ### Changed
 - architecture: 使用 React Router 统一页面导航，并将教材导入状态机、OCR、题源解析和课程生成拆为可独立维护的模块
 - web: 按产品入口加载教材学习和错题陪练资源，减少首次打开时的脚本体积
