@@ -2,8 +2,8 @@
 
 开发环境默认地址为 <http://127.0.0.1:8010>，前端通过同源 `/api` 路径调用。
 
-`/`、`/textbooks` 和 `/mistakes` 是前端页面路径，不是 API。错题陪练第一阶段只建立独立前端入口，
-不会引入未实现的后端契约。
+`/`、`/textbooks` 和 `/mistakes` 是前端页面路径，不是 API。错题拍照确认使用独立的
+`/api/mistakes` 命名空间。
 
 FastAPI 交互文档启动后可从以下地址查看：
 
@@ -101,13 +101,31 @@ curl -X POST http://127.0.0.1:8010/api/help \
 - 当前 API 尚未实现登录、权限、租户隔离和限流，只应运行在受控环境。
 - OCR Markdown 和模型提示词属于调试资源，生产环境应限制为管理员访问。
 
-## 规划中的错题 API
+## 错题录入与确认
 
-以下命名空间仅用于约束后续设计，**当前版本尚未实现**：
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
+| `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
+| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、归类和运行信息 |
+| `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节、知识点和错误原因 |
+| `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
+| `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
+| `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
 
-- `/api/mistakes`：错题录入、确认、归类和错题本。
+导入使用 `multipart/form-data`：`file` 必填；`sourceText`、`originalAnswer` 和 `learnerId` 可选。
+浏览器会先完成裁切，再上传裁切后的文件。确认请求中的 `errorReason` 必须是：
+
+```text
+concept | reading | calculation | missing_step | unknown | careless
+```
+
+`pending_confirmation` 表示 AI 结果尚未由学生确认；确认后进入 `unmastered`。当前匿名演示仍使用
+`local-demo`，不能据此实现多用户隔离。
+
+以下命名空间仍是后续规划，当前尚未实现：
+
 - `/api/tutor/threads`：一题一线程的消息、状态和智能体动作。
 - `/api/review`：变式验证、进阶本和复习任务。
 
-具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。在对应阶段完成前，前端不得
-假装调用这些接口或展示虚构的学习数据。
+具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。

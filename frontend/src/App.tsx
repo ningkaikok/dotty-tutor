@@ -1,41 +1,45 @@
-import { useEffect, useState } from "react";
-import { ProductHome } from "./apps/home/ProductHome";
-import { MistakeCoachApp } from "./apps/mistake/MistakeCoachApp";
-import { TextbookApp } from "./apps/textbook/TextbookApp";
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./styles.css";
 
-type AppRoute = "/" | "/textbooks" | "/mistakes";
+const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
+const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
+const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((module) => ({ default: module.TextbookApp })));
 
-function getRoute(pathname = window.location.pathname): AppRoute {
-  if (pathname === "/textbooks" || pathname.startsWith("/textbooks/")) return "/textbooks";
-  if (pathname === "/mistakes" || pathname.startsWith("/mistakes/")) return "/mistakes";
-  return "/";
+function PageTitle() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    document.title = pathname.startsWith("/textbooks")
+      ? "教材互动学习 · Dotty Tutor"
+      : pathname.startsWith("/mistakes")
+        ? "AI 错题陪练 · Dotty Tutor"
+        : "Dotty Tutor · 个人 AI 学习工具";
+  }, [pathname]);
+
+  return null;
+}
+
+function AppRoutes() {
+  return (
+    <>
+      <PageTitle />
+      <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
+        <Routes>
+          <Route index element={<ProductHome />} />
+          <Route path="textbooks/*" element={<TextbookApp />} />
+          <Route path="mistakes/*" element={<MistakeCoachApp />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </>
+  );
 }
 
 export default function App() {
-  const [route, setRoute] = useState<AppRoute>(() => getRoute());
-
-  useEffect(() => {
-    const onPopState = () => setRoute(getRoute());
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
-
-  useEffect(() => {
-    document.title = route === "/textbooks"
-      ? "教材互动学习 · Dotty Tutor"
-      : route === "/mistakes"
-        ? "AI 错题陪练 · Dotty Tutor"
-        : "Dotty Tutor · 个人 AI 学习工具";
-  }, [route]);
-
-  const navigate = (nextRoute: AppRoute) => {
-    if (window.location.pathname !== nextRoute) window.history.pushState({}, "", nextRoute);
-    setRoute(nextRoute);
-    window.scrollTo({ top: 0 });
-  };
-
-  if (route === "/textbooks") return <TextbookApp onExit={() => navigate("/")} />;
-  if (route === "/mistakes") return <MistakeCoachApp onExit={() => navigate("/")} />;
-  return <ProductHome onNavigate={navigate} />;
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  );
 }

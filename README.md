@@ -19,6 +19,9 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
 ## 功能
 
 - 根路径提供两个独立产品入口：`/textbooks` 教材互动学习与 `/mistakes` AI 错题陪练。
+- 错题陪练支持手机拍照或相册图片、识别范围裁切、OCR/结构化解析和原答案补充。
+- 学生可以修正题干、章节、知识点，并确认概念、审题、计算等六类错误原因。
+- 错题原图、题目快照、识别记录和确认状态持久化到个人错题本。
 - 大 PDF 分块上传、暂停续传、页范围批处理和历史教材恢复。
 - MinerU OCR、PDF 文字层解析与公式/题图提取。
 - Ollama、Codex CLI 和 Mock 三种题目生成路径。
@@ -39,14 +42,14 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
   └─ AI 错题陪练：拍照错题 → 确认归类 → 多轮陪练 → 变式验证 → 复习计划
 ```
 
-错题陪练当前完成第一阶段的产品入口和前端架构拆分；录题、线程与复习闭环将按
+错题陪练当前完成第二阶段的拍照录题、人工确认和错题本持久化；多轮线程与复习闭环将按
 [AI 错题陪练产品规划](docs/mistake-coach-plan.md)逐步交付。
 
 ## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | React 19、TypeScript、Vite、KaTeX |
+| 前端 | React 19、React Router、TypeScript、Vite、KaTeX |
 | API | FastAPI、Pydantic、Uvicorn |
 | 数据 | PostgreSQL、SQLAlchemy、JSONB、本地文件资源 |
 | OCR | MinerU、pypdf |
@@ -122,6 +125,7 @@ npm run dev
 ## 文档
 
 - [系统架构与调用流程](docs/architecture.md)
+- [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
 - [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
@@ -148,8 +152,8 @@ Compose 构建和健康检查。
 ## 项目状态
 
 当前版本已完成教材导入、结构化出题、审校、互动练习、分层提示、TTS 和 PostgreSQL
-持久化闭环，并完成教材学习与错题陪练的双入口拆分。错题拍照、错误原因、多轮线程、连续答对
-验证和复习队列尚在后续阶段。公网生产部署仍需要用户鉴权、对象存储、异步任务队列、Alembic、
+持久化闭环，并完成教材学习与错题陪练的双入口拆分、错题拍照裁切、错误原因确认和错题本存储。
+多轮线程、连续答对验证和复习队列尚在后续阶段。公网生产部署仍需要用户鉴权、对象存储、异步任务队列、Alembic、
 限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。
 
 ## 参与开发

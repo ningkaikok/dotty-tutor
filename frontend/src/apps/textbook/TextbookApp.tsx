@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { createLearningSession, processPdfBatch, recordExerciseAttempt, requestHelp } from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
@@ -9,11 +10,9 @@ import type { CanvasAction, QuestionPayload, TextbookImportResult, TutorReply } 
 const INITIAL_ACTION: CanvasAction = "show-base";
 const QUESTION_LIMIT = 5;
 
-interface TextbookAppProps {
-  onExit: () => void;
-}
-
-export function TextbookApp({ onExit }: TextbookAppProps) {
+export function TextbookApp() {
+  const navigate = useNavigate();
+  const onExit = () => navigate("/");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
   const [questionBank, setQuestionBank] = useState<QuestionPayload[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);

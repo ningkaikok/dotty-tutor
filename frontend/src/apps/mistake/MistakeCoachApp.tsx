@@ -1,49 +1,112 @@
-interface MistakeCoachAppProps {
-  onExit: () => void;
-}
+import { useEffect, useState } from "react";
+import { useMatch, useNavigate } from "react-router";
+import { archiveMistake, loadMistake, loadMistakes } from "../../api";
+import type { MistakeItem } from "../../types";
+import { MistakeCapture } from "./components/MistakeCapture";
+import { MistakeConfirm } from "./components/MistakeConfirm";
+import { MistakeLibrary } from "./components/MistakeLibrary";
+import "./mistake.css";
 
-const FLOW = [
-  ["拍照录题", "提取题干、公式、题图和学生原答案"],
-  ["确认归类", "匹配教材章节、知识点和错误原因"],
-  ["单题陪练", "按学生每次输入动态选择提示和追问"],
-  ["验证掌握", "连续答对不同变式后进入进阶本与复习计划"],
-] as const;
+type MistakeScreen = { name: "library" } | { name: "capture" } | { name: "confirm"; mistakeId: string };
 
-export function MistakeCoachApp({ onExit }: MistakeCoachAppProps) {
+export function MistakeCoachApp() {
+  const navigate = useNavigate();
+  const captureMatch = useMatch("/mistakes/capture");
+  const confirmMatch = useMatch("/mistakes/:mistakeId/confirm");
+  const screen: MistakeScreen = confirmMatch?.params.mistakeId
+    ? { name: "confirm", mistakeId: confirmMatch.params.mistakeId }
+    : captureMatch
+      ? { name: "capture" }
+      : { name: "library" };
+  const [items, setItems] = useState<MistakeItem[]>([]);
+  const [selected, setSelected] = useState<MistakeItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const open = (path: string) => {
+    navigate(path);
+    window.scrollTo({ top: 0 });
+  };
+
+  const refreshLibrary = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setItems(await loadMistakes());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "错题本加载失败");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (screen.name === "library") {
+      void refreshLibrary();
+      return;
+    }
+    if (screen.name === "confirm" && selected?.mistakeId !== screen.mistakeId) {
+      setLoading(true);
+      setError("");
+      void loadMistake(screen.mistakeId)
+        .then(setSelected)
+        .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "错题加载失败"))
+        .finally(() => setLoading(false));
+    }
+  }, [screen.name, screen.name === "confirm" ? screen.mistakeId : ""]);
+
+  const returnToLibrary = () => open("/mistakes");
+
   return (
     <main className="mistake-shell">
       <header className="mistake-header">
-        <button className="route-back-button" onClick={onExit}>← 全部功能</button>
-        <span className="phase-badge">PHASE 01</span>
+        <button className="route-back-button" onClick={screen.name === "library" ? () => navigate("/") : returnToLibrary}>
+          {screen.name === "library" ? "← 全部功能" : "← 我的错题本"}
+        </button>
+        <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
+        <span className="phase-badge">PHASE 02</span>
       </header>
 
-      <section className="mistake-hero">
-        <span className="eyebrow">AI MISTAKE COACH</span>
-        <h1>AI 错题陪练</h1>
-        <p>不是只收藏答案，而是围绕一道错题持续诊断、提示、练习，直到验证真正学会。</p>
-        <div className="mistake-scope">首个可用版本聚焦初中数学；当前阶段已建立独立产品入口和架构边界。</div>
-      </section>
+      {screen.name === "library" && (
+        <MistakeLibrary
+          items={items}
+          loading={loading}
+          error={error}
+          onCapture={() => open("/mistakes/capture")}
+          onOpen={(item) => {
+            setSelected(item);
+            open(`/mistakes/${item.mistakeId}/confirm`);
+          }}
+          onArchive={(item) => {
+            void archiveMistake(item.mistakeId)
+              .then(() => setItems((current) => current.filter((candidate) => candidate.mistakeId !== item.mistakeId)))
+              .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "归档失败"));
+          }}
+        />
+      )}
 
-      <section className="mistake-flow" aria-label="错题陪练流程">
-        {FLOW.map(([title, description], index) => (
-          <article key={title}>
-            <span>{String(index + 1).padStart(2, "0")}</span>
-            <div>
-              <h2>{title}</h2>
-              <p>{description}</p>
-            </div>
-          </article>
-        ))}
-      </section>
+      {screen.name === "capture" && (
+        <MistakeCapture
+          onCreated={(item) => {
+            setSelected(item);
+            open(`/mistakes/${item.mistakeId}/confirm`);
+          }}
+        />
+      )}
 
-      <section className="mistake-next-step">
-        <div>
-          <span className="eyebrow">NEXT</span>
-          <h2>下一阶段：错题拍照与确认</h2>
-          <p>将复用现有 OCR、题目结构、判题和 PostgreSQL 能力，增加学生可修正的错题确认页。</p>
-        </div>
-        <button disabled>即将开放</button>
-      </section>
+      {screen.name === "confirm" && loading && <div className="mistake-empty">正在读取识别结果…</div>}
+      {screen.name === "confirm" && error && <p className="mistake-error" role="alert">{error}</p>}
+      {screen.name === "confirm" && !loading && selected?.mistakeId === screen.mistakeId && (
+        <MistakeConfirm
+          key={selected.mistakeId}
+          item={selected}
+          onSaved={(saved) => {
+            setSelected(saved);
+            setItems((current) => [saved, ...current.filter((item) => item.mistakeId !== saved.mistakeId)]);
+            returnToLibrary();
+          }}
+        />
+      )}
     </main>
   );
 }

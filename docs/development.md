@@ -106,9 +106,22 @@ npm run dev
 | --- | --- |
 | <http://localhost:5174/> | 产品选择首页 |
 | <http://localhost:5174/textbooks> | 现有教材导入与互动学习 |
-| <http://localhost:5174/mistakes> | AI 错题陪练独立入口；第一阶段为产品骨架 |
+| <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
+| <http://localhost:5174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
+| `http://localhost:5174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
 
-入口使用浏览器 History API；Vite 和 `docker/nginx.conf` 均已配置 SPA 回退，因此可直接打开子路径。
+入口使用 React Router；Vite 和 `docker/nginx.conf` 均已配置 SPA 回退，因此可直接打开子路径。
+
+## 修改代码时从哪里开始
+
+- 修改顶层页面或 URL：`frontend/src/App.tsx` 与对应 `frontend/src/apps/*`。
+- 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。
+- 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
+- 修改 OCR 回退：`backend/textbook_ocr.py`；MinerU 子进程细节在 `ocr_runtime.py`。
+- 修改模型题目结构：`lesson_generation.py`、`question_contracts.py` 和 `question_pipeline.py`。
+- 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
+
+完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
 ## 常用环境变量
 
@@ -199,6 +212,7 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 
 - PostgreSQL 保存上传任务、结构化题目、审校结果和引导卡。
 - `data/uploads/<uploadId>/` 保存 PDF、OCR Markdown 和题图。
+- `data/mistakes/<mistakeId>/` 保存错题原图和 MinerU 提取的题图；元数据存于 `mistake_items`。
 - 完成合并后会删除上传分块，仅保留原 PDF。
 - 后端重启后可以从 PostgreSQL 恢复教材和已生成题目。
 - `backend/migrate_sqlite_to_postgres.py` 用于迁移旧 SQLite 数据。
@@ -207,6 +221,15 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 
 ```bash
 .venv/bin/python backend/migrate_sqlite_to_postgres.py
+```
+
+已有 PostgreSQL 环境升级阶段二错题功能时，在备份后执行：
+
+```bash
+PGPASSWORD="$POSTGRES_PASSWORD" psql \
+  --host "$POSTGRES_HOST" --port "$POSTGRES_PORT" \
+  --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  --file backend/migrations/002_mistake_capture.sql
 ```
 
 ## 测试

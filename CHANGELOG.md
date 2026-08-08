@@ -5,10 +5,13 @@ Semantic Versioning。
 
 ## [Unreleased]
 ### Added
+- mistake: 支持拍照或选择错题图片、裁切识别范围、修正确认题目归类，并将错误原因保存到个人错题本
 - product: 增加教材互动学习与 AI 错题陪练的独立入口，并提供错题闭环的阶段规划
 - practice: Show active model next to the regenerate button (#42)
 - library: 教材库删除、去重与返回导航 (#39)
 ### Changed
+- architecture: 使用 React Router 统一页面导航，并将教材导入状态机、OCR、题源解析和课程生成拆为可独立维护的模块
+- web: 按产品入口加载教材学习和错题陪练资源，减少首次打开时的脚本体积
 - tts: Cache narration and sync lesson playback (#35)
 - tts: Prefetch narration for every lesson step on load (#37)
 ### Fixed
