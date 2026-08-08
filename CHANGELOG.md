@@ -4,8 +4,11 @@
 Semantic Versioning。
 
 ## [Unreleased]
+
 ### Changed
-- persistence: Split domain stores
+
+- 将教材导入与学习记录的数据库操作拆分为独立领域 Store，同时保留兼容入口，便于分别维护和测试。
+- 将 PDF 合并、OCR、出题和批次状态编排移入可复用服务，HTTP 路由只保留传输层职责。
 
 ## [0.3.0] - 2026-08-08
 

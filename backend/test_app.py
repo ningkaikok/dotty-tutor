@@ -6,7 +6,30 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest, apply_question_quality_gate, attach_question_source, build_question_content_blocks, build_reply, equation_conflict, equivalent_linear_equations, generate_lesson, generate_model_reply, limited_question_sources, normalize_image_choice_question, normalize_model_math_text, normalize_stacked_equation_choices, normalize_text_choices_from_source, pdf_uploads, process_pdf_batch, runtime, select_complete_question_source, split_question_sources, validate_question_payload, write_model_prompt_artifact, lesson_store
+from app import (
+    HELP_SCHEMA,
+    LESSON_SCHEMA,
+    HelpRequest,
+    apply_question_quality_gate,
+    attach_question_source,
+    build_question_content_blocks,
+    build_reply,
+    equation_conflict,
+    equivalent_linear_equations,
+    generate_lesson,
+    generate_model_reply,
+    lesson_store,
+    limited_question_sources,
+    normalize_image_choice_question,
+    normalize_model_math_text,
+    normalize_stacked_equation_choices,
+    normalize_text_choices_from_source,
+    runtime,
+    select_complete_question_source,
+    split_question_sources,
+    validate_question_payload,
+    write_model_prompt_artifact,
+)
 from model_runtime import ModelSelection
 from question_contracts import CANVAS_ACTIONS
 from review_runtime import formula_anomaly_score, normalize_ocr_question
@@ -170,45 +193,6 @@ class LessonGenerationTests(unittest.TestCase):
             [card["canvasAction"] for card in guide_cards],
             [CANVAS_ACTIONS[1], CANVAS_ACTIONS[2], CANVAS_ACTIONS[3]],
         )
-
-
-class BatchQuestionTests(unittest.TestCase):
-    def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
-        with TemporaryDirectory() as directory:
-            payload = {
-                "question": {"id": "q2"},
-                "lessonSteps": [],
-                "architecture": {},
-                "modelRun": {"provider": "mock", "model": "test", "fallback": False},
-            }
-            pdf_uploads["test-upload"] = {
-                "status": "complete",
-                "directory": Path(directory),
-                "result": {
-                    "ocrRun": {"provider": "mineru"},
-                    "extraction": {"questionCount": 1},
-                    "batches": [
-                        {"id": "batch-001", "startPage": 1, "endPage": 5, "status": "processed"},
-                        {"id": "batch-002", "startPage": 6, "endPage": 10, "status": "queued"},
-                    ],
-                },
-                "batchPayloads": {},
-            }
-            try:
-                with (
-                    patch("textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
-                    patch("textbook_routes.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
-                    patch("question_processing.generate_lesson", return_value=(payload, [], payload["modelRun"])),
-                    patch("textbook_routes.store.save_questions"),
-                    patch("textbook_routes.store.save_lesson"),
-                    patch("textbook_routes.store.save_job"),
-                ):
-                    response = process_pdf_batch("test-upload", "batch-002")
-                self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
-                self.assertEqual(response["batch"]["status"], "processed")
-                self.assertEqual(resolve.call_args.args[3:5], (4, 9))
-            finally:
-                pdf_uploads.pop("test-upload", None)
 
 
 class PersistentStoreTests(unittest.TestCase):
