@@ -160,8 +160,20 @@ concept | reading | calculation | missing_step | unknown | careless
 待确认或已归档错题返回 `409`；线程不存在返回 `404`；`answer` 模式没有任何有效文字或结构化内容时
 返回 `422`。当前匿名 Demo 使用 `local-demo`，它不是可靠鉴权。
 
+## 变式掌握验证
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/mistakes/{mistakeId}/variations` | 按生成顺序读取该错题的验证题和作答结果 |
+| `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `verify` 后，按错误原因生成下一道验证题 |
+| `POST` | `/api/variations/{variationId}/answer` | 提交一次结构化答案并完成确定性判题 |
+
+答案请求沿用 `{ "content": "...", "interactionResult": {...} }` 契约。每道验证题只能提交一次，重复提交
+返回 `409`；生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
+正确性仍由答案结构和确定性判题器决定。
+
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
-`/api/review` 仍是后续规划，用于变式验证、进阶本和复习任务。
+`/api/review` 仍是后续规划，用于进阶本和复习任务；变式验证已使用上述独立 API。
 
 具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。

@@ -102,6 +102,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 错题持久化 | `backend/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
 | 多轮辅导 | `backend/stateful_tutor.py`、`tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `backend/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
+| 变式验证 | `backend/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
+| 验证持久化 | `backend/variation_store.py` | 保存不可重复提交的题目快照、结构化答案和判题结果 |
 
 ## 错题录入与确认
 
@@ -118,7 +120,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张通用 `TutorStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
-辅导线程；变式题和复习任务仍属于下一阶段。
+辅导线程。完成陪练后，独立的 `VariationStore` 保存验证题和一次性作答，避免自由对话被误算为掌握证据；
+连续正确策略和复习任务仍由后续阶段四提交完成。
 
 ## 有状态单题陪练
 
