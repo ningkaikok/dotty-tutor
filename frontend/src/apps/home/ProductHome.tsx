@@ -15,40 +15,40 @@ export function ProductHome() {
       </header>
 
       <section className="product-home-hero">
-        <span className="eyebrow">CHOOSE A LEARNING PATH</span>
-        <h1>选择你的学习入口</h1>
-        <p>教材数字化与错题陪练共享题目、判题和掌握度能力，但保留各自清晰的学习流程。</p>
+        <span className="eyebrow">CHOOSE YOUR WORKSPACE</span>
+        <h1>选择你的使用入口</h1>
+        <p>学生只负责学习、作答和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
       </section>
 
-      <section className="product-entry-grid" aria-label="学习入口">
-        <article className="product-entry-card available">
+      <section className="product-entry-grid" aria-label="产品入口">
+        <article className="product-entry-card student">
           <div className="entry-card-heading">
             <span className="entry-index">01</span>
-            <span className="entry-status">已可用</span>
+            <span className="entry-status">学生入口</span>
           </div>
-          <h2>教材互动学习</h2>
-          <p>上传教材页或整本 PDF，自动识别题目、生成分步讲解并进行互动练习。</p>
+          <h2>学生学习空间</h2>
+          <p>直接进入互动试卷、个人错题本和复习任务，不需要上传整本教材或配置模型。</p>
           <ul>
-            <li>PDF 与扫描教材结构化</li>
-            <li>多题型交互与确定性判题</li>
-            <li>分层提示、课程播放与语音</li>
+            <li>消费已发布的互动试卷</li>
+            <li>AI 错题陪练与掌握验证</li>
+            <li>1、3、7 天复习进度</li>
           </ul>
-          <button onClick={() => navigate("/textbooks")}>进入教材学习</button>
+          <button onClick={() => navigate("/learn")}>进入学生学习空间</button>
         </article>
 
-        <article className="product-entry-card planned">
+        <article className="product-entry-card producer">
           <div className="entry-card-heading">
             <span className="entry-index">02</span>
-            <span className="entry-status">录题已可用</span>
+            <span className="entry-status">内容生产</span>
           </div>
-          <h2>AI 错题陪练</h2>
-          <p>拍下错题，修正确认题目和错误原因；后续由单题智能体持续追问、提示并验证掌握。</p>
+          <h2>内容生产工作台</h2>
+          <p>上传教材页或整本 PDF，完成 OCR、题目生成、质量复核和互动内容预览。</p>
           <ul>
-            <li>错题归类到教材章节与知识点</li>
-            <li>概念、审题、计算等错误诊断</li>
-            <li>连续答对验证与复习计划</li>
+            <li>PDF 与扫描教材结构化</li>
+            <li>生成模型和 OCR 运行时配置</li>
+            <li>多题型交互与分步讲解预览</li>
           </ul>
-          <button onClick={() => navigate("/mistakes")}>查看错题陪练</button>
+          <button onClick={() => navigate("/studio")}>进入内容生产工作台</button>
         </article>
       </section>
     </main>

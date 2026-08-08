@@ -475,23 +475,30 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
 }
 
 test.describe("产品入口", () => {
-  test("可在教材学习和错题陪练之间导航并直接访问子路径", async ({ page }) => {
+  test("学生端与内容生产端边界清晰并兼容旧教材地址", async ({ page }) => {
     await mockApi(page);
     await mockMistakeApi(page);
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: "选择你的学习入口" })).toBeVisible();
-    await page.getByRole("button", { name: "进入教材学习" }).click();
-    await expect(page).toHaveURL(/\/textbooks$/);
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "选择你的使用入口" })).toBeVisible();
+    await page.getByRole("button", { name: "进入学生学习空间" }).click();
+    await expect(page).toHaveURL(/\/learn$/);
+    await expect(page.getByRole("heading", { name: "直接开始学习" })).toBeVisible();
+    await expect(page.getByText("尚未接入已发布试卷目录")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "全部功能" }).click();
-    await page.getByRole("button", { name: "查看错题陪练" }).click();
+    await page.getByRole("button", { name: "打开我的错题本" }).click();
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "← 学生学习空间" })).toBeVisible();
 
-    await page.goto("/mistakes");
-    await expect(page.getByRole("button", { name: "录入一道错题" })).toBeVisible();
+    await page.goto("/studio");
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+    await expect(page.getByText("内容生产工作台")).toBeVisible();
+
+    await page.goto("/textbooks");
+    await expect(page).toHaveURL(/\/studio$/);
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
@@ -575,7 +582,7 @@ test.describe("产品入口", () => {
 test.describe("教材辅导核心交互", () => {
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
     await mockApi(page);
-    await page.goto("/textbooks");
+    await page.goto("/studio");
 
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({
@@ -611,7 +618,7 @@ test.describe("教材辅导核心交互", () => {
 
   test("第一优先级题型支持多选、填空和数值答案", async ({ page }) => {
     await mockApi(page, priorityImportResult);
-    await page.goto("/textbooks");
+    await page.goto("/studio");
     await page.locator('input[type="file"]').setInputFiles({
       name: "playwright-priority-fixture.png",
       mimeType: "image/png",

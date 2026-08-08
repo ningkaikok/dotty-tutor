@@ -28,18 +28,21 @@ flowchart LR
 
 依赖应从上向下。展示组件不应直接发请求；API 模块也不应读取 React State。
 
-## 2. 从 `App.tsx` 理解双产品入口
+## 2. 从 `App.tsx` 理解角色入口
 
-三个顶层页面使用 `React.lazy`：
+四个顶层页面使用 `React.lazy`：
 
 ```text
-/             → ProductHome
-/textbooks/*  → TextbookApp
-/mistakes/*   → MistakeCoachApp
+/              → ProductHome
+/learn/*       → StudentLearningApp
+/studio/*      → TextbookApp
+/mistakes/*    → MistakeCoachApp
+/textbooks/*   → 兼容跳转到 /studio
 ```
 
-教材播放器包含公式、画布和课程渲染代码，错题入口不需要这些资源。路由级拆包使微信或普通浏览器打开某个
-入口时只下载对应 JavaScript。`Suspense` 负责模块下载期间的稳定占位，而 `Navigate` 把未知地址恢复到首页。
+学生空间不包含教材上传、OCR 或模型设置，生产工作台才加载这些资源。路由级拆包使微信或普通浏览器打开
+学生入口时只下载对应 JavaScript。`Suspense` 负责模块下载期间的稳定占位，而 `Navigate` 处理兼容地址和
+未知路径。
 
 学习时先观察路由如何决定“加载哪个产品”，再进入产品内部，不要从 CSS 或最深层组件开始。
 
@@ -204,7 +207,7 @@ npm run test:e2e
 
 - `tsc --noEmit` 检查前后端契约使用是否一致。
 - Vite Build 检查模块边界和生产打包。
-- Playwright 从用户角度验证双入口、教材导入、题型作答和错题多轮流程。
+- Playwright 从用户角度验证角色入口、学生/生产边界、教材导入、题型作答和错题多轮流程。
 
 继续扩展时，可以为纯函数增加 Vitest，例如 `fileValidation.ts`、`questionPresentation.ts` 和课程文档转换；
 不需要为每个静态 JSX 标签编写快照测试。

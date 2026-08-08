@@ -20,19 +20,19 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
   return (
     <main className="import-shell">
       <header className="import-header">
-        {onExit && <button className="route-back-button" onClick={onExit}>← 全部功能</button>}
+        {onExit && <button className="route-back-button" onClick={onExit}>← 选择入口</button>}
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
-          <span>从扫描教材到分步辅导</span>
+          <span>内容生产工作台</span>
         </div>
         <span className="demo-badge">LOCAL DEMO</span>
       </header>
 
       <section className="import-intro">
-        <span className="eyebrow">STEP 01 · 教材数字化</span>
+        <span className="eyebrow">CONTENT STUDIO · 教材数字化</span>
         <h1>上传教材页或整本 PDF</h1>
-        <p>大 PDF 会按 5 MB 断点上传，后端合并校验后每 5 页规划一个识别批次。</p>
+        <p>此处面向内容生产者。大 PDF 会按 5 MB 断点上传，后端合并校验后每 5 页规划一个识别批次。</p>
       </section>
 
       <RuntimeSettings
