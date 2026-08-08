@@ -4,25 +4,8 @@
 Semantic Versioning。
 
 ## [Unreleased]
-### Added
-- practice: Show active model next to the regenerate button (#42)
-- library: 教材库删除、去重与返回导航 (#39)
-- product: Add dual learning entrances (#49)
-- mistakes: Add capture and confirmation workflow (#51)
-- tutoring: Add stateful mistake coaching
 ### Changed
-- tts: Cache narration and sync lesson playback (#35)
-- tts: Prefetch narration for every lesson step on load (#37)
-### Fixed
-- model: Require all lesson schema fields (#32)
-- storage: 消除数据库配置的两个静默踩坑 (#40)
-- model: Import CANVAS_ACTIONS to fix real-model lesson generation (#41)
-- model: Allow overriding the Codex CLI path via CODEX_COMMAND (#43)
-- ci: Add TestClient dependency (#47)
-
-### Changed
-
-- 将教材导入与学习记录的数据库操作拆分为独立领域 Store，同时保留兼容入口，便于分别维护和测试。
+- persistence: Split domain stores
 
 ## [0.3.0] - 2026-08-08
 
