@@ -100,6 +100,16 @@ npm run dev
 
 打开 <http://localhost:5174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
 
+前端入口：
+
+| 地址 | 用途 |
+| --- | --- |
+| <http://localhost:5174/> | 产品选择首页 |
+| <http://localhost:5174/textbooks> | 现有教材导入与互动学习 |
+| <http://localhost:5174/mistakes> | AI 错题陪练独立入口；第一阶段为产品骨架 |
+
+入口使用浏览器 History API；Vite 和 `docker/nginx.conf` 均已配置 SPA 回退，因此可直接打开子路径。
+
 ## 常用环境变量
 
 | 变量 | 默认值 | 用途 |
@@ -209,7 +219,8 @@ npx playwright install chromium   # 首次运行或浏览器版本更新时执�
 npm run test:e2e
 ```
 
-Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API mock 覆盖导入、选择/多选题、判断题、
+Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API mock 覆盖双产品入口、直接子路径、
+导入、选择/多选题、判断题、
 填空题、数值题、画线题和 Help 交互；不会调用本地模型、OCR 或数据库。失败时 CI 会保留 HTML 报告、trace、
 截图和视频，便于下载排查。浏览器探索可以使用 Computer Use，稳定回归统一使用 Playwright。
 

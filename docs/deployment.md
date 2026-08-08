@@ -238,7 +238,9 @@ docker compose up --build --detach
 docker compose ps
 ```
 
-打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。默认服务拓扑：
+打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。产品首页、教材学习和错题陪练
+分别位于 `/`、`/textbooks`、`/mistakes`。仓库的 Nginx 配置已使用 `index.html` 作为 SPA 回退，
+反向代理或 CDN 也必须保留该规则，否则直接刷新子路径会返回 404。默认服务拓扑：
 
 ```text
 localhost:8080

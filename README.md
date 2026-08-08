@@ -6,10 +6,11 @@
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 
-面向中文教材的 AI 数字化与互动辅导平台。
+面向中文教材与个人错题复习的 AI 学习平台。
 
 Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校记录的结构化题目，并通过
 分步讲解、选择/多选/判断/填空/数值/简答/画线交互和中文语音，帮助学生完成练习。
+项目正在同一技术底座上建设 AI 错题陪练，让学生从错题录入、错误诊断进入多轮辅导和掌握验证。
 
 > 当前项目处于 MVP 阶段，适合本地体验和受控内测，暂不建议将匿名 API 直接暴露到公网。
 
@@ -17,6 +18,7 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
 
 ## 功能
 
+- 根路径提供两个独立产品入口：`/textbooks` 教材互动学习与 `/mistakes` AI 错题陪练。
 - 大 PDF 分块上传、暂停续传、页范围批处理和历史教材恢复。
 - MinerU OCR、PDF 文字层解析与公式/题图提取。
 - Ollama、Codex CLI 和 Mock 三种题目生成路径。
@@ -32,14 +34,13 @@ Dotty Tutor 将 PDF 或扫描教材转换为带来源、公式、题图和审校
 ## 工作流程
 
 ```text
-PDF / 扫描教材
-  → OCR 与公式、题图提取
-  → 结构化出题
-  → 文本和视觉审校
-  → 质量门禁与 PostgreSQL 持久化
-  → React 互动练习
-  → 分层提示与中文 TTS
+产品首页
+  ├─ 教材互动学习：PDF / 扫描教材 → OCR → 结构化出题 → 审校 → 互动练习
+  └─ AI 错题陪练：拍照错题 → 确认归类 → 多轮陪练 → 变式验证 → 复习计划
 ```
+
+错题陪练当前完成第一阶段的产品入口和前端架构拆分；录题、线程与复习闭环将按
+[AI 错题陪练产品规划](docs/mistake-coach-plan.md)逐步交付。
 
 ## 技术栈
 
@@ -64,7 +65,8 @@ cp .env.local.example .env.local
 scripts/dev-local.sh
 ```
 
-打开 <http://localhost:5174>。完整 Docker Compose 仍适合 CI、演示和发布验证：
+打开 <http://localhost:5174>，从首页选择学习入口；也可以直接访问
+<http://localhost:5174/textbooks>。完整 Docker Compose 仍适合 CI、演示和发布验证：
 
 最简单的体验方式是使用 Docker Desktop 或 Docker Engine + Compose：
 
@@ -120,6 +122,7 @@ npm run dev
 ## 文档
 
 - [系统架构与调用流程](docs/architecture.md)
+- [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
 - [可编程课程与学习闭环](docs/programmable-learning.md)
@@ -145,8 +148,9 @@ Compose 构建和健康检查。
 ## 项目状态
 
 当前版本已完成教材导入、结构化出题、审校、互动练习、分层提示、TTS 和 PostgreSQL
-持久化闭环。公网生产部署仍需要用户鉴权、对象存储、异步任务队列、Alembic、限流、
-监控和自动备份；详情见[路线图](docs/roadmap.md)。
+持久化闭环，并完成教材学习与错题陪练的双入口拆分。错题拍照、错误原因、多轮线程、连续答对
+验证和复习队列尚在后续阶段。公网生产部署仍需要用户鉴权、对象存储、异步任务队列、Alembic、
+限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。
 
 ## 参与开发
 

@@ -4,6 +4,7 @@ import type { LibraryItem, ModelCatalog, ModelProvider, OcrCatalog, OcrProvider,
 
 interface TextbookImportProps {
   onContinue: (result: TextbookImportResult) => void;
+  onExit?: () => void;
 }
 
 type UploadPhase = "idle" | "uploading" | "paused" | "processing" | "error" | "done";
@@ -39,7 +40,7 @@ async function validatePdfEnvelope(file: File) {
   }
 }
 
-export function TextbookImport({ onContinue }: TextbookImportProps) {
+export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const pdfTaskRef = useRef<{ task: PdfUploadTask; uploaded: Set<number> } | null>(null);
   const pauseRequested = useRef(false);
@@ -187,6 +188,7 @@ export function TextbookImport({ onContinue }: TextbookImportProps) {
   return (
     <main className="import-shell">
       <header className="import-header">
+        {onExit && <button className="route-back-button" onClick={onExit}>← 全部功能</button>}
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
