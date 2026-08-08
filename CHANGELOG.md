@@ -5,6 +5,10 @@ Semantic Versioning。
 
 ## [Unreleased]
 
+### Changed
+
+- 将教材导入与学习记录的数据库操作拆分为独立领域 Store，同时保留兼容入口，便于分别维护和测试。
+
 ## [0.3.0] - 2026-08-08
 
 ### Added
