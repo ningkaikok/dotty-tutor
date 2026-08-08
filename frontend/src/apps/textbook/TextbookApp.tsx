@@ -240,12 +240,12 @@ export function TextbookApp() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <button className="product-home-button" onClick={onExit} title="返回产品首页">全部功能</button>
+        <button className="product-home-button" onClick={onExit} title="返回入口选择">选择入口</button>
         <button className="back-home" onClick={returnToLibrary} title="返回教材库">← 教材库</button>
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
-          <span>动态教材辅导 · Dotty Tutor MVP</span>
+          <span>内容生产预览 · Dotty Tutor MVP</span>
         </div>
         <button
           className="status"

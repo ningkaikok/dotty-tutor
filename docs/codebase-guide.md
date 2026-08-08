@@ -14,7 +14,8 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 5. 只有真实出现第二种实现时，才增加新的抽象层。
 
 因此，本项目采用模块化单体：一个 React 前端、一个 FastAPI 后端、一个 PostgreSQL 数据库，
-可选模型/OCR/TTS 通过适配器连接。教材学习和错题陪练共享基础设施，但保持业务路由和数据表分离。
+可选模型/OCR/TTS 通过适配器连接。内容生产、学生学习和错题陪练共享基础设施，但保持页面职责与业务
+数据边界清晰。
 
 ## 顶层目录
 
@@ -45,8 +46,9 @@ dotty-tutor/
 │   └── migrations/             # 可审查的 SQL 迁移
 ├── frontend/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
-│   ├── apps/home/              # 双产品入口
-│   ├── apps/textbook/          # 教材学习页面与导入子模块
+│   ├── apps/home/              # 角色入口选择
+│   ├── apps/student/           # 学生学习空间，不包含生产配置
+│   ├── apps/textbook/          # 内容生产、互动预览与导入子模块
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
 │   ├── components/             # 跨教材题型复用的作答组件
