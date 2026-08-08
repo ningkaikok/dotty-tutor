@@ -198,7 +198,7 @@ class BatchQuestionTests(unittest.TestCase):
                 with (
                     patch("textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
                     patch("textbook_routes.resolve_ocr_text", return_value=("page text", {"provider": "mineru"})) as resolve,
-                    patch("textbook_routes.generate_lesson", return_value=(payload, [], payload["modelRun"])),
+                    patch("question_processing.generate_lesson", return_value=(payload, [], payload["modelRun"])),
                     patch("textbook_routes.store.save_questions"),
                     patch("textbook_routes.store.save_lesson"),
                     patch("textbook_routes.store.save_job"),

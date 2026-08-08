@@ -30,6 +30,8 @@ systemd、Loki、ELK 或云日志服务采集。
 - `mistake.import.failed`：错题识别失败类型；失败上传目录会自动清理。
 - `mistake.confirmed`：确认后的知识点和错误原因，不记录学生答案或题干全文。
 - `mistake.archived`：错题归档状态变化。
+- `tutor.thread.ready`：创建或恢复单题辅导线程。
+- `tutor.turn.completed`：完成一轮判题、提示、状态推进和消息持久化。
 
 ## 日志格式
 

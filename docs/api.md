@@ -123,9 +123,45 @@ concept | reading | calculation | missing_step | unknown | careless
 `pending_confirmation` 表示 AI 结果尚未由学生确认；确认后进入 `unmastered`。当前匿名演示仍使用
 `local-demo`，不能据此实现多用户隔离。
 
-以下命名空间仍是后续规划，当前尚未实现：
+## 有状态单题陪练
 
-- `/api/tutor/threads`：一题一线程的消息、状态和智能体动作。
-- `/api/review`：变式验证、进阶本和复习任务。
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/mistakes/{mistakeId}/thread` | 为已确认错题创建或恢复唯一线程 |
+| `GET` | `/api/tutor/threads/{threadId}` | 获取当前阶段、摘要和最近最多 40 条消息 |
+| `POST` | `/api/tutor/threads/{threadId}/messages` | 提交文字或结构化答案并完成一轮辅导 |
+
+选择题可以同时携带用户可读文字和结构化答案：
+
+```json
+{
+  "content": "我选择 B",
+  "mode": "answer",
+  "hintLevel": 0,
+  "interactionResult": { "selectedOptions": ["B"] }
+}
+```
+
+请求提示时允许没有答案：
+
+```json
+{
+  "content": "",
+  "mode": "help",
+  "hintLevel": 1,
+  "interactionResult": {}
+}
+```
+
+响应中的 `stage` 是 `diagnose`、`explain`、`practice` 或 `verify`；`assessment` 是确定性判题产生的
+`correct`、`partial` 或 `incorrect`；`action` 描述本轮是否推进阶段。模型只负责解释、提示和追问，
+不能自行修改正确性或把错题标记为已掌握。
+
+待确认或已归档错题返回 `409`；线程不存在返回 `404`；`answer` 模式没有任何有效文字或结构化内容时
+返回 `422`。当前匿名 Demo 使用 `local-demo`，它不是可靠鉴权。
+
+本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
+
+`/api/review` 仍是后续规划，用于变式验证、进阶本和复习任务。
 
 具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。

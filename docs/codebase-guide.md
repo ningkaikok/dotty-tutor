@@ -24,12 +24,17 @@ dotty-tutor/
 │   ├── app.py                  # ASGI 组合根；只装配，不写业务逻辑
 │   ├── application.py          # 中间件、安全头、CORS、请求日志
 │   ├── textbook_routes.py      # 教材 HTTP 工作流和 PDF 状态机
+│   ├── question_processing.py  # 可被 HTTP/Worker 复用的批次题目处理
+│   ├── library_routes.py       # 教材库读取与软删除
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
 │   ├── lesson_generation.py    # 模型生成、规范化和辅导缓存
 │   ├── question_source.py      # OCR Markdown 题目切分纯函数
 │   ├── question_pipeline.py    # 题目规范化、内容块和质量门禁
 │   ├── question_contracts.py   # Pydantic/JSON Schema 和演示种子
 │   ├── mistake_*.py            # 错题契约、路由、识别适配和存储
+│   ├── tutoring_*.py           # 多轮线程契约、路由和消息存储
+│   ├── stateful_tutor.py       # 受约束状态机和有限上下文
+│   ├── persistence/            # 数据库 URL、兼容处理和关系表声明
 │   ├── *_runtime.py            # 模型、OCR、审校等外部能力适配器
 │   ├── storage.py              # 教材与学习记录的 PostgreSQL 存储
 │   └── migrations/             # 可审查的 SQL 迁移
@@ -41,15 +46,17 @@ dotty-tutor/
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
 │   ├── components/             # 跨教材题型复用的作答组件
 │   ├── lesson/                 # 课程文档和内容块渲染器
-│   ├── api.ts                  # 稳定的前端 API 门面
-│   └── types.ts                # 稳定的前端领域类型门面
+│   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
+│   ├── types/                  # 按领域拆分的稳定类型
+│   ├── api.ts                  # 兼容导出门面
+│   └── types.ts                # 兼容导出门面
 ├── frontend/e2e/               # Playwright 用户路径
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
 ```
 
-`api.ts` 和 `types.ts` 暂时保留为单一门面，避免每个调用者了解多个内部文件。当某个领域继续增长时，
-可以先拆到 `api/mistakes.ts`、`api/textbooks.ts` 等文件，再从门面重新导出，调用方无需一起迁移。
+`api.ts` 和 `types.ts` 只负责统一导出。初学者可以继续从一个门面导入；需要理解某个业务域时，再进入
+`api/mistakes.ts`、`api/tutoring.ts` 或对应的 `types/` 文件，调用方不必同步迁移。
 
 ## 后端依赖方向
 
@@ -84,14 +91,13 @@ flowchart LR
 textbook_routes.py（HTTP、上传状态）
   → textbook_ocr.py（手工文本 → MinerU → pypdf）
   → question_source.py（按题号切分 Markdown）
-  → lesson_generation.py（模型 JSON → 稳定题目契约）
-  → question_pipeline.py（审校后的确定性修复和质量门禁）
+  → question_processing.py（生成、审校、确定性修复和质量门禁）
   → storage.py（题目、课程和上传任务）
 ```
 
-`textbook_routes.py` 目前仍包含 PDF 合并和按批次处理状态机。这是一条同步且共享大量局部状态的流程，
-强行拆成多个薄 Service 只会增加参数传递。未来将处理迁移到后台 Worker 时，应以“完成上传任务”和
-“处理一个批次”为两个任务函数拆出，而不是按每个 HTTP 端点创建一个类。
+`question_processing.py` 已经与 FastAPI 解耦，未来 Worker 可以直接复用。`textbook_routes.py` 目前仍
+包含 PDF 合并和按批次处理同步状态机；迁移后台任务时，应以“完成上传任务”和“处理一个批次”为
+两个任务函数继续拆出，而不是按每个 HTTP 端点创建一个类。
 
 ### 错题链路
 
@@ -99,6 +105,9 @@ textbook_routes.py（HTTP、上传状态）
 mistake_routes.py
   → mistake_recognition.py（复用 OCR 与课程生成）
   → mistake_store.py（独立 mistake_items 表）
+  → tutoring_routes.py（线程 HTTP 边界）
+  → stateful_tutor.py（判题、提示和状态转换）
+  → tutoring_store.py（线程与消息）
 ```
 
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
@@ -208,11 +217,23 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 提交前命令以 `AGENTS.md` 和 `docs/development.md` 为准。
 
+## 30 分钟代码阅读路线
+
+1. 用 3 分钟阅读 `backend/app.py`，认识组合根以及依赖如何注入。
+2. 用 3 分钟阅读 `frontend/src/App.tsx`，确认两个产品入口和懒加载边界。
+3. 用 6 分钟沿 `MistakeCapture → api/mistakes.ts → mistake_routes.py → mistake_store.py` 跟踪错题录入。
+4. 用 8 分钟沿 `MistakeTutor → useMistakeTutor → tutoring_routes.py → stateful_tutor.py` 跟踪一轮陪练。
+5. 用 5 分钟对照 `persistence/schema.py`、`mistake_store.py` 和 `tutoring_store.py` 理解数据关系。
+6. 用 5 分钟运行 `test_stateful_tutoring.py`，把一个断言改坏再恢复，观察状态机如何被保护。
+
+推荐只跟踪一条请求，不要从最长的 PDF 路由开始通读整个仓库。
+
 ## 已知架构债务
 
-- PDF 完成和批次处理仍在 HTTP 请求中同步执行；耗时任务应迁移 Worker。
-- `storage.py` 同时覆盖教材、课程和学习记录；当任一领域出现第二个存储实现时再按 Store 拆分。
-- 前端 `types.ts` 是大门面；新增多轮会话后应按领域拆文件并保持 barrel export。
+- PDF 完成和批次处理仍在 HTTP 请求中同步执行；题目处理已独立，任务调度仍应迁移 Worker。
+- `storage.py` 仍以兼容门面提供教材、课程和学习记录 CRUD；数据库配置与表结构已拆出，后续按真实
+  变更频率继续迁移领域 Store，避免一次性抽象过度。
+- `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。
 - 模型/OCR 的运行时选择是进程级全局状态，不适合多用户公网服务。
 - 文件资源仍保存在本地目录，横向扩容前需要对象存储。
 

@@ -5,15 +5,23 @@ import type { MistakeItem } from "../../types";
 import { MistakeCapture } from "./components/MistakeCapture";
 import { MistakeConfirm } from "./components/MistakeConfirm";
 import { MistakeLibrary } from "./components/MistakeLibrary";
+import { MistakeTutor } from "./components/MistakeTutor";
 import "./mistake.css";
 
-type MistakeScreen = { name: "library" } | { name: "capture" } | { name: "confirm"; mistakeId: string };
+type MistakeScreen =
+  | { name: "library" }
+  | { name: "capture" }
+  | { name: "confirm"; mistakeId: string }
+  | { name: "tutor"; mistakeId: string };
 
 export function MistakeCoachApp() {
   const navigate = useNavigate();
   const captureMatch = useMatch("/mistakes/capture");
   const confirmMatch = useMatch("/mistakes/:mistakeId/confirm");
-  const screen: MistakeScreen = confirmMatch?.params.mistakeId
+  const tutorMatch = useMatch("/mistakes/:mistakeId/tutor");
+  const screen: MistakeScreen = tutorMatch?.params.mistakeId
+    ? { name: "tutor", mistakeId: tutorMatch.params.mistakeId }
+    : confirmMatch?.params.mistakeId
     ? { name: "confirm", mistakeId: confirmMatch.params.mistakeId }
     : captureMatch
       ? { name: "capture" }
@@ -45,7 +53,7 @@ export function MistakeCoachApp() {
       void refreshLibrary();
       return;
     }
-    if (screen.name === "confirm" && selected?.mistakeId !== screen.mistakeId) {
+    if ((screen.name === "confirm" || screen.name === "tutor") && selected?.mistakeId !== screen.mistakeId) {
       setLoading(true);
       setError("");
       void loadMistake(screen.mistakeId)
@@ -53,7 +61,7 @@ export function MistakeCoachApp() {
         .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "错题加载失败"))
         .finally(() => setLoading(false));
     }
-  }, [screen.name, screen.name === "confirm" ? screen.mistakeId : ""]);
+  }, [screen.name, screen.name === "confirm" || screen.name === "tutor" ? screen.mistakeId : ""]);
 
   const returnToLibrary = () => open("/mistakes");
 
@@ -64,7 +72,7 @@ export function MistakeCoachApp() {
           {screen.name === "library" ? "← 全部功能" : "← 我的错题本"}
         </button>
         <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
-        <span className="phase-badge">PHASE 02</span>
+        <span className="phase-badge">{screen.name === "tutor" ? "PHASE 03" : "PHASE 02"}</span>
       </header>
 
       {screen.name === "library" && (
@@ -76,6 +84,10 @@ export function MistakeCoachApp() {
           onOpen={(item) => {
             setSelected(item);
             open(`/mistakes/${item.mistakeId}/confirm`);
+          }}
+          onTutor={(item) => {
+            setSelected(item);
+            open(`/mistakes/${item.mistakeId}/tutor`);
           }}
           onArchive={(item) => {
             void archiveMistake(item.mistakeId)
@@ -106,6 +118,11 @@ export function MistakeCoachApp() {
             returnToLibrary();
           }}
         />
+      )}
+      {screen.name === "tutor" && loading && <div className="mistake-empty">正在读取错题…</div>}
+      {screen.name === "tutor" && error && <p className="mistake-error" role="alert">{error}</p>}
+      {screen.name === "tutor" && !loading && selected?.mistakeId === screen.mistakeId && (
+        <MistakeTutor key={selected.mistakeId} item={selected} />
       )}
     </main>
   );

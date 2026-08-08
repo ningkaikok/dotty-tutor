@@ -1,176 +1,26 @@
 from __future__ import annotations
 
-import json
 import os
 import threading
 import time
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
-from sqlalchemy import (
-    BigInteger,
-    Column,
-    Float,
-    ForeignKey,
-    Index,
-    Integer,
-    JSON,
-    MetaData,
-    String,
-    Table,
-    Text,
-    create_engine,
-    select,
-    text,
-)
-from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection, Engine
 from observability import log_event
-
-
-DEFAULT_POSTGRES_URL = "postgresql+psycopg:///dotty_tutor"
-
-metadata = MetaData()
-json_document = JSON().with_variant(JSONB(), "postgresql")
-
-upload_jobs = Table(
-    "upload_jobs",
+from persistence.database import DEFAULT_POSTGRES_URL, build_postgres_url_from_env, decode_json, normalize_database_url
+from persistence.schema import (
+    batch_questions,
+    exercise_attempts,
+    learning_sessions,
+    lesson_documents,
+    mastery_states,
     metadata,
-    Column("upload_id", String(64), primary_key=True),
-    Column("import_id", String(128)),
-    Column("filename", Text, nullable=False),
-    Column("content_type", String(255), nullable=False),
-    Column("size", BigInteger, nullable=False),
-    Column("chunk_size", Integer, nullable=False),
-    Column("total_chunks", Integer, nullable=False),
-    Column("source_text", Text, nullable=False, default=""),
-    Column("directory", Text, nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("progress", Integer, nullable=False, default=0),
-    Column("message", Text, nullable=False, default=""),
-    Column("result_json", json_document),
-    Column("started_at", Float, nullable=False),
-    Column("updated_at", Float, nullable=False),
-    Column("completed_at", Float),
+    upload_jobs,
 )
-
-batch_questions = Table(
-    "batch_questions",
-    metadata,
-    Column(
-        "upload_id",
-        String(64),
-        ForeignKey("upload_jobs.upload_id", ondelete="CASCADE"),
-        primary_key=True,
-    ),
-    Column("batch_id", String(128), primary_key=True),
-    Column("question_id", String(128), nullable=False),
-    Column("payload_json", json_document, nullable=False),
-    Column("guide_cards_json", json_document, nullable=False, default=list),
-    Column("created_at", Float, nullable=False),
-)
-
-lesson_documents = Table(
-    "lesson_documents",
-    metadata,
-    Column("lesson_id", String(128), primary_key=True),
-    Column("source_upload_id", String(64)),
-    Column("title", Text, nullable=False),
-    Column("version", Integer, nullable=False, default=1),
-    Column("status", String(32), nullable=False, default="draft"),
-    Column("knowledge_points_json", json_document, nullable=False, default=list),
-    Column("blocks_json", json_document, nullable=False, default=list),
-    Column("created_at", Float, nullable=False),
-    Column("updated_at", Float, nullable=False),
-)
-
-learning_sessions = Table(
-    "learning_sessions",
-    metadata,
-    Column("session_id", String(64), primary_key=True),
-    Column("learner_id", String(128), nullable=False),
-    Column("lesson_id", String(128), nullable=False),
-    Column("started_at", Float, nullable=False),
-    Column("updated_at", Float, nullable=False),
-)
-
-exercise_attempts = Table(
-    "exercise_attempts",
-    metadata,
-    Column("attempt_id", String(64), primary_key=True),
-    Column(
-        "session_id",
-        String(64),
-        ForeignKey("learning_sessions.session_id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("question_id", String(128), nullable=False),
-    Column("knowledge_point", String(160), nullable=False),
-    Column("response_json", json_document, nullable=False, default=dict),
-    Column("assessment", String(32), nullable=False),
-    Column("hint_level", Integer, nullable=False, default=0),
-    Column("duration_ms", Integer, nullable=False, default=0),
-    Column("created_at", Float, nullable=False),
-)
-
-mastery_states = Table(
-    "mastery_states",
-    metadata,
-    Column("learner_id", String(128), primary_key=True),
-    Column("knowledge_point", String(160), primary_key=True),
-    Column("score", Float, nullable=False, default=0),
-    Column("attempt_count", Integer, nullable=False, default=0),
-    Column("correct_count", Integer, nullable=False, default=0),
-    Column("last_practiced_at", Float, nullable=False),
-)
-
-Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
-Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
-Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())
-
-
-def normalize_database_url(value: str) -> str:
-    """Use psycopg 3 for common PostgreSQL URL spellings."""
-    if value.startswith("postgres://"):
-        return "postgresql+psycopg://" + value.removeprefix("postgres://")
-    if value.startswith("postgresql://"):
-        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
-    return value
-
-
-def build_postgres_url_from_env() -> str:
-    """Build an explicit password URL when POSTGRES_* variables are provided."""
-    password = os.getenv("POSTGRES_PASSWORD", "")
-    if not password:
-        # Falling back to the local socket is silent otherwise, so a partial env
-        # (e.g. POSTGRES_PORT set but no password, or .env.local never sourced)
-        # connects to whatever local PostgreSQL is listening instead of the
-        # intended Docker/remote instance. Make that visible in the logs.
-        log_event(
-            "storage.postgres.socket_fallback",
-            level=30,
-            reason="POSTGRES_PASSWORD 未设置",
-            url=DEFAULT_POSTGRES_URL,
-            hint="如需连接 Docker/远程 PostgreSQL，请设置 POSTGRES_PASSWORD 等变量或 DATABASE_URL（本地开发用 scripts/dev-local.sh 会读取 .env.local）",
-        )
-        return DEFAULT_POSTGRES_URL
-    user = quote(os.getenv("POSTGRES_USER", "dotty_app"), safe="")
-    encoded_password = quote(password, safe="")
-    host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    database = quote(os.getenv("POSTGRES_DB", "dotty_tutor"), safe="")
-    sslmode = os.getenv("POSTGRES_SSLMODE", "")
-    query = f"?sslmode={quote(sslmode, safe='')}" if sslmode else ""
-    return f"postgresql+psycopg://{user}:{encoded_password}@{host}:{port}/{database}{query}"
-
-
-def decode_json(value: Any) -> Any:
-    """Read both native PostgreSQL JSONB values and legacy SQLite JSON text."""
-    if isinstance(value, str):
-        return json.loads(value)
-    return value
 
 
 class TutorStore:

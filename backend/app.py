@@ -36,9 +36,12 @@ from question_source import (
 )
 from runtime_routes import build_runtime_router
 from storage import store
+from stateful_tutor import StatefulTutor
 from textbook_ocr import resolve_ocr_text
 from textbook_routes import pdf_uploads, process_pdf_batch, router as textbook_router
 from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations
+from tutoring_routes import build_tutoring_router
+from tutoring_store import TutoringStore
 
 
 app = create_app()
@@ -56,3 +59,13 @@ mistake_recognizer = build_mistake_recognizer(
     build_content_blocks=build_question_content_blocks,
 )
 app.include_router(build_mistake_router(store=mistake_store, recognize=mistake_recognizer))
+
+# Stateful tutoring is a separate domain store so message history does not
+# expand the capture repository or the generic textbook TutorStore.
+tutoring_store = TutoringStore(engine=store.engine)
+stateful_tutor = StatefulTutor(runtime=runtime)
+app.include_router(build_tutoring_router(
+    mistake_store=mistake_store,
+    tutoring_store=tutoring_store,
+    tutor=stateful_tutor,
+))

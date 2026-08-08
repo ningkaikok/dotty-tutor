@@ -32,7 +32,13 @@ class TutorEngine:
         self.runtime = runtime
         self.guide_cards = guide_cards
 
-    def reply(self, request: HelpRequest) -> TutorReply:
+    def reply(self, request: HelpRequest, *, conversation_context: str = "") -> TutorReply:
+        """Return one tutoring reply.
+
+        ``conversation_context`` is an optional bounded summary supplied by the
+        stateful mistake tutor. Deterministic answer checks intentionally ignore
+        it so previous turns cannot influence an objective result.
+        """
         stored = self.lesson_store.get(request.questionId)
         deterministic = self._deterministic_reply(stored, request)
         if deterministic:
@@ -40,7 +46,7 @@ class TutorEngine:
         if not stored or self.runtime.selection.provider == "mock":
             cards = stored["guideCards"] if stored else self.guide_cards
             return build_reply(request, cards)
-        return self._model_reply(stored, request)
+        return self._model_reply(stored, request, conversation_context)
 
     def _deterministic_reply(self, stored: dict[str, Any] | None, request: HelpRequest) -> TutorReply | None:
         if not stored or request.mode != "answer":
@@ -115,7 +121,12 @@ class TutorEngine:
                 )
         return None
 
-    def _model_reply(self, stored: dict[str, Any], request: HelpRequest) -> TutorReply:
+    def _model_reply(
+        self,
+        stored: dict[str, Any],
+        request: HelpRequest,
+        conversation_context: str = "",
+    ) -> TutorReply:
         payload = stored["payload"]
         cards = stored["guideCards"]
         current_card = cards[min(request.hintLevel, len(cards) - 1)]
@@ -136,6 +147,7 @@ class TutorEngine:
 候选引导卡：{_json_dumps(current_card)}
 学生输入：{request.studentInput.strip() or '学生没有输入内容'}
 学生交互作答结果：{_json_dumps(request.interactionResult) if request.interactionResult else '无'}
+最近对话摘要：{conversation_context[:2400] or '这是本线程第一轮'}
 用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
 系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
 

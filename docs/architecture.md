@@ -27,6 +27,8 @@ flowchart LR
     Learning --> Store
     API --> TTS["TTS Router"]
     API --> MistakeStore["MistakeStore"]
+    API --> Tutor["StatefulTutor"]
+    Tutor --> ThreadStore["TutoringStore"]
     Review --> Model
   end
 
@@ -37,6 +39,7 @@ flowchart LR
   Model --> Mock["Mock 回退"]
   Store --> PostgreSQL["PostgreSQL"]
   MistakeStore --> PostgreSQL
+  ThreadStore --> PostgreSQL
   MistakeStore --> MistakeFiles["错题原图 / 题图"]
   Store --> Files["PDF / Markdown / 题图"]
   TTS --> Azure["Azure Speech"]
@@ -68,11 +71,13 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 练习工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 题目导航、作答、质量信息和辅导反馈 |
 | 题型作答 | `frontend/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
 | 题目展示 | `frontend/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
-| API 契约 | `frontend/src/api.ts`、`frontend/src/types.ts` | `/api` 请求封装和前后端类型 |
+| API 契约 | `frontend/src/api/`、`frontend/src/types/` | 按产品域组织请求和类型；根文件只做兼容导出 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `backend/app.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
-| 教材 HTTP 工作流 | `backend/textbook_routes.py` | 单页导入、PDF 分块/批次状态机、教材库和 Help 接口 |
+| 教材 HTTP 工作流 | `backend/textbook_routes.py` | 单页导入、PDF 分块/批次状态机和 Help 接口 |
+| 批次题目处理 | `backend/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
+| 教材库路由 | `backend/library_routes.py` | 教材列表、恢复和软删除 |
 | 教材 OCR 编排 | `backend/textbook_ocr.py` | 手工原文、MinerU 与 pypdf 的选择、回退和审计记录 |
 | 课程生成 | `backend/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
 | OCR 题源切分 | `backend/question_source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
@@ -87,12 +92,14 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 模型适配 | `backend/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
 | OCR 适配 | `backend/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 双模型审校 | `backend/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
-| 持久化 | `backend/storage.py` | PostgreSQL 元数据和本地文件资源恢复 |
+| 持久化 | `backend/storage.py`、`backend/persistence/` | 兼容 Store 门面、数据库配置、表结构和资源恢复 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `backend/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `backend/mistake_routes.py`、`mistake_contracts.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `backend/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `backend/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
+| 多轮辅导 | `backend/stateful_tutor.py`、`tutoring_routes.py` | 状态转换、有限上下文和线程 API |
+| 辅导持久化 | `backend/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 
 ## 错题录入与确认
 
@@ -108,8 +115,54 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 ```
 
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张通用 `TutorStore`。它与教材域
-共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。当前只建立录入数据，不创建
-对话线程或复习任务。
+共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
+辅导线程；变式题和复习任务仍属于下一阶段。
+
+## 有状态单题陪练
+
+```mermaid
+sequenceDiagram
+  participant UI as MistakeTutor
+  participant API as Tutoring Router
+  participant Check as Deterministic Evaluator
+  participant Tutor as StatefulTutor
+  participant DB as PostgreSQL
+
+  UI->>API: 创建或恢复 mistake thread
+  API->>DB: 读取阶段、摘要和有限消息
+  UI->>API: 提交文字或结构化答案
+  API->>Tutor: 当前线程 + 错题快照 + 最近消息
+  Tutor->>Check: 复用 TutorEngine 确定性判题
+  Check-->>Tutor: correct / partial / incorrect
+  Tutor->>Tutor: 生成解释并计算下一阶段
+  Tutor->>DB: 同一事务保存学生和助手消息
+  DB-->>UI: 新阶段、回复和结构化 action
+```
+
+状态转换由代码控制，而不是交给模型自由决定：
+
+```mermaid
+stateDiagram-v2
+  [*] --> diagnose
+  diagnose --> explain: 错误或需要诊断
+  diagnose --> practice: 回答正确
+  explain --> explain: 仍错误 / 请求提示
+  explain --> practice: 回答正确
+  practice --> explain: 回答错误
+  practice --> verify: 回答正确
+  verify --> verify: 阶段三终点
+```
+
+阶段三不会写入 `mastered`。阶段四必须生成不同变式并连续验证正确后，才能更新掌握状态。
+
+```mermaid
+erDiagram
+  mistake_items ||--|| tutor_threads : "one confirmed mistake"
+  tutor_threads ||--o{ tutor_messages : "bounded history"
+```
+
+线程摘要最多保留 2,000 个字符；模型提示只包含摘要尾部、最近六条消息以及当前错题信息。数据库可
+保留更多审计消息，但读取 API 默认最多返回 40 条，避免页面和模型上下文无限增长。
 
 ## 页面初始化
 
@@ -213,6 +266,8 @@ POST /api/tts
 - `lesson_documents` 保存带版本的课程内容块。
 - `learning_sessions`、`exercise_attempts` 和 `mastery_states` 保存学习闭环数据。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
+- `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
+- `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。
