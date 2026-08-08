@@ -21,6 +21,9 @@ export function useMistakeTutor(item: MistakeItem) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    // The API is idempotent for a mistake/learner pair. Calling create first
+    // therefore restores an existing thread as well as starting a new one.
+    // `cancelled` prevents a slow response from updating an unmounted screen.
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -49,6 +52,9 @@ export function useMistakeTutor(item: MistakeItem) {
   const submit = async (mode: "answer" | "help") => {
     if (!thread || sending) return;
     const questionType = item.questionPayload.question.questionType;
+    // Every visible answer widget is translated to the backend's shared
+    // structured-answer contract. Free text remains available for reasoning,
+    // but deterministic grading should prefer this unambiguous structure.
     const interactionResult = questionType === "fill-blank"
       ? { blankAnswers }
       : questionType === "numeric"
@@ -85,6 +91,8 @@ export function useMistakeTutor(item: MistakeItem) {
         hintLevel: thread.hintLevel,
         interactionResult,
       });
+      // Clear drafts only after the server atomically persisted both sides of
+      // the turn. A failed request leaves the student's work available to retry.
       setThread(result.thread);
       setStudentInput("");
       setSelectedOptions([]);

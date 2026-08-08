@@ -40,6 +40,8 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
     activateBlock(playableBlocks[0]);
     // Local TTS synthesis can take longer than a single step's playback, so queue
     // every step's narration as soon as the lesson loads instead of just the next one.
+    // requestSpeech deduplicates these calls, so eager preloading does not create
+    // duplicate network requests when the learner clicks a step manually.
     for (const block of playableBlocks) void preloadSpeech(blockNarration(block));
 
     return stopSpeech;

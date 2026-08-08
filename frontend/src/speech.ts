@@ -1,6 +1,11 @@
 let activeAudio: HTMLAudioElement | null = null;
+// Incrementing this token invalidates every older async playback continuation.
+// Pausing an Audio element alone is not enough because its fetch Promise may
+// resolve later and otherwise start stale narration on a newly selected step.
 let speechRequestId = 0;
 let activePlaybackResolve: (() => void) | null = null;
+// Cache Promises rather than only completed Blobs so concurrent preloads for the
+// same sentence share one HTTP request while Qwen3-TTS is still synthesizing.
 const speechCache = new Map<string, Promise<Blob | null>>();
 
 function speechKey(text: string) {

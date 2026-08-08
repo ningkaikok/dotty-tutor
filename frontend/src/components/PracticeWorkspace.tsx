@@ -55,6 +55,9 @@ export function PracticeWorkspace({
   onSubmit,
   onHelp,
 }: PracticeWorkspaceProps) {
+  // This component is deliberately controlled despite the longer prop list.
+  // TextbookApp and the mistake coach can share answer widgets while keeping
+  // network effects and learning state outside presentation components.
   const [debugOpen, setDebugOpen] = useState(false);
   const isDrawLine = payload.question.questionType === "draw-line";
   const hasStructuredAnswer = selectedOptions.length > 0

@@ -9,6 +9,9 @@ interface LessonRendererProps {
 
 type LessonBlockRenderer = (props: LessonRendererProps) => React.ReactNode;
 
+// LessonBlock is a discriminated union. A registry keeps the player independent
+// of concrete block implementations and makes a new content type a local change:
+// add its contract, renderer and one entry here rather than editing the player.
 const renderers: Record<LessonBlock["type"], LessonBlockRenderer> = {
   markdown: ({ block }) => block.type === "markdown"
     ? <MathText block text={block.payload.markdown} className="lesson-markdown" />
