@@ -233,7 +233,7 @@ async function mockApi(page: Page, result = importResult) {
   });
 }
 
-async function mockMistakeApi(page: Page, startConfirmed = false) {
+async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = false) {
   let items: Array<Record<string, unknown>> = [];
   const pendingItem = {
     mistakeId: "mistake-pw-1",
@@ -278,8 +278,9 @@ async function mockMistakeApi(page: Page, startConfirmed = false) {
   };
   if (startConfirmed) items = [confirmedItem];
 
-  let tutorStage = "diagnose";
+  let tutorStage = startVerify ? "verify" : "diagnose";
   let tutorMessages: Array<Record<string, unknown>> = [];
+  let variations: Array<Record<string, unknown>> = [];
   const tutorThread = () => ({
     threadId: "thread-pw-1",
     mistakeId: "mistake-pw-1",
@@ -347,6 +348,54 @@ async function mockMistakeApi(page: Page, startConfirmed = false) {
       },
     });
   });
+  await page.route("**/api/mistakes/mistake-pw-1/variations", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: { items: variations } });
+      return;
+    }
+    const variation = {
+      variationId: `variation-pw-${variations.length + 1}`,
+      mistakeId: "mistake-pw-1",
+      learnerId: "local-demo",
+      strategy: "parallel-calculation",
+      level: variations.length ? "parallel" : "foundation",
+      sequence: variations.length + 1,
+      questionPayload: payload({
+        id: `variation-question-${variations.length + 1}`,
+        questionType: "choice",
+        chapter: "一元一次方程",
+        knowledgePoint: "移项",
+        prompt: "解方程 $x + 2 = 5$，正确结果是？",
+        givens: [],
+        options: ["(A) x = 3", "(B) x = 7"],
+        correctAnswers: ["A"],
+      }),
+      modelRun,
+      status: "ready",
+      response: {},
+      feedback: "",
+      createdAt: 6,
+    };
+    variations = [...variations, variation];
+    await route.fulfill({ json: variation });
+  });
+  await page.route("**/api/variations/*/answer", async (route) => {
+    const answer = route.request().postDataJSON() as {
+      content: string;
+      interactionResult: Record<string, unknown>;
+    };
+    const current = variations[variations.length - 1];
+    const answered = {
+      ...current,
+      status: "answered",
+      assessment: "correct",
+      response: answer,
+      feedback: "回答正确，你已经能独立完成这类移项。",
+      answeredAt: 7,
+    };
+    variations = variations.map((item) => item.variationId === current.variationId ? answered : item);
+    await route.fulfill({ json: answered });
+  });
 }
 
 test.describe("产品入口", () => {
@@ -411,6 +460,20 @@ test.describe("产品入口", () => {
     await expect(page.getByText("先检查移项后符号是否改变，再重新算一次。")).toBeVisible();
     await expect(page.getByText("解释误区")).toBeVisible();
     await expect(page.getByText("需要修正")).toBeVisible();
+  });
+
+  test("陪练完成后可生成并提交错误原因自适应验证题", async ({ page }) => {
+    await mockMistakeApi(page, true, true);
+    await page.goto("/mistakes/mistake-pw-1/tutor");
+
+    await expect(page.getByRole("heading", { name: "用一道新题验证是否真正理解" })).toBeVisible();
+    await page.getByRole("button", { name: "生成第一道验证题" }).click();
+    await expect(page.getByRole("heading", { name: "基础验证" })).toBeVisible();
+    await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
+    await page.getByRole("button", { name: "提交验证答案" }).click();
+
+    await expect(page.getByText("回答正确", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "生成下一道" })).toBeVisible();
   });
 });
 

@@ -3,6 +3,7 @@ import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import MathText from "../../../MathText";
 import type { MistakeItem, TutorStage } from "../../../types";
 import { useMistakeTutor } from "../useMistakeTutor";
+import { VariationPractice } from "./VariationPractice";
 
 interface MistakeTutorProps {
   item: MistakeItem;
@@ -98,6 +99,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           </button>
         </div>
         <small className="tutor-context-note">仅保存结构化状态、摘要和必要消息；不会无限重放全部对话。</small>
+        {state.thread.stage === "verify" && <VariationPractice mistakeId={item.mistakeId} />}
       </div>
     </section>
   );

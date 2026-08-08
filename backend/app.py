@@ -18,6 +18,7 @@ from mistake_recognition import build_mistake_recognizer
 from mistake_routes import build_mistake_router
 from mistake_store import MistakeStore
 from model_runtime import runtime
+from practice_routes import build_practice_router
 from question_contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
 from question_pipeline import (
     apply_question_quality_gate,
@@ -42,6 +43,8 @@ from textbook_routes import pdf_uploads, process_pdf_batch, router as textbook_r
 from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations
 from tutoring_routes import build_tutoring_router
 from tutoring_store import TutoringStore
+from variation_service import VariationService
+from variation_store import VariationStore
 
 
 app = create_app()
@@ -68,4 +71,16 @@ app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,
     tutor=stateful_tutor,
+))
+
+# Phase-four verification exercises are persisted separately from the tutor
+# conversation. This keeps a student's scored attempts immutable and makes the
+# later mastery/review policy independent from free-form chat history.
+variation_store = VariationStore(engine=store.engine)
+variation_service = VariationService(generator=generate_lesson)
+app.include_router(build_practice_router(
+    mistake_store=mistake_store,
+    tutoring_store=tutoring_store,
+    variation_store=variation_store,
+    variation_service=variation_service,
 ))
