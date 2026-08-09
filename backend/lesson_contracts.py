@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 LessonBlockType = Literal[
@@ -56,7 +56,13 @@ class PublicationStatusUpdate(BaseModel):
 
 class LearningSessionCreate(BaseModel):
     learnerId: str = Field(default="local-demo", min_length=1, max_length=128)
-    lessonId: str = Field(min_length=1, max_length=128)
+    # Sessions now belong to a published paper, not one lesson. Keep the old
+    # request key as a validation alias so bookmarks from v0.6.0 keep working.
+    publicationId: str = Field(
+        min_length=1,
+        max_length=128,
+        validation_alias=AliasChoices("publicationId", "lessonId"),
+    )
 
 
 class ExerciseAttemptCreate(BaseModel):

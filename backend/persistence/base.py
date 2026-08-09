@@ -126,6 +126,19 @@ class DatabaseStore:
                             "ALTER TABLE lesson_documents "
                             "ADD COLUMN guide_cards_json TEXT NOT NULL DEFAULT '[]'"
                         )
+                    session_columns = {
+                        row[1]
+                        for row in connection.exec_driver_sql(
+                            "PRAGMA table_info(learning_sessions)"
+                        ).fetchall()
+                    }
+                    if "lesson_id" in session_columns and "publication_id" not in session_columns:
+                        # v0.6.0 already stored publication IDs in lesson_id. Renaming
+                        # preserves local demo history while making the contract honest.
+                        connection.exec_driver_sql(
+                            "ALTER TABLE learning_sessions "
+                            "RENAME COLUMN lesson_id TO publication_id"
+                        )
             self._initialized = True
 
     def _upsert(

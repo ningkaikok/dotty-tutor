@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import sqlite3
 import unittest
 from tempfile import TemporaryDirectory
 
-from lesson_contracts import LessonDocument, lesson_document_from_payload
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from learning_routes import build_learning_router
+from lesson_contracts import (
+    LearningSessionCreate,
+    LessonDocument,
+    lesson_document_from_payload,
+)
 from storage import TutorStore
 
 
@@ -29,6 +38,12 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(validated.lessonId, "linear-equation")
         self.assertEqual(validated.blocks[0].type, "diagram")
         self.assertEqual(validated.blocks[-1].type, "quiz")
+
+    def test_accepts_the_legacy_session_request_key(self) -> None:
+        current = LearningSessionCreate.model_validate({"publicationId": "paper-1"})
+        legacy = LearningSessionCreate.model_validate({"lessonId": "paper-1"})
+        self.assertEqual(current.publicationId, "paper-1")
+        self.assertEqual(legacy.publicationId, "paper-1")
 
 
 class LearningStoreTests(unittest.TestCase):
@@ -59,7 +74,7 @@ class LearningStoreTests(unittest.TestCase):
             store.create_learning_session(
                 session_id="session-1",
                 learner_id="student-1",
-                lesson_id="lesson-1",
+                publication_id="paper-1",
                 started_at=1.0,
             )
             result = store.record_exercise_attempt(
@@ -115,7 +130,7 @@ class LearningStoreTests(unittest.TestCase):
             store.create_learning_session(
                 session_id="paper-session",
                 learner_id="student-1",
-                lesson_id="paper-1",
+                publication_id="paper-1",
                 started_at=1.0,
             )
             first = store.record_exercise_attempt(
@@ -210,7 +225,7 @@ class LearningStoreTests(unittest.TestCase):
                 store.create_learning_session(
                     session_id=session_id,
                     learner_id="student-1",
-                    lesson_id="paper-1",
+                    publication_id="paper-1",
                     started_at=1.0,
                 )
             store.record_exercise_attempt(
@@ -236,6 +251,80 @@ class LearningStoreTests(unittest.TestCase):
                     duration_ms=100,
                     created_at=3.0,
                 )
+
+    def test_renames_legacy_sqlite_session_column_without_losing_data(self) -> None:
+        with TemporaryDirectory() as directory:
+            database_path = f"{directory}/learning.sqlite3"
+            with sqlite3.connect(database_path) as connection:
+                connection.execute(
+                    "CREATE TABLE learning_sessions ("
+                    "session_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, "
+                    "lesson_id TEXT NOT NULL, started_at REAL NOT NULL, updated_at REAL NOT NULL)"
+                )
+                connection.execute(
+                    "INSERT INTO learning_sessions VALUES (?, ?, ?, ?, ?)",
+                    ("legacy-session", "student-1", "paper-legacy", 1.0, 1.0),
+                )
+
+            store = TutorStore(
+                database_url=f"sqlite+pysqlite:///{database_path}",
+                data_root=directory,
+            )
+            session = store.get_learning_session("legacy-session")
+            self.assertEqual(session["publicationId"], "paper-legacy")
+
+
+class LearningRouteTests(unittest.TestCase):
+    def test_session_targets_a_published_paper_and_keeps_legacy_input_compatible(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = TutorStore(
+                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                data_root=directory,
+            )
+            store.save_lesson({
+                "lessonId": "lesson-1",
+                "title": "一次方程",
+                "version": 1,
+                "status": "draft",
+                "knowledgePoints": ["移项"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {"id": "lesson-1"},
+                    "quality": {"status": "ready"},
+                },
+            })
+            store.create_publication(
+                publication_id="paper-1",
+                title="第一章互动试卷",
+                source_upload_id=None,
+                lesson_ids=["lesson-1"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("paper-1", "in_review")
+            store.update_publication_status("paper-1", "published")
+            app = FastAPI()
+            app.include_router(build_learning_router(store=store))
+            client = TestClient(app)
+
+            current = client.post(
+                "/api/learning/sessions",
+                json={"learnerId": "student-1", "publicationId": "paper-1"},
+            )
+            legacy = client.post(
+                "/api/learning/sessions",
+                json={"learnerId": "student-1", "lessonId": "paper-1"},
+            )
+            missing = client.post(
+                "/api/learning/sessions",
+                json={"learnerId": "student-1", "publicationId": "missing"},
+            )
+
+            self.assertEqual(current.status_code, 200)
+            self.assertEqual(current.json()["publicationId"], "paper-1")
+            self.assertNotIn("lessonId", current.json())
+            self.assertEqual(legacy.status_code, 200)
+            self.assertEqual(missing.status_code, 404)
 
 
 if __name__ == "__main__":

@@ -35,13 +35,22 @@ def build_learning_router(*, store: Any) -> APIRouter:
 
     @router.post("/learning/sessions")
     def create_learning_session(request: LearningSessionCreate) -> dict[str, Any]:
+        publication = store.load_publication(request.publicationId)
+        if not publication or publication["status"] != "published":
+            # A client may only start telemetry for content that crossed the
+            # publication quality gate; arbitrary IDs must not create sessions.
+            raise HTTPException(status_code=404, detail="已发布互动试卷不存在")
         session = store.create_learning_session(
             session_id=uuid.uuid4().hex,
             learner_id=request.learnerId,
-            lesson_id=request.lessonId,
+            publication_id=request.publicationId,
             started_at=time.time(),
         )
-        log_event("learning.session.started", session_id=session["sessionId"], lesson_id=request.lessonId)
+        log_event(
+            "learning.session.started",
+            session_id=session["sessionId"],
+            publication_id=request.publicationId,
+        )
         return session
 
     @router.post("/learning/sessions/{session_id}/attempts")

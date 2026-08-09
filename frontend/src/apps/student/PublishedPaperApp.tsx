@@ -14,7 +14,9 @@ import type {
   TextbookImportResult,
   TutorReply,
 } from "../../types";
+import { PaperLearningProgress } from "./PaperLearningProgress";
 import { usePublishedLearningSession } from "./usePublishedLearningSession";
+import "./student.css";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
 /**
@@ -37,7 +39,7 @@ export function PublishedPaperApp() {
   const [reply, setReply] = useState<TutorReply | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { queueAttempt, syncMessage } = usePublishedLearningSession(publication?.publicationId);
+  const { queueAttempt, syncMessage, mastery } = usePublishedLearningSession(publication?.publicationId);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
   const textbookImport = useMemo<TextbookImportResult | null>(() => {
@@ -159,6 +161,11 @@ export function PublishedPaperApp() {
         <span className="active-model live">第 {questionIndex + 1}/{publication.lessons.length} 题</span>
         <span className="active-model live">{syncMessage}</span>
       </header>
+      <PaperLearningProgress
+        knowledgePoint={payload.question.knowledgePoint}
+        mastery={mastery}
+        syncMessage={syncMessage}
+      />
       <LessonPlayer payload={payload} onActionChange={setCanvasAction} />
       <PracticeWorkspace
         payload={payload}

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   createLearningSession,
+  loadLearningMastery,
   loadLearningSession,
   recordExerciseAttempt,
   syncExerciseAttempts,
 } from "../../api";
-import type { ExerciseAttemptInput } from "../../types";
+import type { ExerciseAttemptInput, MasteryState } from "../../types";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
+const DEMO_LEARNER_ID = "local-demo";
 
 interface PendingAttempt {
   sessionId: string;
@@ -40,7 +42,7 @@ async function openOrRecoverSession(publicationId: string) {
       localStorage.removeItem(sessionKey);
     }
   }
-  const session = await createLearningSession({ learnerId: "local-demo", lessonId: publicationId });
+  const session = await createLearningSession({ learnerId: DEMO_LEARNER_ID, publicationId });
   localStorage.setItem(sessionKey, session.sessionId);
   return { session, replacedSessionId: existingSessionId ?? "" };
 }
@@ -80,15 +82,31 @@ async function flushPending(activeSessionId: string, replacedSessionId = ""): Pr
 export function usePublishedLearningSession(publicationId: string | undefined) {
   const [sessionId, setSessionId] = useState("");
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
+  const [mastery, setMastery] = useState<MasteryState[]>([]);
+
+  const mergeMastery = useCallback((next: MasteryState) => {
+    setMastery((current) => [
+      next,
+      ...current.filter((item) => item.knowledgePoint !== next.knowledgePoint),
+    ]);
+  }, []);
 
   useEffect(() => {
     if (!publicationId) return;
     let cancelled = false;
+    // Never let a newly opened paper briefly reuse the previous paper's session.
+    setSessionId("");
+    setSyncMessage("正在连接学习记录…");
     void openOrRecoverSession(publicationId).then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
       const delivered = await flushPending(session.sessionId, replacedSessionId);
       if (!cancelled) setSyncMessage(delivered ? "离线学习记录已补传" : "学习记录已同步");
+      // Mastery is a derived projection. Reload it after offline attempts are
+      // flushed so the page never displays a score older than its answer log.
+      void loadLearningMastery(DEMO_LEARNER_ID).then((items) => {
+        if (!cancelled) setMastery(items);
+      }).catch(() => undefined);
     }).catch(() => {
       if (!cancelled) setSyncMessage("学习记录暂未连接，答案会在本机排队");
     });
@@ -103,14 +121,17 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
       return;
     }
     void recordExerciseAttempt(sessionId, attempt).then(
-      () => setSyncMessage("学习记录已同步"),
+      ({ mastery: nextMastery }) => {
+        mergeMastery(nextMastery);
+        setSyncMessage("学习记录已同步");
+      },
       () => {
         const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
         writePending([...pending, { sessionId, attempt }]);
         setSyncMessage("网络暂时不可用，记录已排队，稍后自动补传");
       },
     );
-  }, [sessionId]);
+  }, [mergeMastery, sessionId]);
 
-  return { queueAttempt, syncMessage };
+  return { queueAttempt, syncMessage, mastery };
 }

@@ -177,15 +177,18 @@ async function mockApi(page: Page, result = importResult) {
     });
   });
   await page.route("**/api/learning/sessions", async (route) => {
-    const request = route.request().postDataJSON() as { learnerId: string; lessonId: string };
+    const request = route.request().postDataJSON() as { learnerId: string; publicationId: string };
     await route.fulfill({
       json: {
         sessionId: "pw-session",
         learnerId: request.learnerId,
-        lessonId: request.lessonId,
+        publicationId: request.publicationId,
         startedAt: 1,
       },
     });
+  });
+  await page.route("**/api/learning/mastery/local-demo", async (route) => {
+    await route.fulfill({ json: { learnerId: "local-demo", items: [] } });
   });
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
@@ -537,6 +540,7 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: /B/ }).click();
     await page.getByRole("button", { name: "提交回答" }).click();
     await expect(page.getByText("部分正确")).toBeVisible();
+    await expect(page.getByLabel("掌握度 17%")).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {

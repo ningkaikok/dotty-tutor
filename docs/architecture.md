@@ -262,8 +262,9 @@ OCR 题块
 7. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
 8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
-判定完成后，前端将作答、耗时、提示层级和判定写入当前学习会话；后端同步更新知识点掌握度，
-前端在页头显示最新分数。详细契约见[可编程课程与学习闭环](programmable-learning.md)。
+判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
+前端在学习证据卡显示当前知识点分数与累计作答。详细契约见
+[可编程课程与学习闭环](programmable-learning.md)。
 
 ## TTS 回退
 
@@ -282,7 +283,8 @@ POST /api/tts
 - `batch_questions.payload_json` 保存结构化题目和审校信息。
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
-- `learning_sessions`、`exercise_attempts` 和 `mastery_states` 保存学习闭环数据。
+- `learning_sessions.publication_id` 绑定整份互动试卷，`exercise_attempts` 和 `mastery_states` 保存作答与
+  知识点掌握证据。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。

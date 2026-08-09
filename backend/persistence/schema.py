@@ -73,7 +73,7 @@ learning_sessions = Table(
     "learning_sessions", metadata,
     Column("session_id", String(64), primary_key=True),
     Column("learner_id", String(128), nullable=False),
-    Column("lesson_id", String(128), nullable=False),
+    Column("publication_id", String(128), nullable=False),
     Column("started_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )

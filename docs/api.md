@@ -48,7 +48,7 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 | `GET` | `/api/publications?status=published` | 列出学生可见的已发布互动试卷 |
 | `GET` | `/api/publications/{publicationId}` | 读取一份已发布试卷及其题目 |
 | `PATCH` | `/api/publications/{publicationId}/status` | 将试卷送审、发布或归档 |
-| `POST` | `/api/learning/sessions` | 创建学习者与课程关联的学习会话 |
+| `POST` | `/api/learning/sessions` | 使用 `learnerId`、`publicationId` 创建互动试卷学习会话 |
 | `GET` | `/api/learning/sessions/{sessionId}` | 恢复学习会话和已同步作答 |
 | `POST` | `/api/learning/sessions/{sessionId}/attempts` | 保存作答并更新知识点掌握度 |
 | `POST` | `/api/learning/sessions/{sessionId}/sync` | 批量补传离线期间排队的作答记录 |
@@ -65,6 +65,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 作答同步请求中的每个 `attemptId` 应由客户端稳定生成。服务端按该 ID 幂等写入，网络重试不会重复
 增加掌握度计数；同一 ID 不能跨学习会话复用。`createdAt` 使用 Unix 秒时间戳并记录真实作答时间，
 离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
+v0.6.0 客户端提交的旧字段 `lessonId` 暂时仍可作为 `publicationId` 的兼容别名；新代码和响应只使用
+`publicationId`。
 
 Help 示例：
 

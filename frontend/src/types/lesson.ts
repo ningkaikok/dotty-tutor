@@ -81,7 +81,7 @@ export interface LessonDocument {
 export interface LearningSession {
   sessionId: string;
   learnerId: string;
-  lessonId: string;
+  publicationId: string;
   startedAt: number;
 }
 

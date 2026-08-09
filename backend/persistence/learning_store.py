@@ -243,7 +243,7 @@ class LearningStore(DatabaseStore):
         *,
         session_id: str,
         learner_id: str,
-        lesson_id: str,
+        publication_id: str,
         started_at: float,
     ) -> dict[str, Any]:
         self._ensure_initialized()
@@ -251,14 +251,14 @@ class LearningStore(DatabaseStore):
             connection.execute(learning_sessions.insert().values(
                 session_id=session_id,
                 learner_id=learner_id,
-                lesson_id=lesson_id,
+                publication_id=publication_id,
                 started_at=started_at,
                 updated_at=started_at,
             ))
         return {
             "sessionId": session_id,
             "learnerId": learner_id,
-            "lessonId": lesson_id,
+            "publicationId": publication_id,
             "startedAt": started_at,
         }
 
@@ -372,7 +372,7 @@ class LearningStore(DatabaseStore):
         return {
             "sessionId": session["session_id"],
             "learnerId": session["learner_id"],
-            "lessonId": session["lesson_id"],
+            "publicationId": session["publication_id"],
             "startedAt": session["started_at"],
             "updatedAt": session["updated_at"],
             "attempts": [{
