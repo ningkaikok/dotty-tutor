@@ -30,6 +30,13 @@ DEFAULT_INSTRUCT = os.getenv(
     "QWEN_TTS_INSTRUCT",
     "用耐心、清晰、自然的中文老师语气朗读，语速稍慢，重点处有轻微停顿。",
 )
+WARMUP_ENABLED = os.getenv("QWEN_TTS_WARMUP_ENABLED", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+WARMUP_TEXT = os.getenv("QWEN_TTS_WARMUP_TEXT", "你好。").strip() or "你好。"
 
 
 class TtsRequest(BaseModel):
@@ -39,6 +46,12 @@ class TtsRequest(BaseModel):
 
 
 _generation_lock = Lock()
+_warmup_state: dict[str, Any] = {
+    "enabled": WARMUP_ENABLED,
+    "completed": not WARMUP_ENABLED,
+    "duration_ms": None,
+    "error": None,
+}
 
 
 def _device() -> str:
@@ -80,17 +93,40 @@ def _synthesize_audio(text: str, speaker: str, instruct: str) -> bytes:
 
 @app.on_event("startup")
 def warm_model() -> None:
-    """Load weights during service startup instead of delaying the first lesson."""
+    """Load weights and run one inference before accepting lesson traffic.
+
+    Loading weights alone does not initialize every device kernel used by generation.
+    The short discarded narration moves that one-time cost into service startup, so a
+    learner's first real sentence does not have to pay it.  Operators can disable the
+    inference step on memory-constrained machines while keeping model loading intact.
+    """
     started = time.perf_counter()
     try:
         get_model()
+        audio_bytes = 0
+        if WARMUP_ENABLED:
+            audio_bytes = len(
+                _synthesize_audio(WARMUP_TEXT, DEFAULT_SPEAKER, DEFAULT_INSTRUCT)
+            )
+        _warmup_state.update(
+            completed=True,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            error=None,
+        )
         log_event(
             "tts.service.warmed",
             level=10,
             device=_device(),
-            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            inference_warmed=WARMUP_ENABLED,
+            audio_bytes=audio_bytes,
+            duration_ms=_warmup_state["duration_ms"],
         )
     except Exception as error:  # noqa: BLE001 - health endpoint will expose the failure
+        _warmup_state.update(
+            completed=False,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            error=f"{type(error).__name__}: {str(error)[:200]}",
+        )
         log_event(
             "tts.service.warm.failed",
             level=40,
@@ -102,11 +138,14 @@ def warm_model() -> None:
 
 @app.get("/health")
 def health() -> dict[str, Any]:
+    loaded = get_model.cache_info().currsize > 0
     payload = {
         "provider": "qwen3-tts",
         "model": MODEL_NAME,
         "device": _device(),
-        "loaded": get_model.cache_info().currsize > 0,
+        "loaded": loaded,
+        "ready": loaded and _warmup_state["completed"],
+        "warmup": dict(_warmup_state),
     }
     log_event("tts.service.health", level=10, device=payload["device"], loaded=payload["loaded"])
     return payload

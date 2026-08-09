@@ -210,8 +210,13 @@ cd backend
 ../.qwen3-tts-venv/bin/python qwen_tts_service.py
 ```
 
-首次请求会下载 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`。默认音色为 `Serena`，可以通过
+首次启动可能会下载 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`。默认音色为 `Serena`，可以通过
 `QWEN_TTS_MODEL`、`QWEN_TTS_SPEAKER` 和 `QWEN_TTS_DEVICE` 修改。
+
+服务启动时默认先加载模型，再合成一段不会返回给用户的短音频。这个推理级预热会让服务晚几秒进入
+ready 状态，但能避免学生第一次播放承担设备内核初始化开销。`GET /health` 的 `warmup` 字段会显示
+是否完成和耗时；资源紧张时可设置 `QWEN_TTS_WARMUP_ENABLED=0`，也可用
+`QWEN_TTS_WARMUP_TEXT` 修改预热文本。课程播放器还会在课程载入后预取讲解音频，两层预热互不替代。
 
 没有合适 GPU 时，可以不启动该服务，前端会回退到浏览器语音。
 
