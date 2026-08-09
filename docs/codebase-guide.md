@@ -47,7 +47,6 @@ dotty-tutor/
 ├── frontend/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
-│   ├── apps/student/           # 学生学习空间，不包含生产配置
 │   ├── apps/textbook/          # 内容生产、互动预览与导入子模块
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认

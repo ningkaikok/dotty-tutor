@@ -105,7 +105,7 @@ npm run dev
 | 地址 | 用途 |
 | --- | --- |
 | <http://localhost:5174/> | 产品选择首页 |
-| <http://localhost:5174/learn> | 学生学习空间，不显示教材上传和模型配置 |
+| <http://localhost:5174/mistakes> | 学生学习空间（错题陪练），不显示教材上传和模型配置 |
 | <http://localhost:5174/studio> | 教材导入、OCR、内容生成与互动预览 |
 | <http://localhost:5174/textbooks> | 兼容旧地址，自动跳转到 `/studio` |
 | <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
