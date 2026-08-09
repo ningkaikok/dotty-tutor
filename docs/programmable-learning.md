@@ -43,7 +43,9 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 ```
 
 多个 `LessonDocument` 通过 `lesson_publications` 组成一份互动试卷。试卷先进入 `in_review`，
-发布时再次检查每道题的质量门禁；学生端只读取 `published` 试卷，不接触草稿、审校记录或模型配置。
+发布时再次检查每道题的质量门禁。生成阶段最多局部修复失败题两次；仍不合格的题会自动从本次发布中
+隔离，合格题继续发布。若没有任何题目合格，发布会安全失败并保留诊断信息。学生端只读取
+`published` 试卷，不接触草稿、审校记录、隔离题或模型配置。
 
 当前支持以下内容块：
 
@@ -91,7 +93,7 @@ sequenceDiagram
 ## 持久化
 
 - `lesson_documents`：课程版本、状态、知识点和内容块。
-- `lesson_publications`：互动试卷标题、题目顺序、发布状态和教材来源。
+- `lesson_publications`：互动试卷标题、题目顺序、发布状态、教材来源、版本和前一版本。
 - `learning_sessions`：学习者进入一份已发布互动试卷的会话。
 - `exercise_attempts`：原始回答、判定、提示层级与耗时。
 - `mastery_states`：按学习者和知识点聚合的当前掌握度。
@@ -99,7 +101,8 @@ sequenceDiagram
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等初始化；受控部署可先执行
 `backend/migrations/001_programmable_learning.sql`；试卷发布与批量同步新增表/索引见
 `backend/migrations/006_publications_and_sync.sql`；`007_learning_session_publication.sql` 将 v0.6.0 中
-实际保存试卷 ID 的 `lesson_id` 无损重命名为 `publication_id`。后续应引入 Alembic，迁移历史建立后
+实际保存试卷 ID 的 `lesson_id` 无损重命名为 `publication_id`；`008_publication_revisions.sql` 增加试卷
+版本链。后续应引入 Alembic，迁移历史建立后
 停止把 `create_all()` 当作生产迁移工具。
 
 ## 当前边界

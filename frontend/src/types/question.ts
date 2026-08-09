@@ -1,7 +1,7 @@
 import type { LessonStep } from "./lesson";
 import type { ModelRun, ReviewRun } from "./runtime";
 
-/** Drawing states understood by the current geometry renderer. */
+/** 当前几何画布可执行的有限动作集合。 */
 export type CanvasAction =
   | "show-base"
   | "show-point-p"
@@ -101,7 +101,7 @@ export interface AnswerSpec {
   unit?: string;
 }
 
-/** Stable question contract shared by textbook lessons and mistake tutoring. */
+/** 教材课程、互动试卷和错题陪练共享的稳定题目契约。 */
 export interface Question {
   id: string;
   questionType?: QuestionType;

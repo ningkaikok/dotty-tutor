@@ -7,10 +7,28 @@ export interface PublicationSummary {
   title: string;
   sourceUploadId?: string;
   status: PublicationStatus;
+  version: number;
+  revisionOf?: string | null;
   lessonIds: string[];
   lessonCount: number;
   createdAt: number;
   updatedAt: number;
+  qualityRecovery?: {
+    status: "recovered";
+    publishedCount: number;
+    quarantinedCount: number;
+    quarantinedLessonIds: string[];
+  };
+}
+
+export interface PublicationRevisionResult {
+  publication: PublicationSummary;
+  questionPayloads: QuestionPayload[];
+}
+
+export interface PublicationWorkspaceState {
+  publication: PublicationSummary | null;
+  questionPayloads: QuestionPayload[];
 }
 
 export interface PublishedLesson {

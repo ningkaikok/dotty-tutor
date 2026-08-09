@@ -3,7 +3,7 @@ import { answerVariation, createVariation, listVariations } from "../../api";
 import type { VariationExercise } from "../../types";
 import { buildStructuredAnswer } from "./structuredAnswer";
 
-/** Manage one scored attempt without mixing it into free-form tutor messages. */
+/** 管理一次可计分的变式作答，不把掌握证据混入自由对话消息。 */
 export function useVariationPractice(mistakeId: string) {
   const [items, setItems] = useState<VariationExercise[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);

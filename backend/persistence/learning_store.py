@@ -1,4 +1,4 @@
-"""Persistence operations for lessons, attempts and learner mastery."""
+"""课程、互动试卷、作答记录和知识点掌握度的持久化操作。"""
 
 from __future__ import annotations
 
@@ -18,10 +18,15 @@ from persistence.schema import (
     mastery_states,
     upload_jobs,
 )
+from publication_quality import PublicationQualityError
 
 
 class LearningStore(DatabaseStore):
-    """Store programmable lessons and the learner's practice history."""
+    """保存可编程课程和可追溯学习证据。
+
+    页面状态不进入本 Store。课程文档、试卷版本、幂等作答和掌握度是数据库真相；临时选项、
+    输入框内容和网络队列分别由前端管理。
+    """
 
     def save_lesson(self, document: dict[str, Any]) -> dict[str, Any]:
         self._ensure_initialized()
@@ -77,7 +82,7 @@ class LearningStore(DatabaseStore):
         }
 
     def list_lessons(self, status: str | None = None) -> list[dict[str, Any]]:
-        """List persisted lessons for the studio and student publication views."""
+        """按更新时间列出课程，供工作台和发布视图使用。"""
         self._ensure_initialized()
         query = select(lesson_documents).order_by(lesson_documents.c.updated_at.desc())
         if status:
@@ -103,7 +108,7 @@ class LearningStore(DatabaseStore):
         }
 
     def update_lesson_status(self, lesson_id: str, status: str) -> dict[str, Any] | None:
-        """Change only the publication state of an existing lesson document."""
+        """只改变课程发布状态，不重写题目正文和审核证据。"""
         self._ensure_initialized()
         with self.engine.begin() as connection:
             result = connection.execute(
@@ -124,8 +129,10 @@ class LearningStore(DatabaseStore):
         lesson_ids: list[str],
         status: str,
         created_at: float,
+        version: int = 1,
+        revision_of: str | None = None,
     ) -> dict[str, Any]:
-        """Create a small immutable lesson collection used as an interactive paper."""
+        """创建一份由稳定 lesson ID 组成的不可变互动试卷版本。"""
         self._ensure_initialized()
         if len(lesson_ids) != len(set(lesson_ids)):
             raise ValueError("互动试卷不能包含重复题目")
@@ -144,6 +151,8 @@ class LearningStore(DatabaseStore):
                 source_upload_id=source_upload_id,
                 lesson_ids_json=lesson_ids,
                 status=status,
+                version=version,
+                revision_of=revision_of,
                 created_at=created_at,
                 updated_at=created_at,
             ))
@@ -171,6 +180,8 @@ class LearningStore(DatabaseStore):
             "title": row["title"],
             "sourceUploadId": row["source_upload_id"],
             "status": row["status"],
+            "version": row["version"],
+            "revisionOf": row["revision_of"],
             "lessonIds": lesson_ids,
             "lessons": [by_id[lesson_id] for lesson_id in lesson_ids if lesson_id in by_id],
             "createdAt": row["created_at"],
@@ -189,6 +200,8 @@ class LearningStore(DatabaseStore):
             "title": row["title"],
             "sourceUploadId": row["source_upload_id"],
             "status": row["status"],
+            "version": row["version"],
+            "revisionOf": row["revision_of"],
             "lessonIds": decode_json(row["lesson_ids_json"]),
             "lessonCount": len(decode_json(row["lesson_ids_json"])),
             "createdAt": row["created_at"],
@@ -196,8 +209,13 @@ class LearningStore(DatabaseStore):
         } for row in rows]
 
     def update_publication_status(self, publication_id: str, status: str) -> dict[str, Any] | None:
-        """Publish a collection only after every lesson passes its quality gate."""
+        """只发布安全课程，并隔离自动重试后仍失败的候选题。
+
+        生成阶段已对单题做有限重试；最终发布边界会移除残留坏题，使其余合格题可以发布。
+        如果没有任何题通过，整份试卷仍以失败关闭，绝不发布空试卷或未验证题目。
+        """
         self._ensure_initialized()
+        recovery: dict[str, Any] | None = None
         with self.engine.begin() as connection:
             publication = connection.execute(
                 select(lesson_publications).where(
@@ -220,12 +238,33 @@ class LearningStore(DatabaseStore):
                 select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids))
             ).mappings().all()
             if status == "published":
-                missing_or_unready = [
-                    lesson["lesson_id"] for lesson in lessons
-                    if decode_json(lesson["question_json"]).get("quality", {}).get("status") != "ready"
-                ]
-                if len(lessons) != len(lesson_ids) or missing_or_unready:
-                    raise ValueError("存在未通过结构质量门禁的题目，不能发布")
+                lessons_by_id = {lesson["lesson_id"]: lesson for lesson in lessons}
+                blockers: list[dict[str, Any]] = []
+                ready_lesson_ids: list[str] = []
+                for lesson_id in lesson_ids:
+                    lesson = lessons_by_id.get(lesson_id)
+                    if lesson is None:
+                        blockers.append({"lessonId": lesson_id, "errors": ["课程记录不存在"]})
+                        continue
+                    quality = decode_json(lesson["question_json"]).get("quality", {})
+                    if quality.get("status") == "ready":
+                        ready_lesson_ids.append(lesson_id)
+                    else:
+                        blockers.append({
+                            "lessonId": lesson_id,
+                            "errors": list(quality.get("errors") or ["缺少质量校验结果"]),
+                            "validatorVersion": quality.get("validatorVersion"),
+                        })
+                if not ready_lesson_ids:
+                    raise PublicationQualityError(blockers)
+                if blockers:
+                    lesson_ids = ready_lesson_ids
+                    recovery = {
+                        "status": "recovered",
+                        "publishedCount": len(ready_lesson_ids),
+                        "quarantinedCount": len(blockers),
+                        "quarantinedLessonIds": [item["lessonId"] for item in blockers],
+                    }
                 connection.execute(
                     lesson_documents.update()
                     .where(lesson_documents.c.lesson_id.in_(lesson_ids))
@@ -234,9 +273,16 @@ class LearningStore(DatabaseStore):
             connection.execute(
                 lesson_publications.update()
                 .where(lesson_publications.c.publication_id == publication_id)
-                .values(status=status, updated_at=time.time())
+                .values(
+                    status=status,
+                    lesson_ids_json=lesson_ids,
+                    updated_at=time.time(),
+                )
             )
-        return self.load_publication(publication_id)
+        result = self.load_publication(publication_id)
+        if result is not None and recovery is not None:
+            result["qualityRecovery"] = recovery
+        return result
 
     def create_learning_session(
         self,

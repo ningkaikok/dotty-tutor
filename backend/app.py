@@ -1,8 +1,8 @@
-"""Dotty Tutor ASGI composition root.
+"""Dotty Tutor 的 ASGI 组合根。
 
-Run this module with ``uvicorn app:app``. Business logic belongs in route,
-service, runtime, and store modules; this file only wires those boundaries.
-Selected symbols are re-exported for backwards-compatible tests and scripts.
+使用 ``uvicorn app:app`` 启动本模块。业务逻辑分别属于 route、service、runtime 和 store；
+此文件只创建对象、注入依赖并注册路由。底部保留少量导入符号是为了兼容旧测试和脚本，
+不表示新业务应该继续写入 ``app.py``。
 """
 
 from application import create_app
@@ -19,6 +19,7 @@ from mistake_routes import build_mistake_router
 from mistake_store import MistakeStore
 from model_runtime import runtime
 from publication_routes import build_publication_router
+from publication_revision import PublicationRevisionService
 from practice_routes import build_practice_router
 from question_contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
 from question_pipeline import (
@@ -42,7 +43,7 @@ from runtime_routes import build_runtime_router
 from storage import store
 from stateful_tutor import StatefulTutor
 from textbook_ocr import resolve_ocr_text
-from textbook_routes import pdf_uploads, process_pdf_batch, router as textbook_router
+from textbook_routes import pdf_uploads, process_pdf_batch, processing_service, router as textbook_router
 from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations
 from tutoring_routes import build_tutoring_router
 from tutoring_store import TutoringStore
@@ -52,13 +53,20 @@ from variation_store import VariationStore
 
 app = create_app()
 
-# Cross-cutting runtime and learning APIs share the main TutorStore.
+# 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 app.include_router(build_runtime_router(store=store, question_payload=question_payload))
 app.include_router(build_learning_router(store=store))
-app.include_router(build_publication_router(store=store))
+publication_revision_service = PublicationRevisionService(
+    store=store,
+    processing_service=processing_service,
+)
+app.include_router(build_publication_router(
+    store=store,
+    revision_service=publication_revision_service,
+))
 app.include_router(textbook_router)
 
-# The mistake domain shares infrastructure but keeps its own table and routes.
+# 错题域复用引擎和 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
 mistake_recognizer = build_mistake_recognizer(
     resolve_ocr_text=resolve_ocr_text,
@@ -67,8 +75,7 @@ mistake_recognizer = build_mistake_recognizer(
 )
 app.include_router(build_mistake_router(store=mistake_store, recognize=mistake_recognizer))
 
-# Stateful tutoring is a separate domain store so message history does not
-# expand the capture repository or the generic textbook TutorStore.
+# 多轮消息单独存储：对话历史增长很快，不应把拍照记录 Store 或通用教材 Store 变成万能仓库。
 tutoring_store = TutoringStore(engine=store.engine)
 stateful_tutor = StatefulTutor(runtime=runtime)
 app.include_router(build_tutoring_router(
@@ -77,9 +84,8 @@ app.include_router(build_tutoring_router(
     tutor=stateful_tutor,
 ))
 
-# Phase-four verification exercises are persisted separately from the tutor
-# conversation. This keeps a student's scored attempts immutable and makes the
-# later mastery/review policy independent from free-form chat history.
+# 计分变式练习与自由对话分开持久化。这样作答证据保持不可变，掌握度和复习策略也不会依赖
+# 难以稳定重放的聊天文本。
 variation_store = VariationStore(engine=store.engine)
 variation_service = VariationService(generator=generate_lesson)
 review_store = ReviewStore(engine=store.engine)

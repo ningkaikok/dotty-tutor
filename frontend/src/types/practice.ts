@@ -11,7 +11,7 @@ export type VariationStrategy =
 
 export type VariationLevel = "foundation" | "parallel" | "transfer";
 
-/** One immutable generated exercise and, after submission, its final result. */
+/** 一道不可变的生成练习，以及提交后对应的最终判题结果。 */
 export interface VariationExercise {
   variationId: string;
   mistakeId: string;

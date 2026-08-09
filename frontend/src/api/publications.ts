@@ -1,6 +1,19 @@
-import type { PublicationDetail, PublicationStatus, PublicationSummary } from "../types/publication";
+import type {
+  PublicationDetail,
+  PublicationRevisionResult,
+  PublicationStatus,
+  PublicationSummary,
+  PublicationWorkspaceState,
+} from "../types/publication";
 import type { LessonDocument } from "../types/lesson";
 import { parse } from "./client";
+
+/**
+ * 互动试卷发布 API。
+ *
+ * lesson 是单题不可变快照，publication 是 lesson ID 集合。重新审核创建新集合和新 lesson，
+ * 因而旧版本的学生会话始终可以重放。
+ */
 
 export async function saveLesson(document: LessonDocument) {
   return parse(await fetch("/api/lessons", {
@@ -31,6 +44,20 @@ export async function updatePublicationStatus(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status }),
   }));
+}
+
+export async function createPublicationRevision(publicationId: string): Promise<PublicationRevisionResult> {
+  return parse<PublicationRevisionResult>(await fetch(`/api/publications/${publicationId}/revisions`, {
+    method: "POST",
+  }));
+}
+
+export async function loadPublicationWorkspace(sourceUploadId: string): Promise<PublicationWorkspaceState> {
+  // 工作台需要未脱敏审核诊断；学生端只能调用 loadPublishedPublication 获取公开投影。
+  return parse<PublicationWorkspaceState>(await fetch(
+    `/api/publications/source/${encodeURIComponent(sourceUploadId)}`,
+    { cache: "no-store" },
+  ));
 }
 
 export async function loadPublishedPublications(): Promise<PublicationSummary[]> {

@@ -1,4 +1,4 @@
-/** Shared upload limits. Keep these values aligned with backend/app.py. */
+/** 前端上传限制；必须与后端 HTTP 边界保持一致，前端校验只改善体验，不能替代服务端校验。 */
 export const ACCEPTED_TEXTBOOK_FILES = "image/*,application/pdf,.heic,.heif";
 export const PDF_CHUNK_SIZE = 5 * 1024 * 1024;
 export const IMAGE_MAX_SIZE = 10 * 1024 * 1024;

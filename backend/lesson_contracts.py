@@ -1,4 +1,4 @@
-"""Contracts for programmable lessons and persisted learning activity."""
+"""可编程课程、互动试卷和持久化学习活动的共享契约。"""
 
 from __future__ import annotations
 
@@ -36,10 +36,8 @@ class LessonDocument(BaseModel):
     sourceUploadId: str | None = Field(default=None, max_length=64)
     knowledgePoints: list[str] = Field(default_factory=list, max_length=32)
     blocks: list[LessonBlock] = Field(default_factory=list, max_length=200)
-    # Keeping the source question beside the renderable blocks lets the
-    # student route reuse the same answer components as the studio. The
-    # payload is immutable for a published version and is not a second source
-    # of truth for generated content.
+    # 在可渲染内容块旁保留原题，使学生端与工作台复用同一套作答组件。
+    # 发布版本中的 payload 不可变，但它只是版本快照，不是生成内容的第二真相来源。
     questionPayload: dict[str, Any] = Field(default_factory=dict)
     guideCards: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
 
@@ -56,8 +54,7 @@ class PublicationStatusUpdate(BaseModel):
 
 class LearningSessionCreate(BaseModel):
     learnerId: str = Field(default="local-demo", min_length=1, max_length=128)
-    # Sessions now belong to a published paper, not one lesson. Keep the old
-    # request key as a validation alias so bookmarks from v0.6.0 keep working.
+    # 会话属于整份已发布试卷，而不是单道课程；保留旧 lessonId 请求别名，兼容 v0.6.0 客户端。
     publicationId: str = Field(
         min_length=1,
         max_length=128,
@@ -73,8 +70,7 @@ class ExerciseAttemptCreate(BaseModel):
     assessment: Literal["correct", "partial", "incorrect"]
     hintLevel: int = Field(default=0, ge=0, le=10)
     durationMs: int = Field(default=0, ge=0, le=3_600_000)
-    # The browser supplies the original answer time so an offline retry does
-    # not make old work look newly completed. Older clients may omit it.
+    # 浏览器携带原始作答时间，避免离线补传把旧练习误记成刚完成；旧客户端仍可省略该字段。
     createdAt: float | None = Field(default=None, ge=0)
 
 
@@ -128,9 +124,7 @@ def lesson_document_from_payload(
     document = LessonDocument(
         lessonId=lesson_id,
         title=title,
-        # Generation produces a reviewable draft. Publishing is an explicit
-        # content-studio action so a student never sees newly generated content
-        # before its quality gate has been checked.
+        # 生成只产生可审核草稿；发布必须由内容工作台显式触发，学生不会看到尚未通过质量门禁的内容。
         status="in_review" if question.get("publicationStatus") == "needs_review" else "draft",
         sourceUploadId=source_upload_id,
         knowledgePoints=[str(question.get("knowledgePoint") or title)],

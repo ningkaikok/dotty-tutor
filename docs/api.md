@@ -17,11 +17,13 @@ FastAPI 交互文档启动后可从以下地址查看：
 | `GET` | `/api/health` | 检查 API 和数据库连接 |
 | `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型 |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
+| `GET` | `/api/review-models` | 返回当前文字审核模型和可用模型目录 |
+| `POST` | `/api/review-models/select` | 独立切换后续题目使用的文字审核模型 |
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
 
-模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
+生成模型、文字审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
 
 ## 题目与教材导入
 
@@ -48,6 +50,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 | `GET` | `/api/publications?status=published` | 列出学生可见的已发布互动试卷 |
 | `GET` | `/api/publications/{publicationId}` | 读取一份已发布试卷及其题目 |
 | `PATCH` | `/api/publications/{publicationId}/status` | 将试卷送审、发布或归档 |
+| `POST` | `/api/publications/{publicationId}/revisions` | 从原 PDF 整套重新生成并创建审核新版 |
+| `GET` | `/api/publications/source/{sourceUploadId}` | 内容生产页刷新后恢复该教材最新试卷版本和工作区题目 |
 | `POST` | `/api/learning/sessions` | 使用 `learnerId`、`publicationId` 创建互动试卷学习会话 |
 | `GET` | `/api/learning/sessions/{sessionId}` | 恢复学习会话和已同步作答 |
 | `POST` | `/api/learning/sessions/{sessionId}/attempts` | 保存作答并更新知识点掌握度 |
@@ -58,6 +62,9 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 
 发布状态只有 `draft`、`in_review`、`published` 和 `archived`。允许的主路径是
 `draft → in_review → published → archived`，归档内容可恢复为草稿；接口拒绝跳过审核直接发布。
+发布时若只有部分题目未通过自动修复，响应包含 `qualityRecovery`，异常题被隔离，其余题目正常发布；
+若全部题目均不合格，接口返回 `409`，`detail.code` 为 `publication_quality_blocked`，并包含脱敏后的
+题目 ID 与校验错误，便于日志聚合和开发排查。
 发布时要求试卷内每道题的质量状态明确为 `ready`，学生接口只返回 `published` 试卷。课程块 Schema、
 渲染器扩展方式和掌握度计算见
 [可编程课程与学习闭环](programmable-learning.md)。
@@ -67,6 +74,10 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
 v0.6.0 客户端提交的旧字段 `lessonId` 暂时仍可作为 `publicationId` 的兼容别名；新代码和响应只使用
 `publicationId`。
+
+试卷新版不会覆盖原课程文档。接口为每道题创建新的 `lessonId`，将试卷 `version` 加一并记录
+`revisionOf`；新版本从 `in_review` 开始，仍须通过质量门禁后发布。若原 PDF、来源批次或 OCR 所需文件
+已经丢失，接口返回 `409`，需要重新上传原 PDF，而不是使用已污染的题干继续猜测。
 
 Help 示例：
 

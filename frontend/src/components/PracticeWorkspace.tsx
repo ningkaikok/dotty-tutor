@@ -55,9 +55,8 @@ export function PracticeWorkspace({
   onSubmit,
   onHelp,
 }: PracticeWorkspaceProps) {
-  // This component is deliberately controlled despite the longer prop list.
-  // TextbookApp and the mistake coach can share answer widgets while keeping
-  // network effects and learning state outside presentation components.
+  // 这里刻意采用受控组件，虽然 props 较多，但教材预览、发布试卷和错题陪练因此能复用同一套
+  // 作答控件，同时把网络副作用和学习状态留在各自页面 Hook 中。
   const [debugOpen, setDebugOpen] = useState(false);
   const isDrawLine = payload.question.questionType === "draw-line";
   const hasStructuredAnswer = selectedOptions.length > 0
@@ -76,12 +75,8 @@ export function PracticeWorkspace({
             <div className="question-navigation">
               {textbookImport.uploadId && (
                 <>
-                  <span
-                    className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}
-                    title="重新生成会使用当前选择的模型；如需更换，请返回教材库重新选择模型"
-                  >{payload.modelRun.provider} · {payload.modelRun.model}</span>
                   <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate}>
-                    {loadingQuestion ? "生成中…" : "重新生成本题"}
+                    {loadingQuestion ? "自动修复中…" : "重新生成本题"}
                   </button>
                 </>
               )}
@@ -100,7 +95,7 @@ export function PracticeWorkspace({
             {payload.question.sourcePages && <span>来源第 {payload.question.sourcePages.start}-{payload.question.sourcePages.end} 页</span>}
             {payload.review && (
               <b className={payload.review.needsHumanReview ? "review-warning" : "review-passed"}>
-                {payload.review.needsHumanReview ? "需要人工复核" : "双模型审校通过"}
+                {payload.review.needsHumanReview ? "自动审校发现疑点" : "自动审校通过"}
               </b>
             )}
             {payload.quality && (

@@ -1,9 +1,7 @@
-"""Shared database lifecycle used by the domain stores.
+"""各领域 Store 共享的数据库生命周期。
 
-The application has several persistence domains, but they must share one
-SQLAlchemy engine and one schema initialization path.  Keeping that plumbing in
-this small base class avoids duplicating connection policy in every store while
-leaving domain queries in domain-specific modules.
+应用包含教材、学习、错题和复习等多个持久化领域，但它们必须共享一个 SQLAlchemy Engine 和
+一条初始化路径。公共连接策略放在这个小基类，领域查询仍留在各自 Store，避免重新形成万能仓库。
 """
 
 from __future__ import annotations
@@ -25,7 +23,7 @@ from persistence.schema import metadata
 
 
 class DatabaseStore:
-    """Own the engine, data directories and cross-database upsert behavior."""
+    """统一管理 Engine、数据目录和 PostgreSQL/SQLite Upsert 差异。"""
 
     def __init__(
         self,
@@ -42,8 +40,7 @@ class DatabaseStore:
         self.upload_root.mkdir(parents=True, exist_ok=True)
 
         configured_url = database_url or os.getenv("DATABASE_URL")
-        # DOTTY_DATA_DIR historically selected an isolated SQLite database.
-        # Preserve that behavior for tests and legacy migration tools.
+        # DOTTY_DATA_DIR 历史上代表隔离 SQLite；保留该行为供单元测试和旧数据迁移使用。
         if not configured_url and os.getenv("DOTTY_DATA_DIR"):
             configured_url = f"sqlite+pysqlite:///{self.root / 'dotty.sqlite3'}"
         self.database_url = normalize_database_url(
@@ -71,7 +68,7 @@ class DatabaseStore:
         return self.engine.dialect.name
 
     def ping(self) -> bool:
-        """Check database connectivity without exposing driver details."""
+        """检查数据库连通性，并把驱动异常收敛为布尔健康状态。"""
         try:
             self._ensure_initialized()
             with self.engine.connect() as connection:
@@ -96,8 +93,8 @@ class DatabaseStore:
                 return
             metadata.create_all(self.engine)
             if self.backend == "sqlite":
-                # Databases created before guide cards were persisted need one
-                # small compatibility migration.
+                # SQLite 仅用于测试和旧本地数据，因此在启动时执行小型幂等兼容迁移；
+                # PostgreSQL 正式环境仍通过 backend/migrations 中可审查的 SQL 升级。
                 with self.engine.begin() as connection:
                     columns = {
                         row[1]
@@ -133,11 +130,27 @@ class DatabaseStore:
                         ).fetchall()
                     }
                     if "lesson_id" in session_columns and "publication_id" not in session_columns:
-                        # v0.6.0 already stored publication IDs in lesson_id. Renaming
-                        # preserves local demo history while making the contract honest.
+                        # v0.6.0 已把 publication ID 写进 lesson_id。重命名列可以保留本地历史，
+                        # 同时让数据库字段名与真实契约一致。
                         connection.exec_driver_sql(
                             "ALTER TABLE learning_sessions "
                             "RENAME COLUMN lesson_id TO publication_id"
+                        )
+                    publication_columns = {
+                        row[1]
+                        for row in connection.exec_driver_sql(
+                            "PRAGMA table_info(lesson_publications)"
+                        ).fetchall()
+                    }
+                    if "version" not in publication_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE lesson_publications "
+                            "ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                        )
+                    if "revision_of" not in publication_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE lesson_publications "
+                            "ADD COLUMN revision_of VARCHAR(64)"
                         )
             self._initialized = True
 
@@ -149,7 +162,7 @@ class DatabaseStore:
         conflict_columns: list[str],
         update_columns: list[str],
     ) -> None:
-        """Execute one portable PostgreSQL/SQLite upsert."""
+        """执行一条兼容 PostgreSQL 和 SQLite 的 Upsert。"""
         if self.backend == "postgresql":
             statement = postgresql_insert(table).values(**values)
         elif self.backend == "sqlite":

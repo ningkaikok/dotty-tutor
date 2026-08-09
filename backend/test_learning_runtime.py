@@ -113,11 +113,25 @@ class LearningStoreTests(unittest.TestCase):
                     },
                     "guideCards": [],
                 })
+            store.save_lesson({
+                "lessonId": "lesson-invalid",
+                "title": "自动隔离题目",
+                "version": 1,
+                "status": "in_review",
+                "sourceUploadId": "upload-1",
+                "knowledgePoints": ["分数"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {"id": "lesson-invalid", "knowledgePoint": "分数"},
+                    "quality": {"status": "needs_review", "errors": ["选项缺失"]},
+                },
+                "guideCards": [],
+            })
             publication = store.create_publication(
                 publication_id="paper-1",
                 title="第一章互动试卷",
                 source_upload_id="upload-1",
-                lesson_ids=["lesson-a", "lesson-b"],
+                lesson_ids=["lesson-a", "lesson-invalid", "lesson-b"],
                 status="draft",
                 created_at=1.0,
             )
@@ -125,6 +139,8 @@ class LearningStoreTests(unittest.TestCase):
             store.update_publication_status("paper-1", "in_review")
             published = store.update_publication_status("paper-1", "published")
             self.assertEqual(published["status"], "published")
+            self.assertEqual(published["lessonIds"], ["lesson-a", "lesson-b"])
+            self.assertEqual(published["qualityRecovery"]["quarantinedCount"], 1)
             self.assertTrue(all(item["status"] == "published" for item in published["lessons"]))
 
             store.create_learning_session(
@@ -212,7 +228,7 @@ class LearningStoreTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "不能从 draft 直接变为 published"):
                 store.update_publication_status("paper-unreviewed", "published")
             store.update_publication_status("paper-unreviewed", "in_review")
-            with self.assertRaisesRegex(ValueError, "未通过结构质量门禁"):
+            with self.assertRaisesRegex(ValueError, "自动修复后仍没有"):
                 store.update_publication_status("paper-unreviewed", "published")
 
     def test_attempt_id_cannot_cross_learning_sessions(self) -> None:

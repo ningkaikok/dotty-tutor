@@ -3,11 +3,10 @@ import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api"
 import type { MistakeItem, TutorThread } from "../../types";
 
 /**
- * Own the client-side state for one persisted tutoring thread.
+ * 管理一个持久化陪练线程的客户端状态。
  *
- * UI components only render controls. This hook restores the server thread,
- * translates each supported question control into the shared structured-answer
- * contract, and clears the draft only after a complete turn is persisted.
+ * UI 组件只渲染控件；本 Hook 恢复服务端线程，把不同题型转换为共享结构化答案，
+ * 并且只在一轮对话完整写入后清空学生草稿。
  */
 export function useMistakeTutor(item: MistakeItem) {
   const [thread, setThread] = useState<TutorThread | null>(null);
@@ -21,9 +20,8 @@ export function useMistakeTutor(item: MistakeItem) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // The API is idempotent for a mistake/learner pair. Calling create first
-    // therefore restores an existing thread as well as starting a new one.
-    // `cancelled` prevents a slow response from updating an unmounted screen.
+    // API 对“错题 + 学生”幂等，因此先调用 create 既能创建新线程，也能恢复已有线程。
+    // cancelled 阻止慢响应更新已经卸载或切换到其他错题的页面。
     let cancelled = false;
     setLoading(true);
     setError("");
@@ -52,9 +50,8 @@ export function useMistakeTutor(item: MistakeItem) {
   const submit = async (mode: "answer" | "help") => {
     if (!thread || sending) return;
     const questionType = item.questionPayload.question.questionType;
-    // Every visible answer widget is translated to the backend's shared
-    // structured-answer contract. Free text remains available for reasoning,
-    // but deterministic grading should prefer this unambiguous structure.
+    // 所有可视化作答控件都转换为后端共享结构；自由文本继续承载思路，
+    // 但确定性判题优先使用无歧义的结构化字段。
     const interactionResult = questionType === "fill-blank"
       ? { blankAnswers }
       : questionType === "numeric"
@@ -91,8 +88,7 @@ export function useMistakeTutor(item: MistakeItem) {
         hintLevel: thread.hintLevel,
         interactionResult,
       });
-      // Clear drafts only after the server atomically persisted both sides of
-      // the turn. A failed request leaves the student's work available to retry.
+      // 服务端原子保存学生与助教两侧消息后才清空草稿；请求失败时保留现场，允许原样重试。
       setThread(result.thread);
       setStudentInput("");
       setSelectedOptions([]);

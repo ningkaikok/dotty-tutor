@@ -20,9 +20,9 @@ import "./student.css";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
 /**
- * Student-only paper player. The studio keeps its preview interactions
- * intentionally out of learning telemetry; this route owns the durable
- * session, answer upload and retry queue for a real learner.
+ * 学生专用试卷播放器。
+ *
+ * 内容工作台的预览刻意不写学习遥测；只有本路由拥有真实学习会话、答案上传和离线重试队列。
  */
 export function PublishedPaperApp() {
   const navigate = useNavigate();

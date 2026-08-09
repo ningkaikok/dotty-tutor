@@ -1,22 +1,26 @@
-import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider } from "../../../types";
+import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types";
 import type { UploadPhase } from "./useTextbookImport";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
+  reviewModels: ReviewModelCatalog | null;
   ocrProviders: OcrCatalog | null;
   loading: boolean;
   phase: UploadPhase;
   onSelectModel: (provider: ModelProvider, model: string) => void;
+  onSelectReviewModel: (provider: ModelProvider, model: string) => void;
   onSelectOcr: (provider: OcrProvider) => void;
 }
 
-/** Model/OCR selection is intentionally isolated from upload state rendering. */
+/** 模型与 OCR 选择器独立于上传状态渲染，避免设置变化重置上传状态机。 */
 export function RuntimeSettings({
   models,
+  reviewModels,
   ocrProviders,
   loading,
   phase,
   onSelectModel,
+  onSelectReviewModel,
   onSelectOcr,
 }: RuntimeSettingsProps) {
   const busy = loading || phase === "uploading" || phase === "processing";
@@ -48,8 +52,38 @@ export function RuntimeSettings({
         )))}
       </select>
       {models && (
-        <span className={`runtime-status ${models.selected.provider}`}>
+        <span className={`runtime-status generation-status ${models.selected.provider}`}>
           <i /> {models.providers.find((item) => item.id === models.selected.provider)?.detail}
+        </span>
+      )}
+
+      <div className="review-label">
+        <strong>选择文字审核模型</strong>
+        <small>审核模型独立于生成模型；教材事实、公式和单位建议使用能力更强的模型。</small>
+      </div>
+      <select
+        className="review-select"
+        value={reviewModels ? `${reviewModels.selected.provider}::${reviewModels.selected.model}` : ""}
+        disabled={!reviewModels || busy}
+        onChange={(event) => {
+          const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
+          onSelectReviewModel(provider, model);
+        }}
+      >
+        {!reviewModels && <option>正在读取审核模型…</option>}
+        {reviewModels?.providers.flatMap((provider) => provider.models.map((model) => (
+          <option
+            key={`review::${provider.id}::${model}`}
+            value={`${provider.id}::${model}`}
+            disabled={!provider.available}
+          >
+            {provider.label} · {model}
+          </option>
+        )))}
+      </select>
+      {reviewModels && (
+        <span className={`runtime-status review-status ${reviewModels.selected.provider}`}>
+          <i /> 当前审核：{reviewModels.selected.provider} · {reviewModels.selected.model}
         </span>
       )}
 

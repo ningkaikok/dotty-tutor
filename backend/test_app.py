@@ -32,6 +32,7 @@ from app import (
 )
 from model_runtime import ModelSelection
 from question_contracts import CANVAS_ACTIONS
+from question_pipeline import strip_choice_text_from_prompt
 from review_runtime import formula_anomaly_score, normalize_ocr_question
 from storage import TutorStore
 
@@ -507,6 +508,40 @@ class QuestionExtractionTests(unittest.TestCase):
         normalize_text_choices_from_source(payload, source)
         self.assertIn("360", payload["question"]["options"][0])
         self.assertIn("900", payload["question"]["options"][3])
+
+    def test_restores_dot_labeled_choices_and_removes_them_from_stem(self) -> None:
+        payload = {"question": {"options": ["A", "B", "C", "D"]}}
+        source = "（3分）下列各数中比1大的数是（ ）A. 2 B. 0 C. 1 D. 3"
+        normalize_text_choices_from_source(payload, source)
+        self.assertEqual(payload["question"]["options"], ["2", "0", "1", "3"])
+        self.assertEqual(
+            strip_choice_text_from_prompt(source, payload["question"]["options"]),
+            "（3分）下列各数中比1大的数是（ ）",
+        )
+
+    def test_normalizes_legacy_percent_and_temperature_latex(self) -> None:
+        self.assertEqual(
+            normalize_model_math_text(r"$7\textbackslash\text{%}$"),
+            r"$7\%$",
+        )
+        self.assertEqual(
+            normalize_model_math_text(r"$-3 \textdegree C$"),
+            r"$-3 ^{\circ}\mathrm{C}$",
+        )
+
+    def test_quality_gate_rejects_temperature_percent_unit_conflict(self) -> None:
+        payload = {"question": {
+            "prompt": r"温度由 -4℃ 上升 $7\%$ 是（ ）",
+            "options": ["3℃", "-3℃", "11℃", "-11℃"],
+            "imageUrls": [],
+        }}
+        quality = apply_question_quality_gate(
+            payload,
+            r"1. 温度由 -4℃ 上升 $7\%$ 是（ ）A. 3℃ B. -3℃ C. 11℃ D. -11℃",
+            [],
+        )
+        self.assertEqual(quality["status"], "needs_review")
+        self.assertTrue(any("单位语义冲突" in error for error in quality["errors"]))
 
     def test_splits_concatenated_text_choices_from_reviewer(self) -> None:
         payload = {

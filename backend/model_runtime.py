@@ -1,3 +1,12 @@
+"""题目生成模型的统一适配层。
+
+本模块把 Ollama、Codex CLI 和 Mock 暴露为相同的 JSON 生成接口。业务层只关心
+``generate_json`` 返回的结构化数据，不需要知道 HTTP、子进程或模型登录细节。
+
+需要特别注意：这里的 ``selection`` 是进程级演示配置，不是用户偏好。生产环境如果需要
+多租户，应把模型选择放入请求上下文或租户配置，不能继续修改这个全局对象。
+"""
+
 from __future__ import annotations
 
 import json
@@ -21,8 +30,10 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 
 def codex_command() -> str:
-    """Codex CLI is sometimes only available bundled inside another app (e.g.
-    the ChatGPT desktop app's Resources folder) rather than on PATH as "codex".
+    """返回 Codex CLI 路径。
+
+    macOS 桌面应用可能把 CLI 放在应用资源目录而不是 ``PATH``，因此允许通过
+    ``CODEX_COMMAND`` 显式指定，Docker 中也会据此判断宿主机能力是否可见。
     """
     return os.getenv("CODEX_COMMAND", "codex")
 
@@ -34,6 +45,12 @@ class ModelSelection:
 
 
 class ModelRuntime:
+    """管理生成模型目录、当前选择和结构化调用。
+
+    Catalog 方法可以修正已经失效的选择；实际生成前会复制一次选择快照，避免长请求执行
+    期间用户切换下拉框而让日志中的 provider/model 与真实调用不一致。
+    """
+
     def __init__(self) -> None:
         self.selection = ModelSelection(
             provider=os.getenv("MODEL_PROVIDER", "ollama"),  # type: ignore[arg-type]
@@ -50,8 +67,43 @@ class ModelRuntime:
         except (OSError, ValueError, urllib.error.URLError) as error:
             return [], str(error)
 
-    def catalog(self) -> dict[str, Any]:
+    def providers(self) -> list[dict[str, Any]]:
+        """探测可用后端，但不修改当前生成模型选择。"""
         local_models, ollama_error = self.ollama_models()
+        codex_binary = codex_command()
+        codex_available = bool(shutil.which(codex_binary) or Path(codex_binary).is_file())
+        return [
+            {
+                "id": "ollama",
+                "label": "Ollama 本地模型",
+                "available": bool(local_models),
+                "models": local_models,
+                "detail": "完全本地运行，不产生 API 费用" if local_models else (ollama_error or "未安装模型"),
+            },
+            {
+                "id": "codex",
+                "label": "Codex 订阅",
+                "available": codex_available,
+                "models": ["default", "gpt-5.6-sol"],
+                "detail": (
+                    "复用本机 ChatGPT/Codex 登录与套餐额度"
+                    if codex_available else
+                    "当前后端找不到 Codex CLI；请使用宿主机后端或配置 CODEX_COMMAND"
+                ),
+            },
+            {
+                "id": "mock",
+                "label": "Mock 固定模式",
+                "available": True,
+                "models": ["static-demo"],
+                "detail": "不调用模型，用于离线回退和界面对照",
+            },
+        ]
+
+    def catalog(self) -> dict[str, Any]:
+        providers = self.providers()
+        local_provider = next(item for item in providers if item["id"] == "ollama")
+        local_models = local_provider["models"]
         if self.selection.provider == "ollama" and self.selection.model not in local_models:
             if local_models:
                 self.selection.model = local_models[0]
@@ -63,29 +115,7 @@ class ModelRuntime:
                 "provider": self.selection.provider,
                 "model": self.selection.model,
             },
-            "providers": [
-                {
-                    "id": "ollama",
-                    "label": "Ollama 本地模型",
-                    "available": bool(local_models),
-                    "models": local_models,
-                    "detail": "完全本地运行，不产生 API 费用" if local_models else (ollama_error or "未安装模型"),
-                },
-                {
-                    "id": "codex",
-                    "label": "Codex 订阅",
-                    "available": True,
-                    "models": ["default", "gpt-5.6-sol"],
-                    "detail": "复用本机 ChatGPT/Codex 登录与套餐额度",
-                },
-                {
-                    "id": "mock",
-                    "label": "Mock 固定模式",
-                    "available": True,
-                    "models": ["static-demo"],
-                    "detail": "不调用模型，用于离线回退和界面对照",
-                },
-            ],
+            "providers": providers,
         }
 
     def select(self, provider: Provider, model: str) -> dict[str, Any]:
@@ -104,6 +134,7 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int = 1200,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """用当前生成模型返回满足 Schema 的对象及可追踪运行记录。"""
         selection = ModelSelection(self.selection.provider, self.selection.model)
         if selection.provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
@@ -148,6 +179,10 @@ class ModelRuntime:
         max_tokens: int = 1200,
         image_paths: list[Path] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """用显式 provider/model 调用模型，供独立审核流程使用。
+
+        该方法不会修改生成模型下拉框的全局选择，避免“切换审核模型”意外影响下一道题。
+        """
         images = image_paths or []
         if provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
@@ -242,9 +277,9 @@ class ModelRuntime:
         try:
             payload = send()
         except RuntimeError as error:
-            # Older Ollama/llama.cpp combinations can reject complex schemas when
-            # converting them into a grammar. Keep JSON mode and put the schema in
-            # the instruction so the review can still run on those installations.
+            # 部分旧版 Ollama/llama.cpp 无法把复杂 JSON Schema 转成 grammar。
+            # 此时退到普通 JSON 模式，并把 Schema 写入系统提示；兼容性提高，但后续
+            # 仍必须经过 Pydantic 和确定性质量门禁，不能把它当成可信结构。
             if "grammar" not in str(error).lower() and "sampler" not in str(error).lower():
                 raise
             request_payload["format"] = "json"
@@ -285,8 +320,7 @@ class ModelRuntime:
             for index, image_path in enumerate(image_paths or []):
                 copied_image = root / f"review-image-{index}{image_path.suffix.lower()}"
                 shutil.copy2(image_path, copied_image)
-                # --image accepts a variable number of values; the equals form
-                # prevents it from consuming the positional prompt marker below.
+                # --image 接受可变数量参数；使用等号形式可以防止它吞掉后面的 stdin 标记 "-"。
                 command.append(f"--image={copied_image}")
             full_prompt = (
                 "不要调用任何工具。你是严谨的中文中学辅导老师。"
@@ -313,6 +347,7 @@ class ModelRuntime:
 
 
 def parse_json_object(content: str) -> dict[str, Any]:
+    """解析模型输出，并拒绝数组、纯文本和不完整 JSON。"""
     cleaned = content.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.removeprefix("```json").removeprefix("```")

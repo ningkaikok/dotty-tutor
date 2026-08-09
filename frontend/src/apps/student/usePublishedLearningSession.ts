@@ -21,7 +21,7 @@ function readPending(): PendingAttempt[] {
     const value = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
     return Array.isArray(value) ? value as PendingAttempt[] : [];
   } catch {
-    // A malformed local queue must not prevent the paper itself from opening.
+    // 本地队列损坏不能阻止试卷打开；服务端幂等键仍会防止后续重复计分。
     return [];
   }
 }
@@ -37,8 +37,7 @@ async function openOrRecoverSession(publicationId: string) {
     try {
       return { session: await loadLearningSession(existingSessionId), replacedSessionId: "" };
     } catch {
-      // Local storage can outlive a recreated database. Remove the stale
-      // pointer and bind its unsent attempts to the replacement session.
+      // localStorage 可能比重建后的数据库活得更久。删除失效指针，并把未发送作答绑定到新会话。
       localStorage.removeItem(sessionKey);
     }
   }
@@ -75,9 +74,10 @@ async function flushPending(activeSessionId: string, replacedSessionId = ""): Pr
 }
 
 /**
- * Owns the durable session and offline retry policy for one published paper.
- * Keeping this state machine outside the page prevents studio preview state
- * and real learner telemetry from being accidentally coupled again.
+ * 管理一份已发布试卷的持久会话与离线重试策略。
+ *
+ * 状态机独立于页面，防止内容工作台预览状态再次与真实学生遥测耦合。attemptId 是幂等键：
+ * 本地队列可重复发送，但服务端只累计一次掌握度。
  */
 export function usePublishedLearningSession(publicationId: string | undefined) {
   const [sessionId, setSessionId] = useState("");
@@ -94,7 +94,7 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
   useEffect(() => {
     if (!publicationId) return;
     let cancelled = false;
-    // Never let a newly opened paper briefly reuse the previous paper's session.
+    // 新打开的试卷绝不能短暂复用上一份试卷的 sessionId。
     setSessionId("");
     setSyncMessage("正在连接学习记录…");
     void openOrRecoverSession(publicationId).then(async ({ session, replacedSessionId }) => {
@@ -102,8 +102,7 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
       setSessionId(session.sessionId);
       const delivered = await flushPending(session.sessionId, replacedSessionId);
       if (!cancelled) setSyncMessage(delivered ? "离线学习记录已补传" : "学习记录已同步");
-      // Mastery is a derived projection. Reload it after offline attempts are
-      // flushed so the page never displays a score older than its answer log.
+      // 掌握度是作答日志的派生投影；先补传离线记录再加载，避免页面分数落后于答案历史。
       void loadLearningMastery(DEMO_LEARNER_ID).then((items) => {
         if (!cancelled) setMastery(items);
       }).catch(() => undefined);

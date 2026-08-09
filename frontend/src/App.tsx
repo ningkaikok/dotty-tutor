@@ -2,9 +2,8 @@ import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./styles.css";
 
-// Each role or product area owns a route-level bundle. A student opening the
-// lightweight learning space should not download the larger content studio.
-// The named-export mapping is required because React.lazy expects `default`.
+// 每个角色入口拥有独立的路由级代码包。学生打开轻量学习空间时，不应同时下载体积更大的内容生产工作台。
+// 当前页面组件采用具名导出，而 React.lazy 只接受 default，因此这里显式完成一次导出映射。
 const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
@@ -28,8 +27,8 @@ function PageTitle() {
 }
 
 function AppRoutes() {
-  // Keep routing separate from BrowserRouter so hooks such as useLocation are
-  // always rendered inside router context and remain easy to test in isolation.
+  // 路由表与 BrowserRouter 分开，保证 useLocation 等 Hook 一定运行在 Router 上下文中，
+  // 同时让路由表在测试中可以被 MemoryRouter 单独装配。
   return (
     <>
       <PageTitle />
@@ -39,7 +38,7 @@ function AppRoutes() {
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio/*" element={<TextbookApp />} />
-          {/* Keep bookmarks from older releases working while the public route moves to /studio. */}
+          {/* 旧版本公开过 /textbooks 地址；保留重定向，避免用户收藏失效。 */}
           <Route path="textbooks/*" element={<Navigate to="/studio" replace />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />
           <Route path="*" element={<Navigate to="/" replace />} />

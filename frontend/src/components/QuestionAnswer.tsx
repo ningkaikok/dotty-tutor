@@ -16,6 +16,12 @@ interface QuestionAnswerProps {
   onDrawConnectionsChange: (connections: Array<[string, string]>) => void;
 }
 
+/**
+ * 渲染一份题目契约对应的结构化作答控件。
+ *
+ * 组件保持完全受控：它不请求后端、不判断正误，也不把“我选 A”之类的自然语言反解析成答案。
+ * 教材预览、学生试卷和错题陪练因此可以复用同一套交互，并由各自页面决定何时提交和如何持久化。
+ */
 export function QuestionAnswer({
   question,
   selectedOptions,
@@ -32,6 +38,7 @@ export function QuestionAnswer({
   const imageChoices = hasImageOptions(question);
   const promptNode = <MathText text={displayedPrompt(question)} className="question-prompt" block />;
 
+  // 画线题的连接关系是结构化坐标，而不是画布截图；这样后端才能稳定判题并回放答案。
   if (questionType === "draw-line" && question.interaction) {
     return (
       <>
@@ -110,6 +117,8 @@ export function QuestionAnswer({
   }
 
   if (question.contentBlocks?.length) {
+    // 新生成题优先走内容块协议，以保留题干、公式、图片和选项的原始顺序。
+    // 下面的旧字段分支仅用于兼容早期已经持久化的课程。
     return (
       <QuestionContent
         blocks={question.contentBlocks}
