@@ -17,7 +17,7 @@ export function ProductHome() {
       <section className="product-home-hero">
         <span className="eyebrow">CHOOSE YOUR WORKSPACE</span>
         <h1>选择你的使用入口</h1>
-        <p>学生只负责学习、作答和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
+        <p>学生只负责订正错题、陪练和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
       </section>
 
       <section className="product-entry-grid" aria-label="产品入口">
@@ -27,13 +27,13 @@ export function ProductHome() {
             <span className="entry-status">学生入口</span>
           </div>
           <h2>学生学习空间</h2>
-          <p>直接进入互动试卷、个人错题本和复习任务，不需要上传整本教材或配置模型。</p>
+          <p>直接进入个人错题本和复习任务，不需要上传整本教材或配置模型。</p>
           <ul>
-            <li>消费已发布的互动试卷</li>
+            <li>拍照录入与人工确认错题</li>
             <li>AI 错题陪练与掌握验证</li>
             <li>1、3、7 天复习进度</li>
           </ul>
-          <button onClick={() => navigate("/learn")}>进入学生学习空间</button>
+          <button onClick={() => navigate("/mistakes")}>进入学生学习空间</button>
         </article>
 
         <article className="product-entry-card producer">
