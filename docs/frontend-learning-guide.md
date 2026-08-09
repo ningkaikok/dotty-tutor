@@ -34,7 +34,7 @@ flowchart LR
 
 ```text
 /              → ProductHome
-/learn/*       → StudentLearningApp
+/learn/*       → 重定向到 /mistakes（旧地址兼容）
 /studio/*      → TextbookApp
 /mistakes/*    → MistakeCoachApp
 /textbooks/*   → 兼容跳转到 /studio

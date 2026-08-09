@@ -12,12 +12,10 @@ TTS 都由后端编排，浏览器不直接接触模型密钥或本地模型进�
 ```mermaid
 flowchart LR
   User["学生 / 教师"] --> Home["产品首页 /"]
-  Home --> Student["学生学习空间 /learn"]
+  Home --> Mistakes["学生学习空间 · AI 错题陪练 /mistakes"]
   Home --> Studio["内容生产工作台 /studio"]
-  Student --> Mistakes["AI 错题陪练 /mistakes"]
-  Student -. "下一阶段" .-> Papers["已发布互动试卷"]
+  Mistakes -. "下一阶段" .-> Papers["已发布互动试卷"]
   Studio --> Web["React + Vite :5174"]
-  Student --> Web
   Mistakes --> Web
   Web -->|"/api/*"| API["FastAPI :8010"]
 
@@ -56,7 +54,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 当前前端使用 React Router 的声明式浏览器路由，并按产品入口动态加载代码。路由匹配、动态参数、
 前进后退和未知路径回退不再由项目自行维护。Vite 开发服务器与生产 Nginx 都会把
-`/learn`、`/studio`、`/mistakes` 等直接访问回退到 `index.html`；旧 `/textbooks` 在前端跳转到 `/studio`。
+`/studio`、`/mistakes` 等直接访问回退到 `index.html`；旧 `/learn`、`/textbooks` 在前端分别跳转到
+`/mistakes` 和 `/studio`。
 
 ## 组件职责
 
@@ -64,7 +63,6 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | --- | --- | --- |
 | 产品路由 | `frontend/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `frontend/src/apps/home/ProductHome.tsx` | 展示学生学习与内容生产两个角色入口 |
-| 学生学习空间 | `frontend/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 内容生产编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、会话和互动预览状态编排 |
 | 错题陪练编排 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `frontend/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
@@ -180,7 +178,7 @@ erDiagram
 
 ## 页面初始化
 
-根路径和 `/learn` 只渲染导航，不调用生产端接口。进入 `/studio` 后，上传页首次加载时并行调用：
+根路径只渲染导航，不调用生产端接口。进入 `/studio` 后，上传页首次加载时并行调用：
 
 1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。

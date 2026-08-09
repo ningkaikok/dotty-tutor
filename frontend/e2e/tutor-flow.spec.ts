@@ -494,15 +494,14 @@ test.describe("产品入口", () => {
 
     await expect(page.getByRole("heading", { name: "选择你的使用入口" })).toBeVisible();
     await page.getByRole("button", { name: "进入学生学习空间" }).click();
-    await expect(page).toHaveURL(/\/learn$/);
-    await expect(page.getByRole("heading", { name: "直接开始学习" })).toBeVisible();
-    await expect(page.getByText("尚未接入已发布试卷目录")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "打开我的错题本" }).click();
+    // The student entry now lands directly on the real feature instead of an
+    // intermediate menu whose only working cards both led here anyway.
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "← 学生学习空间" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "← 选择入口" })).toBeVisible();
+    // Role boundary: production concerns must never surface on the student side.
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
     await page.goto("/studio");
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -511,6 +510,11 @@ test.describe("产品入口", () => {
     await page.goto("/textbooks");
     await expect(page).toHaveURL(/\/studio$/);
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+
+    // /learn was published in an earlier release; keep those bookmarks working.
+    await page.goto("/learn");
+    await expect(page).toHaveURL(/\/mistakes$/);
+    await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {

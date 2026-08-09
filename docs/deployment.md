@@ -241,7 +241,7 @@ docker compose ps
 ```
 
 打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。产品首页、学生空间、内容生产和错题陪练
-分别位于 `/`、`/learn`、`/studio`、`/mistakes`；旧 `/textbooks` 会跳转到 `/studio`。仓库的 Nginx
+分别位于 `/`、`/studio`、`/mistakes`；旧 `/learn`、`/textbooks` 会分别跳转到 `/mistakes` 和 `/studio`。仓库的 Nginx
 配置已使用 `index.html` 作为 SPA 回退，
 反向代理或 CDN 也必须保留该规则，否则直接刷新子路径会返回 404。默认服务拓扑：
 
