@@ -7,6 +7,7 @@ import "./styles.css";
 // The named-export mapping is required because React.lazy expects `default`.
 const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
+const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
 const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
 const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((module) => ({ default: module.TextbookApp })));
 
@@ -35,6 +36,7 @@ function AppRoutes() {
       <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
         <Routes>
           <Route index element={<ProductHome />} />
+          <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio/*" element={<TextbookApp />} />
           {/* Keep bookmarks from older releases working while the public route moves to /studio. */}

@@ -10,7 +10,8 @@ Manim、Canvas、WebGL 或其他内容生成工具。
 
 ## LessonDocument
 
-`LessonDocument` 是课程内容的稳定边界：
+`LessonDocument` 是课程内容的稳定边界。生成后默认处于 `draft`（质量门禁未通过时为 `in_review`），
+必须通过内容生产端的互动试卷发布流程后才会进入学生可见的 `published` 状态：
 
 ```json
 {
@@ -32,9 +33,14 @@ Manim、Canvas、WebGL 或其他内容生成工具。
         "speechText": "先完成移项。"
       }
     }
-  ]
+  ],
+  "questionPayload": {"question": {"id": "linear-equation-1"}},
+  "guideCards": []
 }
 ```
+
+多个 `LessonDocument` 通过 `lesson_publications` 组成一份互动试卷。试卷先进入 `in_review`，
+发布时再次检查每道题的质量门禁；学生端只读取 `published` 试卷，不接触草稿、审校记录或模型配置。
 
 当前支持以下内容块：
 
@@ -69,18 +75,25 @@ sequenceDiagram
   API-->>UI: 返回最新 mastery
 ```
 
+学生端为每条作答生成稳定的 `attemptId`。请求失败时记录暂存在浏览器队列，恢复网络后通过
+`POST /api/learning/sessions/{sessionId}/sync` 批量补传；服务端以主键保证重复提交幂等。记录同时保存
+浏览器生成的原始 `createdAt`，因此离线补传仍按实际作答时间排序。浏览器中的旧会话若因本地数据库重建
+而失效，学生 Hook 会创建替代会话并重新绑定尚未送达的记录。
+
 掌握度目前是可解释的轻量启发式：正确、部分正确、错误分别映射为 `1.0`、`0.55`、`0`，
 新分数由 70% 历史分数和 30% 本次结果组成。它适合 MVP 展示与数据积累，不应被视作正式测评成绩。
 
 ## 持久化
 
 - `lesson_documents`：课程版本、状态、知识点和内容块。
+- `lesson_publications`：互动试卷标题、题目顺序、发布状态和教材来源。
 - `learning_sessions`：学习者进入某节课程的会话。
 - `exercise_attempts`：原始回答、判定、提示层级与耗时。
 - `mastery_states`：按学习者和知识点聚合的当前掌握度。
 
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等初始化；受控部署可先执行
-`backend/migrations/001_programmable_learning.sql`。后续应引入 Alembic，迁移历史建立后停止把
+`backend/migrations/001_programmable_learning.sql`；试卷发布与批量同步新增表/索引见
+`backend/migrations/006_publications_and_sync.sql`。后续应引入 Alembic，迁移历史建立后停止把
 `create_all()` 当作生产迁移工具。
 
 ## 当前边界

@@ -44,13 +44,27 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 | --- | --- | --- |
 | `POST` | `/api/lessons` | 校验并保存带版本的可编程课程文档 |
 | `GET` | `/api/lessons/{lessonId}` | 读取课程内容块和发布状态 |
+| `POST` | `/api/publications` | 创建由多个课程组成的互动试卷草稿 |
+| `GET` | `/api/publications?status=published` | 列出学生可见的已发布互动试卷 |
+| `GET` | `/api/publications/{publicationId}` | 读取一份已发布试卷及其题目 |
+| `PATCH` | `/api/publications/{publicationId}/status` | 将试卷送审、发布或归档 |
 | `POST` | `/api/learning/sessions` | 创建学习者与课程关联的学习会话 |
+| `GET` | `/api/learning/sessions/{sessionId}` | 恢复学习会话和已同步作答 |
 | `POST` | `/api/learning/sessions/{sessionId}/attempts` | 保存作答并更新知识点掌握度 |
+| `POST` | `/api/learning/sessions/{sessionId}/sync` | 批量补传离线期间排队的作答记录 |
 | `GET` | `/api/learning/mastery/{learnerId}` | 查询学习者的知识点掌握度 |
 | `POST` | `/api/help` | 判定学生答案或返回下一层提示 |
 | `POST` | `/api/tts` | 调用 Azure Speech 或代理 Qwen3-TTS |
 
-课程块 Schema、渲染器扩展方式和掌握度计算见[可编程课程与学习闭环](programmable-learning.md)。
+发布状态只有 `draft`、`in_review`、`published` 和 `archived`。允许的主路径是
+`draft → in_review → published → archived`，归档内容可恢复为草稿；接口拒绝跳过审核直接发布。
+发布时要求试卷内每道题的质量状态明确为 `ready`，学生接口只返回 `published` 试卷。课程块 Schema、
+渲染器扩展方式和掌握度计算见
+[可编程课程与学习闭环](programmable-learning.md)。
+
+作答同步请求中的每个 `attemptId` 应由客户端稳定生成。服务端按该 ID 幂等写入，网络重试不会重复
+增加掌握度计数；同一 ID 不能跨学习会话复用。`createdAt` 使用 Unix 秒时间戳并记录真实作答时间，
+离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
 
 Help 示例：
 

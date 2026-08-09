@@ -106,6 +106,7 @@ npm run dev
 | --- | --- |
 | <http://localhost:5174/> | 产品选择首页 |
 | <http://localhost:5174/learn> | 学生学习空间，不显示教材上传和模型配置 |
+| `http://localhost:5174/learn/papers/{id}` | 学生继续作答已发布互动试卷，并同步学习记录 |
 | <http://localhost:5174/studio> | 教材导入、OCR、内容生成与互动预览 |
 | <http://localhost:5174/textbooks> | 兼容旧地址，自动跳转到 `/studio` |
 | <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
@@ -133,6 +134,9 @@ npm run dev
 ```bash
 psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
 ```
+
+试卷发布和学习记录同步使用 `006_publications_and_sync.sql`，升级已有 PostgreSQL 时按顺序执行
+`004_variation_practice.sql`、`005_spaced_review.sql` 和 `006_publications_and_sync.sql`。
 
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等创建缺失表；显式 SQL 便于学习和部署审查，不能替代
 生产环境中的正式迁移版本管理。

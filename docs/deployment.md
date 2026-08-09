@@ -93,7 +93,8 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
 - 当前存储层首次启动会执行 `create_all()`；正式多版本发布前必须引入 Alembic。
 - 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
-  `002_mistake_capture.sql` 和 `003_stateful_tutoring.sql`；执行前先备份数据库。
+  `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
+  `005_spaced_review.sql` 和 `006_publications_and_sync.sql`；执行前先备份数据库。
 
 ## 启动前检查
 

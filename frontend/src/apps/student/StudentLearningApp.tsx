@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
+import { loadPublishedPublications } from "../../api";
+import type { PublicationSummary } from "../../types";
 import "./student.css";
 
 /**
@@ -10,6 +13,16 @@ import "./student.css";
  */
 export function StudentLearningApp() {
   const navigate = useNavigate();
+  const [publications, setPublications] = useState<PublicationSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadPublishedPublications()
+      .then(setPublications)
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "试卷目录加载失败"))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <main className="student-shell">
@@ -33,12 +46,21 @@ export function StudentLearningApp() {
         <article className="student-action-card paper-card">
           <div className="student-card-heading">
             <span className="student-card-icon" aria-hidden="true">卷</span>
-            <span className="student-card-status planned">下一阶段</span>
+            <span className="student-card-status">已可用</span>
           </div>
           <h2>互动试卷</h2>
           <p>查看内容生产端审核并发布的互动试卷，完成题目、分层提示与讲解。</p>
-          <div className="student-empty-note">尚未接入已发布试卷目录</div>
-          <button disabled>暂无已发布试卷</button>
+          {loading && <div className="student-empty-note">正在加载已发布试卷…</div>}
+          {!loading && !publications.length && <div className="student-empty-note">暂无已发布试卷，请先在内容生产端发布。</div>}
+          {error && <div className="student-empty-note">{error}</div>}
+          <div className="student-paper-list">
+            {publications.map((paper) => (
+              <button key={paper.publicationId} onClick={() => navigate(`/learn/papers/${paper.publicationId}`)}>
+                <strong>{paper.title}</strong>
+                <span>{paper.lessonCount} 道题 · 继续学习 →</span>
+              </button>
+            ))}
+          </div>
         </article>
 
         <article className="student-action-card mistake-card">

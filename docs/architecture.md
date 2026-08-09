@@ -15,7 +15,7 @@ flowchart LR
   Home --> Student["学生学习空间 /learn"]
   Home --> Studio["内容生产工作台 /studio"]
   Student --> Mistakes["AI 错题陪练 /mistakes"]
-  Student -. "下一阶段" .-> Papers["已发布互动试卷"]
+  Student --> Papers["已发布互动试卷"]
   Studio --> Web["React + Vite :5174"]
   Student --> Web
   Mistakes --> Web
@@ -65,7 +65,10 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 产品路由 | `frontend/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `frontend/src/apps/home/ProductHome.tsx` | 展示学生学习与内容生产两个角色入口 |
 | 学生学习空间 | `frontend/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
-| 内容生产编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、会话和互动预览状态编排 |
+| 已发布试卷播放器 | `frontend/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
+| 学生学习会话 Hook | `frontend/src/apps/student/usePublishedLearningSession.ts` | 恢复失效会话、持久化离线队列、批量补传和幂等重试 |
+| 内容生产编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、发布状态和互动预览状态编排；预览不写学习记录 |
+| 试卷发布 Hook | `frontend/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `frontend/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
 | 教材导入页面 | `frontend/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
@@ -90,6 +93,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 应用工厂 | `backend/application.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `backend/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `backend/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
+| 试卷发布路由 | `backend/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
 | 可编程课程契约 | `backend/lesson_contracts.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `backend/question_contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
 | 题目流水线 | `backend/question_pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
@@ -99,7 +103,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | OCR 适配 | `backend/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 双模型审校 | `backend/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
 | 持久化基础 | `backend/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
-| 教材与学习存储 | `backend/persistence/textbook_store.py`、`learning_store.py` | 教材导入/题目批次，以及课程/作答/掌握度；`storage.py` 仅兼容旧调用方 |
+| 教材与学习存储 | `backend/persistence/textbook_store.py`、`learning_store.py` | 教材导入/题目批次、课程/试卷、作答/掌握度；`storage.py` 仅兼容旧调用方 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `backend/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `backend/mistake_routes.py`、`mistake_contracts.py` | 图片校验、错题确认和稳定错误原因枚举 |
@@ -233,8 +237,8 @@ OCR 题块
   → 写入 PostgreSQL 和内存读取缓存
 ```
 
-质量门禁发现错误时会把 `publicationStatus` 标记为 `needs_review`。当前它是可见告警，
-尚未阻止题目进入学习页面。
+质量门禁发现错误时会把 `publicationStatus` 标记为 `needs_review`。内容生产端仍会展示具体错误，
+但互动试卷发布接口会阻止包含这类题目的试卷进入学生页面。
 
 ## 后续批次与重新生成
 

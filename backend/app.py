@@ -18,6 +18,7 @@ from mistake_recognition import build_mistake_recognizer
 from mistake_routes import build_mistake_router
 from mistake_store import MistakeStore
 from model_runtime import runtime
+from publication_routes import build_publication_router
 from practice_routes import build_practice_router
 from question_contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
 from question_pipeline import (
@@ -54,6 +55,7 @@ app = create_app()
 # Cross-cutting runtime and learning APIs share the main TutorStore.
 app.include_router(build_runtime_router(store=store, question_payload=question_payload))
 app.include_router(build_learning_router(store=store))
+app.include_router(build_publication_router(store=store))
 app.include_router(textbook_router)
 
 # The mistake domain shares infrastructure but keeps its own table and routes.

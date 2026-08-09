@@ -148,6 +148,10 @@
   font-weight: 700;
 }
 
+.student-paper-list { display: grid; gap: 8px; margin-top: 12px; }
+.student-paper-list button { display: grid; gap: 4px; margin-top: 0; text-align: left; }
+.student-paper-list button span { color: #6a786f; font-size: 12px; }
+
 .student-action-card button:hover:not(:disabled) { background: #245b46; }
 
 .student-action-card button:disabled {

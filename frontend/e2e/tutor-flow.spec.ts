@@ -213,6 +213,9 @@ async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/library", async (route) => {
     await route.fulfill({ json: { items: [] } });
   });
+  await page.route("**/api/publications?status=published", async (route) => {
+    await route.fulfill({ json: { items: [] } });
+  });
   await page.route("**/api/textbook/import", async (route) => {
     await route.fulfill({ json: result });
   });
@@ -484,7 +487,8 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: "进入学生学习空间" }).click();
     await expect(page).toHaveURL(/\/learn$/);
     await expect(page.getByRole("heading", { name: "直接开始学习" })).toBeVisible();
-    await expect(page.getByText("尚未接入已发布试卷目录")).toBeVisible();
+    await expect(page.locator(".paper-card")).toContainText("已可用");
+    await expect(page.getByText("暂无已发布试卷，请先在内容生产端发布。")).toBeVisible();
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "打开我的错题本" }).click();
@@ -499,6 +503,40 @@ test.describe("产品入口", () => {
     await page.goto("/textbooks");
     await expect(page).toHaveURL(/\/studio$/);
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+  });
+
+  test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
+    await mockApi(page);
+    await mockMistakeApi(page);
+    const publication = {
+      publicationId: "paper-pw-1",
+      title: "第一章 · 互动试卷",
+      status: "published",
+      lessonIds: [choiceQuestion.question.id],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [{
+        lessonId: choiceQuestion.question.id,
+        title: choiceQuestion.question.knowledgePoint,
+        version: 1,
+        status: "published",
+        questionPayload: choiceQuestion,
+        guideCards: [],
+      }],
+    };
+    await page.route("**/api/publications?status=published", async (route) => {
+      await route.fulfill({ json: { items: [publication] } });
+    });
+    await page.route("**/api/publications/paper-pw-1", async (route) => {
+      await route.fulfill({ json: publication });
+    });
+    await page.goto("/learn");
+    await page.getByRole("button", { name: /第一章 · 互动试卷/ }).click();
+    await expect(page).toHaveURL(/\/learn\/papers\/paper-pw-1$/);
+    await page.getByRole("button", { name: /B/ }).click();
+    await page.getByRole("button", { name: "提交回答" }).click();
+    await expect(page.getByText("部分正确")).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
@@ -599,7 +637,9 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByText("已选择 (B)" )).toBeVisible();
     await page.getByRole("button", { name: "Help · 下一步提示" }).click();
     await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
-    await expect(page.getByText("掌握度 17%")).toBeVisible();
+    // Studio answers are quality-preview interactions; only the published
+    // student route writes mastery telemetry.
+    await expect(page.getByText("掌握度 17%")).toHaveCount(0);
 
     await page.getByRole("button", { name: "下一题" }).click();
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
