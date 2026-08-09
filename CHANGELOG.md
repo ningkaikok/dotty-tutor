@@ -7,14 +7,27 @@ Semantic Versioning。
 
 后续用户可见改动将在这里累计，发布版本时再固化为具体版本条目。
 
+## [0.7.0] - 2026-08-09
+
 ### Added
 
 - 学生完成互动试卷作答后会立即看到当前知识点掌握度、答对次数和累计练习次数。
+- 题型结构校验失败时会自动局部修复当前题，并在发布时隔离无法恢复的异常题。
+- 内容生产端可独立选择文字审核模型，不再与题目生成模型绑定。
+- 已送审或已发布试卷可从原 PDF 整套重新生成审核新版，旧版本和学生学习记录保持不变。
+- 内容生产页刷新或重新打开教材时会恢复最新试卷版本，不再丢失送审和发布状态。
 
 ### Changed
 
 - 本地 Qwen3-TTS 会在服务启动时提前完成一次语音推理，降低学生首次播放讲解时的等待时间。
 - 学习会话明确绑定整份互动试卷，并保留已有会话和离线作答数据。
+- 互动试卷不再因单道异常题永久阻塞；合格题可继续安全发布，整套失败时返回开发诊断。
+- 短文本选择题使用更接近纸质试卷的紧凑响应式布局，窄屏下自动恢复单列显示。
+
+### Fixed
+
+- 修复 `A.`、`A．` 等常见试卷选项标记未被拆分，导致题干重复选项、结构化选项只剩字母的问题。
+- 修复审校模型产生的百分号和摄氏度异常 LaTeX，并阻止题干百分比与温度选项等单位语义冲突进入发布结果。
 
 ## [0.6.0] - 2026-08-09
 
@@ -135,7 +148,9 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.2.0...v0.3.0
