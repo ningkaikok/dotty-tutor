@@ -110,6 +110,22 @@ class DatabaseStore:
                             "ALTER TABLE batch_questions "
                             "ADD COLUMN guide_cards_json TEXT NOT NULL DEFAULT '[]'"
                         )
+                    lesson_columns = {
+                        row[1]
+                        for row in connection.exec_driver_sql(
+                            "PRAGMA table_info(lesson_documents)"
+                        ).fetchall()
+                    }
+                    if "question_json" not in lesson_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE lesson_documents "
+                            "ADD COLUMN question_json TEXT NOT NULL DEFAULT '{}'"
+                        )
+                    if "guide_cards_json" not in lesson_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE lesson_documents "
+                            "ADD COLUMN guide_cards_json TEXT NOT NULL DEFAULT '[]'"
+                        )
             self._initialized = True
 
     def _upsert(

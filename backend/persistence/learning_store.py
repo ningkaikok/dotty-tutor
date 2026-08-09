@@ -14,6 +14,7 @@ from persistence.schema import (
     exercise_attempts,
     learning_sessions,
     lesson_documents,
+    lesson_publications,
     mastery_states,
     upload_jobs,
 )
@@ -34,6 +35,8 @@ class LearningStore(DatabaseStore):
             "status": document.get("status", "draft"),
             "knowledge_points_json": document.get("knowledgePoints", []),
             "blocks_json": document.get("blocks", []),
+            "question_json": document.get("questionPayload", {}),
+            "guide_cards_json": document.get("guideCards", []),
             "created_at": existing.get("createdAt", now) if existing else now,
             "updated_at": now,
         }
@@ -45,7 +48,8 @@ class LearningStore(DatabaseStore):
                 ["lesson_id"],
                 [
                     "source_upload_id", "title", "version", "status",
-                    "knowledge_points_json", "blocks_json", "updated_at",
+                    "knowledge_points_json", "blocks_json", "question_json",
+                    "guide_cards_json", "updated_at",
                 ],
             )
         return self.load_lesson(document["lessonId"]) or document
@@ -66,9 +70,173 @@ class LearningStore(DatabaseStore):
             "status": row["status"],
             "knowledgePoints": decode_json(row["knowledge_points_json"]),
             "blocks": decode_json(row["blocks_json"]),
+            "questionPayload": decode_json(row["question_json"]),
+            "guideCards": decode_json(row["guide_cards_json"]),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
+
+    def list_lessons(self, status: str | None = None) -> list[dict[str, Any]]:
+        """List persisted lessons for the studio and student publication views."""
+        self._ensure_initialized()
+        query = select(lesson_documents).order_by(lesson_documents.c.updated_at.desc())
+        if status:
+            query = query.where(lesson_documents.c.status == status)
+        with self.engine.connect() as connection:
+            rows = connection.execute(query).mappings().all()
+        return [self._lesson_from_row(row) for row in rows]
+
+    @staticmethod
+    def _lesson_from_row(row: Any) -> dict[str, Any]:
+        return {
+            "lessonId": row["lesson_id"],
+            "sourceUploadId": row["source_upload_id"],
+            "title": row["title"],
+            "version": row["version"],
+            "status": row["status"],
+            "knowledgePoints": decode_json(row["knowledge_points_json"]),
+            "blocks": decode_json(row["blocks_json"]),
+            "questionPayload": decode_json(row["question_json"]),
+            "guideCards": decode_json(row["guide_cards_json"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def update_lesson_status(self, lesson_id: str, status: str) -> dict[str, Any] | None:
+        """Change only the publication state of an existing lesson document."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                lesson_documents.update()
+                .where(lesson_documents.c.lesson_id == lesson_id)
+                .values(status=status, updated_at=time.time())
+            )
+            if not result.rowcount:
+                return None
+        return self.load_lesson(lesson_id)
+
+    def create_publication(
+        self,
+        *,
+        publication_id: str,
+        title: str,
+        source_upload_id: str | None,
+        lesson_ids: list[str],
+        status: str,
+        created_at: float,
+    ) -> dict[str, Any]:
+        """Create a small immutable lesson collection used as an interactive paper."""
+        self._ensure_initialized()
+        if len(lesson_ids) != len(set(lesson_ids)):
+            raise ValueError("互动试卷不能包含重复题目")
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                select(lesson_documents.c.lesson_id).where(
+                    lesson_documents.c.lesson_id.in_(lesson_ids)
+                )
+            ).scalars().all()
+            missing = sorted(set(lesson_ids) - set(rows))
+            if missing:
+                raise LookupError(f"课程不存在：{', '.join(missing[:3])}")
+            connection.execute(lesson_publications.insert().values(
+                publication_id=publication_id,
+                title=title,
+                source_upload_id=source_upload_id,
+                lesson_ids_json=lesson_ids,
+                status=status,
+                created_at=created_at,
+                updated_at=created_at,
+            ))
+        return self.load_publication(publication_id)  # type: ignore[return-value]
+
+    def load_publication(self, publication_id: str) -> dict[str, Any] | None:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(lesson_publications).where(
+                    lesson_publications.c.publication_id == publication_id
+                )
+            ).mappings().first()
+            if not row:
+                return None
+            lesson_ids = decode_json(row["lesson_ids_json"])
+            lessons = connection.execute(
+                select(lesson_documents).where(
+                    lesson_documents.c.lesson_id.in_(lesson_ids)
+                )
+            ).mappings().all()
+        by_id = {lesson["lesson_id"]: self._lesson_from_row(lesson) for lesson in lessons}
+        return {
+            "publicationId": row["publication_id"],
+            "title": row["title"],
+            "sourceUploadId": row["source_upload_id"],
+            "status": row["status"],
+            "lessonIds": lesson_ids,
+            "lessons": [by_id[lesson_id] for lesson_id in lesson_ids if lesson_id in by_id],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def list_publications(self, status: str | None = None) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        query = select(lesson_publications).order_by(lesson_publications.c.updated_at.desc())
+        if status:
+            query = query.where(lesson_publications.c.status == status)
+        with self.engine.connect() as connection:
+            rows = connection.execute(query).mappings().all()
+        return [{
+            "publicationId": row["publication_id"],
+            "title": row["title"],
+            "sourceUploadId": row["source_upload_id"],
+            "status": row["status"],
+            "lessonIds": decode_json(row["lesson_ids_json"]),
+            "lessonCount": len(decode_json(row["lesson_ids_json"])),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        } for row in rows]
+
+    def update_publication_status(self, publication_id: str, status: str) -> dict[str, Any] | None:
+        """Publish a collection only after every lesson passes its quality gate."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            publication = connection.execute(
+                select(lesson_publications).where(
+                    lesson_publications.c.publication_id == publication_id
+                )
+            ).mappings().first()
+            if not publication:
+                return None
+            current_status = publication["status"]
+            allowed_transitions = {
+                "draft": {"draft", "in_review", "archived"},
+                "in_review": {"draft", "in_review", "published", "archived"},
+                "published": {"published", "archived"},
+                "archived": {"draft", "archived"},
+            }
+            if status not in allowed_transitions.get(current_status, set()):
+                raise ValueError(f"发布状态不能从 {current_status} 直接变为 {status}")
+            lesson_ids = decode_json(publication["lesson_ids_json"])
+            lessons = connection.execute(
+                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids))
+            ).mappings().all()
+            if status == "published":
+                missing_or_unready = [
+                    lesson["lesson_id"] for lesson in lessons
+                    if decode_json(lesson["question_json"]).get("quality", {}).get("status") != "ready"
+                ]
+                if len(lessons) != len(lesson_ids) or missing_or_unready:
+                    raise ValueError("存在未通过结构质量门禁的题目，不能发布")
+                connection.execute(
+                    lesson_documents.update()
+                    .where(lesson_documents.c.lesson_id.in_(lesson_ids))
+                    .values(status="published", updated_at=time.time())
+                )
+            connection.execute(
+                lesson_publications.update()
+                .where(lesson_publications.c.publication_id == publication_id)
+                .values(status=status, updated_at=time.time())
+            )
+        return self.load_publication(publication_id)
 
     def create_learning_session(
         self,
@@ -117,6 +285,24 @@ class LearningStore(DatabaseStore):
             ).mappings().first()
             if not session:
                 raise LookupError("学习会话不存在")
+            existing_attempt = connection.execute(
+                select(exercise_attempts).where(exercise_attempts.c.attempt_id == attempt_id)
+            ).mappings().first()
+            if existing_attempt:
+                if existing_attempt["session_id"] != session_id:
+                    # attempt_id is the idempotency key. Reusing it in another
+                    # session is a client error, not a successful retry.
+                    raise LookupError("作答记录不属于当前学习会话")
+                current = connection.execute(
+                    select(mastery_states).where(
+                        mastery_states.c.learner_id == session["learner_id"],
+                        mastery_states.c.knowledge_point == existing_attempt["knowledge_point"],
+                    )
+                ).mappings().first()
+                return {
+                    "attemptId": attempt_id,
+                    "mastery": self._mastery_from_row(current, session["learner_id"], existing_attempt["knowledge_point"]),
+                }
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
@@ -170,6 +356,48 @@ class LearningStore(DatabaseStore):
             },
         }
 
+    def get_learning_session(self, session_id: str) -> dict[str, Any] | None:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            session = connection.execute(
+                select(learning_sessions).where(learning_sessions.c.session_id == session_id)
+            ).mappings().first()
+            if not session:
+                return None
+            attempts = connection.execute(
+                select(exercise_attempts)
+                .where(exercise_attempts.c.session_id == session_id)
+                .order_by(exercise_attempts.c.created_at.asc())
+            ).mappings().all()
+        return {
+            "sessionId": session["session_id"],
+            "learnerId": session["learner_id"],
+            "lessonId": session["lesson_id"],
+            "startedAt": session["started_at"],
+            "updatedAt": session["updated_at"],
+            "attempts": [{
+                "attemptId": row["attempt_id"],
+                "questionId": row["question_id"],
+                "knowledgePoint": row["knowledge_point"],
+                "response": decode_json(row["response_json"]),
+                "assessment": row["assessment"],
+                "hintLevel": row["hint_level"],
+                "durationMs": row["duration_ms"],
+                "createdAt": row["created_at"],
+            } for row in attempts],
+        }
+
+    @staticmethod
+    def _mastery_from_row(row: Any, learner_id: str, knowledge_point: str) -> dict[str, Any]:
+        return {
+            "learnerId": learner_id,
+            "knowledgePoint": knowledge_point,
+            "score": float(row["score"]) if row else 0.0,
+            "attemptCount": int(row["attempt_count"]) if row else 0,
+            "correctCount": int(row["correct_count"]) if row else 0,
+            "lastPracticedAt": row["last_practiced_at"] if row else None,
+        }
+
     def list_mastery(self, learner_id: str) -> list[dict[str, Any]]:
         self._ensure_initialized()
         with self.engine.connect() as connection:
@@ -200,6 +428,9 @@ class LearningStore(DatabaseStore):
                 ) or 0,
                 "lesson_documents": connection.scalar(
                     select(func.count()).select_from(lesson_documents)
+                ) or 0,
+                "lesson_publications": connection.scalar(
+                    select(func.count()).select_from(lesson_publications)
                 ) or 0,
                 "learning_sessions": connection.scalar(
                     select(func.count()).select_from(learning_sessions)

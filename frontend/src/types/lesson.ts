@@ -70,10 +70,12 @@ export interface LessonDocument {
   lessonId: string;
   title: string;
   version: number;
-  status: "draft" | "review" | "published" | "archived";
+  status: "draft" | "in_review" | "review" | "published" | "archived";
   sourceUploadId?: string;
   knowledgePoints: string[];
   blocks: LessonBlock[];
+  questionPayload?: Record<string, unknown>;
+  guideCards?: Array<Record<string, unknown>>;
 }
 
 export interface LearningSession {
@@ -81,6 +83,17 @@ export interface LearningSession {
   learnerId: string;
   lessonId: string;
   startedAt: number;
+}
+
+export interface ExerciseAttemptInput {
+  attemptId: string;
+  questionId: string;
+  knowledgePoint: string;
+  response: Record<string, unknown>;
+  assessment: "correct" | "partial" | "incorrect";
+  hintLevel: number;
+  durationMs: number;
+  createdAt: number;
 }
 
 export interface MasteryState {

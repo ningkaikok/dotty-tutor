@@ -1,0 +1,192 @@
+.student-shell {
+  position: relative;
+  width: min(1120px, calc(100% - 40px));
+  margin: 34px auto 60px;
+}
+
+.student-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.student-header strong,
+.student-header span:not(.demo-badge) {
+  display: block;
+}
+
+.student-header strong {
+  font-size: 18px;
+}
+
+.student-header span:not(.demo-badge) {
+  color: #6d776f;
+  font-size: 13px;
+}
+
+.student-hero {
+  max-width: 760px;
+  margin: clamp(72px, 12vh, 130px) 0 38px;
+}
+
+.student-hero h1 {
+  margin: 11px 0 16px;
+  font-size: clamp(44px, 7vw, 72px);
+  line-height: 1.02;
+}
+
+.student-hero p {
+  color: #59675f;
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+.student-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.student-action-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 390px;
+  padding: 26px;
+  border: 1px solid rgba(34, 57, 47, .13);
+  border-radius: 24px;
+  background: rgba(251, 250, 246, .95);
+  box-shadow: 0 18px 50px rgba(45, 55, 48, .08);
+}
+
+.paper-card { border-top: 4px solid #d58232; }
+.mistake-card { border-top: 4px solid #1b9a72; }
+.review-card { border-top: 4px solid #596de4; }
+
+.student-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.student-card-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 16px 16px 5px 16px;
+  color: #fff;
+  background: #183f31;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.review-card .student-card-icon { background: #4b59b4; }
+.paper-card .student-card-icon { background: #a8682c; }
+
+.student-card-status {
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: #176d54;
+  background: #dff3e8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.student-card-status.planned {
+  color: #90561f;
+  background: #f7e8d7;
+}
+
+.student-action-card h2 {
+  margin: 26px 0 11px;
+  font-size: 27px;
+}
+
+.student-action-card > p {
+  color: #56645c;
+  line-height: 1.7;
+}
+
+.student-action-card ul {
+  display: grid;
+  gap: 9px;
+  margin: 7px 0 24px;
+  padding: 0;
+  color: #3f5047;
+  list-style: none;
+}
+
+.student-action-card li::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 9px 2px 0;
+  border-radius: 50%;
+  background: #1b9a72;
+}
+
+.review-card li::before { background: #596de4; }
+
+.student-empty-note {
+  margin: 8px 0 24px;
+  padding: 13px;
+  border-radius: 12px;
+  color: #865423;
+  background: #f8ebdc;
+  font-size: 12px;
+}
+
+.student-action-card button {
+  width: 100%;
+  margin-top: auto;
+  padding: 13px 16px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: #183f31;
+  font-weight: 700;
+}
+
+.student-paper-list { display: grid; gap: 8px; margin-top: 12px; }
+.student-paper-list button { display: grid; gap: 4px; margin-top: 0; text-align: left; }
+.student-paper-list button span { color: #6a786f; font-size: 12px; }
+
+.student-action-card button:hover:not(:disabled) { background: #245b46; }
+
+.student-action-card button:disabled {
+  color: #8a8f8b;
+  background: #e5e6e2;
+}
+
+.student-boundary-note {
+  display: flex;
+  gap: 14px;
+  margin-top: 18px;
+  padding: 17px 20px;
+  border: 1px solid rgba(34, 57, 47, .1);
+  border-radius: 16px;
+  color: #5c6962;
+  background: rgba(251, 250, 246, .7);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.student-boundary-note strong {
+  flex: 0 0 auto;
+  color: #253a31;
+}
+
+@media (max-width: 900px) {
+  .student-action-grid { grid-template-columns: 1fr; }
+  .student-action-card { min-height: 320px; }
+}
+
+@media (max-width: 560px) {
+  .student-shell { width: calc(100% - 24px); margin-top: 16px; }
+  .student-header .route-back-button { padding-inline: 10px; }
+  .student-hero { margin-top: 62px; }
+  .student-hero h1 { font-size: 42px; }
+  .student-action-card { min-height: auto; padding: 23px; }
+  .student-boundary-note { flex-direction: column; }
+}

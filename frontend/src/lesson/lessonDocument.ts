@@ -1,11 +1,12 @@
 import type { LessonDocument, QuestionPayload } from "../types";
 
-export function lessonDocumentFromPayload(payload: QuestionPayload): LessonDocument {
+export function lessonDocumentFromPayload(payload: QuestionPayload, sourceUploadId?: string): LessonDocument {
   return {
     lessonId: payload.question.id,
     title: payload.question.knowledgePoint,
     version: 1,
-    status: payload.question.publicationStatus === "needs_review" ? "review" : "published",
+    status: payload.question.publicationStatus === "needs_review" ? "in_review" : "draft",
+    sourceUploadId,
     knowledgePoints: [payload.question.knowledgePoint],
     blocks: [
       ...payload.lessonSteps.map((step) => ({
@@ -26,5 +27,7 @@ export function lessonDocumentFromPayload(payload: QuestionPayload): LessonDocum
         payload: { questionId: payload.question.id },
       },
     ],
+    questionPayload: payload as unknown as Record<string, unknown>,
+    guideCards: [],
   };
 }

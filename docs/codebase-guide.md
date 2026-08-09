@@ -47,7 +47,9 @@ dotty-tutor/
 ├── frontend/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
-│   ├── apps/textbook/          # 内容生产、互动预览与导入子模块
+│   ├── apps/student/           # 学生学习空间，不包含生产配置
+│   │   └── usePublishedLearningSession.ts # 会话恢复与离线作答队列
+│   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
 │   ├── components/             # 跨教材题型复用的作答组件
@@ -142,6 +144,10 @@ flowchart LR
 - `useTextbookImport.ts` 负责初始化、断点上传、轮询、模型切换和错误状态。
 - `fileValidation.ts` 只包含纯校验和常量。
 - `RuntimeSettings`、`TextbookLibrary`、`UploadPanel`、`PipelinePanel` 各自负责一个视觉区域。
+
+互动试卷沿用相同分层：`TextbookApp.tsx` 组合内容预览，`usePaperPublication.ts` 负责显式发布状态流；
+`PublishedPaperApp.tsx` 组合学生作答，`usePublishedLearningSession.ts` 负责刷新恢复、数据库重建后的旧会话
+替换和离线批量补传。两个页面复用 `PracticeWorkspace`，但生产预览绝不写入真实学习记录。
 
 错题页面新增复杂状态机时也遵循同样边界，不要把 API 请求重新塞回列表或表单组件。
 

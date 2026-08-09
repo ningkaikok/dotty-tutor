@@ -6,20 +6,15 @@ import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import { TextbookImport } from "../../TextbookImport";
 import type { CanvasAction, QuestionPayload, TextbookImportResult, TutorReply } from "../../types";
+import { usePaperPublication } from "./usePaperPublication";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
 const QUESTION_LIMIT = 5;
 
 export function TextbookApp() {
-  // This route component is the textbook product's orchestration boundary. It
-  // owns question state; child components remain controlled renderers and never
-  // call the backend directly.
-  //
-  // Answering here is content QA: an editor works a generated question to check
-  // that it is solvable and that its hints and explanation hold up. It is not
-  // studying, so it deliberately records no learning session, attempt or mastery
-  // — those belong to the student side and would otherwise be fed by whoever
-  // happened to be reviewing content.
+  // This route component is the content-studio orchestration boundary. Its
+  // answer interactions are a quality-preview only; student learning records
+  // are created from the published-paper route instead.
   const navigate = useNavigate();
   const onExit = () => navigate("/");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
@@ -38,6 +33,14 @@ export function TextbookApp() {
   const [loading, setLoading] = useState(false);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
+  const {
+    publication,
+    publicationBusy,
+    publicationError,
+    submitForReview,
+    publish,
+    resetPublication,
+  } = usePaperPublication(textbookImport, questionBank);
 
   const resetLearningState = () => {
     // Question-scoped state must move together. Resetting only the visible text
@@ -59,6 +62,7 @@ export function TextbookApp() {
     resetLearningState();
     setPayload(null);
     setTextbookImport(null);
+    resetPublication();
   };
 
   const askTutor = async (mode: "answer" | "help") => {
@@ -229,7 +233,20 @@ export function TextbookApp() {
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
         </span>
+        {!publication && (
+          <button className="ghost compact" disabled={publicationBusy} onClick={() => void submitForReview()}>
+            {publicationBusy ? "提交中…" : "提交试卷审核"}
+          </button>
+        )}
+        {publication?.status === "in_review" && (
+          <button className="lesson-button" disabled={publicationBusy} onClick={() => void publish()}>
+            {publicationBusy ? "发布中…" : "发布试卷"}
+          </button>
+        )}
+        {publication?.status === "published" && <span className="active-model live">已发布</span>}
       </header>
+
+      {publicationError && <p className="import-error" role="alert">{publicationError}</p>}
 
       <section className="source-strip">
         <span>扫描页</span><strong>{textbookImport.filename}</strong><b>→</b>

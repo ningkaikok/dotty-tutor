@@ -20,7 +20,7 @@ flowchart LR
 | --- | --- | --- |
 | Router | `App.tsx` | 产品入口、懒加载、404 跳转和页面标题 |
 | Page | `TextbookApp.tsx`、`MistakeCoachApp.tsx` | 组合业务状态、调用 Hook、切换页面模式 |
-| Hook | `useTextbookImport.ts`、`useMistakeTutor.ts` | 异步流程、状态转换、失败恢复 |
+| Hook | `useTextbookImport.ts`、`usePaperPublication.ts`、`usePublishedLearningSession.ts` | 异步流程、状态转换、失败恢复 |
 | Component | `PracticeWorkspace.tsx`、`QuestionAnswer.tsx` | 根据 Props 渲染并上报用户操作 |
 | API | `api/` | 请求路径、序列化和统一错误解析 |
 | Types | `types/` | 前后端稳定契约和判别联合类型 |
@@ -34,7 +34,8 @@ flowchart LR
 
 ```text
 /              → ProductHome
-/learn/*       → 重定向到 /mistakes（旧地址兼容）
+/learn/*       → StudentLearningApp
+/learn/papers/:id → PublishedPaperApp
 /studio/*      → TextbookApp
 /mistakes/*    → MistakeCoachApp
 /textbooks/*   → 兼容跳转到 /studio
@@ -92,13 +93,29 @@ stateDiagram-v2
 - 当前 `payload`。
 - 最多五题的 `questionBank`。
 - 当前结构化答案和自由文本。
-- 学习会话、提示等级与掌握度。
+- 提示等级与内容质检预览结果。
 
 首批 PDF 完成后立即可做题；只有学生走到已加载题目的末尾，才调用 `processPdfBatch()` 处理下一个五页范围。
 这种延迟工作比“上传后处理整本书”更适合 Demo，也更符合速度优先的产品体验。
 
 切换题目时必须成组清理文本答案、选项、填空、画线、语音、提示等级和旧回复。`resetLearningState()` 把这个
 不变量集中管理，避免上一题状态泄漏到下一题。
+
+内容生产端的作答只用于检查生成内容，不创建学习会话，也不累计掌握度。`usePaperPublication.ts` 将多题课程
+保存为草稿，按 `draft → in_review → published` 送审发布；真正的学生作答发生在
+`PublishedPaperApp.tsx`。
+
+## 5.1 学生会话和离线同步
+
+`usePublishedLearningSession.ts` 管理学生侧需要持久化的副作用：
+
+1. 先尝试恢复 `localStorage` 中的会话 ID。
+2. 本地数据库重建导致会话失效时，自动创建替代会话。
+3. 每次作答生成稳定 `attemptId` 和原始 `createdAt`；请求失败便写入本地队列。
+4. 页面再次打开后按会话批量补传，服务端依靠 `attemptId` 保证重试不重复累计。
+
+这些规则放在 Hook 而非页面，是因为它们是一条可恢复状态机。页面只展示同步状态并提交结构化作答，避免
+把网络恢复、存储格式和练习 UI 混在同一组件中。
 
 ## 6. 一套题型如何复用到两个产品
 
@@ -133,6 +150,7 @@ short-answer           → 页面提供自由文本区
 
 - `types/question.ts`：题目、答案规范、画线和模型运行信息。
 - `types/lesson.ts`：课程文档与内容块判别联合。
+- `types/publication.ts`：互动试卷发布状态与学生可见投影。
 - `types/textbook.ts`：上传任务、教材批次和导入结果。
 - `types/mistake.ts`：错题与错误原因。
 - `types/tutoring.ts`：多轮线程、消息和请求。

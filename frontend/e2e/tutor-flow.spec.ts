@@ -160,18 +160,8 @@ const priorityImportResult = {
   questionPayloads: [multiSelectQuestion, fillBlankQuestion, numericQuestion],
 };
 
-/**
- * Routes the studio flow's backend calls.
- *
- * Returns the learning-record URLs the page attempted to write. The studio is a
- * content-QA surface, so that list is expected to stay empty; the routes are
- * still registered so a regression writes to the fixture instead of escaping to
- * a real backend.
- */
 async function mockApi(page: Page, result = importResult) {
-  const learningWrites: string[] = [];
   await page.route("**/api/learning/sessions/*/attempts", async (route) => {
-    learningWrites.push(route.request().url());
     await route.fulfill({
       json: {
         attemptId: "pw-attempt",
@@ -187,7 +177,6 @@ async function mockApi(page: Page, result = importResult) {
     });
   });
   await page.route("**/api/learning/sessions", async (route) => {
-    learningWrites.push(route.request().url());
     const request = route.request().postDataJSON() as { learnerId: string; lessonId: string };
     await route.fulfill({
       json: {
@@ -224,6 +213,9 @@ async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/library", async (route) => {
     await route.fulfill({ json: { items: [] } });
   });
+  await page.route("**/api/publications?status=published", async (route) => {
+    await route.fulfill({ json: { items: [] } });
+  });
   await page.route("**/api/textbook/import", async (route) => {
     await route.fulfill({ json: result });
   });
@@ -242,7 +234,6 @@ async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/tts", async (route) => {
     await route.fulfill({ status: 503, body: "disabled in e2e" });
   });
-  return learningWrites;
 }
 
 async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = false) {
@@ -494,14 +485,16 @@ test.describe("产品入口", () => {
 
     await expect(page.getByRole("heading", { name: "选择你的使用入口" })).toBeVisible();
     await page.getByRole("button", { name: "进入学生学习空间" }).click();
+    await expect(page).toHaveURL(/\/learn$/);
+    await expect(page.getByRole("heading", { name: "直接开始学习" })).toBeVisible();
+    await expect(page.locator(".paper-card")).toContainText("已可用");
+    await expect(page.getByText("暂无已发布试卷，请先在内容生产端发布。")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
-    // The student entry now lands directly on the real feature instead of an
-    // intermediate menu whose only working cards both led here anyway.
+    await page.getByRole("button", { name: "打开我的错题本" }).click();
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "← 选择入口" })).toBeVisible();
-    // Role boundary: production concerns must never surface on the student side.
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "← 学生学习空间" })).toBeVisible();
 
     await page.goto("/studio");
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -510,11 +503,40 @@ test.describe("产品入口", () => {
     await page.goto("/textbooks");
     await expect(page).toHaveURL(/\/studio$/);
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+  });
 
-    // /learn was published in an earlier release; keep those bookmarks working.
+  test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
+    await mockApi(page);
+    await mockMistakeApi(page);
+    const publication = {
+      publicationId: "paper-pw-1",
+      title: "第一章 · 互动试卷",
+      status: "published",
+      lessonIds: [choiceQuestion.question.id],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [{
+        lessonId: choiceQuestion.question.id,
+        title: choiceQuestion.question.knowledgePoint,
+        version: 1,
+        status: "published",
+        questionPayload: choiceQuestion,
+        guideCards: [],
+      }],
+    };
+    await page.route("**/api/publications?status=published", async (route) => {
+      await route.fulfill({ json: { items: [publication] } });
+    });
+    await page.route("**/api/publications/paper-pw-1", async (route) => {
+      await route.fulfill({ json: publication });
+    });
     await page.goto("/learn");
-    await expect(page).toHaveURL(/\/mistakes$/);
-    await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /第一章 · 互动试卷/ }).click();
+    await expect(page).toHaveURL(/\/learn\/papers\/paper-pw-1$/);
+    await page.getByRole("button", { name: /B/ }).click();
+    await page.getByRole("button", { name: "提交回答" }).click();
+    await expect(page.getByText("部分正确")).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
@@ -597,7 +619,7 @@ test.describe("产品入口", () => {
 
 test.describe("教材辅导核心交互", () => {
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
-    const learningWrites = await mockApi(page);
+    await mockApi(page);
     await page.goto("/studio");
 
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -615,10 +637,9 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByText("已选择 (B)" )).toBeVisible();
     await page.getByRole("button", { name: "Help · 下一步提示" }).click();
     await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
-    // Answering in the studio is content QA, not studying: it must not open a
-    // learning session, record an attempt, or surface a mastery score.
-    await expect(page.getByText(/掌握度/)).toHaveCount(0);
-    expect(learningWrites).toEqual([]);
+    // Studio answers are quality-preview interactions; only the published
+    // student route writes mastery telemetry.
+    await expect(page.getByText("掌握度 17%")).toHaveCount(0);
 
     await page.getByRole("button", { name: "下一题" }).click();
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();

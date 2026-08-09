@@ -93,7 +93,8 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
 - 当前存储层首次启动会执行 `create_all()`；正式多版本发布前必须引入 Alembic。
 - 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
-  `002_mistake_capture.sql` 和 `003_stateful_tutoring.sql`；执行前先备份数据库。
+  `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
+  `005_spaced_review.sql` 和 `006_publications_and_sync.sql`；执行前先备份数据库。
 
 ## 启动前检查
 
@@ -241,7 +242,7 @@ docker compose ps
 ```
 
 打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。产品首页、学生空间、内容生产和错题陪练
-分别位于 `/`、`/studio`、`/mistakes`；旧 `/learn`、`/textbooks` 会分别跳转到 `/mistakes` 和 `/studio`。仓库的 Nginx
+分别位于 `/`、`/learn`、`/studio`、`/mistakes`；旧 `/textbooks` 会跳转到 `/studio`。仓库的 Nginx
 配置已使用 `index.html` 作为 SPA 回退，
 反向代理或 CDN 也必须保留该规则，否则直接刷新子路径会返回 404。默认服务拓扑：
 
