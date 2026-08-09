@@ -2,7 +2,7 @@
 
 开发环境默认地址为 <http://127.0.0.1:8010>，前端通过同源 `/api` 路径调用。
 
-`/`、`/learn`、`/studio`、`/textbooks` 和 `/mistakes` 是前端页面路径，不是 API。错题拍照确认使用独立的
+`/`、`/learn`、`/studio`、`/mistakes` 是前端页面路径（旧 `/textbooks` 会跳转），不是 API。错题拍照确认使用独立的
 `/api/mistakes` 命名空间。
 
 FastAPI 交互文档启动后可从以下地址查看：

@@ -35,6 +35,7 @@ flowchart LR
 ```text
 /              → ProductHome
 /learn/*       → StudentLearningApp
+/learn/papers/:id → PublishedPaperApp
 /studio/*      → TextbookApp
 /mistakes/*    → MistakeCoachApp
 /textbooks/*   → 兼容跳转到 /studio
