@@ -46,6 +46,27 @@ class TextbookProcessingTests(unittest.TestCase):
                         "question_processing.generate_lesson",
                         return_value=(payload, [], payload["modelRun"]),
                     ),
+                    patch(
+                        "question_processing.review_lesson_payload",
+                        side_effect=lambda item, _source, _images, _cards: (
+                            item,
+                            {"provider": "test"},
+                        ),
+                    ),
+                    patch(
+                        "question_processing.apply_question_quality_gate",
+                        side_effect=lambda item, _source, _images: (
+                            item.update({
+                                "quality": {
+                                    "status": "ready",
+                                    "errors": [],
+                                    "warnings": [],
+                                    "validatorVersion": "test-v1",
+                                },
+                            })
+                            or item["quality"]
+                        ),
+                    ),
                     patch("textbook_routes.store.save_questions"),
                     patch("textbook_routes.store.save_lesson"),
                     patch("textbook_routes.store.save_job"),

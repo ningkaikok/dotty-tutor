@@ -19,6 +19,7 @@ from question_contracts import (
     TtsRequest,
 )
 from observability import log_event
+from review_runtime import runtime_reviewer
 
 
 def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]]) -> APIRouter:
@@ -126,6 +127,30 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
             return result
         except ValueError as error:
             log_event("model.selection.failed", level=30, provider=request.provider, model=request.model, error=str(error)[:200])
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @router.get("/api/review-models")
+    def get_review_models() -> dict[str, Any]:
+        return runtime_reviewer.catalog()
+
+    @router.post("/api/review-models/select")
+    def select_review_model(request: ModelSelectionRequest) -> dict[str, Any]:
+        try:
+            result = runtime_reviewer.select_text(request.provider, request.model)
+            log_event(
+                "review.model.selection.changed",
+                provider=request.provider,
+                model=request.model,
+            )
+            return result
+        except ValueError as error:
+            log_event(
+                "review.model.selection.failed",
+                level=30,
+                provider=request.provider,
+                model=request.model,
+                error=str(error)[:200],
+            )
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @router.get("/api/ocr")

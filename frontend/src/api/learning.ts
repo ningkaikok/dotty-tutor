@@ -1,12 +1,19 @@
 import type { ExerciseAttemptInput, LearningSession, MasteryState } from "../types/lesson";
 import { parse } from "./client";
 
-export async function createLearningSession(input: { learnerId: string; lessonId: string }): Promise<LearningSession> {
+export async function createLearningSession(input: { learnerId: string; publicationId: string }): Promise<LearningSession> {
   return parse<LearningSession>(await fetch("/api/learning/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   }));
+}
+
+export async function loadLearningMastery(learnerId: string): Promise<MasteryState[]> {
+  const payload = await parse<{ learnerId: string; items: MasteryState[] }>(
+    await fetch(`/api/learning/mastery/${encodeURIComponent(learnerId)}`, { cache: "no-store" }),
+  );
+  return payload.items;
 }
 
 export async function loadLearningSession(sessionId: string): Promise<LearningSession & { attempts: unknown[] }> {

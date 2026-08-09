@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { processPdfBatch, requestHelp } from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
@@ -12,9 +12,8 @@ const INITIAL_ACTION: CanvasAction = "show-base";
 const QUESTION_LIMIT = 5;
 
 export function TextbookApp() {
-  // This route component is the content-studio orchestration boundary. Its
-  // answer interactions are a quality-preview only; student learning records
-  // are created from the published-paper route instead.
+  // 本路由是内容生产工作台的编排边界。这里的答题只用于质量预览；真实学生学习记录只允许
+  // PublishedPaperApp 创建，避免编辑者试做污染掌握度。
   const navigate = useNavigate();
   const onExit = () => navigate("/");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
@@ -37,14 +36,29 @@ export function TextbookApp() {
     publication,
     publicationBusy,
     publicationError,
+    publicationNotice,
+    restoredQuestionBank,
     submitForReview,
     publish,
+    regenerateRevision,
     resetPublication,
   } = usePaperPublication(textbookImport, questionBank);
 
+  useEffect(() => {
+    // 恢复的是某个试卷版本自己的课程快照，不是重新读取教材批次；这样刷新后仍能继续审核 v2。
+    if (!restoredQuestionBank?.length) return;
+    const nextBank = restoredQuestionBank.slice(0, QUESTION_LIMIT);
+    setQuestionBank(nextBank);
+    setQuestionIndex(0);
+    setPayload(nextBank[0]);
+    setTextbookImport((current) => current ? {
+      ...current,
+      extraction: { ...current.extraction, questionCount: nextBank.length },
+    } : current);
+  }, [restoredQuestionBank]);
+
   const resetLearningState = () => {
-    // Question-scoped state must move together. Resetting only the visible text
-    // would leak an old structured answer or audio step into the next question.
+    // 题目级状态必须整体移动。只清空文本会把上一题的结构化答案、提示级别或音频步骤带到下一题。
     stopSpeech();
     setCanvasAction(INITIAL_ACTION);
     setStudentInput("");
@@ -131,8 +145,7 @@ export function TextbookApp() {
       return;
     }
     if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= QUESTION_LIMIT) return;
-    // Later five-page ranges are generated lazily. The demo stays responsive
-    // after the first batch and only spends OCR/model time when the learner asks.
+    // 后续五页批次按需生成：首批完成后页面即可交互，只有继续翻题时才消耗 OCR/模型时间。
     const nextBatch = textbookImport.batches?.find((batch) => batch.status === "queued");
     if (!nextBatch) return;
     setLoadingQuestion(true);
@@ -180,6 +193,21 @@ export function TextbookApp() {
       resetLearningState();
     } catch (error) {
       setInteractionError(error instanceof Error ? error.message : "题目重新识别失败");
+    } finally {
+      setLoadingQuestion(false);
+    }
+  };
+
+  const regenerateWholePaper = async () => {
+    if (loadingQuestion || publicationBusy) return;
+    setLoadingQuestion(true);
+    setInteractionError("");
+    try {
+      const revisedBank = await regenerateRevision();
+      if (!revisedBank?.length) return;
+      const nextBank = revisedBank.slice(0, QUESTION_LIMIT);
+      setQuestionBank(nextBank);
+      activateQuestion(0, nextBank);
     } finally {
       setLoadingQuestion(false);
     }
@@ -239,14 +267,27 @@ export function TextbookApp() {
           </button>
         )}
         {publication?.status === "in_review" && (
-          <button className="lesson-button" disabled={publicationBusy} onClick={() => void publish()}>
-            {publicationBusy ? "发布中…" : "发布试卷"}
-          </button>
+          <>
+            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={() => void regenerateWholePaper()}>
+              {publicationBusy || loadingQuestion ? "生成新版中…" : "整套重新审核"}
+            </button>
+            <button className="lesson-button" disabled={publicationBusy} onClick={() => void publish()}>
+              {publicationBusy ? "发布中…" : `发布试卷 v${publication.version || 1}`}
+            </button>
+          </>
         )}
-        {publication?.status === "published" && <span className="active-model live">已发布</span>}
+        {publication?.status === "published" && (
+          <>
+            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={() => void regenerateWholePaper()}>
+              {publicationBusy || loadingQuestion ? "生成新版中…" : "生成审核新版"}
+            </button>
+            <span className="active-model live">已发布 v{publication.version || 1}</span>
+          </>
+        )}
       </header>
 
       {publicationError && <p className="import-error" role="alert">{publicationError}</p>}
+      {publicationNotice && <p className="publication-notice" role="status">{publicationNotice}</p>}
 
       <section className="source-strip">
         <span>扫描页</span><strong>{textbookImport.filename}</strong><b>→</b>

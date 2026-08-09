@@ -8,9 +8,11 @@ import {
   loadLibraryItem,
   loadModels,
   loadOcrProviders,
+  loadReviewModels,
   loadPdfUploadStatus,
   selectModel,
   selectOcrProvider,
+  selectReviewModel,
   uploadPdfChunk,
 } from "../../../api";
 import type {
@@ -20,6 +22,7 @@ import type {
   OcrCatalog,
   OcrProvider,
   PdfUploadTask,
+  ReviewModelCatalog,
   TextbookImportResult,
 } from "../../../types";
 import {
@@ -37,14 +40,13 @@ interface UseTextbookImportOptions {
 }
 
 /**
- * Owns the import state machine and all API side effects. Presentation
- * components receive plain state and callbacks, so changing the page layout
- * does not risk breaking resumable uploads.
+ * 教材导入状态机和全部 API 副作用的唯一拥有者。
+ *
+ * 展示组件只接收普通状态和回调，因此调整页面布局不会破坏断点上传。大文件控制数据放在 ref，
+ * 用户可见快照放在 state；这样每个分块完成时既不会重建控制器，又能更新进度条。
  */
 export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOptions) {
-  // Refs hold mutable upload control data that should survive renders without
-  // causing a render for every uploaded chunk. User-visible snapshots still use
-  // state below, so React remains the source of truth for presentation.
+  // Ref 保存跨渲染的可变上传控制数据，state 仍是界面显示的真相来源。
   const pdfTaskRef = useRef<{ task: PdfUploadTask; uploaded: Set<number> } | null>(null);
   const pauseRequested = useRef(false);
   const [file, setFile] = useState<File | null>(null);
@@ -55,6 +57,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
   const [result, setResult] = useState<TextbookImportResult | null>(null);
   const [sourceText, setSourceText] = useState("");
   const [models, setModels] = useState<ModelCatalog | null>(null);
+  const [reviewModels, setReviewModels] = useState<ReviewModelCatalog | null>(null);
   const [ocrProviders, setOcrProviders] = useState<OcrCatalog | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
   const [processingTask, setProcessingTask] = useState<PdfUploadTask | null>(null);
@@ -68,6 +71,9 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     });
     loadOcrProviders().then(setOcrProviders).catch((requestError) => {
       setError(requestError instanceof Error ? requestError.message : "OCR 列表加载失败");
+    });
+    loadReviewModels().then(setReviewModels).catch((requestError) => {
+      setError(requestError instanceof Error ? requestError.message : "审核模型列表加载失败");
     });
     loadLibrary().then(setLibrary).catch((requestError) => {
       setError(requestError instanceof Error ? requestError.message : "教材库加载失败");
@@ -108,8 +114,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     pauseRequested.current = false;
     setPhase("uploading");
     const { task, uploaded } = current;
-    // The Set comes from the server's resumable status. Skipping known indexes
-    // lets the same function handle first upload, pause/resume and page reload.
+    // Set 来源于服务端断点状态。跳过已存在索引后，同一循环即可覆盖首次上传、暂停恢复和刷新恢复。
     for (let index = 0; index < task.totalChunks; index += 1) {
       if (pauseRequested.current) return;
       if (uploaded.has(index)) continue;
@@ -131,17 +136,15 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
       elapsedSeconds: 0,
     });
 
-    // The completion request does the work synchronously today. Polling is a
-    // read-only companion request that keeps the progress card responsive. It
-    // can be removed when completion becomes a queued Worker task; the rest of
-    // this state machine and the UI contract do not need to change.
+    // 当前 completion 请求同步执行耗时工作，轮询只是只读地刷新进度卡。未来改成 Worker 后可
+    // 删除这个伴随轮询，其余状态机和 UI 契约无需改变。
     let keepPolling = true;
     const polling = (async () => {
       while (keepPolling) {
         try {
           setProcessingTask(await loadPdfUploadStatus(task.uploadId));
         } catch {
-          // A transient status failure must not cancel the completion request.
+          // 状态查询短暂失败不应取消仍在执行的 completion 请求。
         }
         await new Promise((resolve) => window.setTimeout(resolve, 800));
       }
@@ -203,6 +206,18 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     }
   };
 
+  const selectReviewer = async (provider: ModelProvider, model: string) => {
+    setRuntimeLoading(true);
+    setError("");
+    try {
+      setReviewModels(await selectReviewModel(provider, model));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "审核模型切换失败");
+    } finally {
+      setRuntimeLoading(false);
+    }
+  };
+
   const openLibraryItem = async (item: LibraryItem) => {
     setLibraryLoadingId(item.uploadId);
     setError("");
@@ -251,6 +266,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     result,
     sourceText,
     models,
+    reviewModels,
     ocrProviders,
     runtimeLoading,
     processingTask,
@@ -264,6 +280,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     upload,
     pause: () => { pauseRequested.current = true; setPhase("paused"); },
     selectGenerationModel,
+    selectReviewer,
     selectOcr,
     openLibraryItem,
     removeLibraryItem,

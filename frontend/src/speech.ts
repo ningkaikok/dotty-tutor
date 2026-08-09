@@ -1,11 +1,9 @@
 let activeAudio: HTMLAudioElement | null = null;
-// Incrementing this token invalidates every older async playback continuation.
-// Pausing an Audio element alone is not enough because its fetch Promise may
-// resolve later and otherwise start stale narration on a newly selected step.
+// 每次播放递增令牌，使所有旧的异步 continuation 失效。仅暂停 Audio 不够：
+// 音频请求可能在用户已经切换步骤后才返回，如果不校验令牌就会播放错误步骤的旁白。
 let speechRequestId = 0;
 let activePlaybackResolve: (() => void) | null = null;
-// Cache Promises rather than only completed Blobs so concurrent preloads for the
-// same sentence share one HTTP request while Qwen3-TTS is still synthesizing.
+// 缓存 Promise 而不仅是已完成的 Blob，让相同文本的并发预热共享同一个 HTTP 请求。
 const speechCache = new Map<string, Promise<Blob | null>>();
 
 function speechKey(text: string) {
@@ -34,7 +32,7 @@ function requestSpeech(text: string): Promise<Blob | null> {
   return request;
 }
 
-/** Start fetching audio without playing it, so the next lesson step is ready. */
+/** 只预取音频而不播放，使下一教学步骤切换时尽可能直接命中缓存。 */
 export async function preloadSpeech(text: string) {
   await requestSpeech(text);
 }

@@ -31,8 +31,7 @@ def build_postgres_url_from_env() -> str:
     """Build an escaped password URL when POSTGRES_* variables are provided."""
     password = os.getenv("POSTGRES_PASSWORD", "")
     if not password:
-        # Make an otherwise silent local-socket fallback visible. A partial env
-        # often means the developer forgot to source .env.local.
+        # 显式记录本地 Socket 回退；环境变量只配置一半，通常意味着开发者忘记加载 .env.local。
         log_event(
             "storage.postgres.socket_fallback",
             level=30,

@@ -1,8 +1,7 @@
-"""HTTP boundary for textbook imports, multipart uploads and stored assets.
+"""教材导入、分块上传与持久化资源的 HTTP 边界。
 
-Long-running PDF orchestration lives in :mod:`textbook_processing`. Keeping
-this module focused on HTTP makes it easy to see which validation belongs to
-the transport layer and which work could later run in a background worker.
+耗时 PDF 流程位于 :mod:`textbook_processing`。本模块只处理协议与传输校验，便于区分哪些规则必须在
+接收请求前执行、哪些步骤将来可以原样迁移到后台 Worker。
 """
 
 from __future__ import annotations
@@ -33,9 +32,8 @@ from upload_registry import UploadRegistry
 
 router = APIRouter()
 
-# Limits at the HTTP boundary protect memory and disk before any OCR/model work
-# starts. They are deliberately separate from generation limits, which belong
-# to the processing service and question pipeline.
+# HTTP 边界的体积限制必须在 OCR/模型调用前保护内存与磁盘；生成数量限制属于处理服务与题目流水线，
+# 两类限制刻意分开，避免传输细节渗透进领域逻辑。
 ALLOWED_UPLOAD_SUFFIXES = {
     ".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif",
     ".gif", ".bmp", ".tif", ".tiff", ".pdf",
@@ -46,8 +44,8 @@ PDF_CHUNK_BYTES = 5 * 1024 * 1024
 PDF_TAIL_CHECK_BYTES = 64 * 1024
 UPLOAD_ROOT = store.upload_root
 
-# The registry is the small state boundary between HTTP polling and durable
-# storage. The service receives the same instance, so both see restored jobs.
+# Registry 是 HTTP 轮询与持久化任务之间的小型状态边界。Route 和 Service 共享同一实例，
+# 因而都能看到从数据库恢复的任务，而不是维护两份进度。
 upload_registry = UploadRegistry(
     store=store,
     lesson_store=lesson_store,
@@ -60,7 +58,7 @@ processing_service = TextbookProcessingService(
     ocr_runtime=ocr_runtime,
 )
 
-# Compatibility exports used by existing tests and the ASGI composition root.
+# 兼容旧测试和 ASGI 组合根的导出；新流程应优先依赖 upload_registry 或 processing_service。
 pdf_uploads = upload_registry.uploads
 upload_job = upload_registry.get
 upload_status = upload_registry.status
@@ -106,8 +104,7 @@ async def import_textbook(
         except Exception as error:
             raise HTTPException(status_code=422, detail=f"PDF 无法解析：{error}") from error
 
-    # MinerU requires a real file path. Manual OCR text and PDF text-layer
-    # fallback can skip the temporary file entirely.
+    # MinerU 只能接收真实文件路径；手工文本和 PDF 文字层回退无需写入临时目录。
     if not sourceText.strip() and ocr_runtime.should_use_mineru():
         with tempfile.TemporaryDirectory(prefix="dotty-ocr-input-") as input_dir:
             source_path = Path(input_dir) / filename

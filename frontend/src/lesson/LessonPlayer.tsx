@@ -38,10 +38,8 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
     setStep(0);
     setPlaying(false);
     activateBlock(playableBlocks[0]);
-    // Local TTS synthesis can take longer than a single step's playback, so queue
-    // every step's narration as soon as the lesson loads instead of just the next one.
-    // requestSpeech deduplicates these calls, so eager preloading does not create
-    // duplicate network requests when the learner clicks a step manually.
+    // 本地 TTS 合成可能比单步动画更慢，因此课程加载后先排队预热所有旁白，而不是只准备下一步。
+    // requestSpeech 会去重；学生手动点击某一步时，预热不会重复发送网络请求。
     for (const block of playableBlocks) void preloadSpeech(blockNarration(block));
 
     return stopSpeech;
@@ -54,8 +52,7 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
     const next = playableBlocks[step + 1];
 
     void (async () => {
-      // Fetch before changing the canvas, then keep the next narration warm
-      // while the current audio is playing.
+      // 先确认音频可播放，再改变画布动作，避免“动画先走完、声音才出现”；随后继续预热下一步。
       await preloadSpeech(narration);
       if (cancelled) return;
       if (next) void preloadSpeech(blockNarration(next));

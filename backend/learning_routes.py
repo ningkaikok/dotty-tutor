@@ -1,4 +1,4 @@
-"""HTTP routes for programmable lessons, attempts and mastery state."""
+"""可编程课程、互动试卷作答与掌握度的 HTTP 路由。"""
 
 from __future__ import annotations
 
@@ -35,13 +35,21 @@ def build_learning_router(*, store: Any) -> APIRouter:
 
     @router.post("/learning/sessions")
     def create_learning_session(request: LearningSessionCreate) -> dict[str, Any]:
+        publication = store.load_publication(request.publicationId)
+        if not publication or publication["status"] != "published":
+            # 只有通过发布质量门禁的内容才能创建真实学习记录；任意草稿 ID 不得污染掌握度数据。
+            raise HTTPException(status_code=404, detail="已发布互动试卷不存在")
         session = store.create_learning_session(
             session_id=uuid.uuid4().hex,
             learner_id=request.learnerId,
-            lesson_id=request.lessonId,
+            publication_id=request.publicationId,
             started_at=time.time(),
         )
-        log_event("learning.session.started", session_id=session["sessionId"], lesson_id=request.lessonId)
+        log_event(
+            "learning.session.started",
+            session_id=session["sessionId"],
+            publication_id=request.publicationId,
+        )
         return session
 
     @router.post("/learning/sessions/{session_id}/attempts")
@@ -57,8 +65,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
                 assessment=request.assessment,
                 hint_level=request.hintLevel,
                 duration_ms=request.durationMs,
-                # Never accept a client timestamp in the future. The value is
-                # otherwise preserved so offline attempts keep their ordering.
+                # 不接受客户端提供的未来时间；其余情况保留原始时间，使离线作答补传后顺序仍然真实。
                 created_at=min(request.createdAt, received_at) if request.createdAt is not None else received_at,
             )
         except LookupError as error:
@@ -85,7 +92,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
 
     @router.post("/learning/sessions/{session_id}/sync")
     def sync_learning_attempts(session_id: str, request: LearningSyncCreate) -> dict[str, Any]:
-        """Accept a bounded batch so offline student answers can be retried safely."""
+        """接收有上限的离线作答批次，并依靠 attemptId 安全幂等重试。"""
         synced: list[dict[str, Any]] = []
         for attempt in request.attempts:
             received_at = time.time()

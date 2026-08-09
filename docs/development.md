@@ -135,8 +135,8 @@ npm run dev
 psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
 ```
 
-试卷发布和学习记录同步使用 `006_publications_and_sync.sql`，升级已有 PostgreSQL 时按顺序执行
-`004_variation_practice.sql`、`005_spaced_review.sql` 和 `006_publications_and_sync.sql`。
+试卷发布和学习记录同步使用 `006_publications_and_sync.sql`；学习会话字段修正使用
+`007_learning_session_publication.sql`。升级已有 PostgreSQL 时按编号顺序执行迁移。
 
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等创建缺失表；显式 SQL 便于学习和部署审查，不能替代
 生产环境中的正式迁移版本管理。

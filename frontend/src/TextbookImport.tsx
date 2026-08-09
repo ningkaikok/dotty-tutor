@@ -37,10 +37,12 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
 
       <RuntimeSettings
         models={state.models}
+        reviewModels={state.reviewModels}
         ocrProviders={state.ocrProviders}
         loading={state.runtimeLoading}
         phase={state.phase}
         onSelectModel={(provider, model) => void state.selectGenerationModel(provider, model)}
+        onSelectReviewModel={(provider, model) => void state.selectReviewer(provider, model)}
         onSelectOcr={(provider) => void state.selectOcr(provider)}
       />
 

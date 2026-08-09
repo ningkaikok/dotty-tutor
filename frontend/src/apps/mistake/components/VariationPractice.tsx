@@ -11,7 +11,7 @@ interface VariationPracticeProps {
   mistakeId: string;
 }
 
-/** Phase-four verification appears only after the conversational tutor ends. */
+/** 阶段四的确定性掌握验证仅在本轮对话辅导结束后出现。 */
 export function VariationPractice({ mistakeId }: VariationPracticeProps) {
   const state = useVariationPractice(mistakeId);
 

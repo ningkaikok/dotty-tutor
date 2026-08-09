@@ -19,6 +19,9 @@ export interface ModelCatalog {
   }>;
 }
 
+/** 文字审核模型独立于生成模型，便于用更强模型复核低成本生成结果。 */
+export type ReviewModelCatalog = ModelCatalog;
+
 export type OcrProvider = "auto" | "mineru" | "pypdf";
 
 export interface OcrRun {

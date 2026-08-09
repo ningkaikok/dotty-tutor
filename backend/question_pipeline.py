@@ -1,4 +1,8 @@
-"""Pure question normalization, content-block and quality-gate helpers."""
+"""题目规范化、内容块构建和发布质量门禁的纯函数集合。
+
+这里不调用模型、不访问数据库。模型输出和 OCR 原文进入本模块后，会被转换为前端稳定契约，
+并用可重复的规则判断是否允许发布。把规则保持为纯函数，便于用历史坏题做回归测试。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,9 @@ from review_runtime import formula_anomaly_score, normalize_ocr_question
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
+CHOICE_MARKER_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
+)
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -20,7 +27,16 @@ def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
     return (text or fallback)[:limit]
 
 
-def build_lesson_prompt(source: str) -> str:
+def build_lesson_prompt(source: str, repair_errors: list[str] | None = None) -> str:
+    """构造结构化出题提示；重试时只附加上一轮的确定性错误。"""
+    repair_instruction = ""
+    if repair_errors:
+        bounded_errors = "\n".join(f"- {str(error)[:180]}" for error in repair_errors[:8])
+        repair_instruction = f"""
+
+上一次结构化结果未通过确定性校验。本次必须修复以下问题，不要改变原题语义：
+{bounded_errors}
+"""
     return f"""
 请从下面的教材文字中结构化一道中文数学题，并生成互动辅导脚本。
 要求：
@@ -41,6 +57,7 @@ def build_lesson_prompt(source: str) -> str:
 ---
 {source}
 ---
+{repair_instruction}
 """.strip()
 
 
@@ -58,6 +75,7 @@ def write_model_prompt_artifact(asset_dir: Path, question_sources: list[tuple[st
 
 
 def normalize_question_interaction(raw: Any, question_type: str) -> dict[str, Any]:
+    """把画线题交互限制在安全、可渲染的点与连线集合内。"""
     if question_type != "draw-line" or not isinstance(raw, dict):
         return {"type": "none", "instruction": "", "points": [], "requiredConnections": []}
     points: list[dict[str, Any]] = []
@@ -98,6 +116,7 @@ def normalize_question_interaction(raw: Any, question_type: str) -> dict[str, An
 
 
 def normalize_image_choice_question(payload: dict[str, Any], source_block: str, source_images: list[str]) -> None:
+    """仅在 OCR 明确给出 A-D 四图时，把图片提升为结构化选项。"""
     labels = re.findall(r"(?m)^\s*\(([A-D])\)\s*$", source_block)
     if len(source_images) != 4 or labels[:4] != ["A", "B", "C", "D"]:
         return
@@ -121,8 +140,12 @@ def clean_question_stem(number: str, block: str) -> str:
 def strip_choice_text_from_prompt(prompt: str, options: list[str]) -> str:
     if not options:
         return prompt.strip()
-    match = re.search(r"\(A\)", prompt)
-    return prompt[: match.start()].rstrip(" \n\t:：") if match else prompt.strip()
+    matches = list(CHOICE_MARKER_PATTERN.finditer(prompt))
+    labels = [match.group(1) or match.group(2) for match in matches]
+    if labels[:4] != ["A", "B", "C", "D"]:
+        return prompt.strip()
+    stem = prompt[:matches[0].start()].rstrip(" \n\t:：")
+    return re.sub(r"[（(]\s*[)）]", "（ ）", stem)
 
 
 def normalize_text_choice_labels(options: list[str]) -> list[str]:
@@ -138,7 +161,7 @@ def split_concatenated_text_choices(options: list[str]) -> list[str]:
     if len(options) != 1 or not options[0].strip():
         return options
     value = options[0].strip()
-    matches = list(re.finditer(r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*", value))
+    matches = list(CHOICE_MARKER_PATTERN.finditer(value))
     labels = [match.group(1) or match.group(2) for match in matches]
     if labels != ["A", "B", "C", "D"]:
         return options
@@ -147,9 +170,26 @@ def split_concatenated_text_choices(options: list[str]) -> list[str]:
 
 
 def normalize_model_math_text(value: str) -> str:
+    """修复模型常见 LaTeX 转义错误，不进行开放式数学改写。"""
     replacements = {"\x08egin": r"\begin", "\text": r"\text", "\times": r"\times", "\x0crac": r"\frac"}
     for broken, corrected in replacements.items():
         value = value.replace(broken, corrected)
+    # 审核模型有时会输出“反斜杠”这个字面命令，而不是目标 LaTeX。这里只修复已知的
+    # 百分号和摄氏度形式，避免宽泛正则误改题目中的真实数学表达式。
+    value = re.sub(
+        r"\\textbackslash\s*\\text\s*\{\s*%\s*\}",
+        r"\\%",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"\\textbackslash\s*%", r"\\%", value, flags=re.IGNORECASE)
+    value = re.sub(
+        r"\\(?:textdegree|textbar)\s*C\b",
+        r"^{\\circ}\\mathrm{C}",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(r"(?<![A-Za-z])(?:°\s*C|℃)", "℃", value)
     value = re.sub(r"\\begin\s*\{?\s*array\s*\}?\s*\{?\s*([clr])\s*\}?", r"\\begin{array}{\1}", value)
     return re.sub(r"\\end\s*\{?\s*array\s*\}?", r"\\end{array}", value)
 
@@ -164,10 +204,17 @@ def normalize_text_choices_from_source(payload: dict[str, Any], source_block: st
     if not labels_only and len(current) != 1:
         return
     normalized_source = normalize_ocr_question(normalize_model_math_text(source_block))
-    matches = re.findall(r"\(([A-D])\)\s*(.*?)(?=\s*\([A-D]\)|$)", normalized_source, flags=re.DOTALL)
-    if [label for label, _value in matches] != ["A", "B", "C", "D"]:
+    matches = list(CHOICE_MARKER_PATTERN.finditer(normalized_source))
+    labels = [match.group(1) or match.group(2) for match in matches]
+    if labels[:4] != ["A", "B", "C", "D"]:
         return
-    values = [value.strip() for _label, value in matches]
+    matches = matches[:4]
+    values = [
+        normalized_source[
+            match.end():(matches[index + 1].start() if index + 1 < len(matches) else len(normalized_source))
+        ].strip()
+        for index, match in enumerate(matches)
+    ]
     values = [re.sub(r"^(\d+(?:\.\d+)?)\s+(?=\$10\b)", r"\1 × ", value) for value in values]
     if all(values):
         payload["question"]["options"] = values
@@ -231,7 +278,8 @@ def build_question_content_blocks(payload: dict[str, Any], source_block: str, so
             item["assetId"] = Path(option_image_urls[index]).stem
         option_items.append(item)
     options_block = {"id": "options", "type": "options", "items": option_items} if option_items else None
-    first_option_position = source_block.find("(A)")
+    source_choice_matches = list(CHOICE_MARKER_PATTERN.finditer(source_block))
+    first_option_position = source_choice_matches[0].start() if source_choice_matches else -1
     blocks.extend(block for position, block in image_blocks if first_option_position < 0 or position < first_option_position)
     if options_block:
         blocks.append(options_block)
@@ -242,6 +290,7 @@ def build_question_content_blocks(payload: dict[str, Any], source_block: str, so
 
 
 def validate_question_payload(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:
+    """执行确定性发布检查，返回错误证据但不直接抛异常。"""
     question = payload["question"]
     errors: list[str] = []
     warnings: list[str] = []
@@ -255,14 +304,21 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     if option_images and (len(option_images) != 4 or option_images != actual_images):
         errors.append("图片选择题必须按 A、B、C、D 绑定四张当前题图片")
     options = [str(item).strip() for item in question.get("options", [])]
-    source_labels = re.findall(r"\(([A-D])\)", source_block)
+    source_labels = [
+        match.group(1) or match.group(2)
+        for match in CHOICE_MARKER_PATTERN.finditer(source_block)
+    ]
     if all(label in source_labels for label in ("A", "B", "C", "D")) and len(options) != 4:
         errors.append(f"原题包含 A-D，但结构化选项数为 {len(options)}")
     for index, option in enumerate(options):
         label_only = bool(re.fullmatch(r"(?:\([A-H]\)|[A-H][.:：、]?)", option))
         if (not option or label_only) and index >= len(option_images):
             errors.append(f"选项 {chr(65 + index)} 缺少内容或图片")
-    if options and re.search(r"\(A\)", str(question.get("prompt", ""))):
+    prompt_choice_labels = [
+        match.group(1) or match.group(2)
+        for match in CHOICE_MARKER_PATTERN.finditer(str(question.get("prompt", "")))
+    ]
+    if options and prompt_choice_labels[:4] == ["A", "B", "C", "D"]:
         errors.append("题干中重复包含结构化选项")
     content_blocks = question.get("contentBlocks", [])
     if not content_blocks:
@@ -278,6 +334,8 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             continue
         if formula_anomaly_score(f"${latex}$"):
             errors.append(f"第 {index} 个公式仍含 OCR/控制字符异常")
+        if re.search(r"\\(?:textbackslash|textdegree|textbar)\b", latex, flags=re.IGNORECASE):
+            errors.append(f"第 {index} 个公式包含不受支持的单位或转义命令")
         if latex.count("{") != latex.count("}"):
             errors.append(f"第 {index} 个公式花括号不平衡")
         begins = re.findall(r"\\begin\{([^}]+)\}", latex)
@@ -286,12 +344,21 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             errors.append(f"第 {index} 个公式环境不完整")
     if not str(question.get("prompt", "")).strip():
         errors.append("题干为空")
+    prompt = str(question.get("prompt", ""))
+    prompt_has_percent = bool(re.search(r"(?:%|\\%)", prompt))
+    temperature_options = options and all(
+        "℃" in option or bool(re.search(r"\\circ\}?\\mathrm\{C\}", option))
+        for option in options
+    )
+    if "温度" in prompt and prompt_has_percent and temperature_options:
+        errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v1", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v2", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:
+    """重建内容块、附加来源指纹，并把质量状态写回题目。"""
     question = payload["question"]
     question["contentBlocks"] = build_question_content_blocks(payload, source_block, source_images)
     question["sourceEvidence"] = {"questionNumber": question.get("questionNumber", ""), "sourceHash": hashlib.sha256(source_block.encode("utf-8")).hexdigest(), "imageReferences": list(source_images)}

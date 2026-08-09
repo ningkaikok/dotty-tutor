@@ -1,3 +1,9 @@
+"""教材 OCR Provider 的发现、选择与 MinerU 子进程适配。
+
+OCR 只负责把页面还原为 Markdown、LaTeX 和图片资源，不负责判断题型或生成答案。
+``auto`` 模式优先 MinerU，找不到命令时由上层回退到 pypdf 文字层。
+"""
+
 from __future__ import annotations
 
 import os
@@ -19,10 +25,13 @@ class OcrSelection:
 
 
 class OcrRuntime:
+    """保存进程级 OCR 选择，并隔离 MinerU 命令行细节。"""
+
     def __init__(self) -> None:
         self.selection = OcrSelection()
 
     def mineru_command(self) -> Path | None:
+        """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。"""
         configured = os.getenv("MINERU_COMMAND")
         candidates = [
             Path(configured).expanduser() if configured else None,
@@ -71,10 +80,10 @@ class OcrRuntime:
         return self.mineru_command() is not None and self.selection.provider in ("auto", "mineru")
 
     def page_count(self, source_path: Path) -> int:
-        """Read page count with PDFium from MinerU's environment.
+        """使用 MinerU 环境中的 PDFium 快速读取页数。
 
-        pypdf may spend close to a minute materialising every page object in
-        image-heavy textbooks. PDFium only reads the document catalogue here.
+        图片很多的教材若由 pypdf 实例化每个页面对象可能耗时接近一分钟；这里只读取 PDF
+        目录，不做正文解析，目的是让分批规划尽快返回。
         """
         command = self.mineru_command()
         interpreter = command.parent / "python" if command else None
@@ -105,6 +114,11 @@ class OcrRuntime:
         asset_dir: Path | None = None,
         asset_url_prefix: str = "",
     ) -> tuple[str, dict]:
+        """调用 MinerU 解析指定页段，并把临时图片复制到持久化资源目录。
+
+        MinerU 的工作目录会在调用结束后删除，所以所有要被前端引用的图片和 source.md
+        必须在退出临时目录前复制；返回 URL 而不是本机路径，防止泄露文件系统结构。
+        """
         command = self.mineru_command()
         if not command:
             raise RuntimeError("MinerU 尚未安装")

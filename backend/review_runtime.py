@@ -1,3 +1,10 @@
+"""题目文字与视觉审核编排。
+
+生成模型的职责是“产出候选题”，审核模型的职责是“对照 OCR 来源纠错”。两者故意使用
+独立选择，避免小型本地生成模型同时充当自己的裁判。模型审核之后仍会进入确定性质量门禁；
+审核分数和 ``needsHumanReview`` 只是证据，不是允许发布的最终条件。
+"""
+
 from __future__ import annotations
 
 import copy
@@ -100,7 +107,7 @@ FORMULA_ANOMALIES = (
 
 
 def normalize_ocr_question(text: str) -> str:
-    """Remove common MinerU presentation noise without changing question semantics."""
+    """移除 MinerU 常见排版噪声，但不改写题意和数值。"""
     normalized = IMAGE_MARKDOWN.sub("", text).strip()
     for _ in range(4):
         updated = FONT_COMMAND.sub(lambda match: match.group(1).strip(), normalized)
@@ -133,8 +140,8 @@ def normalize_ocr_question(text: str) -> str:
         return f"${value}$"
 
     normalized = re.sub(r"\$([^$]+)\$", clean_math, normalized)
-    # MinerU occasionally emits an isolated recognition artifact between two
-    # formulas, for example "$AB\\parallel DC$ R $AB=AD$".
+    # MinerU 偶尔在两个公式之间产生孤立字母，例如 "$AB\\parallel DC$ R $AB=AD$"；
+    # 仅修复这一种有明确上下文的噪声，避免对普通英文题干做激进替换。
     normalized = re.sub(r"(\$[^$]+\$)\s+R\s+(?=\$)", r"\1，", normalized)
     normalized = re.sub(r"[ \t]+([，。；：！？])", r"\1", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
@@ -146,11 +153,39 @@ def formula_anomaly_score(text: str) -> int:
 
 
 class ReviewRuntime:
+    """协调文本审核、图片审核及视觉冲突后的二次修复。"""
+
     def __init__(self) -> None:
         self.text_provider: Provider = os.getenv("REVIEW_PROVIDER", "ollama")  # type: ignore[assignment]
         self.text_model = os.getenv("REVIEW_MODEL", "qwen2.5:7b")
         self.vision_provider: Provider = os.getenv("VISION_PROVIDER", "codex")  # type: ignore[assignment]
         self.vision_model = os.getenv("VISION_MODEL", "default")
+
+    def catalog(self) -> dict[str, Any]:
+        """返回独立审核模型目录，不改变题目生成模型。"""
+        """Expose the independent text-review selection to the studio UI."""
+        return {
+            "selected": {
+                "provider": self.text_provider,
+                "model": self.text_model,
+            },
+            "providers": runtime.providers(),
+        }
+
+    def select_text(self, provider: Provider, model: str) -> dict[str, Any]:
+        """切换文字审核模型，并拒绝当前环境中不可用的选项。"""
+        """Switch future reviews without changing the generation model."""
+        provider_info = next(
+            (item for item in runtime.providers() if item["id"] == provider),
+            None,
+        )
+        if not provider_info or not provider_info["available"]:
+            raise ValueError(f"{provider} 当前不可用于审核")
+        if model not in provider_info["models"]:
+            raise ValueError(f"{provider} 中没有审核模型 {model}")
+        self.text_provider = provider
+        self.text_model = model
+        return self.catalog()
 
     def review(
         self,
@@ -309,10 +344,8 @@ OCR 原题：
                 for item in assessments if item.get("belongsToQuestion")
             ]
 
-        # A text-only reviewer cannot reliably tell whether a lesson step
-        # matches an option image. Give it the visual facts/conflicts once the
-        # image pass finishes, so the persisted lesson is corrected instead of
-        # merely carrying a warning badge.
+        # 纯文字模型无法可靠判断讲解是否与题图一致。视觉审核完成后，把提取出的事实与冲突
+        # 再交给文字模型修复讲解；这样持久化的是修正结果，而不是只有一个“疑似错误”标签。
         visual_conflicts = [
             str(conflict)
             for item in assessments

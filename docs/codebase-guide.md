@@ -48,7 +48,8 @@ dotty-tutor/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
 │   ├── apps/student/           # 学生学习空间，不包含生产配置
-│   │   └── usePublishedLearningSession.ts # 会话恢复与离线作答队列
+│   │   ├── PaperLearningProgress.tsx # 互动试卷掌握证据展示
+│   │   └── usePublishedLearningSession.ts # 会话恢复、离线队列和掌握度投影
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
@@ -147,7 +148,8 @@ flowchart LR
 
 互动试卷沿用相同分层：`TextbookApp.tsx` 组合内容预览，`usePaperPublication.ts` 负责显式发布状态流；
 `PublishedPaperApp.tsx` 组合学生作答，`usePublishedLearningSession.ts` 负责刷新恢复、数据库重建后的旧会话
-替换和离线批量补传。两个页面复用 `PracticeWorkspace`，但生产预览绝不写入真实学习记录。
+替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据。两个页面复用
+`PracticeWorkspace`，但生产预览绝不写入真实学习记录。
 
 错题页面新增复杂状态机时也遵循同样边界，不要把 API 请求重新塞回列表或表单组件。
 
@@ -238,14 +240,18 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ## 30 分钟代码阅读路线
 
-1. 用 3 分钟阅读 `backend/app.py`，认识组合根以及依赖如何注入。
-2. 用 3 分钟阅读 `frontend/src/App.tsx`，确认两个产品入口和懒加载边界。
-3. 用 6 分钟沿 `MistakeCapture → api/mistakes.ts → mistake_routes.py → mistake_store.py` 跟踪错题录入。
-4. 用 8 分钟沿 `MistakeTutor → useMistakeTutor → tutoring_routes.py → stateful_tutor.py` 跟踪一轮陪练。
-5. 用 5 分钟对照 `persistence/schema.py`、`mistake_store.py` 和 `tutoring_store.py` 理解数据关系。
-6. 用 5 分钟运行 `test_stateful_tutoring.py`，把一个断言改坏再恢复，观察状态机如何被保护。
+先用 3 分钟阅读 `backend/app.py` 和 `frontend/src/App.tsx`，认识组合根、角色入口与懒加载边界。剩余时间只选
+下面一条路径跟踪，避免同时展开所有 import：
 
-推荐只跟踪一条请求，不要从最长的 PDF 路由开始通读整个仓库。
+| 学习目标 | 建议阅读顺序 | 重点观察 |
+| --- | --- | --- |
+| PDF 如何变成题目 | `useTextbookImport.ts` → `textbook_routes.py` → `textbook_processing.py` → `question_processing.py` → `question_pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
+| 试卷如何安全发布新版 | `usePaperPublication.ts` → `publication_routes.py` → `publication_revision.py` → `learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
+| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `learning_routes.py` → `learning_store.py` | 受控组件、幂等 attemptId、掌握度投影 |
+| 错题如何多轮陪练 | `useMistakeTutor.ts` → `tutoring_routes.py` → `stateful_tutor.py` → `tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
+
+最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长
+文件开始通读整个仓库。
 
 ## 已知架构债务
 

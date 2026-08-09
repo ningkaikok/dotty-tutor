@@ -4,8 +4,8 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 后端提供学习会话、作答与知识点掌握度的记录能力。这样，课程不再固定写在一个 React 页面里，
 也能逐步接入 Manim、Canvas、WebGL 或其他内容生成工具。
 
-> 学习记录接口当前没有前端调用方：内容生产工作台的作答属于内容质检，不计入学习记录；
-> 学生侧的互动试卷消费尚未落地。接入计划见[路线图](roadmap.md)。
+> 学习记录接口已由学生侧互动试卷调用；内容生产工作台的作答仍只属于内容质检，不创建学习会话，
+> 也不会累计学生掌握度。
 
 可编程课程是教材互动学习的主要表达方式，也可以在错题陪练的 `explain` 阶段作为可选深度讲解资源；
 它不会替代错题线程的多轮状态机。错题产品的整体设计见
@@ -43,7 +43,9 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 ```
 
 多个 `LessonDocument` 通过 `lesson_publications` 组成一份互动试卷。试卷先进入 `in_review`，
-发布时再次检查每道题的质量门禁；学生端只读取 `published` 试卷，不接触草稿、审校记录或模型配置。
+发布时再次检查每道题的质量门禁。生成阶段最多局部修复失败题两次；仍不合格的题会自动从本次发布中
+隔离，合格题继续发布。若没有任何题目合格，发布会安全失败并保留诊断信息。学生端只读取
+`published` 试卷，不接触草稿、审校记录、隔离题或模型配置。
 
 当前支持以下内容块：
 
@@ -70,18 +72,20 @@ sequenceDiagram
   participant DB as PostgreSQL
 
   UI->>API: POST /api/learning/sessions
-  API->>DB: 创建学习会话
+  API->>DB: 为 publicationId 创建学习会话
   UI->>API: POST /api/help
   API-->>UI: 判定与下一步提示
   UI->>API: POST /sessions/{id}/attempts
   API->>DB: 保存作答并更新知识点掌握度
   API-->>UI: 返回最新 mastery
+  UI->>UI: 更新当前知识点学习证据卡
 ```
 
 学生端为每条作答生成稳定的 `attemptId`。请求失败时记录暂存在浏览器队列，恢复网络后通过
 `POST /api/learning/sessions/{sessionId}/sync` 批量补传；服务端以主键保证重复提交幂等。记录同时保存
-浏览器生成的原始 `createdAt`，因此离线补传仍按实际作答时间排序。浏览器中的旧会话若因本地数据库重建
-而失效，学生 Hook 会创建替代会话并重新绑定尚未送达的记录。
+浏览器生成的原始 `createdAt`，因此离线补传仍按实际作答时间排序。学习会话绑定整份互动试卷的
+`publicationId`，不是单道课程；浏览器中的旧会话若因本地数据库重建而失效，学生 Hook 会创建替代会话
+并重新绑定尚未送达的记录。
 
 掌握度目前是可解释的轻量启发式：正确、部分正确、错误分别映射为 `1.0`、`0.55`、`0`，
 新分数由 70% 历史分数和 30% 本次结果组成。它适合 MVP 展示与数据积累，不应被视作正式测评成绩。
@@ -89,15 +93,17 @@ sequenceDiagram
 ## 持久化
 
 - `lesson_documents`：课程版本、状态、知识点和内容块。
-- `lesson_publications`：互动试卷标题、题目顺序、发布状态和教材来源。
-- `learning_sessions`：学习者进入某节课程的会话。
+- `lesson_publications`：互动试卷标题、题目顺序、发布状态、教材来源、版本和前一版本。
+- `learning_sessions`：学习者进入一份已发布互动试卷的会话。
 - `exercise_attempts`：原始回答、判定、提示层级与耗时。
 - `mastery_states`：按学习者和知识点聚合的当前掌握度。
 
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等初始化；受控部署可先执行
 `backend/migrations/001_programmable_learning.sql`；试卷发布与批量同步新增表/索引见
-`backend/migrations/006_publications_and_sync.sql`。后续应引入 Alembic，迁移历史建立后停止把
-`create_all()` 当作生产迁移工具。
+`backend/migrations/006_publications_and_sync.sql`；`007_learning_session_publication.sql` 将 v0.6.0 中
+实际保存试卷 ID 的 `lesson_id` 无损重命名为 `publication_id`；`008_publication_revisions.sql` 增加试卷
+版本链。后续应引入 Alembic，迁移历史建立后
+停止把 `create_all()` 当作生产迁移工具。
 
 ## 当前边界
 

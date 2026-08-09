@@ -1,8 +1,7 @@
-"""Model-backed lesson generation independent from HTTP and upload routes.
+"""独立于 HTTP 和上传路由的模型课程生成能力。
 
-The functions in this module accept plain text/dicts and return serializable
-payloads. Keeping them outside ``app.py`` makes model behavior testable without
-constructing multipart requests or PDF upload jobs.
+函数只接收文本/字典并返回可序列化数据。与 ``app.py`` 分离后，模型行为无需构造分块上传请求即可测试，
+也能被未来的后台 Worker 直接复用。
 """
 
 from __future__ import annotations
@@ -35,9 +34,8 @@ from tutor_checks import mock_model_run
 from tutor_engine import TutorEngine
 
 
-# This cache accelerates the single-process demo. PostgreSQL remains the source
-# of truth for persisted lessons; production multi-worker deployments should
-# replace the cache with a shared store rather than synchronizing this dict.
+# 该缓存仅加速单进程 Demo，PostgreSQL 才是持久化课程的真相来源。
+# 多 Worker 部署应改用共享缓存或 Store，不能尝试在进程间同步这个字典。
 lesson_store: dict[str, dict[str, Any]] = {}
 
 
@@ -135,8 +133,12 @@ def _normalized_guide_cards(generated: dict[str, Any], knowledge_point: str) -> 
     return cards
 
 
-def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
-    """Generate one validated-shape lesson, falling back to the demo seed."""
+def generate_lesson(
+    source_text: str,
+    *,
+    repair_errors: list[str] | None = None,
+) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
+    """Generate one validated-shape lesson, optionally repairing known errors."""
     selection = runtime.selection
     started = time.perf_counter()
     log_event("model.generation.started", provider=selection.provider, model=selection.model)
@@ -155,7 +157,11 @@ def generate_lesson(source_text: str) -> tuple[dict, list[dict[str, Any]], dict[
         return payload, GUIDE_CARDS, run
 
     try:
-        generated, run = runtime.generate_json(build_lesson_prompt(source), LESSON_SCHEMA, max_tokens=1600)
+        generated, run = runtime.generate_json(
+            build_lesson_prompt(source, repair_errors),
+            LESSON_SCHEMA,
+            max_tokens=1600,
+        )
     except Exception as error:
         run = mock_model_run(selection.provider, str(error))
         payload = question_payload(model_run=run)

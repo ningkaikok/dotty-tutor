@@ -149,9 +149,8 @@ class MistakeStore:
             "chapter": confirmation["chapter"],
             "knowledgePoint": confirmation["knowledgePoint"],
         }
-        # The student-edited prompt is now authoritative. Generated content
-        # blocks may still contain the pre-correction OCR text, so force future
-        # renderers to rebuild or fall back to the corrected prompt/options.
+        # 学生修正后的题干成为权威值。旧 contentBlocks 可能仍包含修正前 OCR 文本，
+        # 因此清除它，强制后续渲染器根据新题干/选项重建或回退显示。
         payload["question"].pop("contentBlocks", None)
         with self.engine.begin() as connection:
             connection.execute(

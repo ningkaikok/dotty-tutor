@@ -94,7 +94,8 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - 当前存储层首次启动会执行 `create_all()`；正式多版本发布前必须引入 Alembic。
 - 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
   `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
-  `005_spaced_review.sql` 和 `006_publications_and_sync.sql`；执行前先备份数据库。
+  `005_spaced_review.sql`、`006_publications_and_sync.sql`、
+  `007_learning_session_publication.sql` 和 `008_publication_revisions.sql`；执行前先备份数据库。
 
 ## 启动前检查
 

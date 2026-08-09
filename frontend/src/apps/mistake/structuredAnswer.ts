@@ -1,6 +1,6 @@
 import type { Question, StructuredAnswerInput } from "../../types";
 
-/** Translate visible answer controls into the backend's shared contract. */
+/** 将不同可视化作答控件统一转换为后端共享的结构化答案契约。 */
 export function buildStructuredAnswer(
   question: Question,
   selectedOptions: string[],

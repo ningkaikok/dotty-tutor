@@ -1,9 +1,7 @@
-"""Synchronous application service for processing uploaded textbook PDFs.
+"""处理上传教材 PDF 的同步应用服务。
 
-HTTP routes own request parsing and file responses. This service owns the two
-long-running workflows: completing the initial upload and processing one later
-page batch. A future background worker can call these methods without copying
-the orchestration rules.
+HTTP 路由只负责请求解析和文件响应；本服务拥有两个长流程：完成首次上传、处理后续页批次。
+未来接入后台 Worker 时可直接调用这些方法，不需要复制 OCR、生成、缓存和状态迁移规则。
 """
 
 from __future__ import annotations
@@ -33,7 +31,7 @@ PDF_BATCH_PAGES = 5
 
 
 class TextbookProcessingService:
-    """Coordinate OCR, generation and persistence for one uploaded PDF."""
+    """协调一份 PDF 的 OCR、题目生成、批次状态和持久化。"""
 
     def __init__(self, *, store: Any, upload_registry: Any, ocr_runtime: Any) -> None:
         self.store = store
@@ -46,7 +44,7 @@ class TextbookProcessingService:
         payloads: list[dict[str, Any]],
         guide_cards_list: list[list[dict[str, Any]]],
     ) -> None:
-        """Persist generated questions and their programmable lesson documents."""
+        """同时保存生成题快照和对应可编程课程文档。"""
         question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
         self.store.save_questions(
             upload_id,
@@ -60,7 +58,7 @@ class TextbookProcessingService:
             ))
 
     def complete_upload(self, upload_id: str) -> dict[str, Any]:
-        """Merge all chunks, validate the PDF and process its first page batch."""
+        """合并全部分块、验证 PDF，并处理首个页面批次。"""
         job = self.upload_registry.get(upload_id)
         log_event("upload.processing.started", upload_id=upload_id, filename=job.get("filename"))
         if job["status"] == "complete" and job.get("result"):
@@ -157,9 +155,7 @@ class TextbookProcessingService:
                 "status": "processed" if batch_id == 1 else "queued",
             })
 
-        # Batches only store page ranges. We intentionally keep one source PDF
-        # instead of copying every five pages, which is much faster for scanned
-        # textbooks and avoids duplicate disk usage.
+        # 批次只保存页码范围，始终复用一份源 PDF；不按五页复制文件，扫描教材处理更快且不会重复占用磁盘。
         self.upload_registry.update(
             job,
             "splitting",
@@ -280,8 +276,19 @@ class TextbookProcessingService:
         )
         return result
 
-    def process_batch(self, upload_id: str, batch_id: str, force: bool = False) -> dict[str, Any]:
-        """OCR one queued page range and add its exercises to the lesson bank."""
+    def process_batch(
+        self,
+        upload_id: str,
+        batch_id: str,
+        force: bool = False,
+        *,
+        persist: bool = True,
+    ) -> dict[str, Any]:
+        """OCR 一个页范围，并可选择是否立即保存生成练习。
+
+        试卷版本服务使用 ``persist=False``，先为新版分配全新 lesson ID 再保存；这样不会
+        静默覆盖已发布版本引用的旧课程文档。
+        """
         job = self.upload_registry.get(upload_id)
         log_event("upload.batch.started", upload_id=upload_id, batch_id=batch_id, force=force)
         result = job.get("result")
@@ -315,9 +322,8 @@ class TextbookProcessingService:
                 "modelRun": stored_payload["modelRun"],
             }
 
-        # This in-process guard prevents duplicate work from repeated clicks.
-        # A future multi-worker deployment must replace it with a durable queue
-        # lock; the service boundary makes that change local to orchestration.
+        # 进程内集合只能防止单实例重复点击。多 Worker 部署必须换成持久化任务锁或队列；
+        # 因为锁位于服务编排边界，未来替换时不需要修改 HTTP 路由和题目纯函数。
         processing = job.setdefault("processingBatches", set())
         if batch_id in processing:
             raise HTTPException(status_code=409, detail="这个批次正在处理中")
@@ -326,9 +332,8 @@ class TextbookProcessingService:
             source_path = job["directory"] / "source.pdf"
             start_page = batch["startPage"] - 1
             end_page = batch["endPage"] - 1
-            # Include one previous page because a question stem can begin at the
-            # bottom of the preceding batch. Source metadata still records the
-            # actual target page range separately.
+            # 多读取前一页，因为题干可能从上个批次末尾开始；来源元数据仍记录真实目标页段，
+            # 防止为提高识别完整度而污染页面归属。
             ocr_start_page = max(0, start_page - 1)
             asset_dir = job["directory"] / "assets" / batch_id
             cached_markdown = asset_dir / "source.md"
@@ -342,8 +347,7 @@ class TextbookProcessingService:
                         pages.append(text)
                 extracted_text = "\n\n".join(pages)[:16_000]
 
-            # Reuse persisted MinerU Markdown after a retry. Model generation may
-            # be repeated, but expensive OCR should not run again unnecessarily.
+            # 重试时复用已落盘的 MinerU Markdown。模型可以重新生成，但昂贵 OCR 不应重复执行。
             if cached_markdown.is_file():
                 lesson_source = cached_markdown.read_text(
                     encoding="utf-8",
@@ -400,28 +404,35 @@ class TextbookProcessingService:
             )
             payload = payloads[0]
             question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
-            batch["status"] = "processed"
-            self._persist_lessons(upload_id, payloads, guide_cards_list)
-            for key, item, cards in zip(question_keys, payloads, guide_cards_list):
-                job["batchPayloads"][key] = item
-                job.setdefault("batchGuideCards", {})[key] = cards
-            job.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
-            result.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
-            result["questionPayloads"] = [
-                item
-                for key in sorted(job["batchPayloads"])
-                for item in [job["batchPayloads"][key]]
-            ]
-            result["questionPayload"] = result["questionPayloads"][0]
-            result["extraction"]["questionCount"] = len(result["questionPayloads"])
-            result["extraction"]["guideCardCount"] = sum(
-                len(cards) for cards in job.get("batchGuideCards", {}).values()
-            )
+            response_batch = dict(batch)
+            response_batch["status"] = "processed"
+            if persist:
+                batch["status"] = "processed"
+                self._persist_lessons(upload_id, payloads, guide_cards_list)
+                for key, item, cards in zip(question_keys, payloads, guide_cards_list):
+                    job["batchPayloads"][key] = item
+                    job.setdefault("batchGuideCards", {})[key] = cards
+                job.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
+                result.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
+                result["questionPayloads"] = [
+                    item
+                    for key in sorted(job["batchPayloads"])
+                    for item in [job["batchPayloads"][key]]
+                ]
+                result["questionPayload"] = result["questionPayloads"][0]
+                result["extraction"]["questionCount"] = len(result["questionPayloads"])
+                result["extraction"]["guideCardCount"] = sum(
+                    len(cards) for cards in job.get("batchGuideCards", {}).values()
+                )
             self.upload_registry.update(
                 job,
                 "complete",
                 100,
-                f"批次 {batch['startPage']}-{batch['endPage']} 页已更新 {len(payloads)} 道题",
+                (
+                    f"批次 {batch['startPage']}-{batch['endPage']} 页已更新 {len(payloads)} 道题"
+                    if persist else
+                    f"批次 {batch['startPage']}-{batch['endPage']} 页已生成审核新版"
+                ),
             )
             log_event(
                 "upload.batch.completed",
@@ -431,9 +442,10 @@ class TextbookProcessingService:
                 ocr_provider=ocr_run.get("provider"),
             )
             return {
-                "batch": batch,
+                "batch": response_batch,
                 "questionPayload": payload,
                 "questionPayloads": payloads,
+                "guideCards": guide_cards_list,
                 "ocrRun": ocr_run,
                 "modelRun": model_runs[0],
                 "modelRuns": model_runs,
@@ -441,10 +453,12 @@ class TextbookProcessingService:
                 "reviewRuns": review_runs,
             }
         except HTTPException as error:
-            self._record_batch_failure(job, batch, batch_id, str(error.detail), error)
+            if persist:
+                self._record_batch_failure(job, batch, batch_id, str(error.detail), error)
             raise
         except Exception as error:
-            self._record_batch_failure(job, batch, batch_id, str(error), error)
+            if persist:
+                self._record_batch_failure(job, batch, batch_id, str(error), error)
             raise HTTPException(status_code=422, detail=f"批次处理失败：{error}") from error
         finally:
             processing.discard(batch_id)

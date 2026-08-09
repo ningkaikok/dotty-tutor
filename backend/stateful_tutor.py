@@ -100,8 +100,7 @@ class StatefulTutor:
 
     @staticmethod
     def _next_stage(current: str, assessment: str, mode: str) -> str:
-        # Phase 3 stops at verify. Mastery and consecutive-correct promotion are
-        # phase 4 responsibilities, so a model can never mark a mistake mastered.
+        # 阶段三最多走到 verify；掌握迁移和连续答对属于阶段四，模型本身无权把错题标记为已掌握。
         if assessment == "correct":
             return {
                 "diagnose": "practice",

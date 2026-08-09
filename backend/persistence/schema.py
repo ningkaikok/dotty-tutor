@@ -65,6 +65,8 @@ lesson_publications = Table(
     Column("source_upload_id", String(64)),
     Column("lesson_ids_json", json_document, nullable=False, default=list),
     Column("status", String(32), nullable=False, default="draft"),
+    Column("version", Integer, nullable=False, default=1),
+    Column("revision_of", String(64)),
     Column("created_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )
@@ -73,7 +75,7 @@ learning_sessions = Table(
     "learning_sessions", metadata,
     Column("session_id", String(64), primary_key=True),
     Column("learner_id", String(128), nullable=False),
-    Column("lesson_id", String(128), nullable=False),
+    Column("publication_id", String(128), nullable=False),
     Column("started_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )
@@ -103,5 +105,6 @@ mastery_states = Table(
 
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
 Index("idx_lesson_publications_status", lesson_publications.c.status, lesson_publications.c.updated_at.desc())
+Index("idx_lesson_publications_revision", lesson_publications.c.revision_of, lesson_publications.c.version.desc())
 Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
 Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())

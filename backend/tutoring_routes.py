@@ -54,8 +54,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             raise HTTPException(status_code=409, detail="归档错题不能开始陪练")
         thread = tutoring_store.create_or_get(mistake_id, learnerId)
         log_event("tutor.thread.ready", thread_id=thread["threadId"], mistake_id=mistake_id)
-        # Existing threads may be returned as lightweight records. Always
-        # hydrate messages so create and restore share one response shape.
+        # create_or_get 可能返回不含消息的轻量记录；统一补载消息，让创建与恢复拥有相同响应结构。
         return tutoring_store.get(thread["threadId"]) or thread
 
     @router.get("/api/tutor/threads/{thread_id}")

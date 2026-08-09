@@ -1,4 +1,4 @@
-"""HTTP routes for browsing and soft-deleting processed textbooks."""
+"""浏览和软删除已处理教材的 HTTP 路由。"""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict
         job = upload_registry.get(upload_id)
         if not store.soft_delete_import(upload_id):
             raise HTTPException(status_code=404, detail="教材不存在或已删除")
-        # Evict process memory only after the durable row changed. Files and
-        # database rows remain available for a future restore operation.
+        # 先更新持久化行，再清理进程内缓存，避免数据库失败时页面状态已被提前删除。
+        # 源文件与数据库记录仍保留，后续可以增加恢复入口。
         for payload in job.get("batchPayloads", {}).values():
             lesson_store.pop(payload["question"]["id"], None)
         upload_registry.uploads.pop(upload_id, None)

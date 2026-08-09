@@ -22,6 +22,9 @@ systemd、Loki、ELK 或云日志服务采集。
 - `ocr.started` / `ocr.completed` / `ocr.failed`：OCR 提供商、页范围和回退状态。
 - `model.request.*`、`model.review.*`：模型提供商、模型、耗时、图像数量和错误类型。
 - `question.batch.*`、`question.*`：题目批次、题型、审校提供商和处理结果。
+- `question.quality.repair.*`：单题结构校验失败后的局部重试及恢复结果。
+- `question.quality.quarantined`：自动修复耗尽后被隔离的题目，不记录题干和模型全文。
+- `publication.quality.blocked`：整份试卷没有可安全发布的题目，需要开发排查生成或校验回归。
 - `help.completed`：提示请求的模式、判定结果、来源和耗时。
 
 ### 错题处理链路
@@ -63,6 +66,7 @@ LOG_LEVEL=DEBUG # 本地排查上传分块等细节
 - 连续两次 `/api/health` 失败；
 - 5 分钟内 `http.request` 的 5xx 比例超过 5%；
 - OCR、模型、TTS 或批次处理失败率超过阈值；
+- `question.quality.quarantined` 在 1 小时内按题型或校验器版本聚合后超过 5 次；
 - PostgreSQL 连接失败或慢查询持续出现；
 - 磁盘使用率超过 85%，或容器反复重启。
 

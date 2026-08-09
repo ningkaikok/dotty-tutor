@@ -1,7 +1,7 @@
 import type { CanvasAction } from "./question";
 import type { ModelRun } from "./runtime";
 
-/** The tutor can advance only through these explainable phase-three states. */
+/** 陪练只能沿这些可解释的阶段三状态前进，避免模型任意跳转流程。 */
 export type TutorStage = "diagnose" | "explain" | "practice" | "verify";
 
 export interface GuideContext {
