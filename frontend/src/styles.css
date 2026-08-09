@@ -183,7 +183,6 @@ h2 { letter-spacing: -0.025em; }
 .lesson-progress { display: flex; justify-content: center; gap: 8px; padding: 14px 0 20px; }
 .lesson-progress button { width: 28px; height: 5px; padding: 0; border: 0; border-radius: 10px; background: #d7d7d0; }
 .lesson-progress button.active { background: #1b9a72; }
-.mastery-badge { margin-left: 8px; padding: 7px 10px; border-radius: 999px; color: #176d54; background: #dff3e8; font-size: 11px; font-weight: 700; }
 .lesson-markdown, .lesson-formula { display: block; padding: 28px; color: #24372f; background: #fbfaf6; }
 .lesson-animation { margin: 0; padding: 20px; background: #fbfaf6; }
 .lesson-animation video { display: block; width: 100%; max-height: 420px; border-radius: 14px; background: #17251f; }

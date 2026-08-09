@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { createLearningSession, processPdfBatch, recordExerciseAttempt, requestHelp } from "../../api";
+import { processPdfBatch, requestHelp } from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
@@ -12,8 +12,14 @@ const QUESTION_LIMIT = 5;
 
 export function TextbookApp() {
   // This route component is the textbook product's orchestration boundary. It
-  // owns question/session state; child components remain controlled renderers
-  // and never call the backend directly.
+  // owns question state; child components remain controlled renderers and never
+  // call the backend directly.
+  //
+  // Answering here is content QA: an editor works a generated question to check
+  // that it is solvable and that its hints and explanation hold up. It is not
+  // studying, so it deliberately records no learning session, attempt or mastery
+  // — those belong to the student side and would otherwise be fed by whoever
+  // happened to be reviewing content.
   const navigate = useNavigate();
   const onExit = () => navigate("/");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
@@ -32,8 +38,6 @@ export function TextbookApp() {
   const [loading, setLoading] = useState(false);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
-  const [learningSessionId, setLearningSessionId] = useState("");
-  const [masteryScore, setMasteryScore] = useState<number | null>(null);
 
   const resetLearningState = () => {
     // Question-scoped state must move together. Resetting only the visible text
@@ -57,23 +61,6 @@ export function TextbookApp() {
     setTextbookImport(null);
   };
 
-  useEffect(() => {
-    if (!payload) {
-      setLearningSessionId("");
-      return;
-    }
-    let cancelled = false;
-    setMasteryScore(null);
-    void createLearningSession({ learnerId: "local-demo", lessonId: payload.question.id })
-      .then((session) => {
-        if (!cancelled) setLearningSessionId(session.sessionId);
-      })
-      .catch(() => {
-        if (!cancelled) setLearningSessionId("");
-      });
-    return () => { cancelled = true; };
-  }, [payload?.question.id]);
-
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
     const questionType = payload.question.questionType;
@@ -96,7 +83,6 @@ export function TextbookApp() {
     }
     setLoading(true);
     setInteractionError("");
-    const startedAt = performance.now();
     try {
       const response = await requestHelp({
         questionId: payload.question.id,
@@ -109,18 +95,6 @@ export function TextbookApp() {
       setHintLevel(response.nextHintLevel);
       setCanvasAction(response.canvasAction);
       speak(response.reply.replace(/\n/g, " "));
-      if (learningSessionId && response.guideContext.assessment) {
-        // Mastery telemetry is intentionally fire-and-forget: recording failure
-        // must not hide an otherwise valid tutor response from the student.
-        void recordExerciseAttempt(learningSessionId, {
-          questionId: payload.question.id,
-          knowledgePoint: payload.question.knowledgePoint,
-          response: { text: submittedInput, interactionResult: structuredResult ?? {} },
-          assessment: response.guideContext.assessment,
-          hintLevel,
-          durationMs: Math.round(performance.now() - startedAt),
-        }).then((result) => setMasteryScore(result.mastery.score)).catch(() => undefined);
-      }
     } catch (error) {
       setInteractionError(error instanceof Error ? error.message : "请求失败");
     } finally {
@@ -255,7 +229,6 @@ export function TextbookApp() {
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
         </span>
-        {masteryScore !== null && <span className="mastery-badge">掌握度 {Math.round(masteryScore * 100)}%</span>}
       </header>
 
       <section className="source-strip">

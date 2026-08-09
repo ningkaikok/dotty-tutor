@@ -160,8 +160,18 @@ const priorityImportResult = {
   questionPayloads: [multiSelectQuestion, fillBlankQuestion, numericQuestion],
 };
 
+/**
+ * Routes the studio flow's backend calls.
+ *
+ * Returns the learning-record URLs the page attempted to write. The studio is a
+ * content-QA surface, so that list is expected to stay empty; the routes are
+ * still registered so a regression writes to the fixture instead of escaping to
+ * a real backend.
+ */
 async function mockApi(page: Page, result = importResult) {
+  const learningWrites: string[] = [];
   await page.route("**/api/learning/sessions/*/attempts", async (route) => {
+    learningWrites.push(route.request().url());
     await route.fulfill({
       json: {
         attemptId: "pw-attempt",
@@ -177,6 +187,7 @@ async function mockApi(page: Page, result = importResult) {
     });
   });
   await page.route("**/api/learning/sessions", async (route) => {
+    learningWrites.push(route.request().url());
     const request = route.request().postDataJSON() as { learnerId: string; lessonId: string };
     await route.fulfill({
       json: {
@@ -231,6 +242,7 @@ async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/tts", async (route) => {
     await route.fulfill({ status: 503, body: "disabled in e2e" });
   });
+  return learningWrites;
 }
 
 async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = false) {
@@ -581,7 +593,7 @@ test.describe("产品入口", () => {
 
 test.describe("教材辅导核心交互", () => {
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
-    await mockApi(page);
+    const learningWrites = await mockApi(page);
     await page.goto("/studio");
 
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -599,7 +611,10 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByText("已选择 (B)" )).toBeVisible();
     await page.getByRole("button", { name: "Help · 下一步提示" }).click();
     await expect(page.getByText("先比较两个数在数轴上的左右位置，再写出结论。")).toBeVisible();
-    await expect(page.getByText("掌握度 17%")).toBeVisible();
+    // Answering in the studio is content QA, not studying: it must not open a
+    // learning session, record an attempt, or surface a mastery score.
+    await expect(page.getByText(/掌握度/)).toHaveCount(0);
+    expect(learningWrites).toEqual([]);
 
     await page.getByRole("button", { name: "下一题" }).click();
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
