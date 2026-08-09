@@ -19,7 +19,7 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Dotty Tutor", version="0.5.0")
+    app = FastAPI(title="Dotty Tutor", version="0.6.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_csv_env(
