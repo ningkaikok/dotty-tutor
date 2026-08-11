@@ -173,6 +173,11 @@ async function mockApi(page: Page, result = importResult) {
           correctCount: 0,
           lastPracticedAt: 1,
         },
+        autoMistake: {
+          mistakeId: "paper-mistake-pw-1",
+          status: "unmastered",
+          contentType: "application/vnd.dotty.publication+json",
+        },
       },
     });
   });
@@ -497,7 +502,7 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: "打开我的错题本" }).click();
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "← 学生学习空间" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "← 返回学生空间" })).toBeVisible();
 
     await page.goto("/studio");
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -537,9 +542,14 @@ test.describe("产品入口", () => {
     await page.goto("/learn");
     await page.getByRole("button", { name: /第一章 · 互动试卷/ }).click();
     await expect(page).toHaveURL(/\/learn\/papers\/paper-pw-1$/);
+    await expect(page.getByRole("button", { name: "重新生成本题" })).toHaveCount(0);
+    await expect(page.getByText(/当前画布动作/)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "分步讲解" })).toHaveCount(0);
     await page.getByRole("button", { name: /B/ }).click();
-    await page.getByRole("button", { name: "提交回答" }).click();
-    await expect(page.getByText("部分正确")).toBeVisible();
+    await page.getByRole("button", { name: "提交答案" }).click();
+    await expect(page.getByText("已经接近了")).toBeVisible();
+    await expect(page.getByText("这道错题已自动加入错题本，不需要再次上传。")).toBeVisible();
+    await expect(page.getByRole("region", { name: "分步讲解" })).toBeVisible();
     await expect(page.getByLabel("掌握度 17%")).toBeVisible();
   });
 
@@ -547,7 +557,7 @@ test.describe("产品入口", () => {
     await mockMistakeApi(page);
     await page.goto("/mistakes");
 
-    await page.getByRole("button", { name: "录入一道错题" }).click();
+  await page.getByRole("button", { name: "录入纸质错题", exact: true }).click();
     await expect(page).toHaveURL(/\/mistakes\/capture$/);
     await page.getByLabel("选择错题图片").setInputFiles({
       name: "mistake-fixture.png",
@@ -606,7 +616,7 @@ test.describe("产品入口", () => {
     await expect(page.getByText("已通过掌握验证")).toBeVisible();
     await expect(page.getByText("连续答对 2 / 2")).toBeVisible();
 
-    await page.getByRole("button", { name: "← 我的错题本" }).click();
+    await page.getByRole("button", { name: "← 返回我的错题本" }).click();
     await page.getByRole("button", { name: /进阶本 1/ }).click();
     await expect(page.getByText("已掌握", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();

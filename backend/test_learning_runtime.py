@@ -13,6 +13,7 @@ from lesson_contracts import (
     LessonDocument,
     lesson_document_from_payload,
 )
+from mistake_store import MistakeStore
 from storage import TutorStore
 
 
@@ -341,6 +342,66 @@ class LearningRouteTests(unittest.TestCase):
             self.assertNotIn("lessonId", current.json())
             self.assertEqual(legacy.status_code, 200)
             self.assertEqual(missing.status_code, 404)
+
+    def test_incorrect_published_attempt_is_idempotently_added_to_mistake_book(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = TutorStore(
+                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                data_root=directory,
+            )
+            mistake_store = MistakeStore(engine=store.engine, data_root=directory)
+            store.save_lesson({
+                "lessonId": "question-1",
+                "title": "有理数加法",
+                "version": 1,
+                "status": "draft",
+                "knowledgePoints": ["有理数加法"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {
+                        "id": "question-1",
+                        "prompt": "计算 $-2+3$",
+                        "chapter": "有理数",
+                        "knowledgePoint": "有理数加法",
+                        "givens": [],
+                    },
+                    "quality": {"status": "ready"},
+                    "modelRun": {"provider": "mock", "model": "mock"},
+                },
+            })
+            store.create_publication(
+                publication_id="paper-1",
+                title="有理数互动试卷",
+                source_upload_id=None,
+                lesson_ids=["question-1"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("paper-1", "in_review")
+            store.update_publication_status("paper-1", "published")
+            app = FastAPI()
+            app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
+            client = TestClient(app)
+            session = client.post(
+                "/api/learning/sessions",
+                json={"learnerId": "student-1", "publicationId": "paper-1"},
+            ).json()
+            attempt = {
+                "attemptId": "attempt-1",
+                "questionId": "question-1",
+                "knowledgePoint": "有理数加法",
+                "response": {"text": "1"},
+                "assessment": "incorrect",
+            }
+
+            first = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)
+            repeated = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)
+
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(first.json()["autoMistake"]["status"], "unmastered")
+            self.assertEqual(first.json()["autoMistake"]["contentType"], "application/vnd.dotty.publication+json")
+            self.assertEqual(repeated.json()["autoMistake"]["mistakeId"], first.json()["autoMistake"]["mistakeId"])
+            self.assertEqual(len(mistake_store.list("student-1")), 1)
 
 
 if __name__ == "__main__":

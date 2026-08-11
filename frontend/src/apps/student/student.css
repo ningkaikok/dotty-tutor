@@ -204,14 +204,120 @@
 .paper-learning-progress dt { color: #6c776f; font-size: 10px; }
 .paper-learning-progress dd { margin: 3px 0 0; color: #263b32; font-size: 13px; font-weight: 700; }
 
+.student-paper-panel {
+  overflow: hidden;
+  margin-bottom: 22px;
+  padding: 0;
+}
+
+.student-question-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 26px 30px 20px;
+  border-bottom: 1px solid rgba(34, 57, 47, .1);
+}
+
+.student-question-header h1 {
+  margin: 8px 0 0;
+  color: #183a2e;
+  font-size: clamp(25px, 3vw, 36px);
+}
+
+.student-question-nav { display: flex; gap: 8px; }
+.student-question-nav button,
+.student-help-button,
+.student-submit-button,
+.student-mistake-notice button {
+  padding: 10px 15px;
+  border: 1px solid #bdcbc3;
+  border-radius: 11px;
+  color: #245c47;
+  background: #f4f8f5;
+  font-weight: 700;
+}
+
+.student-question-nav button:disabled,
+.student-help-button:disabled,
+.student-submit-button:disabled { cursor: not-allowed; opacity: .46; }
+
+.student-question-body { overflow: hidden; padding: 30px; }
+.student-question-body .question-prompt { max-width: 100%; margin-top: 0; overflow-x: auto; font-size: clamp(22px, 2.4vw, 32px); }
+.student-question-body .math-display { max-width: 100%; overflow-x: auto; }
+.student-question-givens { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.student-question-givens span { padding: 8px 11px; border-radius: 10px; color: #586760; background: #eef1ed; }
+
+.student-answer-card {
+  padding: 24px 30px 28px;
+  border-top: 1px solid rgba(34, 57, 47, .1);
+  background: rgba(241, 245, 241, .55);
+}
+
+.student-answer-card > label { display: block; margin-bottom: 9px; color: #31483e; font-weight: 750; }
+.student-answer-card textarea {
+  width: 100%;
+  min-height: 92px;
+  padding: 13px 14px;
+  border: 1px solid #cbd6cf;
+  border-radius: 13px;
+  color: #21362c;
+  background: #fff;
+  font: inherit;
+  resize: vertical;
+}
+
+.student-answer-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 12px; }
+.student-submit-button { color: #fff; border-color: #183f31; background: #183f31; }
+.student-submit-button:hover:not(:disabled) { background: #245b46; }
+
+.student-feedback { margin: 0 30px 22px; padding: 17px 19px; border-radius: 15px; color: #394d44; background: #edf2ee; }
+.student-feedback.correct { color: #155c45; background: #e2f4eb; }
+.student-feedback.incorrect { color: #8b452f; background: #fae9df; }
+.student-feedback.partial { color: #765f1e; background: #f7f0d9; }
+.student-feedback-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.student-feedback-heading span { color: #7b887f; font-size: 11px; }
+.student-feedback p { margin: 6px 0 0; line-height: 1.65; }
+
+.student-mistake-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 30px 28px;
+  padding: 14px 16px;
+  border: 1px solid #e4c4a8;
+  border-radius: 13px;
+  color: #85532b;
+  background: #fff2e6;
+}
+
+.student-mistake-notice button { flex: 0 0 auto; color: #7b4922; border-color: #dfb48e; background: #fff; }
+.student-explanation-section { margin-top: 34px; }
+.student-explanation-heading { max-width: 720px; margin: 0 0 18px 4px; }
+.student-explanation-heading h2 { margin: 7px 0; color: #173b2e; font-size: clamp(27px, 4vw, 42px); }
+.student-explanation-heading p { margin: 0; color: #68766e; }
+
 @media (max-width: 900px) {
   .student-action-grid { grid-template-columns: 1fr; }
   .student-action-card { min-height: 320px; }
   .paper-learning-progress { grid-template-columns: 1fr 1fr; }
   .paper-learning-progress dl { grid-column: 1 / -1; }
+  .student-question-header { flex-direction: column; }
 }
 
 @media (max-width: 560px) {
+  .app-shell { width: calc(100% - 24px); margin-top: 16px; }
+  .student-paper-topbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    height: auto;
+  }
+  .student-paper-topbar .product-home-button { display: block; grid-column: 1 / -1; justify-self: start; }
+  .student-paper-topbar > div:not(.brand-mark) { min-width: 0; }
+  .student-paper-topbar > div:not(.brand-mark) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .student-paper-topbar .paper-count-badge { margin-left: 0; }
+  .student-paper-topbar .paper-sync-badge { display: none; }
   .student-shell { width: calc(100% - 24px); margin-top: 16px; }
   .student-header .route-back-button { padding-inline: 10px; }
   .student-hero { margin-top: 62px; }
@@ -220,4 +326,8 @@
   .student-boundary-note { flex-direction: column; }
   .paper-learning-progress { grid-template-columns: 1fr; padding: 16px; }
   .paper-learning-progress dl { grid-column: auto; }
+  .student-question-header, .student-question-body, .student-answer-card { padding-inline: 18px; }
+  .student-question-nav, .student-answer-actions { width: 100%; }
+  .student-question-nav button, .student-answer-actions button { flex: 1; }
+  .student-mistake-notice { align-items: stretch; flex-direction: column; margin-inline: 18px; }
 }

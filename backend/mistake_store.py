@@ -7,6 +7,7 @@ root with the rest of the application.
 
 from __future__ import annotations
 
+import hashlib
 import threading
 import time
 from pathlib import Path
@@ -117,6 +118,80 @@ class MistakeStore:
         with self.engine.begin() as connection:
             connection.execute(mistake_items.insert().values(**values))
         return self.get(item["mistakeId"]) or item
+
+    def record_published_attempt(
+        self,
+        *,
+        learner_id: str,
+        publication: dict[str, Any],
+        lesson: dict[str, Any],
+        response: dict[str, Any],
+        recorded_at: float | None = None,
+    ) -> dict[str, Any]:
+        """把互动试卷中的错答幂等写入个人错题本。
+
+        已发布试卷已经通过内容质量门禁，因此不需要再次进入 OCR 人工确认流程。稳定 ID
+        由“学生 + 试卷 + 题目”生成：离线补传或网络重试只会更新同一条错题，不会重复计入。
+        """
+        self._ensure_initialized()
+        timestamp = recorded_at or time.time()
+        payload = lesson.get("questionPayload") or {}
+        question = payload.get("question") or {}
+        question_id = str(question.get("id") or lesson.get("lessonId") or "unknown")
+        identity = f"{learner_id}:{publication['publicationId']}:{question_id}".encode("utf-8")
+        mistake_id = f"paper-{hashlib.sha256(identity).hexdigest()[:32]}"
+        answer_text = str(response.get("text") or "")
+        values = {
+            "mistake_id": mistake_id,
+            "learner_id": learner_id,
+            "source_filename": publication.get("title") or "互动试卷",
+            "content_type": "application/vnd.dotty.publication+json",
+            "source_image_path": "",
+            "source_image_url": "",
+            "question_payload_json": payload,
+            "guide_cards_json": lesson.get("guideCards") or [],
+            "ocr_run_json": payload.get("ocrRun") or {},
+            "model_run_json": payload.get("modelRun") or {},
+            "original_answer": answer_text,
+            "subject": "数学",
+            "grade_band": "初中",
+            "chapter": str(question.get("chapter") or "未归类章节"),
+            "knowledge_point": str(question.get("knowledgePoint") or "未归类知识点"),
+            "error_reason": None,
+            "notes": "由互动试卷答错后自动记录",
+            "status": "unmastered",
+            "created_at": timestamp,
+            "updated_at": timestamp,
+            "confirmed_at": timestamp,
+        }
+        update_values = {
+            "question_payload_json": values["question_payload_json"],
+            "guide_cards_json": values["guide_cards_json"],
+            "model_run_json": values["model_run_json"],
+            "original_answer": answer_text,
+            "chapter": values["chapter"],
+            "knowledge_point": values["knowledge_point"],
+            # 学生再次做错已经掌握的题时，应重新回到待掌握状态。
+            "status": "unmastered",
+            "updated_at": timestamp,
+            "confirmed_at": timestamp,
+        }
+        if self.engine.dialect.name == "postgresql":
+            statement = postgresql_insert(mistake_items).values(**values).on_conflict_do_update(
+                index_elements=[mistake_items.c.mistake_id],
+                set_=update_values,
+            )
+        else:
+            statement = sqlite_insert(mistake_items).values(**values).on_conflict_do_update(
+                index_elements=[mistake_items.c.mistake_id],
+                set_=update_values,
+            )
+        with self.engine.begin() as connection:
+            connection.execute(statement)
+        return self.get(mistake_id) or {
+            "mistakeId": mistake_id,
+            **values,
+        }
 
     def get(self, mistake_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()

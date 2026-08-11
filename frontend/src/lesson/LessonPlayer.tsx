@@ -6,10 +6,13 @@ import { renderLessonBlock } from "./rendererRegistry";
 
 interface LessonPlayerProps {
   payload: QuestionPayload;
-  onActionChange: (action: CanvasAction) => void;
+  onActionChange?: (action: CanvasAction) => void;
+  studentMode?: boolean;
 }
 
-export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
+const ignoreCanvasAction = () => undefined;
+
+export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, studentMode = false }: LessonPlayerProps) {
   const document = useMemo(() => lessonDocumentFromPayload(payload), [payload]);
   const playableBlocks = useMemo(
     () => document.blocks.filter((block) => block.type !== "quiz"),
@@ -111,8 +114,12 @@ export function LessonPlayer({ payload, onActionChange }: LessonPlayerProps) {
         <span className="eyebrow">STEP {step + 1} / {playableBlocks.length}</span>
         <h2>{current.title}</h2>
         <p>{blockNarration(current)}</p>
-        <div className="speech-copy"><span>speechText</span>{blockNarration(current)}</div>
-        <div className="flow-row"><span>Renderer</span><b>+</b><span>Content Block</span><b>+</b><span>TTS</span></div>
+        {!studentMode && (
+          <>
+            <div className="speech-copy"><span>speechText</span>{blockNarration(current)}</div>
+            <div className="flow-row"><span>Renderer</span><b>+</b><span>Content Block</span><b>+</b><span>TTS</span></div>
+          </>
+        )}
       </aside>
     </section>
   );

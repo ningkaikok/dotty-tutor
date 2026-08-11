@@ -234,6 +234,7 @@ HELP_SCHEMA = {
 
 class HelpRequest(BaseModel):
     questionId: str
+    publicationId: str | None = Field(default=None, max_length=128)
     studentInput: str = Field(default="", max_length=1_000)
     hintLevel: int = Field(default=0, ge=0, le=3)
     language: Literal["zh", "en"] = "zh"

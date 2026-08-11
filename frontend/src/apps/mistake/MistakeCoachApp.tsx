@@ -69,12 +69,13 @@ export function MistakeCoachApp() {
   }, [screen.name, screen.name === "confirm" || screen.name === "tutor" ? screen.mistakeId : ""]);
 
   const returnToLibrary = () => open("/mistakes");
+  const returnsToStudentHome = screen.name === "library" || screen.name === "progress";
 
   return (
     <main className="mistake-shell">
       <header className="mistake-header">
-        <button className="route-back-button" onClick={screen.name === "library" ? () => navigate("/learn") : returnToLibrary}>
-          {screen.name === "library" ? "← 学生学习空间" : "← 我的错题本"}
+        <button className="route-back-button" onClick={returnsToStudentHome ? () => navigate("/learn") : returnToLibrary}>
+          {returnsToStudentHome ? "← 返回学生空间" : "← 返回我的错题本"}
         </button>
         <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
         <span className="phase-badge">{screen.name === "tutor" || screen.name === "progress" ? "PHASE 04" : "PHASE 02"}</span>

@@ -252,6 +252,29 @@ def complete_pdf_upload(upload_id: str) -> dict[str, Any]:
 def get_help(request: HelpRequest) -> TutorReply:
     """Generate one answer/help turn and emit assessment telemetry."""
     started = time.perf_counter()
+    if request.publicationId:
+        publication = store.load_publication(request.publicationId)
+        if not publication or publication.get("status") != "published":
+            raise HTTPException(status_code=404, detail="已发布互动试卷不存在")
+        lesson = next((
+            item for item in publication.get("lessons", [])
+            if (item.get("questionPayload") or {}).get("question", {}).get("id") == request.questionId
+        ), None)
+        if not lesson:
+            raise HTTPException(status_code=404, detail="互动试卷题目不存在")
+        # 进程重启后内存课程缓存为空。学生答题时从已发布快照恢复准确上下文，
+        # 避免错误地使用 Demo 默认几何题的引导卡。
+        payload = lesson.get("questionPayload") or {}
+        question = payload.get("question") or {}
+        guide_cards = lesson.get("guideCards") or [{
+            "level": 0,
+            "stuckAt": "需要从题目条件中找到下一步。",
+            "knowledge": [question.get("knowledgePoint") or "当前知识点"],
+            "hint": "先圈出题目给出的已知量，再判断要使用的关系。",
+            "question": "题目已经给出了哪些量，要求你求什么？",
+            "canvasAction": "show-base",
+        }]
+        lesson_store[request.questionId] = {"payload": payload, "guideCards": guide_cards}
     reply = generate_model_reply(request)
     log_event(
         "help.completed",
