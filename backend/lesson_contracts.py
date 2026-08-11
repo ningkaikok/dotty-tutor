@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import AliasChoices, BaseModel, Field
 
+from tutor_checks import safe_canvas_action
+
 
 LessonBlockType = Literal[
     "markdown",
@@ -97,7 +99,9 @@ def lesson_document_from_payload(
             "title": str(step.get("title") or f"步骤 {index + 1}"),
             "payload": {
                 "renderer": "geometry",
-                "action": step.get("action", "show-base"),
+                # 老版本快照可能携带几何动作；发布文档按当前题目重新约束，
+                # 避免普通题目在学生端显示三角形或垂直平分线。
+                "action": safe_canvas_action(question, step.get("action", "show-base")),
                 "text": step.get("text", ""),
                 "speechText": step.get("speechText", ""),
             },

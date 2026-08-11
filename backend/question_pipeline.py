@@ -184,7 +184,13 @@ def normalize_model_math_text(value: str) -> str:
     )
     value = re.sub(r"\\textbackslash\s*%", r"\\%", value, flags=re.IGNORECASE)
     value = re.sub(
-        r"\\(?:textdegree|textbar)\s*C\b",
+        r"\\textbackslash\s*\\textcirc\s*C\b",
+        r"^{\\circ}\\mathrm{C}",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"\\(?:textdegree|textbar|textcirc)\s*C\b",
         r"^{\\circ}\\mathrm{C}",
         value,
         flags=re.IGNORECASE,

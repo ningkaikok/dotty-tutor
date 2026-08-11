@@ -24,6 +24,7 @@ const ERROR_LABELS: Record<string, string> = {
 
 export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive, onProgress }: MistakeLibraryProps) {
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
   const masteredCount = items.filter((item) => item.status === "mastered").length;
@@ -74,8 +75,13 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
         <section className="mistake-list" aria-label="错题列表">
           {visibleItems.map((item) => (
             <article key={item.mistakeId} className="mistake-list-item">
-              {item.sourceImageUrl ? (
-                <img src={item.sourceImageUrl} alt="错题原图" loading="lazy" />
+              {item.sourceImageUrl && !brokenImages[item.mistakeId] ? (
+                <img
+                  src={item.sourceImageUrl}
+                  alt="错题原图"
+                  loading="lazy"
+                  onError={() => setBrokenImages((current) => ({ ...current, [item.mistakeId]: true }))}
+                />
               ) : (
                 <div className="mistake-paper-source" aria-label="来自互动试卷">
                   <strong>互动试卷</strong>

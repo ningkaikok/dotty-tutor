@@ -32,6 +32,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [sourceImageBroken, setSourceImageBroken] = useState(false);
 
   const update = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -70,12 +71,12 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
 
       <section className="mistake-confirm-grid">
         <aside className="mistake-source-card">
-          {item.sourceImageUrl ? (
-            <img src={item.sourceImageUrl} alt="上传的错题原图" />
+          {item.sourceImageUrl && !sourceImageBroken ? (
+            <img src={item.sourceImageUrl} alt="上传的错题原图" onError={() => setSourceImageBroken(true)} />
           ) : (
             <div className="mistake-published-source">
-              <span>互动试卷自动记录</span>
-              <strong>{item.sourceFilename}</strong>
+              <span>{fromPublishedPaper ? "互动试卷自动记录" : "原图暂不可用"}</span>
+              <strong>{fromPublishedPaper ? item.sourceFilename : "请重新上传或检查数据目录"}</strong>
             </div>
           )}
           <div>

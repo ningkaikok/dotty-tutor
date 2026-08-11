@@ -25,12 +25,19 @@ from question_contracts import (
 from question_pipeline import (
     build_lesson_prompt,
     clean_question_stem,
+    normalize_model_math_text,
     normalize_question_interaction,
+    normalize_text_choices_from_source,
     strip_choice_text_from_prompt,
 )
 from question_source import safe_string_list, safe_text, select_complete_question_source
 from review_runtime import runtime_reviewer
-from tutor_checks import mock_model_run
+from tutor_checks import (
+    generic_guide_cards,
+    is_geometry_question,
+    mock_model_run,
+    normalize_guide_cards,
+)
 from tutor_engine import TutorEngine
 
 
@@ -96,7 +103,7 @@ def _normalized_answer_spec(generated: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _normalized_steps(generated: dict[str, Any]) -> list[dict[str, Any]]:
+def _normalized_steps(generated: dict[str, Any], question: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     raw_steps = generated.get("lessonSteps") if isinstance(generated.get("lessonSteps"), list) else []
     steps: list[dict[str, Any]] = []
     for index in range(4):
@@ -106,12 +113,18 @@ def _normalized_steps(generated: dict[str, Any]) -> list[dict[str, Any]]:
             "title": safe_text(raw.get("title"), f"第 {index + 1} 步", 80),
             "text": safe_text(raw.get("text"), "根据题目条件继续推理。", 700),
             "speechText": safe_text(raw.get("speechText"), "我们继续看下一步。", 700),
-            "action": CANVAS_ACTIONS[index],
+            # 目前只有几何题有具体画布动作；其他题保留统一的基础画布，
+            # 避免历史几何样例污染普通数学题的讲解状态。
+            "action": CANVAS_ACTIONS[index] if is_geometry_question(question) else "show-base",
         })
     return steps
 
 
-def _normalized_guide_cards(generated: dict[str, Any], knowledge_point: str) -> list[dict[str, Any]]:
+def _normalized_guide_cards(
+    generated: dict[str, Any],
+    knowledge_point: str,
+    question: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     raw_cards = generated.get("guideCards") if isinstance(generated.get("guideCards"), list) else []
     cards: list[dict[str, Any]] = []
     for index in range(3):
@@ -128,9 +141,53 @@ def _normalized_guide_cards(generated: dict[str, Any], knowledge_point: str) -> 
             "knowledge": safe_string_list(raw.get("knowledge"), fallback["knowledge"]),
             "hint": safe_text(raw.get("hint"), fallback["hint"], 500),
             "question": safe_text(raw.get("question"), fallback["question"], 500),
-            "canvasAction": CANVAS_ACTIONS[min(index + 1, 3)],
+            "canvasAction": CANVAS_ACTIONS[min(index + 1, 3)] if is_geometry_question(question) else "show-base",
         })
-    return cards
+    return normalize_guide_cards(cards, question)
+
+
+def _fallback_lesson(
+    source: str,
+    selected_number: str,
+    selected_source: str,
+    selected_images: list[str],
+    model_run: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """在模型不可用时保留 OCR 原题，而不是返回内置几何演示题。"""
+    prompt = clean_question_stem(selected_number, selected_source) if selected_number else source[:4_000]
+    question = {
+        "id": f"fallback-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}",
+        "questionType": "short-answer",
+        "chapter": "教材练习",
+        "knowledgePoint": "待确认知识点",
+        "questionNumber": selected_number,
+        "prompt": normalize_model_math_text(prompt or "暂时无法生成题目，请重新尝试。"),
+        "correctAnswer": "",
+        "correctAnswers": [],
+        "selectionMode": "single",
+        "blanks": [],
+        "answerSpec": None,
+        "interaction": {"type": "none", "instruction": "", "points": [], "requiredConnections": []},
+        "givens": [],
+        # 先放一个占位，让已有 OCR 选项拆分器可以识别连续的 A-D 选项。
+        "options": [""],
+        "imageReferences": selected_images,
+    }
+    payload = question_payload(
+        question,
+        _normalized_steps({}, question),
+        model_run,
+    )
+    # 复用已有的 OCR 选项拆分规则；即使没有完整结构化结果，也不要把 A-D 丢掉。
+    normalize_text_choices_from_source(payload, selected_source or source)
+    payload["question"]["prompt"] = normalize_model_math_text(strip_choice_text_from_prompt(
+        payload["question"]["prompt"],
+        payload["question"].get("options", []),
+    ))
+    if len(payload["question"].get("options", [])) >= 2:
+        payload["question"]["questionType"] = "choice"
+    cards = generic_guide_cards(payload["question"])
+    return payload, cards
 
 
 def generate_lesson(
@@ -142,7 +199,8 @@ def generate_lesson(
     selection = runtime.selection
     started = time.perf_counter()
     log_event("model.generation.started", provider=selection.provider, model=selection.model)
-    source = source_text.strip()[:16_000]
+    provided_source = source_text.strip()[:16_000]
+    source = provided_source
     if not source:
         source = f"{QUESTION['prompt']}\n已知条件：{'；'.join(QUESTION['givens'])}"
     selected_number, selected_source, selected_images = select_complete_question_source(source)
@@ -151,10 +209,14 @@ def generate_lesson(
 
     if selection.provider == "mock":
         run = mock_model_run()
-        payload = question_payload(model_run=run)
-        lesson_store[QUESTION["id"]] = {"payload": payload, "guideCards": GUIDE_CARDS}
+        if not provided_source:
+            payload = question_payload(model_run=run)
+            cards = GUIDE_CARDS
+        else:
+            payload, cards = _fallback_lesson(source, selected_number, selected_source, selected_images, run)
+        lesson_store[payload["question"]["id"]] = {"payload": payload, "guideCards": cards}
         log_event("model.generation.completed", provider="mock", duration_ms=round((time.perf_counter() - started) * 1000, 1))
-        return payload, GUIDE_CARDS, run
+        return payload, cards, run
 
     try:
         generated, run = runtime.generate_json(
@@ -164,8 +226,8 @@ def generate_lesson(
         )
     except Exception as error:
         run = mock_model_run(selection.provider, str(error))
-        payload = question_payload(model_run=run)
-        lesson_store[QUESTION["id"]] = {"payload": payload, "guideCards": GUIDE_CARDS}
+        payload, cards = _fallback_lesson(source, selected_number, selected_source, selected_images, run)
+        lesson_store[payload["question"]["id"]] = {"payload": payload, "guideCards": cards}
         log_event(
             "model.generation.failed",
             level=40,
@@ -177,7 +239,7 @@ def generate_lesson(
             error=str(error)[:300],
             exc_info=True,
         )
-        return payload, GUIDE_CARDS, run
+        return payload, cards, run
 
     question_id = f"generated-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}"
     question_type = safe_text(generated.get("questionType"), "short-answer", 30)
@@ -189,7 +251,10 @@ def generate_lesson(
         item for item in safe_string_list(generated.get("givens"), [], 5)
         if "images/" not in item and "![" not in item
     ]
-    options = safe_string_list(generated.get("options"), [], 6) if generated.get("options") else []
+    options = [
+        normalize_model_math_text(option)
+        for option in (safe_string_list(generated.get("options"), [], 6) if generated.get("options") else [])
+    ]
     prompt = clean_question_stem(selected_number, selected_source) if selected_number else safe_text(generated.get("prompt"), QUESTION["prompt"], 4000)
     knowledge_point = safe_text(generated.get("knowledgePoint"), "分步推理", 120)
     question = {
@@ -198,7 +263,7 @@ def generate_lesson(
         "chapter": safe_text(generated.get("chapter"), "教材练习", 80),
         "knowledgePoint": knowledge_point,
         "questionNumber": selected_number or safe_text(generated.get("questionNumber"), "", 30),
-        "prompt": strip_choice_text_from_prompt(prompt, options),
+        "prompt": normalize_model_math_text(strip_choice_text_from_prompt(prompt, options)),
         "correctAnswer": safe_text(generated.get("correctAnswer"), "", 120),
         "correctAnswers": safe_string_list(generated.get("correctAnswers"), [], 6),
         "selectionMode": "multiple" if question_type == "multi-select" else "single",
@@ -209,8 +274,8 @@ def generate_lesson(
         "options": options,
         "imageReferences": selected_images or (safe_string_list(generated.get("imageReferences"), [], 4) if generated.get("imageReferences") else []),
     }
-    guide_cards = _normalized_guide_cards(generated, knowledge_point)
-    payload = question_payload(question, _normalized_steps(generated), run)
+    guide_cards = _normalized_guide_cards(generated, knowledge_point, question)
+    payload = question_payload(question, _normalized_steps(generated, question), run)
     lesson_store[question_id] = {"payload": payload, "guideCards": guide_cards}
     log_event(
         "model.generation.completed",
