@@ -24,7 +24,7 @@ from question_source import (
     limited_question_sources,
     split_question_sources,
 )
-from textbook_ocr import extract_pdf_text, resolve_ocr_text
+from textbook_ocr_pipeline import resolve_routed_ocr_source
 
 
 PDF_BATCH_PAGES = 5
@@ -166,31 +166,23 @@ class TextbookProcessingService:
             chunk_path.unlink(missing_ok=True)
 
         first_batch = batches[0]
-        extracted_text = ""
-        if not job.get("sourceText", "").strip() and not self.ocr_runtime.should_use_mineru():
-            try:
-                extracted_text = extract_pdf_text(
-                    PdfReader(str(source_path)),
-                    max_pages=PDF_BATCH_PAGES,
-                )
-            except Exception:
-                extracted_text = ""
-
         preview_pages = first_batch["pageCount"]
         self.upload_registry.update(
             job,
             "ocr",
             55,
-            f"MinerU 正在识别首批 {preview_pages} 页；整本 {page_count} 页无需等待",
+            f"正在按页面特征识别首批 {preview_pages} 页；整本 {page_count} 页无需等待",
         )
-        lesson_source, ocr_run = resolve_ocr_text(
-            job.get("sourceText", ""),
-            extracted_text,
-            source_path,
-            0,
-            preview_pages - 1,
-            job["directory"] / "assets" / first_batch["id"],
-            f"/api/uploads/{upload_id}/assets/{first_batch['id']}",
+        lesson_source, ocr_run = resolve_routed_ocr_source(
+            runtime=self.ocr_runtime,
+            source_text=job.get("sourceText", ""),
+            source_path=source_path,
+            start_page=0,
+            end_page=preview_pages - 1,
+            asset_dir=job["directory"] / "assets" / first_batch["id"],
+            asset_url_prefix=f"/api/uploads/{upload_id}/assets/{first_batch['id']}",
+            cache_dir=job["directory"] / "ocr-cache",
+            content_hash=digest.hexdigest(),
         )
         self.upload_registry.update(
             job,
@@ -220,6 +212,7 @@ class TextbookProcessingService:
         result = {
             "uploadId": upload_id,
             "importId": content_import_id,
+            "sourceFingerprint": digest.hexdigest(),
             "filename": job["filename"],
             "contentType": "application/pdf",
             "size": job["size"],
@@ -234,7 +227,7 @@ class TextbookProcessingService:
                 {"id": "upload", "label": "分块上传", "status": "done"},
                 {"id": "merge", "label": "PDF 合并与校验", "status": "done"},
                 {"id": "split", "label": "按页规划批次", "status": "done"},
-                {"id": "ocr", "label": f"首批 {preview_pages} 页 MinerU OCR", "status": "done"},
+                {"id": "ocr", "label": f"首批 {preview_pages} 页自适应 OCR", "status": "done"},
                 {"id": "guides", "label": "结构化与引导卡", "status": "done"},
             ],
             "extraction": {
@@ -336,48 +329,25 @@ class TextbookProcessingService:
             # 防止为提高识别完整度而污染页面归属。
             ocr_start_page = max(0, start_page - 1)
             asset_dir = job["directory"] / "assets" / batch_id
-            cached_markdown = asset_dir / "source.md"
-            extracted_text = ""
-            if not self.ocr_runtime.should_use_mineru():
-                reader = PdfReader(str(source_path))
-                pages = []
-                for page_index in range(ocr_start_page, end_page + 1):
-                    text = (reader.pages[page_index].extract_text() or "").strip()
-                    if text:
-                        pages.append(text)
-                extracted_text = "\n\n".join(pages)[:16_000]
-
-            # 重试时复用已落盘的 MinerU Markdown。模型可以重新生成，但昂贵 OCR 不应重复执行。
-            if cached_markdown.is_file():
-                lesson_source = cached_markdown.read_text(
-                    encoding="utf-8",
-                    errors="replace",
-                )[:40_000]
-                image_urls = [
-                    f"/api/uploads/{upload_id}/assets/{batch_id}/{path.name}"
-                    for path in sorted(asset_dir.iterdir())
-                    if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}
-                ]
-                ocr_run = {
-                    "requestedProvider": self.ocr_runtime.selection.provider,
-                    "provider": "mineru",
-                    "mode": "persisted-markdown",
-                    "fallback": False,
-                    "output": "markdown",
-                    "startPage": ocr_start_page + 1,
-                    "endPage": end_page + 1,
-                    "imageUrls": image_urls,
-                }
-            else:
-                lesson_source, ocr_run = resolve_ocr_text(
-                    "",
-                    extracted_text,
-                    source_path,
-                    ocr_start_page,
-                    end_page,
-                    asset_dir,
-                    f"/api/uploads/{upload_id}/assets/{batch_id}",
-                )
+            content_hash = result.get("sourceFingerprint")
+            if not content_hash:
+                # 兼容升级前已持久化的上传任务；新任务在首次合并时已保存指纹。
+                digest = hashlib.sha256()
+                with source_path.open("rb") as source_file:
+                    while block := source_file.read(1024 * 1024):
+                        digest.update(block)
+                content_hash = digest.hexdigest()
+            lesson_source, ocr_run = resolve_routed_ocr_source(
+                runtime=self.ocr_runtime,
+                source_text="",
+                source_path=source_path,
+                start_page=ocr_start_page,
+                end_page=end_page,
+                asset_dir=asset_dir,
+                asset_url_prefix=f"/api/uploads/{upload_id}/assets/{batch_id}",
+                cache_dir=job["directory"] / "ocr-cache",
+                content_hash=content_hash,
+            )
             context_note = (
                 f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
                 f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"

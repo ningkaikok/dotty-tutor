@@ -121,7 +121,8 @@ npm run dev
 - 修改顶层页面或 URL：`frontend/src/App.tsx` 与对应 `frontend/src/apps/*`。
 - 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。
 - 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
-- 修改 OCR 回退：`backend/textbook_ocr.py`；MinerU 子进程细节在 `ocr_runtime.py`。
+- 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
+  `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程细节仍在 `ocr_runtime.py`。
 - 修改模型题目结构：`lesson_generation.py`、`question_contracts.py` 和 `question_pipeline.py`。
 - 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
 - 修改多轮状态：`backend/stateful_tutor.py`、`tutoring_routes.py`、`tutoring_store.py` 和
@@ -184,8 +185,9 @@ ollama serve
 
 ## MinerU OCR
 
-上传页的 `auto` 模式会优先使用 MinerU；未安装时回退到 PDF 文字层。纯扫描 PDF 需要
-MinerU 或其他 OCR 服务。
+上传页的 `auto` 模式按页选择 Provider：文字层完整的电子页使用 pypdf，扫描页、公式密集页或质量门禁
+失败页使用 MinerU；未安装 MinerU 时只能保留 PDF 文字层并把空白/损坏来源交给发布门禁。纯扫描 PDF
+仍需要 MinerU 或其他 OCR 服务。
 
 MinerU 建议使用独立 Python 3.12 环境，避免和主后端依赖冲突：
 
@@ -196,8 +198,9 @@ python3.12 -m venv .mineru-venv
 export MINERU_COMMAND="$PWD/.mineru-venv/bin/mineru"
 ```
 
-整本 PDF 每 5 页规划一个批次，首批优先生成，其余批次按需处理。MinerU 输出的 Markdown、
-模型提示词和题图保存在对应上传任务的资源目录中。
+整本 PDF 每 5 页规划一个批次，首批优先生成，其余批次按需处理。相邻且路由相同的页面合并调用，
+减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。
+MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务的资源目录中。
 
 ## Qwen3-TTS
 

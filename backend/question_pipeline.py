@@ -20,6 +20,7 @@ MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
 )
+ANSWER_LEAK_PATTERN = re.compile(r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?")
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -171,33 +172,43 @@ def split_concatenated_text_choices(options: list[str]) -> list[str]:
 
 def normalize_model_math_text(value: str) -> str:
     """修复模型常见 LaTeX 转义错误，不进行开放式数学改写。"""
-    replacements = {"\x08egin": r"\begin", "\text": r"\text", "\times": r"\times", "\x0crac": r"\frac"}
+    replacements = {
+        "\x08egin": r"\begin", "\x08end": r"\end", "\x0crac": r"\frac",
+        "\text": r"\text", "\times": r"\times",
+    }
     for broken, corrected in replacements.items():
         value = value.replace(broken, corrected)
     # 审核模型有时会输出“反斜杠”这个字面命令，而不是目标 LaTeX。这里只修复已知的
     # 百分号和摄氏度形式，避免宽泛正则误改题目中的真实数学表达式。
+    value = re.sub(r"\\textbackslash\s*(?:\\text\s*\{\s*%\s*\}|%)", r"\\%", value, flags=re.IGNORECASE)
     value = re.sub(
-        r"\\textbackslash\s*\\text\s*\{\s*%\s*\}",
-        r"\\%",
-        value,
-        flags=re.IGNORECASE,
-    )
-    value = re.sub(r"\\textbackslash\s*%", r"\\%", value, flags=re.IGNORECASE)
-    value = re.sub(
-        r"\\textbackslash\s*\\textcirc\s*C\b",
+        r"\\textbackslash\s*\\textcirc\s*\{?\s*C\s*\}?",
         r"^{\\circ}\\mathrm{C}",
         value,
         flags=re.IGNORECASE,
     )
     value = re.sub(
-        r"\\(?:textdegree|textbar|textcirc)\s*C\b",
+        r"\\(?:textdegree|textbar|textcirc)\s*\{?\s*C\s*\}?",
         r"^{\\circ}\\mathrm{C}",
         value,
         flags=re.IGNORECASE,
     )
-    value = re.sub(r"(?<![A-Za-z])(?:°\s*C|℃)", "℃", value)
-    value = re.sub(r"\\begin\s*\{?\s*array\s*\}?\s*\{?\s*([clr])\s*\}?", r"\\begin{array}{\1}", value)
-    return re.sub(r"\\end\s*\{?\s*array\s*\}?", r"\\end{array}", value)
+    value = re.sub(r"\\begin\s*\{?\s*array\s*\}?\s*\{?\s*([clr]+)\s*\}?", r"\\begin{array}{\1}", value)
+    value = re.sub(r"\\end\s*\{?\s*array\s*\}?", r"\\end{array}", value)
+
+    def normalize_math_fragment(match: re.Match[str]) -> str:
+        delimiter = "$$" if match.group(0).startswith("$$") else "$"
+        content = match.group(0)[len(delimiter):-len(delimiter)]
+        # 全角运算符来自中文 OCR；只在数学定界符内转换，避免改写普通中文题干。
+        content = content.translate(str.maketrans({"＋": "+", "－": "-", "＝": "=", "％": "%", "（": "(", "）": ")", "｛": "{", "｝": "}"}))
+        content = re.sub(r"(?<!\\)×", r"\\times ", content)
+        content = re.sub(r"(?:°\s*C|℃)", r"^{\\circ}\\mathrm{C}", content)
+        # 只修复已知环境名。未知命令保持原样并交给质量门禁，避免猜测公式语义。
+        content = re.sub(r"\\begin\s*\{?\s*(matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|aligned)\s*\}?", r"\\begin{\1}", content)
+        content = re.sub(r"\\end\s*\{?\s*(matrix|pmatrix|bmatrix|vmatrix|Vmatrix|cases|aligned)\s*\}?", r"\\end{\1}", content)
+        return f"{delimiter}{content}{delimiter}"
+
+    return MATH_FRAGMENT_PATTERN.sub(normalize_math_fragment, value)
 
 
 def normalize_text_choices_from_source(payload: dict[str, Any], source_block: str) -> None:
@@ -310,6 +321,16 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     if option_images and (len(option_images) != 4 or option_images != actual_images):
         errors.append("图片选择题必须按 A、B、C、D 绑定四张当前题图片")
     options = [str(item).strip() for item in question.get("options", [])]
+    prompt = str(question.get("prompt", ""))
+    source_number = QUESTION_START_PATTERN.match(source_block)
+    if source_number and str(question.get("questionNumber", "")).strip() not in {"", source_number.group("number")}:
+        errors.append(
+            f"题号来源不一致：OCR={source_number.group('number')}，结构化结果={question.get('questionNumber')}"
+        )
+    leaked_answer = ANSWER_LEAK_PATTERN.search(prompt)
+    if leaked_answer:
+        evidence = prompt[leaked_answer.start():leaked_answer.start() + 36].replace("\n", " ")
+        errors.append(f"题干混入答案/解析证据：{evidence}")
     source_labels = [
         match.group(1) or match.group(2)
         for match in CHOICE_MARKER_PATTERN.finditer(source_block)
@@ -335,22 +356,22 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("contentBlocks 中的图片顺序与题目图片不一致")
     math_blocks = [str(block.get("latex", "")) for block in content_blocks if block.get("type") == "math"] + [str(inner.get("latex", "")) for block in content_blocks if block.get("type") == "options" for item in block.get("items", []) for inner in item.get("contentBlocks", []) if inner.get("type") == "math"]
     for index, latex in enumerate(math_blocks, start=1):
+        evidence = latex[:80].replace("\n", " ")
         if not latex:
             errors.append(f"第 {index} 个公式为空")
             continue
         if formula_anomaly_score(f"${latex}$"):
-            errors.append(f"第 {index} 个公式仍含 OCR/控制字符异常")
+            errors.append(f"第 {index} 个公式仍含 OCR/控制字符异常：{evidence}")
         if re.search(r"\\(?:textbackslash|textdegree|textbar)\b", latex, flags=re.IGNORECASE):
-            errors.append(f"第 {index} 个公式包含不受支持的单位或转义命令")
+            errors.append(f"第 {index} 个公式包含不受支持的单位或转义命令：{evidence}")
         if latex.count("{") != latex.count("}"):
-            errors.append(f"第 {index} 个公式花括号不平衡")
+            errors.append(f"第 {index} 个公式花括号不平衡：左={latex.count('{')}，右={latex.count('}')}，{evidence}")
         begins = re.findall(r"\\begin\{([^}]+)\}", latex)
         ends = re.findall(r"\\end\{([^}]+)\}", latex)
         if begins != ends or re.search(r"\\(?:begin|end)(?!\{)", latex):
-            errors.append(f"第 {index} 个公式环境不完整")
-    if not str(question.get("prompt", "")).strip():
+            errors.append(f"第 {index} 个公式环境不完整：begin={begins}，end={ends}，{evidence}")
+    if not prompt.strip():
         errors.append("题干为空")
-    prompt = str(question.get("prompt", ""))
     prompt_has_percent = bool(re.search(r"(?:%|\\%)", prompt))
     temperature_options = options and all(
         "℃" in option or bool(re.search(r"\\circ\}?\\mathrm\{C\}", option))
@@ -360,7 +381,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v2", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v3", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:

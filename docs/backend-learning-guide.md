@@ -50,7 +50,7 @@ sequenceDiagram
   participant Route as textbook_routes.py
   participant Registry as upload_registry.py
   participant Service as textbook_processing.py
-  participant OCR as textbook_ocr.py
+  participant OCR as textbook_ocr_pipeline.py
   participant Pipeline as question_processing.py
   participant Store as persistence/*_store.py
 
@@ -70,6 +70,7 @@ sequenceDiagram
 
 - `textbook_routes.py` 只理解 HTTP 和文件传输。
 - `textbook_processing.py` 理解“完成教材处理”的步骤顺序。
+- `textbook_ocr_pipeline.py` 读取页面信号并决定“文字层、MinerU、缓存或局部升级”。
 - `question_processing.py` 只处理一组已提取题目，因此未来可被 Worker 直接复用。
 
 当前服务仍在 HTTP 请求内同步执行。将来如果真实 PDF 处理时间影响部署，只需要让 Route 入队，并让 Worker
@@ -103,6 +104,7 @@ sequenceDiagram
 - `model_runtime.py` 决定调用 Mock、Codex CLI 或 Ollama。
 - `review_runtime.py` 执行第二次文字/视觉复核。
 - `ocr_runtime.py` 选择 MinerU 或回退路径。
+- `ocr_pipeline.py` 和 `ocr_quality.py` 是不调用外部进程的纯函数层，分别负责路由/缓存契约和质量决策。
 
 重要原则是：模型输出永远不是最终事实。它必须先经过 Pydantic/JSON Schema、确定性修复和质量检查，才能
 进入数据库和前端。
@@ -110,6 +112,11 @@ sequenceDiagram
 生成模型与文字审核模型刻意独立选择：低成本模型可以负责初稿，更强模型负责发现结构、公式与语义冲突；
 视觉审核继续接收来源页图片，不能被纯文本审核替代。`question_processing.py` 对失败题只进行有上限的局部重试，
 仍无法恢复的题进入隔离诊断，避免一题永久阻塞整份试卷，又避免静默发布错误内容。
+
+OCR 也遵守同一原则。自动模式不会先把整本 PDF 交给 MinerU，而是读取每页文字长度、图片与公式信号，
+将相邻且 Provider 相同的页面合并执行。pypdf 页若为空、乱码、公式定界符不平衡或出现已知损坏命令，
+只升级对应连续页段；MinerU 仍无法恢复时进入隔离，不做无限重试。中间结果使用 PDF SHA-256、页范围、
+Provider 和流水线版本组成缓存键，因此重新生成题目不会重复执行昂贵 OCR，Provider 升级也不会误用旧缓存。
 
 互动试卷发布采用不可变版本。`publication_revision.py` 从原 PDF 创建完整新版本并送回审核，旧发布版本、学习
 会话与作答记录保持可追溯。写入顺序要求“先保存新课程，再创建版本关系，最后切换当前版本”；任何一步失败

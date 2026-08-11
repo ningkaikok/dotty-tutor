@@ -88,7 +88,9 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 教材处理服务 | `backend/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
 | 批次题目处理 | `backend/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
 | 教材库路由 | `backend/library_routes.py` | 教材列表、恢复和软删除 |
-| 教材 OCR 编排 | `backend/textbook_ocr.py` | 手工原文、MinerU 与 pypdf 的选择、回退和审计记录 |
+| 教材 OCR 编排 | `backend/textbook_ocr_pipeline.py` | 页面探测、连续页段路由、局部 Provider 升级、结果缓存和审计记录 |
+| OCR 路由与缓存 | `backend/ocr_pipeline.py` | 页面信号、Provider 选择、内容寻址缓存键和原子缓存文件 |
+| OCR 来源质量 | `backend/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
 | 课程生成 | `backend/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
 | OCR 题源切分 | `backend/question_source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
 | 应用工厂 | `backend/application.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
@@ -216,8 +218,9 @@ erDiagram
 3. 浏览器按 5 MB 调用分块上传接口，暂停后只补传缺失块。
 4. `POST /api/uploads/{uploadId}/complete` 合并文件并校验大小、SHA-256 和页数。
 5. 后端每 5 页规划一个批次，合并成功后删除分块并保留 `source.pdf`。
-6. 首批执行 MinerU 或 pypdf，输出 Markdown、LaTeX 和题图。
-7. OCR Markdown 按题号切分，每批最多处理 5 道完整题。
+6. 首批先探测各页文字、图片和公式信号；电子文本页走 pypdf，扫描页和公式页走 MinerU。
+7. 页面质量门禁只把损坏或空白页段升级到 MinerU；结果以 PDF 哈希、页范围和 Provider 版本缓存。
+8. OCR Markdown 按中文题号切分，合并跨页续题并截断答案区；每批最多处理 5 道完整题。
 8. 每道题依次生成、绑定来源、审校、标准化、质量检查并持久化。
 9. 前端每 800 ms 查询状态并显示进度。
 
@@ -258,7 +261,7 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 下一题已经在前端题库时只切换本地状态。
 - 到达未处理批次时，前端按需调用批次处理接口。
 - 后续批次会额外读取前一页，补齐跨页题干。
-- 已有 `source.md` 时复用 OCR 缓存。
+- 已有匹配 PDF 内容哈希、页范围和 Provider 版本的 OCR 结果时复用缓存；升级 Provider 后自动使用新缓存键。
 - `force=true` 会重新生成并替换当前批次题目。
 - 前端当前最多展示 5 道题。
 

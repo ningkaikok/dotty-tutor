@@ -25,6 +25,7 @@ class TextbookProcessingTests(unittest.TestCase):
                 "directory": Path(directory),
                 "result": {
                     "ocrRun": {"provider": "mineru"},
+                    "sourceFingerprint": "0" * 64,
                     "extraction": {"questionCount": 1},
                     "batches": [
                         {"id": "batch-001", "startPage": 1, "endPage": 5, "status": "processed"},
@@ -39,7 +40,7 @@ class TextbookProcessingTests(unittest.TestCase):
                     # Patch where the service resolves the dependency, not at
                     # the HTTP facade that merely delegates the call.
                     patch(
-                        "textbook_processing.resolve_ocr_text",
+                        "textbook_processing.resolve_routed_ocr_source",
                         return_value=("page text", {"provider": "mineru"}),
                     ) as resolve,
                     patch(
@@ -74,7 +75,8 @@ class TextbookProcessingTests(unittest.TestCase):
                     response = process_pdf_batch("test-upload", "batch-002")
                 self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
                 self.assertEqual(response["batch"]["status"], "processed")
-                self.assertEqual(resolve.call_args.args[3:5], (4, 9))
+                self.assertEqual(resolve.call_args.kwargs["start_page"], 4)
+                self.assertEqual(resolve.call_args.kwargs["end_page"], 9)
             finally:
                 pdf_uploads.pop("test-upload", None)
 
