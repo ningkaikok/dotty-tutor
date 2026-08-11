@@ -643,7 +643,7 @@ test.describe("教材辅导核心交互", () => {
       buffer: Buffer.from("fixture"),
     });
     await expect(page.getByText("playwright-fixture.png")).toBeVisible();
-    await page.getByRole("button", { name: "开始数字化" }).click();
+    await page.getByRole("button", { name: /开始识别/ }).click();
     await page.getByRole("button", { name: "进入动态教材 →" }).click();
 
     await expect(page.getByRole("heading", { name: "数轴上的大小比较" })).toBeVisible();
@@ -678,7 +678,7 @@ test.describe("教材辅导核心交互", () => {
       mimeType: "image/png",
       buffer: Buffer.from("fixture"),
     });
-    await page.getByRole("button", { name: "开始数字化" }).click();
+    await page.getByRole("button", { name: /开始识别/ }).click();
     await page.getByRole("button", { name: "进入动态教材 →" }).click();
 
     await expect(page.getByRole("heading", { name: "集合交集" })).toBeVisible();
