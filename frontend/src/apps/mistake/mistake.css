@@ -129,6 +129,8 @@
 .tutor-input textarea { width: 100%; min-height: 82px; resize: vertical; border: 1px solid #d6ddd7; border-radius: 13px; padding: 12px; background: #fafbf8; font: inherit; box-sizing: border-box; }
 .tutor-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 12px 20px 5px; }
 .tutor-actions button { border: 1px solid #cbd5cf; border-radius: 11px; padding: 10px 14px; background: #fff; cursor: pointer; }
+.tutor-actions .mistake-primary-action { color: #fff; border-color: #183f31; background: #183f31; }
+.tutor-actions .mistake-primary-action:hover:not(:disabled) { background: #245b46; }
 .tutor-actions button:disabled { cursor: wait; opacity: .55; }
 .tutor-context-note { display: block; padding: 4px 20px 18px; color: #8a948d; text-align: right; font-size: 10px; }
 .variation-practice { margin: 12px; padding: 20px; border: 1px solid #cfe2d8; border-radius: 18px; background: #f6fbf8; }

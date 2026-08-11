@@ -188,11 +188,11 @@ class LessonGenerationTests(unittest.TestCase):
         self.assertEqual(run["provider"], "codex")
         self.assertEqual(
             [step["action"] for step in payload["lessonSteps"]],
-            CANVAS_ACTIONS,
+            ["show-base"] * 4,
         )
         self.assertEqual(
             [card["canvasAction"] for card in guide_cards],
-            [CANVAS_ACTIONS[1], CANVAS_ACTIONS[2], CANVAS_ACTIONS[3]],
+            ["show-base"] * 3,
         )
 
 
@@ -565,6 +565,12 @@ class QuestionExtractionTests(unittest.TestCase):
 
     def test_repairs_json_control_escape_inside_latex_command(self) -> None:
         self.assertEqual(normalize_model_math_text("$60^\text{°}$"), r"$60^\text{°}$")
+
+    def test_repairs_legacy_textcirc_temperature_formula(self) -> None:
+        self.assertEqual(
+            normalize_model_math_text(r"$7\textbackslash \textcirc C$"),
+            r"$7^{\circ}\mathrm{C}$",
+        )
 
 
 class OcrReviewNormalizationTests(unittest.TestCase):

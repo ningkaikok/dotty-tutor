@@ -291,11 +291,21 @@ class MistakeStore:
         item = self.get(mistake_id)
         if not item:
             return None
-        path = Path(item["sourceImagePath"]).expanduser().resolve()
-        expected_root = self.mistake_root.resolve()
-        if expected_root not in path.parents:
+        stored_path = str(item.get("sourceImagePath") or "")
+        if not stored_path:
             return None
-        return path
+        path = Path(stored_path).expanduser().resolve()
+        expected_root = self.mistake_root.resolve()
+        if expected_root in path.parents and path.is_file():
+            return path
+
+        # 数据库可能从宿主机迁移到 Docker，旧记录里的绝对路径会失效；
+        # 文件仍在同一个数据卷时，按错题 ID 和原文件名重新定位，避免前端只看到破图。
+        filename = Path(stored_path).name
+        if not filename or filename in {".", ".."}:
+            return None
+        relocated = self.mistake_root / mistake_id / filename
+        return relocated if relocated.is_file() else None
 
     @staticmethod
     def _serialize(row: Any) -> dict[str, Any]:

@@ -21,9 +21,10 @@ function normalizeLegacyMath(expression: string) {
       /\\textbackslash\s*\\text\s*\{\s*\}\s*\^+\s*(?:\\textcirc|\{\\circ\})\s*(?:\\mathrm\{C\}|C)?/gi,
       "^{\\circ}\\mathrm{C}",
     )
+    .replace(/\\textbackslash\s*\\textcirc\s*C\b/gi, "^{\\circ}\\mathrm{C}")
     .replace(/\\textbackslash\s*\\text\s*\{\s*%\s*\}/gi, "\\%")
     .replace(/\\textbackslash\s*%/gi, "\\%")
-    .replace(/\\(?:textdegree|textbar)\s*C\b/gi, "^{\\circ}\\mathrm{C}");
+    .replace(/\\(?:textdegree|textbar|textcirc)\s*C\b/gi, "^{\\circ}\\mathrm{C}");
 }
 
 export default function MathText({ text, className, block = false }: MathTextProps) {

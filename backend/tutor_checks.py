@@ -5,13 +5,109 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from question_contracts import GUIDE_CARDS, HelpRequest, TutorReply
+from question_contracts import CANVAS_ACTIONS, GUIDE_CARDS, HelpRequest, TutorReply
 
 
 EQUATION_PATTERN = re.compile(
     r"(?<![0-9A-Za-z])([0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*\s*=\s*"
     r"-?\s*[0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*)(?![0-9A-Za-z])"
 )
+
+# 画布当前只实现了几何演示。旧数据或模型故障时如果把几何引导卡复用到
+# 其他题目，就会出现“体重题显示 show-triangles”这类跨题污染；所有动作
+# 进入 TutorEngine 前都要经过下面的题目上下文判断。
+GEOMETRY_MARKERS = (
+    "几何", "三角形", "垂直", "平分线", "轨迹", "圆", "角平分", "中点",
+    "等腰", "全等", "parallel", "triangle", "bisector",
+)
+
+
+def is_geometry_question(question: dict[str, Any] | None) -> bool:
+    """判断题目是否真的需要几何画布，而不是依据历史引导卡猜测。"""
+    if not isinstance(question, dict):
+        return False
+    if question.get("questionType") == "draw-line":
+        return True
+    haystack = " ".join(
+        str(question.get(key) or "")
+        for key in ("chapter", "knowledgePoint", "prompt", "givens")
+    ).lower()
+    return any(marker.lower() in haystack for marker in GEOMETRY_MARKERS)
+
+
+def generic_guide_cards(question: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """为非几何题提供不带领域假设的引导卡，避免回退到几何样例。"""
+    knowledge = str((question or {}).get("knowledgePoint") or "本题知识点")
+    return [
+        {
+            "level": 0,
+            "stuckAt": "还没有把题目条件整理成可检查的第一步。",
+            "knowledge": [knowledge],
+            "hint": "先圈出题目给出的数值、单位或关键词，再说明题目要求什么。",
+            "question": "根据题目条件，你准备先写出哪一步？",
+            "canvasAction": "show-base",
+        },
+        {
+            "level": 1,
+            "stuckAt": "已经找到条件，但还没有把它们用于当前问题。",
+            "knowledge": [knowledge],
+            "hint": "把已知条件逐项代入对应的定义、公式或比较规则。",
+            "question": "代入后你得到什么结果？请说出中间一步。",
+            "canvasAction": "show-base",
+        },
+        {
+            "level": 2,
+            "stuckAt": "需要检查计算结果是否回答了题目本身。",
+            "knowledge": [knowledge],
+            "hint": "回看题目要求，并检查数值、单位和符号是否一致。",
+            "question": "你的结果与题目要求的量相符吗？",
+            "canvasAction": "show-base",
+        },
+    ]
+
+
+def normalize_guide_cards(
+    cards: list[dict[str, Any]] | None,
+    question: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """清洗历史/模型引导卡，并禁止非几何题产生几何画布动作。"""
+    geometry = is_geometry_question(question)
+    raw_cards = cards if isinstance(cards, list) else []
+    card_text = " ".join(
+        str(card.get(key) or "")
+        for card in raw_cards
+        if isinstance(card, dict)
+        for key in ("stuckAt", "knowledge", "hint", "question", "canvasAction")
+    ).lower()
+    # 这组词只用于识别旧的内置几何样例，不会替换正常的几何题卡片。
+    stale_geometry = not geometry and any(marker in card_text for marker in ("三角形", "垂直平分线", "pam", "pbm", "show-triangles"))
+    if not raw_cards or stale_geometry:
+        return generic_guide_cards(question)
+
+    normalized: list[dict[str, Any]] = []
+    fallback_actions = ("show-triangles", "show-triangles", "show-bisector")
+    for index in range(3):
+        source = raw_cards[index] if index < len(raw_cards) and isinstance(raw_cards[index], dict) else {}
+        fallback = generic_guide_cards(question)[index]
+        action = source.get("canvasAction") if geometry else "show-base"
+        if action not in CANVAS_ACTIONS:
+            action = fallback_actions[index] if geometry else "show-base"
+        normalized.append({
+            "level": index,
+            "stuckAt": str(source.get("stuckAt") or fallback["stuckAt"])[:300],
+            "knowledge": source.get("knowledge") if isinstance(source.get("knowledge"), list) else fallback["knowledge"],
+            "hint": str(source.get("hint") or fallback["hint"])[:500],
+            "question": str(source.get("question") or fallback["question"])[:500],
+            "canvasAction": action,
+        })
+    return normalized
+
+
+def safe_canvas_action(question: dict[str, Any] | None, action: Any) -> str:
+    """只让几何题使用三角形/垂直平分线等动作，其他题统一使用基础画布。"""
+    if not is_geometry_question(question):
+        return "show-base"
+    return action if action in CANVAS_ACTIONS else "show-base"
 
 
 def mock_model_run(requested_provider: str = "mock", error: str | None = None) -> dict[str, Any]:
@@ -30,9 +126,10 @@ def build_reply(
     request: HelpRequest,
     guide_cards: list[dict[str, Any]] | None = None,
     model_run: dict[str, Any] | None = None,
+    question: dict[str, Any] | None = None,
 ) -> TutorReply:
     normalized = request.studentInput.strip().lower()
-    cards = guide_cards or GUIDE_CARDS
+    cards = normalize_guide_cards(guide_cards, question)
     run = model_run or mock_model_run()
     if any(marker in normalized for marker in ("垂直平分线", "perpendicular bisector")):
         guide_context = {
@@ -46,7 +143,7 @@ def build_reply(
             reply="这个猜想是对的。先别急着结束：请说明三角形 PAM 与 PBM 为什么全等。",
             guideContext=guide_context,
             nextHintLevel=min(request.hintLevel + 1, 3),
-            canvasAction="show-triangles",
+            canvasAction=safe_canvas_action(question, "show-triangles"),
             source="answer-check",
             modelRun=run,
         )
@@ -70,7 +167,7 @@ def build_reply(
             "question": card["question"],
         },
         nextHintLevel=min(request.hintLevel + 1, 3),
-        canvasAction=card["canvasAction"],
+        canvasAction=safe_canvas_action(question, card.get("canvasAction")),
         source="stored-guide-card",
         modelRun=run,
     )

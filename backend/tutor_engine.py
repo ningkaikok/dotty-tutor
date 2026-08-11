@@ -7,7 +7,13 @@ from typing import Any
 
 from answer_evaluator import evaluate_structured_answer
 from question_contracts import CANVAS_ACTIONS, HELP_SCHEMA, HelpRequest, TutorReply
-from tutor_checks import build_reply, equation_conflict, mock_model_run
+from tutor_checks import (
+    build_reply,
+    equation_conflict,
+    mock_model_run,
+    normalize_guide_cards,
+    safe_canvas_action,
+)
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -40,12 +46,13 @@ class TutorEngine:
         it so previous turns cannot influence an objective result.
         """
         stored = self.lesson_store.get(request.questionId)
+        question = stored["payload"].get("question", {}) if stored else None
         deterministic = self._deterministic_reply(stored, request)
         if deterministic:
             return deterministic
         if not stored or self.runtime.selection.provider == "mock":
-            cards = stored["guideCards"] if stored else self.guide_cards
-            return build_reply(request, cards)
+            cards = normalize_guide_cards(stored.get("guideCards") if stored else self.guide_cards, question)
+            return build_reply(request, cards, question=question)
         return self._model_reply(stored, request, conversation_context)
 
     def _deterministic_reply(self, stored: dict[str, Any] | None, request: HelpRequest) -> TutorReply | None:
@@ -82,7 +89,7 @@ class TutorEngine:
                         "question": "题干中的哪条条件能支持你的判断？",
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
-                    canvasAction="show-base",
+                    canvasAction=safe_canvas_action(question, "show-base"),
                     source="answer-check",
                     modelRun=mock_model_run(),
                 )
@@ -115,7 +122,7 @@ class TutorEngine:
                         "question": "你连接的线段对应题目中的哪条几何关系？",
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
-                    canvasAction="show-triangles",
+                    canvasAction=safe_canvas_action(question, "show-triangles"),
                     source="answer-check",
                     modelRun=mock_model_run(),
                 )
@@ -128,7 +135,8 @@ class TutorEngine:
         conversation_context: str = "",
     ) -> TutorReply:
         payload = stored["payload"]
-        cards = stored["guideCards"]
+        question = payload.get("question", {})
+        cards = normalize_guide_cards(stored.get("guideCards"), question)
         current_card = cards[min(request.hintLevel, len(cards) - 1)]
         conflict = equation_conflict(request.studentInput, payload["lessonSteps"], payload["question"]["prompt"])
         conflict_instruction = ""
@@ -162,11 +170,12 @@ class TutorEngine:
         try:
             generated, run = self.runtime.generate_json(prompt, HELP_SCHEMA, max_tokens=450)
         except Exception as error:
-            return build_reply(request, cards, mock_model_run(selection.provider, str(error)))
+            return build_reply(request, cards, mock_model_run(selection.provider, str(error)), question)
 
         action = generated.get("canvasAction")
         if action not in CANVAS_ACTIONS:
             action = current_card["canvasAction"]
+        action = safe_canvas_action(question, action)
         assessment = generated.get("assessment", "partial")
         reply_text = _safe_text(generated.get("reply"), current_card["hint"], 1000)
         if conflict:
@@ -175,7 +184,7 @@ class TutorEngine:
                 f"这里需要再核对一下：你写的 {conflict[0]} 与前一步推导不一致。"
                 "先别继续除法，请重新检查移项后的符号和右边的计算，你能重算这一行吗？"
             )
-            action = current_card["canvasAction"]
+            action = safe_canvas_action(question, current_card["canvasAction"])
         return TutorReply(
             reply=reply_text,
             guideContext={
