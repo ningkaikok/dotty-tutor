@@ -557,7 +557,7 @@ test.describe("产品入口", () => {
     await mockMistakeApi(page);
     await page.goto("/mistakes");
 
-    await page.getByRole("button", { name: "录入纸质错题" }).click();
+  await page.getByRole("button", { name: "录入纸质错题", exact: true }).click();
     await expect(page).toHaveURL(/\/mistakes\/capture$/);
     await page.getByLabel("选择错题图片").setInputFiles({
       name: "mistake-fixture.png",
