@@ -73,8 +73,8 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 错题陪练编排 | `frontend/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `frontend/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
 | 教材导入页面 | `frontend/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
-| 教材导入状态机 | `frontend/src/apps/textbook/import/useTextbookImport.ts` | 初始化、分块续传、轮询、运行时切换与错误状态 |
-| 教材导入组件 | `frontend/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、上传区和处理结果展示 |
+| 教材导入状态机 | `frontend/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
+| 教材导入组件 | `frontend/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |
 | 课程播放器 | `frontend/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `frontend/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 内容预览工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |

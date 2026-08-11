@@ -62,29 +62,37 @@ flowchart LR
 
 ## 4. 教材导入状态机
 
-`useTextbookImport.ts` 管理下面的有限状态：
+`useTextbookImport.ts` 管理的是“队列状态 + 每个文件的有限状态”。后端已经按 `uploadId` 隔离每次上传，
+前端因此不再用一个 `file` 状态反复覆盖当前文件，而是把每个 PDF/图片保存为 `uploads` 中的一项：
 
 ```mermaid
 stateDiagram-v2
   [*] --> idle
-  idle --> uploading: 选择 PDF 并上传
+  idle --> queued: 加入多个文件
+  queued --> uploading: 获得并发槽位
   uploading --> paused: 用户暂停
-  paused --> uploading: 继续上传
+  paused --> queued: 点击继续
   uploading --> processing: 分块完成
   processing --> done: OCR 与生成成功
-  idle --> processing: 单张图片导入
+  queued --> error: 参数校验失败
   uploading --> error: 上传失败
   processing --> error: 识别或生成失败
-  error --> idle: 重新选择文件
+  error --> queued: 点击继续
+  idle --> processing: 单张图片获得并发槽位
 ```
+
+每个条目同时保存 `phase`、`progress`、`processingTask` 和 `result`，所以列表可以同时显示多个独立进度条；
+点击条目只切换右侧处理链路和结果面板，不会中断其他任务。`MAX_CONCURRENT_UPLOADS = 3` 是本地 Demo 的保护阈值：
+上传可以排队，但本地 MinerU/模型识别最多同时跑三个任务，避免瞬间启动过多重量级进程。每个运行中的条目还有
+自己的暂停控制器和状态轮询器，暂停或失败只影响该条目，继续时复用已上传分块。
 
 这里同时使用 State 和 Ref：
 
-- `phase`、`progress`、`processingTask` 用 State，变化需要更新界面。
-- `pdfTaskRef` 和 `pauseRequested` 用 Ref，需要跨 Render 保存，但每个分块变化不应触发重新渲染。
+- `uploads`、`phase`、`progress`、`processingTask` 用 State，变化需要更新界面。
+- 控制器 Map、已上传分块集合和运行中集合用 Ref，只保存跨 Render 的异步句柄，不把临时网络状态暴露给页面。
 
-上传完成接口目前同步处理 PDF；Hook 并行轮询只用于显示进度。未来后端改为 Worker 时，可以把完成请求改成
-“创建任务”，继续复用轮询和现有展示组件。
+上传完成接口目前同步处理单个 PDF；Hook 通过多个独立请求并行展示进度。未来后端改为 Worker 时，可以把完成请求改成
+“创建任务”，只需替换条目级轮询适配器，列表组件和交互不需要重写。
 
 ## 5. 教材练习如何按需生成
 
@@ -95,7 +103,7 @@ stateDiagram-v2
 - 当前结构化答案和自由文本。
 - 提示等级与内容质检预览结果。
 
-首批 PDF 完成后立即可做题；只有学生走到已加载题目的末尾，才调用 `processPdfBatch()` 处理下一个五页范围。
+每个 PDF 的首批页面完成后立即可做题；只有学生走到该教材已加载题目的末尾，才调用 `processPdfBatch()` 处理下一个五页范围。
 这种延迟工作比“上传后处理整本书”更适合 Demo，也更符合速度优先的产品体验。
 
 切换题目时必须成组清理文本答案、选项、填空、画线、语音、提示等级和旧回复。`resetLearningState()` 把这个
@@ -220,8 +228,10 @@ markdown | formula | diagram | animation | annotation | quiz | hint
 
 - `speechCache` 缓存 `Promise<Blob>`，并发预加载相同文本只发送一次请求。
 - `speechRequestId` 是递增令牌；用户切换步骤后，旧异步请求即使完成也不能开始播放。
+- `pendingSpeechControllers` 保存尚未返回的 `fetch`，切换题目、步骤或发起新的语音时会调用 `AbortController.abort()`；
+  这样旧请求不再继续占用浏览器连接。课程只预热当前步骤（课程刚打开时预热第一步），不会一次性请求整节课。
 
-`LessonPlayer` 在课程加载时预取所有步骤，在当前语音播放时继续预热下一步。画布动作在音频真正开始时触发，
+`LessonPlayer` 在课程加载时只预取第一步，播放当前步骤前再按需请求。画布动作在音频真正开始时触发，
 而不是点击播放后立即触发。服务不可用时再回退浏览器 `SpeechSynthesis`。
 
 这是典型的前端竞态问题：取消视觉状态还不够，还要让已经发出的异步 continuation 失效。

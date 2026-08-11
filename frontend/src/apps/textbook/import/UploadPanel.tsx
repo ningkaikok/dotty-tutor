@@ -1,35 +1,53 @@
 import { useRef, useState } from "react";
-import type { PdfUploadTask, TextbookImportResult } from "../../../types";
 import { ACCEPTED_TEXTBOOK_FILES, formatFileSize } from "./fileValidation";
-import type { UploadPhase } from "./useTextbookImport";
+import type { TextbookUploadItem, UploadPhase } from "./useTextbookImport";
 
 interface UploadPanelProps {
-  file: File | null;
-  preview: string;
+  uploads: TextbookUploadItem[];
+  activeUploadId: string;
   phase: UploadPhase;
-  progress: number;
   error: string;
-  result: TextbookImportResult | null;
   sourceText: string;
-  pdfMode: boolean;
-  processingTask: PdfUploadTask | null;
-  onChooseFile: (file?: File) => void;
+  onChooseFiles: (files: FileList | File[]) => void;
+  onSelectUpload: (id: string) => void;
+  onRemoveUpload: (id: string) => void;
   onSourceTextChange: (value: string) => void;
   onUpload: () => void;
-  onPause: () => void;
+  onPause: (id: string) => void;
+}
+
+const phaseLabels: Record<UploadPhase, string> = {
+  idle: "待开始",
+  queued: "排队中",
+  uploading: "上传中",
+  paused: "已暂停",
+  processing: "识别中",
+  error: "失败",
+  done: "已完成",
+};
+
+function itemProgress(item: TextbookUploadItem): number {
+  return item.phase === "processing" ? item.processingTask?.progress ?? 20 : item.progress;
+}
+
+function itemMessage(item: TextbookUploadItem): string {
+  if (item.error) return item.error;
+  if (item.phase === "processing") return item.processingTask?.message ?? "正在准备识别任务";
+  if (item.phase === "uploading") return "正在上传 PDF 分块";
+  if (item.phase === "queued") return "等待可用的本地 OCR / 模型资源";
+  if (item.phase === "done") return "识别完成，可在右侧查看结果";
+  return phaseLabels[item.phase];
 }
 
 export function UploadPanel({
-  file,
-  preview,
+  uploads,
+  activeUploadId,
   phase,
-  progress,
   error,
-  result,
   sourceText,
-  pdfMode,
-  processingTask,
-  onChooseFile,
+  onChooseFiles,
+  onSelectUpload,
+  onRemoveUpload,
   onSourceTextChange,
   onUpload,
   onPause,
@@ -37,6 +55,7 @@ export function UploadPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const busy = phase === "uploading" || phase === "processing";
+  const pendingCount = uploads.filter((item) => item.phase !== "done").length;
 
   return (
     <div
@@ -46,87 +65,81 @@ export function UploadPanel({
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        onChooseFile(event.dataTransfer.files[0]);
+        onChooseFiles(event.dataTransfer.files);
       }}
     >
       <input
         ref={inputRef}
         type="file"
         accept={ACCEPTED_TEXTBOOK_FILES}
-        onChange={(event) => onChooseFile(event.target.files?.[0])}
+        multiple
+        onChange={(event) => {
+          onChooseFiles(event.target.files ?? []);
+          event.currentTarget.value = "";
+        }}
         hidden
       />
 
-      {file ? (
-        <div className="file-preview">
-          {preview ? <img src={preview} alt="教材页预览" /> : <div className="pdf-preview">PDF</div>}
-          <div className="file-details">
-            <span className="file-type">{pdfMode ? "整本 PDF 教材" : "扫描教材页"}</span>
-            <strong>{file.name}</strong>
-            <small>
-              {formatFileSize(file.size)} · {pdfMode ? "5 MB 分块，支持暂停续传" : "文件仅在内存中处理"}
-            </small>
-            {!busy && <button className="text-button" onClick={() => inputRef.current?.click()}>更换文件</button>}
+      <button className="dropzone-button" onClick={() => inputRef.current?.click()}>
+        <span className="upload-icon">↥</span>
+        <strong>拖入或选择多个教材 PDF</strong>
+        <small>支持同时加入多个文件 · PDF 最大 500 MB · 图片仍可单张识别</small>
+      </button>
+
+      {uploads.length > 0 && (
+        <div className="upload-list" aria-live="polite">
+          <div className="upload-list-heading">
+            <strong>识别队列</strong>
+            <span>{uploads.length} 个文件 · {uploads.filter((item) => item.phase === "done").length} 个完成</span>
           </div>
+          {uploads.map((item) => {
+            const progress = itemProgress(item);
+            const selected = item.id === activeUploadId;
+            const itemBusy = item.phase === "uploading" || item.phase === "processing";
+            return (
+              <article className={`upload-item ${selected ? "selected" : ""} ${item.phase}`} key={item.id}>
+                <button className="upload-item-main" onClick={() => onSelectUpload(item.id)}>
+                  {item.preview ? <img src={item.preview} alt="教材页缩略图" /> : <span className="upload-file-icon">PDF</span>}
+                  <span className="upload-item-copy">
+                    <strong title={item.file.name}>{item.file.name}</strong>
+                    <small>{formatFileSize(item.file.size)} · {phaseLabels[item.phase]}</small>
+                    <span className="upload-item-message">{itemMessage(item)}</span>
+                  </span>
+                </button>
+                <div className="upload-item-progress">
+                  <div className="processing-progress-heading"><span>{item.pdfMode ? "PDF 处理" : "图片识别"}</span><strong>{progress}%</strong></div>
+                  <div className="progress-track"><i style={{ width: `${progress}%` }} /></div>
+                  {item.processingTask?.elapsedSeconds ? <small>已耗时 {Math.round(item.processingTask.elapsedSeconds)} 秒</small> : null}
+                </div>
+                <div className="upload-item-actions">
+                  {itemBusy && item.phase === "uploading" && <button className="text-button" onClick={() => onPause(item.id)}>暂停</button>}
+                  {!itemBusy && item.phase !== "done" && <button className="text-button" onClick={() => onRemoveUpload(item.id)}>移除</button>}
+                  {item.phase === "done" && <span className="upload-done-mark">✓</span>}
+                </div>
+              </article>
+            );
+          })}
         </div>
-      ) : (
-        <button className="dropzone-button" onClick={() => inputRef.current?.click()}>
-          <span className="upload-icon">↥</span>
-          <strong>拖入教材页或整本 PDF</strong>
-          <small>图片最大 10 MB · PDF 最大 500 MB</small>
-        </button>
       )}
 
       <label className="source-text-field">
-        <span>题目原文 <small>可选，但扫描图片测试本地文本模型时建议填写</small></span>
+        <span>题目原文 <small>可选；会作为所有新任务的补充文本</small></span>
         <textarea
           value={sourceText}
           onChange={(event) => onSourceTextChange(event.target.value)}
           disabled={busy}
-          placeholder="例如：已知 A、B 是两个定点，点 P 满足 PA = PB……\n带文字层的 PDF 可以留空，系统会自动抽取前 10 页文本。"
+          placeholder="例如：已知 A、B 是两个定点，点 P 满足 PA = PB……"
         />
       </label>
 
-      {!result && phase === "uploading" && (
-        <div className="upload-progress-block">
-          <div><span>正在上传 PDF 分块</span><strong>{progress}%</strong></div>
-          <div className="progress-track"><i style={{ width: `${progress}%` }} /></div>
-          <button className="pause-button" onClick={onPause}>暂停上传</button>
-        </div>
-      )}
-
-      {!result && phase === "processing" && pdfMode && (
-        <div className="processing-progress-card" aria-live="polite">
-          <div className="processing-progress-heading">
-            <span>{processingTask?.message ?? "正在准备 PDF 处理任务"}</span>
-            <strong>{processingTask?.progress ?? 20}%</strong>
-          </div>
-          <div className="progress-track processing-track">
-            <i style={{ width: `${processingTask?.progress ?? 20}%` }} />
-          </div>
-          <small>
-            已耗时 {Math.round(processingTask?.elapsedSeconds ?? 0)} 秒
-            {processingTask?.status === "ocr"
-              ? " · 当前只识别首批 5 页；本机 OCR 通常需 20–60 秒，首次预热可能更久"
-              : processingTask?.status === "generating"
-                ? " · OCR 已完成，正在由本地模型生成课程"
-                : " · 页面可保持打开，状态每秒自动更新"}
-          </small>
-        </div>
-      )}
-
-      {!result && phase !== "uploading" && (
-        <button className="import-button" disabled={!file || phase === "processing"} onClick={onUpload}>
-          {phase === "paused"
-            ? `继续上传 · ${progress}%`
-            : phase === "processing"
-              ? (pdfMode ? (processingTask?.message ?? "正在处理 PDF…") : "正在识别版面、公式与题目…")
-              : phase === "error"
-                ? `重新尝试 · ${progress}%`
-                : "开始数字化"}
-        </button>
-      )}
+      <button className="import-button" disabled={!pendingCount || busy} onClick={onUpload}>
+        {busy ? `正在处理 ${uploads.filter((item) => itemBusy(item)).length} 个任务…` : pendingCount < uploads.length ? `继续未完成的 ${pendingCount} 个文件` : `开始识别 ${pendingCount} 个文件`}
+      </button>
       {error && <p className="import-error" role="alert">{error}</p>}
     </div>
   );
+}
+
+function itemBusy(item: TextbookUploadItem): boolean {
+  return item.phase === "uploading" || item.phase === "processing";
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { processPdfBatch, requestHelp } from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
@@ -32,6 +32,8 @@ export function TextbookApp() {
   const [loading, setLoading] = useState(false);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
+  const activeQuestionIdRef = useRef("");
+  const interactionRequestId = useRef(0);
   const {
     publication,
     publicationBusy,
@@ -59,7 +61,9 @@ export function TextbookApp() {
 
   const resetLearningState = () => {
     // 题目级状态必须整体移动。只清空文本会把上一题的结构化答案、提示级别或音频步骤带到下一题。
+    interactionRequestId.current += 1;
     stopSpeech();
+    setLoading(false);
     setCanvasAction(INITIAL_ACTION);
     setStudentInput("");
     setSelectedOptions([]);
@@ -81,6 +85,8 @@ export function TextbookApp() {
 
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
+    const questionId = payload.question.id;
+    const requestId = ++interactionRequestId.current;
     const questionType = payload.question.questionType;
     const isDrawQuestion = questionType === "draw-line";
     const structuredResult = questionType === "fill-blank"
@@ -103,20 +109,23 @@ export function TextbookApp() {
     setInteractionError("");
     try {
       const response = await requestHelp({
-        questionId: payload.question.id,
+        questionId,
         studentInput: submittedInput,
         hintLevel,
         mode,
         interactionResult: structuredResult,
       });
+      // 切题后旧的辅导请求可能仍在网络中；它的答案和语音都不能回写到新题目。
+      if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
       setReply(response);
       setHintLevel(response.nextHintLevel);
       setCanvasAction(response.canvasAction);
       speak(response.reply.replace(/\n/g, " "));
     } catch (error) {
+      if (requestId !== interactionRequestId.current) return;
       setInteractionError(error instanceof Error ? error.message : "请求失败");
     } finally {
-      setLoading(false);
+      if (requestId === interactionRequestId.current) setLoading(false);
     }
   };
 
@@ -138,6 +147,10 @@ export function TextbookApp() {
     setQuestionIndex(index);
     setPayload(next);
   };
+
+  useEffect(() => {
+    activeQuestionIdRef.current = payload?.question.id ?? "";
+  }, [payload?.question.id]);
 
   const goToNextQuestion = async () => {
     if (questionIndex < questionBank.length - 1) {

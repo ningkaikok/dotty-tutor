@@ -119,7 +119,8 @@ npm run dev
 ## 修改代码时从哪里开始
 
 - 修改顶层页面或 URL：`frontend/src/App.tsx` 与对应 `frontend/src/apps/*`。
-- 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。
+- 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
+  PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
 - 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
 - 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
   `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程细节仍在 `ocr_runtime.py`。
@@ -219,7 +220,8 @@ cd backend
 服务启动时默认先加载模型，再合成一段不会返回给用户的短音频。这个推理级预热会让服务晚几秒进入
 ready 状态，但能避免学生第一次播放承担设备内核初始化开销。`GET /health` 的 `warmup` 字段会显示
 是否完成和耗时；资源紧张时可设置 `QWEN_TTS_WARMUP_ENABLED=0`，也可用
-`QWEN_TTS_WARMUP_TEXT` 修改预热文本。课程播放器还会在课程载入后预取讲解音频，两层预热互不替代。
+`QWEN_TTS_WARMUP_TEXT` 修改预热文本。课程播放器只预取当前/首个步骤，切换题目时会取消旧的浏览器 TTS 请求，
+避免多个本地合成任务排队阻塞。
 
 没有合适 GPU 时，可以不启动该服务，前端会回退到浏览器语音。
 

@@ -33,252 +33,303 @@ import {
   validatePdfEnvelope,
 } from "./fileValidation";
 
-export type UploadPhase = "idle" | "uploading" | "paused" | "processing" | "error" | "done";
+export type UploadPhase = "idle" | "queued" | "uploading" | "paused" | "processing" | "error" | "done";
+
+export interface TextbookUploadItem {
+  id: string;
+  file: File;
+  preview: string;
+  phase: UploadPhase;
+  progress: number;
+  error: string;
+  result: TextbookImportResult | null;
+  processingTask: PdfUploadTask | null;
+  pdfMode: boolean;
+}
+
+interface UploadController {
+  task?: PdfUploadTask;
+  uploaded: Set<number>;
+  pauseRequested: boolean;
+}
 
 interface UseTextbookImportOptions {
   onOpenLibraryItem: (result: TextbookImportResult) => void;
 }
 
+const MAX_CONCURRENT_UPLOADS = 3;
+
+function uploadIdFor(file: File): string {
+  // 同一个文件允许再次上传，因此时间戳只用于 UI 键，不参与后端幂等标识。
+  return `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`;
+}
+
 /**
  * 教材导入状态机和全部 API 副作用的唯一拥有者。
  *
- * 展示组件只接收普通状态和回调，因此调整页面布局不会破坏断点上传。大文件控制数据放在 ref，
- * 用户可见快照放在 state；这样每个分块完成时既不会重建控制器，又能更新进度条。
+ * 每个 PDF 都有独立的控制器、轮询器和结果。界面只消费 uploads 列表，因此新增第二个
+ * 文件不会覆盖第一个文件的进度；最多三个任务同时运行，避免本地 MinerU/模型进程被瞬间压垮。
  */
 export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOptions) {
-  // Ref 保存跨渲染的可变上传控制数据，state 仍是界面显示的真相来源。
-  const pdfTaskRef = useRef<{ task: PdfUploadTask; uploaded: Set<number> } | null>(null);
-  const pauseRequested = useRef(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState("");
-  const [phase, setPhase] = useState<UploadPhase>("idle");
-  const [progress, setProgress] = useState(0);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<TextbookImportResult | null>(null);
+  const [uploads, setUploads] = useState<TextbookUploadItem[]>([]);
+  const uploadsRef = useRef<TextbookUploadItem[]>([]);
+  const controllers = useRef(new Map<string, UploadController>());
+  const running = useRef(new Set<string>());
+  const [activeUploadId, setActiveUploadId] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [models, setModels] = useState<ModelCatalog | null>(null);
   const [reviewModels, setReviewModels] = useState<ReviewModelCatalog | null>(null);
   const [ocrProviders, setOcrProviders] = useState<OcrCatalog | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
-  const [processingTask, setProcessingTask] = useState<PdfUploadTask | null>(null);
+  const [globalError, setGlobalError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoadingId, setLibraryLoadingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
-    loadModels().then(setModels).catch((requestError) => {
-      setError(requestError instanceof Error ? requestError.message : "模型列表加载失败");
-    });
-    loadOcrProviders().then(setOcrProviders).catch((requestError) => {
-      setError(requestError instanceof Error ? requestError.message : "OCR 列表加载失败");
-    });
-    loadReviewModels().then(setReviewModels).catch((requestError) => {
-      setError(requestError instanceof Error ? requestError.message : "审核模型列表加载失败");
-    });
-    loadLibrary().then(setLibrary).catch((requestError) => {
-      setError(requestError instanceof Error ? requestError.message : "教材库加载失败");
+    uploadsRef.current = uploads;
+  }, [uploads]);
+
+  useEffect(() => () => {
+    // 页面离开时释放图片预览 URL；PDF 本身不复制到浏览器内存之外。
+    uploadsRef.current.forEach((item) => {
+      if (item.preview) URL.revokeObjectURL(item.preview);
     });
   }, []);
 
   useEffect(() => {
-    if (!file || !file.type.startsWith("image/")) {
-      setPreview("");
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+    loadModels().then(setModels).catch(() => setGlobalError("模型列表加载失败"));
+    loadOcrProviders().then(setOcrProviders).catch(() => setGlobalError("OCR 列表加载失败"));
+    loadReviewModels().then(setReviewModels).catch(() => setGlobalError("审核模型列表加载失败"));
+    loadLibrary().then(setLibrary).catch(() => setGlobalError("教材库加载失败"));
+  }, []);
 
-  const chooseFile = (nextFile?: File) => {
-    if (!nextFile) return;
-    setFile(nextFile);
-    setResult(null);
-    setError("");
-    setProgress(0);
-    setPhase("idle");
-    setProcessingTask(null);
-    pauseRequested.current = false;
-    pdfTaskRef.current = null;
+  const updateUpload = (id: string, patch: Partial<TextbookUploadItem>) => {
+    setUploads((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   };
 
-  const runPdfUpload = async (pdf: File) => {
-    if (pdf.size > PDF_MAX_SIZE) throw new Error("PDF 不能超过 500 MB");
-    let current = pdfTaskRef.current;
-    if (!current) {
-      const task = await initPdfUpload(pdf, PDF_CHUNK_SIZE, sourceText);
-      current = { task, uploaded: new Set(task.uploadedChunks) };
-      pdfTaskRef.current = current;
+  const chooseFiles = (nextFiles?: FileList | File[]) => {
+    if (!nextFiles) return;
+    const files = Array.from(nextFiles);
+    if (!files.length) return;
+    const known = new Set(uploadsRef.current.map((item) => `${item.file.name}:${item.file.size}:${item.file.lastModified}`));
+    const newItems = files
+      .filter((file) => file.type === "application/pdf" || file.type.startsWith("image/") || file.name.toLowerCase().endsWith(".pdf"))
+      .filter((file) => {
+        const key = `${file.name}:${file.size}:${file.lastModified}`;
+        if (known.has(key)) return false;
+        known.add(key);
+        return true;
+      })
+      .map((file): TextbookUploadItem => ({
+        id: uploadIdFor(file),
+        file,
+        preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : "",
+        phase: "idle",
+        progress: 0,
+        error: "",
+        result: null,
+        processingTask: null,
+        pdfMode: isPdf(file),
+      }));
+    if (!newItems.length) {
+      setGlobalError("请选择 PDF 或图片文件；重复文件不会再次加入队列");
+      return;
     }
+    setGlobalError("");
+    setUploads((current) => [...current, ...newItems]);
+    setActiveUploadId((current) => current || newItems[0].id);
+  };
 
-    pauseRequested.current = false;
-    setPhase("uploading");
-    const { task, uploaded } = current;
-    // Set 来源于服务端断点状态。跳过已存在索引后，同一循环即可覆盖首次上传、暂停恢复和刷新恢复。
-    for (let index = 0; index < task.totalChunks; index += 1) {
-      if (pauseRequested.current) return;
-      if (uploaded.has(index)) continue;
-      const start = index * task.chunkSize;
-      const chunk = pdf.slice(start, Math.min(start + task.chunkSize, pdf.size));
-      await uploadPdfChunk(task.uploadId, index, chunk);
-      uploaded.add(index);
-      setProgress(Math.round((uploaded.size / task.totalChunks) * 100));
-    }
-    if (pauseRequested.current) return;
-
-    setPhase("processing");
-    setProcessingTask({
-      ...task,
-      uploadedChunks: Array.from(uploaded),
-      status: "merging",
-      progress: 20,
-      message: "上传完成，正在合并 PDF 分块",
-      elapsedSeconds: 0,
-    });
-
-    // 当前 completion 请求同步执行耗时工作，轮询只是只读地刷新进度卡。未来改成 Worker 后可
-    // 删除这个伴随轮询，其余状态机和 UI 契约无需改变。
-    let keepPolling = true;
-    const polling = (async () => {
-      while (keepPolling) {
-        try {
-          setProcessingTask(await loadPdfUploadStatus(task.uploadId));
-        } catch {
-          // 状态查询短暂失败不应取消仍在执行的 completion 请求。
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
-      }
-    })();
-
+  const runUpload = async (id: string) => {
+    if (running.current.has(id)) return;
+    const entry = uploadsRef.current.find((item) => item.id === id);
+    if (!entry) return;
+    running.current.add(id);
+    const controller = controllers.current.get(id) ?? { uploaded: new Set<number>(), pauseRequested: false };
+    controllers.current.set(id, controller);
+    const text = sourceText;
     try {
-      const completed = await completePdfUpload(task.uploadId);
-      setResult(completed);
-      loadLibrary().then(setLibrary).catch(() => undefined);
-      setProgress(100);
-      setPhase("done");
+      controller.pauseRequested = false;
+      if (entry.pdfMode) {
+        if (entry.file.size > PDF_MAX_SIZE) throw new Error("PDF 不能超过 500 MB");
+        await validatePdfEnvelope(entry.file);
+        let task = controller.task;
+        if (!task) {
+          task = await initPdfUpload(entry.file, PDF_CHUNK_SIZE, text);
+          controller.task = task;
+          controller.uploaded = new Set(task.uploadedChunks);
+        }
+        updateUpload(id, { phase: "uploading", error: "" });
+        for (let index = 0; index < task.totalChunks; index += 1) {
+          if (controller.pauseRequested) {
+            updateUpload(id, { phase: "paused" });
+            return;
+          }
+          if (controller.uploaded.has(index)) continue;
+          const start = index * task.chunkSize;
+          const chunk = entry.file.slice(start, Math.min(start + task.chunkSize, entry.file.size));
+          await uploadPdfChunk(task.uploadId, index, chunk);
+          controller.uploaded.add(index);
+          updateUpload(id, { progress: Math.round((controller.uploaded.size / task.totalChunks) * 100) });
+        }
+        if (controller.pauseRequested) {
+          updateUpload(id, { phase: "paused" });
+          return;
+        }
+        updateUpload(id, {
+          phase: "processing",
+          processingTask: {
+            ...task,
+            uploadedChunks: Array.from(controller.uploaded),
+            status: "merging",
+            progress: 20,
+            message: "上传完成，正在合并 PDF 分块",
+            elapsedSeconds: 0,
+          },
+        });
+        let keepPolling = true;
+        const polling = (async () => {
+          while (keepPolling) {
+            try {
+              updateUpload(id, { processingTask: await loadPdfUploadStatus(task!.uploadId) });
+            } catch {
+              // completion 请求仍在运行时，单次状态查询失败不应误报任务失败。
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 800));
+          }
+        })();
+        try {
+          const result = await completePdfUpload(task.uploadId);
+          updateUpload(id, { result, progress: 100, phase: "done" });
+          loadLibrary().then(setLibrary).catch(() => undefined);
+        } finally {
+          keepPolling = false;
+          await polling;
+        }
+      } else {
+        if (entry.file.size > IMAGE_MAX_SIZE) throw new Error("单张教材图片不能超过 10 MB");
+        updateUpload(id, { phase: "processing", progress: 25 });
+        const result = await importTextbook(entry.file, text);
+        updateUpload(id, { result, progress: 100, phase: "done" });
+      }
+    } catch (requestError) {
+      updateUpload(id, {
+        phase: "error",
+        error: requestError instanceof Error ? requestError.message : "教材识别失败",
+      });
     } finally {
-      keepPolling = false;
-      await polling;
+      running.current.delete(id);
     }
   };
 
   const upload = async () => {
-    if (!file || phase === "uploading" || phase === "processing") return;
-    setError("");
-    try {
-      if (isPdf(file)) {
-        await validatePdfEnvelope(file);
-        await runPdfUpload(file);
-      } else {
-        if (file.size > IMAGE_MAX_SIZE) throw new Error("单张教材图片不能超过 10 MB");
-        setPhase("processing");
-        setResult(await importTextbook(file, sourceText));
-        setProgress(100);
-        setPhase("done");
+    const pending = uploadsRef.current.filter((item) => item.phase !== "done" && item.phase !== "processing" && item.phase !== "uploading");
+    if (!pending.length) return;
+    pending.forEach((item) => updateUpload(item.id, { phase: "queued", error: "" }));
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < pending.length) {
+        const item = pending[cursor];
+        cursor += 1;
+        await runUpload(item.id);
       }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "教材识别失败");
-      setPhase("error");
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT_UPLOADS, pending.length) }, worker));
+  };
+
+  const pause = (id: string) => {
+    const controller = controllers.current.get(id);
+    if (!controller) return;
+    controller.pauseRequested = true;
+    updateUpload(id, { phase: "paused" });
+  };
+
+  const removeUpload = (id: string) => {
+    const item = uploadsRef.current.find((entry) => entry.id === id);
+    if (!item || running.current.has(id)) return;
+    if (item.preview) URL.revokeObjectURL(item.preview);
+    controllers.current.delete(id);
+    setUploads((current) => current.filter((entry) => entry.id !== id));
+    setActiveUploadId((current) => current === id ? (uploadsRef.current.find((entry) => entry.id !== id)?.id ?? "") : current);
   };
 
   const selectGenerationModel = async (provider: ModelProvider, model: string) => {
     setRuntimeLoading(true);
-    setError("");
-    try {
-      setModels(await selectModel(provider, model));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "模型切换失败");
-    } finally {
-      setRuntimeLoading(false);
-    }
+    setGlobalError("");
+    try { setModels(await selectModel(provider, model)); } catch { setGlobalError("模型切换失败"); } finally { setRuntimeLoading(false); }
   };
-
   const selectOcr = async (provider: OcrProvider) => {
     setRuntimeLoading(true);
-    setError("");
-    try {
-      setOcrProviders(await selectOcrProvider(provider));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "OCR 切换失败");
-    } finally {
-      setRuntimeLoading(false);
-    }
+    setGlobalError("");
+    try { setOcrProviders(await selectOcrProvider(provider)); } catch { setGlobalError("OCR 切换失败"); } finally { setRuntimeLoading(false); }
   };
-
   const selectReviewer = async (provider: ModelProvider, model: string) => {
     setRuntimeLoading(true);
-    setError("");
-    try {
-      setReviewModels(await selectReviewModel(provider, model));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "审核模型切换失败");
-    } finally {
-      setRuntimeLoading(false);
-    }
+    setGlobalError("");
+    try { setReviewModels(await selectReviewModel(provider, model)); } catch { setGlobalError("审核模型切换失败"); } finally { setRuntimeLoading(false); }
   };
 
   const openLibraryItem = async (item: LibraryItem) => {
     setLibraryLoadingId(item.uploadId);
-    setError("");
     try {
       onOpenLibraryItem(await loadLibraryItem(item.uploadId));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "教材打开失败");
-    } finally {
-      setLibraryLoadingId("");
-    }
+    } catch {
+      setGlobalError("教材内容加载失败，请稍后重试");
+    } finally { setLibraryLoadingId(""); }
   };
-
   const removeLibraryItem = async (item: LibraryItem) => {
     if (!window.confirm(`确定从教材库移除「${item.filename}」吗？\n题目和学习记录会保留在库中，之后可以恢复。`)) return;
     setDeletingId(item.uploadId);
-    setError("");
     try {
       await deleteLibraryItem(item.uploadId);
       setLibrary((current) => current.filter((entry) => entry.uploadId !== item.uploadId));
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "教材删除失败");
-    } finally {
-      setDeletingId("");
-    }
+    } catch {
+      setGlobalError("教材移除失败，请稍后重试");
+    } finally { setDeletingId(""); }
   };
 
-  const pdfMode = Boolean(file && isPdf(file));
-  const processingStageIndex = phase === "uploading" || phase === "paused"
-    ? 0
-    : phase !== "processing"
-      ? -1
-      : processingTask?.status === "splitting"
-        ? 2
-        : processingTask?.status === "ocr"
-          ? 3
-          : processingTask?.status === "generating"
-            ? 4
-            : 1;
+  const active = uploads.find((item) => item.id === activeUploadId) ?? uploads[0] ?? null;
+  const phase: UploadPhase = uploads.some((item) => item.phase === "uploading")
+    ? "uploading"
+    : uploads.some((item) => item.phase === "processing")
+      ? "processing"
+      : uploads.some((item) => item.phase === "queued")
+        ? "queued"
+        : uploads.some((item) => item.phase === "paused")
+          ? "paused"
+        : uploads.some((item) => item.phase === "error")
+          ? "error"
+          : uploads.length > 0 && uploads.every((item) => item.phase === "done") ? "done" : "idle";
+  const processingStageIndex = phase === "uploading" || phase === "paused" ? 0 : phase !== "processing" ? -1 : active?.processingTask?.status === "splitting" ? 2 : active?.processingTask?.status === "ocr" ? 3 : active?.processingTask?.status === "generating" ? 4 : 1;
 
   return {
-    file,
-    preview,
+    uploads,
+    activeUploadId: active?.id ?? "",
+    activeUpload: active,
+    file: active?.file ?? null,
+    preview: active?.preview ?? "",
     phase,
-    progress,
-    error,
-    result,
+    progress: active?.progress ?? 0,
+    error: active?.error || globalError,
+    result: active?.result ?? null,
     sourceText,
     models,
     reviewModels,
     ocrProviders,
     runtimeLoading,
-    processingTask,
+    processingTask: active?.processingTask ?? null,
     library,
     libraryLoadingId,
     deletingId,
-    pdfMode,
+    pdfMode: active?.pdfMode ?? false,
     processingStageIndex,
-    chooseFile,
+    chooseFiles,
+    selectUpload: setActiveUploadId,
+    removeUpload,
     setSourceText,
     upload,
-    pause: () => { pauseRequested.current = true; setPhase("paused"); },
+    pause,
     selectGenerationModel,
     selectReviewer,
     selectOcr,
