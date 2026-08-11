@@ -7,6 +7,16 @@ Semantic Versioning。
 
 后续用户可见改动将在这里累计，发布版本时再固化为具体版本条目。
 
+## [0.9.0] - 2026-08-11
+
+### Added
+
+- 整本 PDF 会按页面特征选择文字层或 MinerU，缓存中间结果，并只对扫描、公式损坏或质量不合格的局部页段升级识别。
+
+### Changed
+
+- OCR 题目切分支持更多中文题号与跨页续题，已知摄氏度、百分号和 LaTeX 转义损坏会在生成前标准化并进入质量门禁。
+
 ### Fixed
 
 - 模型调用失败或读取旧数据时不再把几何示例题和 `show-triangles` 引导卡误用到普通题目。
@@ -165,7 +175,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.5.0...v0.6.0

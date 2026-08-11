@@ -7,9 +7,20 @@ from pathlib import Path
 from typing import Any
 
 
-QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
+# 只把版心左侧的题号视为新题。小问 ``(1)``、章节编号 ``1.1`` 都可能以数字
+# 开头，但前者属于当前题、后者通常不是可独立出题的题号，不能用宽泛的数字正则切开。
+QUESTION_START_PATTERN = re.compile(
+    r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})(?:(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
+)
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MAX_QUESTIONS_PER_BATCH = 5
+
+ANSWER_SECTION_PATTERN = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:参考答案与解析|答案与解析|参考答案|答案|解答|解析)\s*$"
+)
+INLINE_ANSWER_PATTERN = re.compile(
+    r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?"
+)
 
 
 def safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -28,17 +39,29 @@ def safe_string_list(value: Any, fallback: list[str], limit: int = 8) -> list[st
 
 
 def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
-    """Split OCR Markdown into complete numbered questions before answers."""
-    question_area = re.split(r"(?m)^\s*#*\s*(?:参考答案|答案|解析)\s*$", source, maxsplit=1)[0]
+    """Split OCR Markdown into bounded questions without answer-key leakage.
+
+    OCR 页之间可能重复打印同一个题号；相邻的同号块按续题合并，既能保住跨页小问，也不把
+    下一题吸进来。图片始终随其所在题块保留，顺序与 OCR Markdown 一致。
+    """
+    question_area = ANSWER_SECTION_PATTERN.split(source, maxsplit=1)[0]
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
     blocks: list[tuple[str, str, list[str]]] = []
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(question_area)
-        block = question_area[match.start():end].strip()
+        block = INLINE_ANSWER_PATTERN.split(question_area[match.start():end], maxsplit=1)[0].strip()
         if len(block) < 4:
             continue
         images = MARKDOWN_IMAGE_PATTERN.findall(block)
-        blocks.append((match.group("number"), block, images))
+        number = match.group("number")
+        if blocks and blocks[-1][0] == number:
+            # 同号重复通常来自跨页页眉或 OCR 将续题重新识别为题首。合并而非新建题，
+            # 并按出现顺序去重图片，避免同一资源被审核成两次归属。
+            previous_number, previous_block, previous_images = blocks[-1]
+            merged_images = list(dict.fromkeys([*previous_images, *images]))
+            blocks[-1] = (previous_number, f"{previous_block}\n{block}", merged_images)
+        else:
+            blocks.append((number, block, images))
     return blocks
 
 

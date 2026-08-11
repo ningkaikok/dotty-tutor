@@ -26,6 +26,9 @@ dotty-tutor/
 │   ├── application.py          # 中间件、安全头、CORS、请求日志
 │   ├── textbook_routes.py      # 教材 HTTP、分块接收和文件响应
 │   ├── textbook_processing.py  # PDF 合并、OCR、生成和批次编排服务
+│   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
+│   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
+│   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
 │   ├── question_processing.py  # 可被 HTTP/Worker 复用的批次题目处理
 │   ├── library_routes.py       # 教材库读取与软删除
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
@@ -102,7 +105,8 @@ flowchart LR
 ```text
 textbook_routes.py（HTTP、上传状态）
   → textbook_processing.py（PDF 合并、首批/后续批次编排）
-  → textbook_ocr.py（手工文本 → MinerU → pypdf）
+  → textbook_ocr_pipeline.py（页面探测 → pypdf/MinerU → 局部升级 → 缓存）
+  → ocr_pipeline.py / ocr_quality.py（无副作用路由与质量决策）
   → question_source.py（按题号切分 Markdown）
   → question_processing.py（生成、审校、确定性修复和质量门禁）
   → persistence/textbook_store.py（题目和上传任务）
