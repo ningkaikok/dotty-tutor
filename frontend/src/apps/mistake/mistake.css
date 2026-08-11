@@ -146,7 +146,8 @@
 .progress-summary strong, .progress-summary span { display: block; }
 .progress-summary strong { color: #174b39; font-size: 26px; }
 .progress-summary span { margin-top: 4px; color: #728078; font-size: 11px; }
-.progress-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(260px, .7fr); gap: 18px; align-items: start; }
+/* 复习任务是按时间顺序阅读的学习流，知识点进度放在其后，避免桌面端左右跳读。 */
+.progress-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
 .progress-grid h2 { color: #203c30; font-size: 18px; }
 .review-task-card, .knowledge-progress-card { margin-bottom: 11px; padding: 17px; border: 1px solid #dce4de; border-radius: 16px; background: rgba(255,255,252,.94); }
 .review-task-card > header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 13px; }
@@ -160,7 +161,7 @@
 .review-result.correct { color: #17694f; background: #e1f4ea; }
 .review-result.incorrect { color: #994f32; background: #fae9e0; }
 .review-result p { margin: 5px 0 0; }
-.knowledge-progress-card { position: sticky; top: 18px; }
+.knowledge-progress-card { position: static; }
 .knowledge-progress-card > div { margin-top: 16px; }
 .knowledge-progress-card span { display: flex; justify-content: space-between; gap: 10px; }
 .knowledge-progress-card small { color: #78847c; }
