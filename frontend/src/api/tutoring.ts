@@ -27,6 +27,7 @@ export async function sendTutorMessage(
 
 export async function requestHelp(input: {
   questionId: string;
+  publicationId?: string;
   studentInput: string;
   hintLevel: number;
   mode: "answer" | "help";

@@ -37,11 +37,11 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
         <div>
           <span className="eyebrow">PERSONAL MISTAKE BOOK</span>
           <h1>我的错题本</h1>
-          <p>先确认 AI 的识别与归类，再进入后续陪练。数据不确认，就不让错误继续传播。</p>
+          <p>在线作答的错题会自动进入这里；只有纸质作业需要拍照并确认识别结果。</p>
         </div>
         <div className="mistake-hero-actions">
           <button onClick={onProgress}>查看学习进度</button>
-          <button className="mistake-primary-action compact" onClick={onCapture}>录入一道错题</button>
+          <button className="mistake-primary-action compact" onClick={onCapture}>录入纸质错题</button>
         </div>
       </section>
 
@@ -67,14 +67,21 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
         <section className="mistake-empty">
           <span className="empty-sheet" aria-hidden="true" />
           <h2>{activeBook === "advanced" ? "还没有进入进阶本的题目" : "还没有错题"}</h2>
-          <p>{activeBook === "advanced" ? "连续答对两道不同变式题后，题目会自动出现在这里。" : "从一道最近做错的初中数学题开始，先建立最小学习闭环。"}</p>
-          {activeBook === "mistakes" && <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入第一题</button>}
+          <p>{activeBook === "advanced" ? "连续答对两道不同变式题后，题目会自动出现在这里。" : "完成互动试卷后，错题会自动出现；也可以补录纸质作业。"}</p>
+          {activeBook === "mistakes" && <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入纸质错题</button>}
         </section>
       ) : (
         <section className="mistake-list" aria-label="错题列表">
           {visibleItems.map((item) => (
             <article key={item.mistakeId} className="mistake-list-item">
-              <img src={item.sourceImageUrl} alt="错题原图" loading="lazy" />
+              {item.sourceImageUrl ? (
+                <img src={item.sourceImageUrl} alt="错题原图" loading="lazy" />
+              ) : (
+                <div className="mistake-paper-source" aria-label="来自互动试卷">
+                  <strong>互动试卷</strong>
+                  <span>自动记录</span>
+                </div>
+              )}
               <div className="mistake-list-content">
                 <div className="mistake-list-meta">
                   <span className={`mistake-status ${item.status}`}>

@@ -66,6 +66,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 产品首页 | `frontend/src/apps/home/ProductHome.tsx` | 展示学生学习与内容生产两个角色入口 |
 | 学生学习空间 | `frontend/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `frontend/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
+| 学生题目工作区 | `frontend/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
 | 学生学习会话 Hook | `frontend/src/apps/student/usePublishedLearningSession.ts` | 恢复失效会话、持久化离线队列、批量补传和幂等重试 |
 | 内容生产编排 | `frontend/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、发布状态和互动预览状态编排；预览不写学习记录 |
 | 试卷发布 Hook | `frontend/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
@@ -76,7 +77,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 教材导入组件 | `frontend/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、上传区和处理结果展示 |
 | 课程播放器 | `frontend/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `frontend/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
-| 练习工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 题目导航、作答、质量信息和辅导反馈 |
+| 内容预览工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |
 | 题型作答 | `frontend/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
 | 题目展示 | `frontend/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `frontend/src/api/`、`frontend/src/types/` | 按产品域组织请求和类型；根文件只做兼容导出 |
@@ -275,7 +276,8 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
 判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
-前端在学习证据卡显示当前知识点分数与累计作答。详细契约见
+并把 `incorrect` / `partial` 作答幂等写入个人错题本。前端在学习证据卡显示当前知识点分数与累计作答，
+答错时给出错题本入口；离线记录补传后走相同自动归档逻辑。详细契约见
 [可编程课程与学习闭环](programmable-learning.md)。
 
 ## TTS 回退

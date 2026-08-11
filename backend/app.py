@@ -55,7 +55,9 @@ app = create_app()
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 app.include_router(build_runtime_router(store=store, question_payload=question_payload))
-app.include_router(build_learning_router(store=store))
+# 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
+mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
+app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
 publication_revision_service = PublicationRevisionService(
     store=store,
     processing_service=processing_service,
@@ -66,8 +68,7 @@ app.include_router(build_publication_router(
 ))
 app.include_router(textbook_router)
 
-# 错题域复用引擎和 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
-mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
+# 错题域复用 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_recognizer = build_mistake_recognizer(
     resolve_ocr_text=resolve_ocr_text,
     generate_lesson=generate_lesson,

@@ -21,7 +21,7 @@ flowchart LR
 | Router | `App.tsx` | 产品入口、懒加载、404 跳转和页面标题 |
 | Page | `TextbookApp.tsx`、`MistakeCoachApp.tsx` | 组合业务状态、调用 Hook、切换页面模式 |
 | Hook | `useTextbookImport.ts`、`usePaperPublication.ts`、`usePublishedLearningSession.ts` | 异步流程、状态转换、失败恢复 |
-| Component | `PracticeWorkspace.tsx`、`QuestionAnswer.tsx` | 根据 Props 渲染并上报用户操作 |
+| Component | `PracticeWorkspace.tsx`、`StudentQuestionWorkspace.tsx`、`QuestionAnswer.tsx` | 按角色渲染并上报用户操作 |
 | API | `api/` | 请求路径、序列化和统一错误解析 |
 | Types | `types/` | 前后端稳定契约和判别联合类型 |
 | Renderer | `lesson/`、画布组件 | 把结构化内容映射为可交互界面 |
@@ -56,9 +56,9 @@ flowchart LR
 - 包含请求、暂停/恢复或生命周期：放在 Hook，例如 PDF 上传任务。
 - 需要刷新页面后恢复：放在后端数据库，前端只保存服务端返回的快照。
 
-`PracticeWorkspace` 的 Props 较多是有意选择。它是受控组件，只表达“现在显示什么”和“用户做了什么”，
-不会偷偷请求后端。对于个人学习项目，这比引入全局状态库更容易追踪；只有跨多个不相邻路由共享状态时，
-才考虑 Context 或 Zustand。
+`PracticeWorkspace` 是内容生产端的受控组件，包含质量门禁、重新生成和调试信息；学生端不复用这个外壳，
+而由 `StudentQuestionWorkspace` 只呈现作答、提示和反馈。两者共同复用 `QuestionAnswer`，因为题型输入是
+真正稳定的跨角色能力。对于个人学习项目，这种“复用领域控件、不复用角色页面”比条件分支堆叠更容易追踪。
 
 ## 4. 教材导入状态机
 

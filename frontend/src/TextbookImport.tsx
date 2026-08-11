@@ -20,7 +20,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
   return (
     <main className="import-shell">
       <header className="import-header">
-        {onExit && <button className="route-back-button" onClick={onExit}>← 选择入口</button>}
+        {onExit && <button className="route-back-button" onClick={onExit}>← 返回入口</button>}
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>

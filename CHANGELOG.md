@@ -7,9 +7,17 @@ Semantic Versioning。
 
 后续用户可见改动将在这里累计，发布版本时再固化为具体版本条目。
 
+## [0.8.0] - 2026-08-11
+
+### Added
+
+- 学生在互动试卷中答错或部分答对时会自动加入错题本，离线补传和网络重试不会重复创建记录。
+
 ### Fixed
 
 - 复习进度页将 1、3、7 天复习任务与知识点掌握改为纵向阅读布局，减少桌面端左右跳读。
+- 学生答题页不再显示重新生成、OCR、审核、模型和内部画布动作；分步讲解仅在请求提示或答错后出现。
+- 学生从不同学习子页返回时使用明确且一致的“返回学生空间 / 返回错题本 / 返回教材库”层级。
 
 ## [0.7.0] - 2026-08-09
 
@@ -152,7 +160,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.4.0...v0.5.0

@@ -148,8 +148,13 @@ flowchart LR
 
 互动试卷沿用相同分层：`TextbookApp.tsx` 组合内容预览，`usePaperPublication.ts` 负责显式发布状态流；
 `PublishedPaperApp.tsx` 组合学生作答，`usePublishedLearningSession.ts` 负责刷新恢复、数据库重建后的旧会话
-替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据。两个页面复用
-`PracticeWorkspace`，但生产预览绝不写入真实学习记录。
+替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据。
+内容生产端使用 `PracticeWorkspace` 展示重新生成、审核和诊断信息，学生端使用
+`StudentQuestionWorkspace` 表达作答、求助和反馈；两者只复用无副作用的 `QuestionAnswer` 与课程渲染器。
+这种边界避免为了复用视觉外壳而把作者权限和内部术语带入学生任务流。
+
+学生的非正确作答由 `learning_routes.py` 编排写入 `MistakeStore`。稳定错题 ID 使用学生、试卷和题目
+共同生成，因此在线提交、离线补传和重复请求都只更新同一条记录；纸质错题仍走 OCR 与人工确认链路。
 
 错题页面新增复杂状态机时也遵循同样边界，不要把 API 请求重新塞回列表或表单组件。
 

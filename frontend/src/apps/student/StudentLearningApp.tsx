@@ -27,7 +27,7 @@ export function StudentLearningApp() {
   return (
     <main className="student-shell">
       <header className="student-header">
-        <button className="route-back-button" onClick={() => navigate("/")}>← 选择入口</button>
+        <button className="route-back-button" onClick={() => navigate("/")}>← 返回入口</button>
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
@@ -69,11 +69,11 @@ export function StudentLearningApp() {
             <span className="student-card-status">已可用</span>
           </div>
           <h2>我的错题本</h2>
-          <p>录入单道错题，确认知识点和错误原因，再通过多轮陪练找到真正卡点。</p>
+          <p>互动试卷中的错题会自动记录；纸质作业仍可拍照补录，再通过多轮陪练找到真正卡点。</p>
           <ul>
-            <li>拍照录入与人工确认</li>
+            <li>在线错题自动收集</li>
+            <li>纸质错题拍照补录</li>
             <li>一题一线程的分步陪练</li>
-            <li>连续答对两题验证掌握</li>
           </ul>
           <button onClick={() => navigate("/mistakes")}>打开我的错题本</button>
         </article>

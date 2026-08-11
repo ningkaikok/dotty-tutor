@@ -19,6 +19,7 @@ const ERROR_REASONS: Array<[MistakeErrorReason, string, string]> = [
 
 export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
   const question = item.questionPayload.question;
+  const fromPublishedPaper = item.contentType === "application/vnd.dotty.publication+json";
   const [form, setForm] = useState<Omit<MistakeConfirmation, "errorReason"> & { errorReason: MistakeErrorReason | "" }>({
     prompt: question.prompt,
     originalAnswer: item.originalAnswer,
@@ -62,12 +63,21 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
       <div className="mistake-section-heading">
         <span className="eyebrow">STEP 02 · CONFIRM</span>
         <h1>确认题目与错误原因</h1>
-        <p>AI 识别可能出错。请以原图为准修正题干和归类，再保存到错题本。</p>
+        <p>{fromPublishedPaper
+          ? "题目来自已发布互动试卷，可在这里补充错误原因和订正备注。"
+          : "AI 识别可能出错。请以原图为准修正题干和归类，再保存到错题本。"}</p>
       </div>
 
       <section className="mistake-confirm-grid">
         <aside className="mistake-source-card">
-          <img src={item.sourceImageUrl} alt="上传的错题原图" />
+          {item.sourceImageUrl ? (
+            <img src={item.sourceImageUrl} alt="上传的错题原图" />
+          ) : (
+            <div className="mistake-published-source">
+              <span>互动试卷自动记录</span>
+              <strong>{item.sourceFilename}</strong>
+            </div>
+          )}
           <div>
             <span>识别结果预览</span>
             <MathText text={form.prompt} block />
@@ -75,7 +85,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
               <ol>{question.options.map((option) => <li key={option}><MathText text={option} /></li>)}</ol>
             ) : null}
           </div>
-          <small>OCR：{item.ocrRun.provider} · 模型：{item.modelRun.provider}</small>
+          <small>{fromPublishedPaper ? "来源：已发布互动试卷" : `OCR：${item.ocrRun.provider} · 模型：${item.modelRun.provider}`}</small>
         </aside>
 
         <div className="mistake-confirm-form">

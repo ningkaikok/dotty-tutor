@@ -6,7 +6,7 @@ import {
   recordExerciseAttempt,
   syncExerciseAttempts,
 } from "../../api";
-import type { ExerciseAttemptInput, MasteryState } from "../../types";
+import type { ExerciseAttemptInput, MasteryState, MistakeItem } from "../../types";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
 const DEMO_LEARNER_ID = "local-demo";
@@ -14,6 +14,11 @@ const DEMO_LEARNER_ID = "local-demo";
 interface PendingAttempt {
   sessionId: string;
   attempt: ExerciseAttemptInput;
+}
+
+export interface AttemptQueueResult {
+  status: "saved" | "queued";
+  autoMistake?: MistakeItem | null;
 }
 
 function readPending(): PendingAttempt[] {
@@ -112,24 +117,24 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     return () => { cancelled = true; };
   }, [publicationId]);
 
-  const queueAttempt = useCallback((attempt: ExerciseAttemptInput) => {
+  const queueAttempt = useCallback(async (attempt: ExerciseAttemptInput): Promise<AttemptQueueResult> => {
     if (!sessionId) {
       const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
       writePending([...pending, { sessionId: "", attempt }]);
       setSyncMessage("学习会话尚未连接，答案已暂存");
-      return;
+      return { status: "queued" };
     }
-    void recordExerciseAttempt(sessionId, attempt).then(
-      ({ mastery: nextMastery }) => {
-        mergeMastery(nextMastery);
-        setSyncMessage("学习记录已同步");
-      },
-      () => {
-        const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
-        writePending([...pending, { sessionId, attempt }]);
-        setSyncMessage("网络暂时不可用，记录已排队，稍后自动补传");
-      },
-    );
+    try {
+      const result = await recordExerciseAttempt(sessionId, attempt);
+      mergeMastery(result.mastery);
+      setSyncMessage("学习记录已同步");
+      return { status: "saved", autoMistake: result.autoMistake };
+    } catch {
+      const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
+      writePending([...pending, { sessionId, attempt }]);
+      setSyncMessage("网络暂时不可用，记录已排队，稍后自动补传");
+      return { status: "queued" };
+    }
   }, [mergeMastery, sessionId]);
 
   return { queueAttempt, syncMessage, mastery };

@@ -17,8 +17,49 @@ from lesson_contracts import (
 from observability import log_event
 
 
-def build_learning_router(*, store: Any) -> APIRouter:
+def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> APIRouter:
     router = APIRouter(prefix="/api")
+
+    def auto_record_mistake(
+        session_id: str,
+        request: ExerciseAttemptCreate,
+        *,
+        recorded_at: float,
+    ) -> dict[str, Any] | None:
+        """为已发布试卷的非正确作答建立错题记录，但不阻塞主学习日志。"""
+        if mistake_store is None or request.assessment == "correct":
+            return None
+        session = store.get_learning_session(session_id)
+        publication = store.load_publication(session["publicationId"]) if session else None
+        if not session or not publication:
+            return None
+        lesson = next((
+            item for item in publication.get("lessons", [])
+            if (item.get("questionPayload") or {}).get("question", {}).get("id") == request.questionId
+        ), None)
+        if not lesson:
+            log_event(
+                "learning.mistake.skipped",
+                level=30,
+                session_id=session_id,
+                question_id=request.questionId,
+                reason="published question not found",
+            )
+            return None
+        mistake = mistake_store.record_published_attempt(
+            learner_id=session["learnerId"],
+            publication=publication,
+            lesson=lesson,
+            response=request.response,
+            recorded_at=recorded_at,
+        )
+        log_event(
+            "learning.mistake.auto_recorded",
+            session_id=session_id,
+            question_id=request.questionId,
+            mistake_id=mistake["mistakeId"],
+        )
+        return mistake
 
     @router.post("/lessons")
     def save_lesson(document: LessonDocument) -> dict[str, Any]:
@@ -77,6 +118,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
             assessment=request.assessment,
             mastery_score=result["mastery"]["score"],
         )
+        result["autoMistake"] = auto_record_mistake(session_id, request, recorded_at=received_at)
         return result
 
     @router.get("/learning/mastery/{learner_id}")
@@ -110,6 +152,7 @@ def build_learning_router(*, store: Any) -> APIRouter:
                 )
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
+            result["autoMistake"] = auto_record_mistake(session_id, attempt, recorded_at=received_at)
             synced.append(result)
         log_event(
             "learning.attempts.synced",

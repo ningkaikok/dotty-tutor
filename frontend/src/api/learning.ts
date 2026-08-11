@@ -1,5 +1,12 @@
+import type { MistakeItem } from "../types/mistake";
 import type { ExerciseAttemptInput, LearningSession, MasteryState } from "../types/lesson";
 import { parse } from "./client";
+
+export interface ExerciseAttemptResult {
+  attemptId: string;
+  mastery: MasteryState;
+  autoMistake?: MistakeItem | null;
+}
 
 export async function createLearningSession(input: { learnerId: string; publicationId: string }): Promise<LearningSession> {
   return parse<LearningSession>(await fetch("/api/learning/sessions", {
@@ -25,8 +32,8 @@ export async function loadLearningSession(sessionId: string): Promise<LearningSe
 export async function recordExerciseAttempt(
   sessionId: string,
   input: ExerciseAttemptInput,
-): Promise<{ attemptId: string; mastery: MasteryState }> {
-  return parse<{ attemptId: string; mastery: MasteryState }>(
+): Promise<ExerciseAttemptResult> {
+  return parse<ExerciseAttemptResult>(
     await fetch(`/api/learning/sessions/${sessionId}/attempts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -38,7 +45,7 @@ export async function recordExerciseAttempt(
 export async function syncExerciseAttempts(
   sessionId: string,
   attempts: ExerciseAttemptInput[],
-): Promise<{ sessionId: string; synced: Array<{ attemptId: string; mastery: MasteryState }> }> {
+): Promise<{ sessionId: string; synced: ExerciseAttemptResult[] }> {
   return parse(await fetch(`/api/learning/sessions/${sessionId}/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
