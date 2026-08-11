@@ -146,7 +146,7 @@ flowchart LR
 教材导入是参考实现：
 
 - `TextbookImport.tsx` 只负责页面组合。
-- `useTextbookImport.ts` 负责初始化、断点上传、轮询、模型切换和错误状态。
+- `useTextbookImport.ts` 负责多文件队列、每项断点上传、独立轮询、模型切换和错误状态；页面只负责组合列表与右侧结果。
 - `fileValidation.ts` 只包含纯校验和常量。
 - `RuntimeSettings`、`TextbookLibrary`、`UploadPanel`、`PipelinePanel` 各自负责一个视觉区域。
 

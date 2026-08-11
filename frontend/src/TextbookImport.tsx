@@ -32,7 +32,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
       <section className="import-intro">
         <span className="eyebrow">CONTENT STUDIO · 教材数字化</span>
         <h1>上传教材页或整本 PDF</h1>
-        <p>此处面向内容生产者。大 PDF 会按 5 MB 断点上传，后端合并校验后每 5 页规划一个识别批次。</p>
+        <p>此处面向内容生产者。可同时加入多个 PDF；每个文件独立断点上传、识别和展示进度，最多并行处理 3 个任务。</p>
       </section>
 
       <RuntimeSettings
@@ -56,16 +56,14 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
 
       <section className="import-grid">
         <UploadPanel
-          file={state.file}
-          preview={state.preview}
+          uploads={state.uploads}
+          activeUploadId={state.activeUploadId}
           phase={state.phase}
-          progress={state.progress}
           error={state.error}
-          result={state.result}
           sourceText={state.sourceText}
-          pdfMode={state.pdfMode}
-          processingTask={state.processingTask}
-          onChooseFile={state.chooseFile}
+          onChooseFiles={state.chooseFiles}
+          onSelectUpload={state.selectUpload}
+          onRemoveUpload={state.removeUpload}
           onSourceTextChange={state.setSourceText}
           onUpload={() => void state.upload()}
           onPause={state.pause}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   loadPublishedPublication,
@@ -36,6 +36,8 @@ export function PublishedPaperApp() {
   const [reply, setReply] = useState<TutorReply | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const activeQuestionIdRef = useRef("");
+  const interactionRequestId = useRef(0);
   const { queueAttempt, syncMessage, mastery } = usePublishedLearningSession(publication?.publicationId);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
@@ -48,6 +50,11 @@ export function PublishedPaperApp() {
   }, [publicationId]);
 
   useEffect(() => {
+    activeQuestionIdRef.current = payload?.question.id ?? "";
+  }, [payload?.question.id]);
+
+  useEffect(() => {
+    interactionRequestId.current += 1;
     stopSpeech();
     setStudentInput("");
     setSelectedOptions([]);
@@ -58,10 +65,18 @@ export function PublishedPaperApp() {
     setReply(null);
     setShowExplanation(false);
     setMistakeNotice("");
+    setLoading(false);
   }, [questionIndex]);
+
+  useEffect(() => () => {
+    interactionRequestId.current += 1;
+    stopSpeech();
+  }, []);
 
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
+    const questionId = payload.question.id;
+    const requestId = ++interactionRequestId.current;
     const questionType = payload.question.questionType;
     const interactionResult = questionType === "fill-blank"
       ? { blankAnswers }
@@ -85,20 +100,22 @@ export function PublishedPaperApp() {
     const startedAt = performance.now();
     try {
       const response = await requestHelp({
-        questionId: payload.question.id,
+        questionId,
         publicationId,
         studentInput: submittedInput,
         hintLevel,
         mode,
         interactionResult,
       });
+      // 切题后旧的辅导请求可能晚返回；不允许它重新触发旧题目的回复或 TTS。
+      if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
       setReply(response);
       setHintLevel(response.nextHintLevel);
       speak(response.reply.replace(/\n/g, " "));
       if (mode === "answer" && response.guideContext.assessment) {
         const attemptResult = await queueAttempt({
           attemptId: crypto.randomUUID(),
-          questionId: payload.question.id,
+          questionId,
           knowledgePoint: payload.question.knowledgePoint,
           response: { text: submittedInput, interactionResult: interactionResult ?? {} },
           assessment: response.guideContext.assessment,
@@ -106,6 +123,7 @@ export function PublishedPaperApp() {
           durationMs: Math.round(performance.now() - startedAt),
           createdAt: Date.now() / 1000,
         });
+        if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
         if (response.guideContext.assessment !== "correct") {
           setShowExplanation(true);
           setMistakeNotice(attemptResult.status === "saved" && attemptResult.autoMistake
@@ -114,10 +132,18 @@ export function PublishedPaperApp() {
         }
       }
     } catch (requestError) {
+      if (requestId !== interactionRequestId.current) return;
       setError(requestError instanceof Error ? requestError.message : "请求失败");
     } finally {
-      setLoading(false);
+      if (requestId === interactionRequestId.current) setLoading(false);
     }
+  };
+
+  const changeQuestion = (nextIndex: number) => {
+    // 先取消网络和播放，再提交索引变更；不用等 React effect 执行，切题动作本身就是取消边界。
+    interactionRequestId.current += 1;
+    stopSpeech();
+    setQuestionIndex(nextIndex);
   };
 
   const selectOption = (label: string, answerText: string) => {
@@ -161,8 +187,8 @@ export function PublishedPaperApp() {
         error={error}
         reply={reply}
         mistakeNotice={mistakeNotice}
-        onPrevious={() => setQuestionIndex((value) => Math.max(0, value - 1))}
-        onNext={() => setQuestionIndex((value) => Math.min(publication.lessons.length - 1, value + 1))}
+        onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}
+        onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}
         onBlankChange={(id, value) => setBlankAnswers((current) => ({ ...current, [id]: value }))}
         onNumericChange={setNumericAnswer}

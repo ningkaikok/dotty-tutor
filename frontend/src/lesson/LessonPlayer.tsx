@@ -41,9 +41,10 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     setStep(0);
     setPlaying(false);
     activateBlock(playableBlocks[0]);
-    // 本地 TTS 合成可能比单步动画更慢，因此课程加载后先排队预热所有旁白，而不是只准备下一步。
-    // requestSpeech 会去重；学生手动点击某一步时，预热不会重复发送网络请求。
-    for (const block of playableBlocks) void preloadSpeech(blockNarration(block));
+    // 只预热首步。一次性请求整节课的所有旁白会把 Qwen3-TTS 串行队列塞满，切题时
+    // 旧请求也来不及释放；下一步在真正播放前再按需请求，并由 stopSpeech 统一取消。
+    const firstBlock = playableBlocks[0];
+    if (firstBlock) void preloadSpeech(blockNarration(firstBlock));
 
     return stopSpeech;
   }, [document.lessonId]);
@@ -52,13 +53,11 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     if (!playing || !current) return;
     let cancelled = false;
     const narration = blockNarration(current);
-    const next = playableBlocks[step + 1];
 
     void (async () => {
-      // 先确认音频可播放，再改变画布动作，避免“动画先走完、声音才出现”；随后继续预热下一步。
+      // 先确认音频可播放，再改变画布动作，避免“动画先走完、声音才出现”。
       await preloadSpeech(narration);
       if (cancelled) return;
-      if (next) void preloadSpeech(blockNarration(next));
       await playSpeech(narration, () => {
         if (!cancelled) activateBlock(current);
       });

@@ -11,7 +11,7 @@ interface PipelinePanelProps {
 }
 
 const IMAGE_PIPELINE = ["文件校验", "版面与公式识别", "题目结构化", "引导卡生成"];
-const PDF_PIPELINE = ["PDF 分块上传", "PDF 合并与校验", "按页规划批次", "首批 5 页 MinerU OCR", "结构化与引导卡"];
+const PDF_PIPELINE = ["PDF 分块上传", "PDF 合并与校验", "按页规划批次", "页面级 OCR 与局部重试", "结构化与引导卡"];
 
 export function PipelinePanel({ result, pdfMode, phase, processingTask, activeStage, onContinue }: PipelinePanelProps) {
   const pipeline = pdfMode ? PDF_PIPELINE : IMAGE_PIPELINE;
