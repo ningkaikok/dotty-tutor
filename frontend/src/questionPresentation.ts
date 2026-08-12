@@ -2,9 +2,13 @@ import type { Question } from "./types";
 
 export function hasImageOptions(question: Question) {
   // optionImageUrls 是新契约；四个纯标签配四张图是旧数据的兼容推断。
-  const inferred = question.imageUrls?.length === 4
+  const inferred = (question.imageUrls?.length === 4 || question.imageUrls?.length === 5)
     && question.options?.length === 4
-    && question.options.every((option, index) => option.trim() === `(${String.fromCharCode(65 + index)})`);
+    && question.options.every((option, index) => (
+      option.trim() === `(${String.fromCharCode(65 + index)})`
+      || option.trim() === `${String.fromCharCode(65 + index)}.`
+      || option.trim() === `${String.fromCharCode(65 + index)}、`
+    ));
   return Boolean(question.optionImageUrls?.length || inferred);
 }
 
@@ -22,7 +26,12 @@ export function displayedPrompt(question: Question) {
   if (hasImageOptions(question)) {
     prompt = prompt.replace(/(^|\n)\s*\([A-D]\)\s*(?=\n|$)/g, "\n");
   }
-  return prompt.replace(/[（(]\s*[)）]/g, "（ ）").replace(/\n{3,}/g, "\n\n").trim();
+  return prompt
+    .replace(/!\[[^\]]*\]\(([^)]+)\)/g, "")
+    .replace(/(?<![A-Za-z0-9_.-])(?:images\/|\/api\/uploads\/)[^\s)<>]+/g, "")
+    .replace(/[（(]\s*[)）]/g, "（ ）")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export function optionLabel(index: number) {
@@ -33,5 +42,6 @@ export function optionText(option: string) {
   return option
     .replace(/^(?:\([A-D]\)|[A-D][.．:：、])\s*/, "")
     .replace(/!\[[^\]]*\]\(([^)]+)\)/, "")
+    .replace(/(?<![A-Za-z0-9_.-])(?:images\/|\/api\/uploads\/)[^\s)<>]+/g, "")
     .trim();
 }

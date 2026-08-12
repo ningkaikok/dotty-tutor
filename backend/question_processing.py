@@ -74,6 +74,9 @@ def _generate_validated_question(
             question_image_paths(asset_dir, images),
             guide_cards,
         )
+        # 审核模型可能会删掉图片或把文件名写回文字字段。来源图片是 OCR 的确定性事实，
+        # 审核只能补充说明，不能改变题目与图片的归属；因此审核后再次绑定来源。
+        attach_question_source(payload, batch, ocr_run, images)
         normalize_stacked_equation_choices(payload, block)
         normalize_text_choices_from_source(payload, str(payload["question"].get("prompt", "")))
         normalize_text_choices_from_source(payload, block)

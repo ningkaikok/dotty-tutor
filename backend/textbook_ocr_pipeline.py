@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -19,12 +20,51 @@ from ocr_pipeline import (
     build_ocr_cache_key,
     choose_ocr_provider,
     probe_page,
+    has_visual_hint,
 )
 from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
-from question_source import split_question_sources
+from question_source import QUESTION_START_PATTERN, split_question_sources
 
 
-OCR_PIPELINE_VERSION = "page-routing-v1"
+# 渲染矢量页图属于缓存结果的一部分；升级版本可以避免旧缓存继续沿用“只有文字”的结果。
+OCR_PIPELINE_VERSION = "page-routing-v2"
+
+
+def _inject_page_render(markdown: str, page_number: int, reference: str) -> str:
+    """把矢量页渲染图放入该页明确依赖图形的题块，而不是页尾。"""
+    marker = re.compile(rf"<!--\s*page\s+{page_number}\s*-->", re.IGNORECASE)
+    match = marker.search(markdown)
+    if not match:
+        # MinerU 的 Markdown 版本不一定保留页标记。仍按题号和视觉提示寻找
+        # 尚未绑定图片的题块；这是比把图片直接丢到文末更可靠的保底策略。
+        section = markdown
+        question_matches = list(QUESTION_START_PATTERN.finditer(section))
+        for index in range(len(question_matches) - 1, -1, -1):
+            question_match = question_matches[index]
+            block_end = question_matches[index + 1].start() if index + 1 < len(question_matches) else len(section)
+            block = section[question_match.start():block_end]
+            if not has_visual_hint(block) or "![](" in block:
+                continue
+            return section[:block_end] + f"\n\n![]({reference})\n\n" + section[block_end:]
+        return markdown
+    next_marker = re.search(r"<!--\s*page\s+\d+\s*-->", markdown[match.end():], re.IGNORECASE)
+    section_end = match.end() + next_marker.start() if next_marker else len(markdown)
+    section = markdown[match.end():section_end]
+    question_matches = list(QUESTION_START_PATTERN.finditer(section))
+    injected = False
+    # 从后往前插入，保持前面题目的字符偏移稳定；同页有多道“如图”题时，每题
+    # 都需要拿到该页渲染图，而不是只给第一题绑定。
+    for index in range(len(question_matches) - 1, -1, -1):
+        question_match = question_matches[index]
+        block_end = question_matches[index + 1].start() if index + 1 < len(question_matches) else len(section)
+        block = section[question_match.start():block_end]
+        if not has_visual_hint(block) or "![](" in block:
+            continue
+        # 保留题号所在行的换行，否则后一个“4．”会紧贴图片语法，题目切分器
+        # 无法再把它识别为新题。
+        section = section[:block_end] + f"\n\n![]({reference})\n\n" + section[block_end:]
+        injected = True
+    return markdown[:match.end()] + section + markdown[section_end:] if injected else markdown
 
 
 def _safe_page_text(page: Any) -> str:
@@ -222,9 +262,11 @@ def resolve_routed_ocr_source(
                 "imageUrls": [],
                 "cacheHit": False,
             }
-        if markdown.strip():
-            markdown_parts.append(
-                f"<!-- pages {group[0]['pageNumber']}-{group[-1]['pageNumber']} -->\n{markdown.strip()}"
+            span_run["cacheKey"] = _cache_key(
+                content_hash,
+                group[0]["pageIndex"],
+                group[-1]["pageIndex"],
+                span_run["provider"],
             )
         quality = evaluate_page_quality(
             markdown,
@@ -234,6 +276,34 @@ def resolve_routed_ocr_source(
             retry_count=MAX_OCR_RETRIES if span_run.get("provider") == "mineru" else 0,
         )
         span_run["quality"] = quality
+        render_page = getattr(runtime, "render_page_image", None)
+        if not span_run.get("imageUrls") and callable(render_page):
+            rendered_urls: list[str] = []
+            for route in group:
+                if not has_visual_hint(route.get("text", "")):
+                    continue
+                rendered = render_page(
+                    source_path, route["pageNumber"], asset_dir, asset_url_prefix
+                )
+                if rendered:
+                    reference, url = rendered
+                    markdown = _inject_page_render(markdown, route["pageNumber"], reference)
+                    rendered_urls.append(url)
+            if rendered_urls:
+                span_run["imageUrls"] = rendered_urls
+                span_run["renderedPageImages"] = rendered_urls
+                # 页面渲染图也是 OCR 中间结果；写回同一个内容寻址缓存，后续批次只需
+                # 复用已存在的 PNG，不会因为命中文字缓存而重复判断或丢失图片绑定。
+                cache.save(
+                    span_run["cacheKey"],
+                    markdown=markdown,
+                    image_urls=rendered_urls,
+                    metadata=span_run,
+                )
+        if markdown.strip():
+            markdown_parts.append(
+                f"<!-- pages {group[0]['pageNumber']}-{group[-1]['pageNumber']} -->\n{markdown.strip()}"
+            )
         span_runs.append(span_run)
 
     lesson_source = "\n\n".join(markdown_parts)[:40_000]

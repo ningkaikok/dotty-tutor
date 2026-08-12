@@ -37,6 +37,30 @@ curl -fsS http://127.0.0.1:8020/health
 curl -fsS http://127.0.0.1:8010/api/health
 ```
 
+### Codex 连接慢或反复重连
+
+先确认页面访问的是本机开发入口 `http://localhost:5174`。`http://localhost:8080` 是 Docker
+Compose 入口，默认使用 `.env` 中的运行时配置，通常不会继承本机 Codex 登录态。
+
+```bash
+curl -fsS http://127.0.0.1:8010/api/models
+codex login status
+nc -vz 127.0.0.1 7897   # 按代理软件实际端口替换
+curl -v --proxy http://127.0.0.1:7897 https://api.openai.com
+```
+
+代理请求返回 `api.openai.com` 的 `421` 或 `chatgpt.com` 的 `403` 并不等于链路断开：这两个地址的根路径
+本来就不是已登录的模型请求入口，重点看 TLS 是否完成、耗时是否稳定，以及 Codex 是否能完成一次最小
+`codex exec --ephemeral`。如果最小调用成功而页面仍显示“重连”，优先检查是否启动了多个服务入口或批量
+任务正在等待前一个模型子进程，而不是重复登录。
+
+后端的 Codex 适配器为每一次结构化生成、文字审核和视觉审核启动一个隔离的
+`codex exec --ephemeral` 子进程；一题可能连续触发多次调用，因此浏览器网络面板会看到多次请求，
+这不等于每次都发生了网络断线。批量处理还会等待这些调用完成，当前是同步流程。若 CLI 日志出现
+`state db discrepancy ... falling_back`，它是本机 Codex 状态库的回退警告，不是 OpenAI TLS 失败。
+真正的网络错误通常会在后端日志的 `model.request.failed` / `model.review.failed` 中包含超时、代理或
+连接拒绝信息。切换网络或代理后需要重启 `scripts/dev-local.sh`，让 FastAPI 继承新的代理环境变量。
+
 ## 安装后端
 
 如果只想快速体验完整服务，优先使用 README 中的 Docker Compose 方法。本节用于需要热更新、
@@ -123,7 +147,8 @@ npm run dev
   PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
 - 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
 - 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
-  `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程细节仍在 `ocr_runtime.py`。
+  `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `ocr_runtime.py`。
+  Docker 后端镜像通过 `poppler-utils` 提供 `pdftoppm`，本机开发也需要 Poppler 才能启用矢量页渲染兜底。
 - 修改模型题目结构：`lesson_generation.py`、`question_contracts.py` 和 `question_pipeline.py`。
 - 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
 - 修改多轮状态：`backend/stateful_tutor.py`、`tutoring_routes.py`、`tutoring_store.py` 和

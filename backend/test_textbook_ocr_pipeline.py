@@ -33,6 +33,7 @@ class _Runtime:
         self.selection = SimpleNamespace(provider=provider)
         self._mineru_available = mineru_available
         self.parse_calls: list[tuple[int, int | None]] = []
+        self.render_calls: list[int] = []
 
     def mineru_command(self) -> Path | None:
         return Path("/fake/mineru") if self._mineru_available else None
@@ -54,6 +55,18 @@ class _Runtime:
             "output": "markdown",
             "imageUrls": [],
         }
+
+    def render_page_image(
+        self,
+        _source_path: Path,
+        page_number: int,
+        asset_dir: Path,
+        asset_url_prefix: str,
+    ) -> tuple[str, str] | None:
+        self.render_calls.append(page_number)
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        (asset_dir / "rendered-page-0001.png").write_bytes(b"png")
+        return "images/rendered-page-0001.png", f"{asset_url_prefix}/rendered-page-0001.png"
 
 
 class TextbookOcrPipelineTests(unittest.TestCase):
@@ -109,6 +122,18 @@ class TextbookOcrPipelineTests(unittest.TestCase):
             self.assertEqual(runtime.parse_calls, [])
             self.assertEqual(run["pageRoutes"][0]["provider"], "pypdf")
             self.assertEqual(run["quality"][0]["status"], "retry")
+
+    def test_visual_text_gets_rendered_page_image(self) -> None:
+        with TemporaryDirectory() as directory:
+            runtime = _Runtime(provider="pypdf")
+            source, run = self._resolve(
+                directory,
+                runtime,
+                [_Page("3．某几何体的左视图如图所示。")],
+            )
+            self.assertEqual(runtime.render_calls, [1])
+            self.assertIn("images/rendered-page-0001.png", source)
+            self.assertEqual(run["imageUrls"], ["/assets/rendered-page-0001.png"])
 
 
 if __name__ == "__main__":

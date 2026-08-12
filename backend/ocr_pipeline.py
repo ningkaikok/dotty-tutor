@@ -24,6 +24,9 @@ RoutedProvider = Literal["pypdf", "mineru"]
 _FORMULA_SIGNAL = re.compile(
     r"(?:\\(?:frac|sqrt|sum|int|begin|left|right|times|div|leq|geq|textbackslash|textcirc|textdegree)|\$|[∑∫√≈≠≤≥])"
 )
+_VISUAL_HINT = re.compile(r"(?:如图|图所示|左视图|右视图|俯视图|展开图|折叠|转盘|统计图|统计图表|函数图象)")
+# 题目归属只能使用单页标记；`<!-- pages 1-5 -->` 是批次范围摘要，不能作为某一道题的来源页。
+PAGE_MARKER = re.compile(r"<!--\s*page\s+(\d+)\s*-->", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -59,9 +62,18 @@ def probe_page(text: str, *, image_count: int = 0, has_full_page_image: bool = F
         raise ValueError("image_count 不能为负数")
     normalized = "".join(text.split())
     image_likelihood = 1.0 if has_full_page_image else min(0.8, image_count * 0.25)
+    # PDF 矢量线框图不一定出现在 /Images XObject 中；题目文字里的版面提示是
+    # 低成本但重要的补充信号，否则 pypdf 会抽出题干却丢掉几何图和选项图。
+    if _VISUAL_HINT.search(text):
+        image_likelihood = max(image_likelihood, 0.8)
     formula_hits = len(_FORMULA_SIGNAL.findall(text))
     formula_likelihood = min(1.0, formula_hits / 3)
     return PageProbe(len(normalized), image_likelihood, formula_likelihood)
+
+
+def has_visual_hint(text: str) -> bool:
+    """判断文字层是否明确提示题目依赖图形或统计图。"""
+    return bool(_VISUAL_HINT.search(str(text or "")))
 
 
 def choose_ocr_provider(
