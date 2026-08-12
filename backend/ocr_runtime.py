@@ -181,5 +181,38 @@ class OcrRuntime:
                 "imageUrls": image_urls,
             }
 
+    def render_page_image(
+        self,
+        source_path: Path,
+        page_number: int,
+        asset_dir: Path,
+        asset_url_prefix: str,
+    ) -> tuple[str, str] | None:
+        """把含矢量图的 PDF 页渲染成稳定题图，返回 Markdown 引用和 API URL。
+
+        只有 OCR 已确认页面依赖图形且没有提取出局部图片时才调用。使用系统
+        ``pdftoppm`` 而不是把新的 Python 图像依赖塞进 API 虚拟环境。
+        """
+        command = shutil.which("pdftoppm")
+        if not command or page_number < 1:
+            return None
+        asset_dir.mkdir(parents=True, exist_ok=True)
+        basename = f"rendered-page-{page_number:04d}"
+        output_prefix = asset_dir / basename
+        output_path = asset_dir / f"{basename}.png"
+        if not output_path.is_file():
+            completed = subprocess.run(
+                [command, "-f", str(page_number), "-l", str(page_number), "-png", "-r", "144", str(source_path), str(output_prefix)],
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=False,
+            )
+            generated = asset_dir / f"{basename}-{page_number}.png"
+            if completed.returncode != 0 or not generated.is_file():
+                return None
+            generated.replace(output_path)
+        return f"images/{output_path.name}", f"{asset_url_prefix}/{output_path.name}"
+
 
 runtime = OcrRuntime()

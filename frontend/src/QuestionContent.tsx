@@ -16,7 +16,7 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
   return (
     <>
       {blocks.map((block) => block.type === "text" ? (
-        <span key={block.id}>{block.text}</span>
+        <span key={block.id}>{stripLegacyImageText(block.text)}</span>
       ) : (
         <MathText key={block.id} text={block.display ? `$$${block.latex}$$` : `$${block.latex}$`} />
       ))}
@@ -26,6 +26,26 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
 
 const CHOICE_MARKER = /(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*/g;
 const MATH_FRAGMENT = /(\$\$[\s\S]+?\$\$|\$[^$]+?\$)/g;
+// 旧版本会把 Markdown 图片完整写进选项文字，例如 `![](images/a.jpg)`。
+// 路径前面可能是 `(`、`/` 或字符串开头，不能只用 `(^|/)images/`，否则页面会把
+// 文件名当作普通题干文字渲染出来。这里只识别允许的本地图片后缀，避免误删正常文本。
+const LEGACY_IMAGE_MARKDOWN = /!\[[^\]]*\]\(([^)]+\.(?:jpg|jpeg|png|webp))\)/i;
+const LEGACY_IMAGE_PATH = /(?:^|[(/])((?:images|api\/uploads)\/[^\s)]+\.(?:jpg|jpeg|png|webp))/i;
+
+function legacyImageReference(text: string): string | null {
+  const markdown = LEGACY_IMAGE_MARKDOWN.exec(text)?.[1];
+  if (markdown) return markdown;
+  return LEGACY_IMAGE_PATH.exec(text)?.[1] ?? null;
+}
+
+function stripLegacyImageText(text: string): string {
+  // 图片已经由 content block 或 option.imageUrl 渲染；旧记录中的 Markdown 只应作为
+  // 来源证据存在，不能再次出现在学生看到的题干里。
+  return text
+    .replace(LEGACY_IMAGE_MARKDOWN, "")
+    .replace(LEGACY_IMAGE_PATH, "")
+    .replace(/[ \t]{2,}/g, " ");
+}
 
 function extractLegacyChoiceValues(blocks: InlineBlock[]): string[] | null {
   // 只识别完整连续的 A/B/C/D，避免把正文中的变量 A、B 误判成选项。
@@ -97,6 +117,19 @@ export function QuestionContent({ blocks, selectedOption, selectedOptions = [], 
   const sortedBlocks = [...blocks].sort((left, right) => left.sourceOrder - right.sourceOrder);
   const optionsIndex = sortedBlocks.findIndex((block) => block.type === "options");
   const hasStructuredOptions = optionsIndex >= 0;
+  const sourceImageBlocks = sortedBlocks.filter((block): block is Extract<QuestionContentBlock, { type: "image" }> => block.type === "image");
+  const optionBlock = optionsIndex >= 0 && sortedBlocks[optionsIndex]?.type === "options"
+    ? sortedBlocks[optionsIndex]
+    : null;
+  // 兼容已持久化的旧题：旧版本把“题干图 + 四张选项图”全部写成 stem image，
+  // 同时把文件名写进 options。只在五图、四选项且选项内容确实是图片路径时推断，
+  // 避免对普通文字选择题做宽泛猜测。
+  const legacyOptionImageUrls = sourceImageBlocks.length === 5 && optionBlock?.items.length === 4
+    && optionBlock.items.every((item) => item.contentBlocks.some((content) => (
+      content.type === "text" && Boolean(legacyImageReference(content.text))
+    )))
+    ? sourceImageBlocks.slice(1).map((block) => block.url)
+    : [];
   const promptBlocks = (hasStructuredOptions ? sortedBlocks.slice(0, optionsIndex) : sortedBlocks)
     .filter((block): block is InlineBlock => block.type === "text" || block.type === "math");
   const legacyChoiceValues = extractLegacyChoiceValues(promptBlocks);
@@ -120,6 +153,7 @@ export function QuestionContent({ blocks, selectedOption, selectedOptions = [], 
     }
     flushInline();
     if (block.type === "image") {
+      if (legacyOptionImageUrls.includes(block.url)) return;
       nodes.push(
         <div className="question-images" key={block.id}>
           <a href={block.url} target="_blank" rel="noreferrer" title="打开原始题图">
@@ -143,7 +177,15 @@ export function QuestionContent({ blocks, selectedOption, selectedOptions = [], 
         ...item,
         contentBlocks: legacyValueBlocks(legacyChoiceValues[index], index),
       }))
-      : block.items;
+      : block.items.map((item, index) => legacyOptionImageUrls[index]
+        ? {
+          ...item,
+          imageUrl: legacyOptionImageUrls[index],
+          contentBlocks: item.contentBlocks.filter((content) => !(
+            content.type === "text" && Boolean(legacyImageReference(content.text))
+          )),
+        }
+        : item);
     const hasImageOptions = displayItems.some((item) => item.imageUrl);
     // 短文字选项使用试卷式紧凑布局；图片或长句继续使用单列，保证可读性和点击区域。
     const compactOptions = !hasImageOptions && displayItems.every((item) => (

@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ocr_pipeline import PAGE_MARKER, has_visual_hint
 
 # 只把版心左侧的题号视为新题。小问 ``(1)``、章节编号 ``1.1`` 都可能以数字
 # 开头，但前者属于当前题、后者通常不是可独立出题的题号，不能用宽泛的数字正则切开。
@@ -46,6 +47,7 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
     """
     question_area = ANSWER_SECTION_PATTERN.split(source, maxsplit=1)[0]
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
+    page_markers = list(PAGE_MARKER.finditer(question_area))
     blocks: list[tuple[str, str, list[str]]] = []
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(question_area)
@@ -53,6 +55,20 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
         if len(block) < 4:
             continue
         images = MARKDOWN_IMAGE_PATTERN.findall(block)
+        # 矢量 PDF 图形不会出现在 Markdown 图片列表中。OCR 编排器会在对应页段
+        # 注入页面渲染图。题目跨页时仍以题号所在页为准；否则会把下一页的整页图
+        # 错绑给上一页末尾的题目。
+        if not images and has_visual_hint(block) and page_markers:
+            page_marker = next(
+                (marker for marker in reversed(page_markers) if marker.start() < match.start()),
+                None,
+            )
+            if page_marker:
+                section_end = next(
+                    (marker.start() for marker in page_markers if marker.start() > page_marker.start()),
+                    len(question_area),
+                )
+                images = MARKDOWN_IMAGE_PATTERN.findall(question_area[page_marker.end():section_end])
         number = match.group("number")
         if blocks and blocks[-1][0] == number:
             # 同号重复通常来自跨页页眉或 OCR 将续题重新识别为题首。合并而非新建题，

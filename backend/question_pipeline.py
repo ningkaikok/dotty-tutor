@@ -16,6 +16,7 @@ from review_runtime import formula_anomaly_score, normalize_ocr_question
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)<>]+")
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -117,24 +118,40 @@ def normalize_question_interaction(raw: Any, question_type: str) -> dict[str, An
 
 
 def normalize_image_choice_question(payload: dict[str, Any], source_block: str, source_images: list[str]) -> None:
-    """仅在 OCR 明确给出 A-D 四图时，把图片提升为结构化选项。"""
-    labels = re.findall(r"(?m)^\s*\(([A-D])\)\s*$", source_block)
-    if len(source_images) != 4 or labels[:4] != ["A", "B", "C", "D"]:
+    """根据 OCR 的版面顺序恢复图片选择题。
+
+    OCR 通常会输出“题干图 + A-D 四张选项图”五张图片；审核模型可能把文件名
+    当作普通文字写回 JSON，因此这里不信任模型的图片字段，而是以 OCR 来源顺序
+    重新绑定。也兼容只有四张选项图的旧格式。
+    """
+    labels = [
+        match.group(1) or match.group(2)
+        for match in CHOICE_MARKER_PATTERN.finditer(source_block)
+    ]
+    if labels[:4] != ["A", "B", "C", "D"] or len(source_images) not in {4, 5}:
         return
     question = payload["question"]
-    image_urls = list(question.get("imageUrls", []))[:4]
-    if len(image_urls) != 4:
+    image_urls = [str(url) for url in question.get("imageUrls", [])]
+    if len(image_urls) != len(source_images):
         return
-    question["optionImageUrls"] = image_urls
+    option_start = 1 if len(image_urls) == 5 else 0
+    question["optionImageUrls"] = image_urls[option_start:option_start + 4]
     question["options"] = ["(A)", "(B)", "(C)", "(D)"]
-    prompt = str(question.get("prompt", ""))
-    prompt = re.sub(r"(?m)^\s*\([A-D]\)\s*$", "", prompt)
+    prompt = strip_image_references(str(question.get("prompt", "")))
+    prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、])\s*$", "", prompt)
     question["prompt"] = re.sub(r"\n{3,}", "\n\n", prompt).strip()
+
+
+def strip_image_references(text: str) -> str:
+    """删除模型误写入题干的 Markdown 或裸图片路径，保留题意文字。"""
+    text = MARKDOWN_IMAGE_PATTERN.sub("", text)
+    text = BARE_IMAGE_REFERENCE_PATTERN.sub("", text)
+    return re.sub(r"[ \t]{2,}", " ", text)
 
 
 def clean_question_stem(number: str, block: str) -> str:
     stem = QUESTION_START_PATTERN.sub("", block, count=1)
-    stem = MARKDOWN_IMAGE_PATTERN.sub("", stem)
+    stem = strip_image_references(stem)
     return re.sub(r"\n{3,}", "\n\n", stem).strip()[:4_000]
 
 
@@ -318,7 +335,8 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     if len(actual_images) != len(set(actual_images)):
         errors.append("同一道题包含重复图片")
     option_images = [Path(str(url)).name for url in question.get("optionImageUrls", [])]
-    if option_images and (len(option_images) != 4 or option_images != actual_images):
+    expected_option_images = actual_images[1:] if len(actual_images) == 5 else actual_images
+    if option_images and (len(option_images) != 4 or option_images != expected_option_images):
         errors.append("图片选择题必须按 A、B、C、D 绑定四张当前题图片")
     options = [str(item).strip() for item in question.get("options", [])]
     prompt = str(question.get("prompt", ""))

@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
+import hashlib
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,16 @@ from tutor_engine import TutorEngine
 # 该缓存仅加速单进程 Demo，PostgreSQL 才是持久化课程的真相来源。
 # 多 Worker 部署应改用共享缓存或 Store，不能尝试在进程间同步这个字典。
 lesson_store: dict[str, dict[str, Any]] = {}
+
+
+def new_question_id(prefix: str, source: str) -> str:
+    """为每次生成分配新的修订 ID。
+
+    来源哈希仍用于来源证据和 ``sourceQuestionKey``，但不能充当题目主键；否则
+    ``force=true`` 重新调用模型后会覆盖旧题并让前端误以为没有生成新版本。
+    """
+    source_hash = hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
+    return f"{prefix}-{source_hash}-{uuid.uuid4().hex[:8]}"
 
 
 def question_payload(
@@ -156,7 +167,7 @@ def _fallback_lesson(
     """在模型不可用时保留 OCR 原题，而不是返回内置几何演示题。"""
     prompt = clean_question_stem(selected_number, selected_source) if selected_number else source[:4_000]
     question = {
-        "id": f"fallback-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}",
+        "id": new_question_id("fallback", source),
         "questionType": "short-answer",
         "chapter": "教材练习",
         "knowledgePoint": "待确认知识点",
@@ -241,7 +252,7 @@ def generate_lesson(
         )
         return payload, cards, run
 
-    question_id = f"generated-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:12]}"
+    question_id = new_question_id("generated", source)
     question_type = safe_text(generated.get("questionType"), "short-answer", 30)
     if question_type not in {
         "choice", "multi-select", "true-false", "short-answer", "fill-blank", "numeric", "draw-line",

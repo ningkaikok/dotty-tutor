@@ -416,6 +416,29 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertEqual(payload["question"]["optionImageUrls"], payload["question"]["imageUrls"])
         self.assertNotIn("(A)", payload["question"]["prompt"])
 
+    def test_binds_stem_and_four_option_images_without_leaking_paths(self) -> None:
+        urls = [f"/api/uploads/u/assets/batch/{name}.jpg" for name in ["stem", "a", "b", "c", "d"]]
+        payload = {"question": {
+            "prompt": "3. 左视图：images/stem.jpg\nA. images/a.jpg\nB. images/b.jpg\nC. images/c.jpg\nD. images/d.jpg",
+            "options": ["images/a.jpg", "images/b.jpg", "images/c.jpg", "images/d.jpg"],
+            "imageUrls": urls,
+        }}
+        source = "3. 左视图\n![](images/stem.jpg)\nA.\n![](images/a.jpg)\nB.\n![](images/b.jpg)\nC.\n![](images/c.jpg)\nD.\n![](images/d.jpg)"
+        normalize_image_choice_question(
+            payload,
+            source,
+            [f"images/{name}.jpg" for name in ["stem", "a", "b", "c", "d"]],
+        )
+        blocks = build_question_content_blocks(
+            payload,
+            source,
+            [f"images/{name}.jpg" for name in ["stem", "a", "b", "c", "d"]],
+        )
+        self.assertEqual(payload["question"]["optionImageUrls"], urls[1:])
+        self.assertNotIn("images/", payload["question"]["prompt"])
+        self.assertEqual([block["type"] for block in blocks], ["text", "image", "options"])
+        self.assertEqual([item["imageUrl"] for item in blocks[-1]["items"]], urls[1:])
+
     def test_splits_all_numbered_questions_before_answers(self) -> None:
         markdown = """
 1.第一道选择题，题干和选项都在这里。
@@ -431,6 +454,11 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertEqual([number for number, _, _ in blocks], ["1", "2", "3"])
         self.assertIn("(1)求出答案", blocks[1][1])
         self.assertNotIn("参考答案", "\n".join(block for _, block, _ in blocks))
+
+    def test_assigns_rendered_page_image_to_visual_question_without_local_reference(self) -> None:
+        markdown = "<!-- page 1 -->\n3.某几何体的左视图如图所示。\nA． B． C． D．\n![](images/rendered-page-0001.png)"
+        blocks = split_question_sources(markdown)
+        self.assertEqual(blocks[0][2], ["images/rendered-page-0001.png"])
 
     def test_selects_one_complete_illustrated_question_before_answers(self) -> None:
         markdown = """

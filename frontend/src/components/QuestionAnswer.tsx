@@ -147,9 +147,10 @@ export function QuestionAnswer({
           {question.options.map((option, index) => {
             const label = optionLabel(index);
             const imageOption = /!\[[^\]]*\]\(([^)]+)\)/.exec(option);
+            const inferredImageIndex = question.imageUrls?.length === 5 ? index + 1 : index;
             const optionImage = question.optionImageUrls?.[index]
-              ?? (imageChoices ? question.imageUrls?.[index] : null)
-              ?? (imageOption ? question.imageUrls?.[index] ?? imageOption[1] : null);
+              ?? (imageChoices ? question.imageUrls?.[inferredImageIndex] : null)
+              ?? (imageOption ? question.imageUrls?.[inferredImageIndex] ?? imageOption[1] : null);
             const selected = selectedOptions.includes(label);
             return (
               <li key={`${option}-${index}`}>
