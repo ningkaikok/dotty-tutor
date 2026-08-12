@@ -133,6 +133,7 @@ npm run dev
 
 - [系统架构与调用流程](docs/architecture.md)
 - [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
+- [AI 运行治理与后台任务演进计划](docs/runtime-governance-plan.md)
 - [后端架构学习指南](docs/backend-learning-guide.md)
 - [前端架构学习指南](docs/frontend-learning-guide.md)
 - [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
@@ -163,8 +164,9 @@ Compose 构建和健康检查。
 当前版本已完成教材导入、结构化出题、审校、互动练习、分层提示、TTS 和 PostgreSQL
 持久化闭环，并完成互动试卷发布、学生消费、学习记录同步、双产品入口、错题拍照裁切、错误原因确认、
 错题本存储和有状态多轮陪练。
-错题陪练已覆盖录入、多轮辅导、变式掌握验证和 1/3/7 天复习闭环。公网生产部署仍需要用户鉴权、对象存储、异步任务队列、Alembic、
-限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。
+错题陪练已覆盖录入、多轮辅导、变式掌握验证和 1/3/7 天复习闭环。公网生产部署仍需要用户鉴权、对象存储、后台任务、Alembic、
+限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。其中运行快照、PostgreSQL Job Store、单 Worker
+和离线评测的实施顺序见[AI 运行治理计划](docs/runtime-governance-plan.md)。
 
 ## 参与开发
 
