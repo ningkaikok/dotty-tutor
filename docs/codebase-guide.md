@@ -255,6 +255,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | 学习目标 | 建议阅读顺序 | 重点观察 |
 | --- | --- | --- |
 | PDF 如何变成题目 | `useTextbookImport.ts` → `textbook_routes.py` → `textbook_processing.py` → `question_processing.py` → `question_pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
+| 长任务将如何后台化 | `runtime-governance-plan.md` → `upload_registry.py` → `persistence/schema.py` → `textbook_processing.py` | 运行快照、Job Store、租约、幂等与 Worker 边界 |
 | 试卷如何安全发布新版 | `usePaperPublication.ts` → `publication_routes.py` → `publication_revision.py` → `learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
 | 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `learning_routes.py` → `learning_store.py` | 受控组件、幂等 attemptId、掌握度投影 |
 | 错题如何多轮陪练 | `useMistakeTutor.ts` → `tutoring_routes.py` → `stateful_tutor.py` → `tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
@@ -264,11 +265,14 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ## 已知架构债务
 
-- PDF 完成和批次处理已有独立应用服务，但仍由 HTTP 请求同步调用；只有真实耗时影响部署时才引入 Worker。
+- PDF 完成和批次处理已有独立应用服务，但仍由 HTTP 请求同步调用；下一阶段按
+  [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)复用 PostgreSQL Job Store 和单 Worker，
+  不提前引入 Redis 或多服务控制平面。
 - `storage.py` 仅为旧调用方提供兼容门面；新代码应直接依赖 `TextbookStore` 或 `LearningStore`，并继续
   保持错题、陪练仓储各自独立。
 - `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。
 - 模型/OCR 的运行时选择是进程级全局状态，不适合多用户公网服务。
 - 文件资源仍保存在本地目录，横向扩容前需要对象存储。
 
-这些项目属于生产化边界，不阻塞个人 Demo。路线和优先级见[路线图](roadmap.md)。
+这些项目属于生产化边界，不阻塞个人 Demo。产品优先级见[路线图](roadmap.md)，运行快照、事件、后台任务
+和离线评测的学习顺序见[AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。
