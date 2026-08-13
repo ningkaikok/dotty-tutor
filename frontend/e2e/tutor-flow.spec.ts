@@ -28,8 +28,8 @@ function lessonSteps(topic: string) {
   return [{
     id: `${topic}-step-1`,
     title: "先观察题目条件",
-    text: "先找出题目中最重要的关系。",
-    speechText: "先观察题目条件。",
+    text: "先找出题目中最重要的关系：$x-1$。",
+    speechText: "方程两边同乘 $x-1$，并保持等式两边的每一项都参与相乘。",
     action: "show-base",
   }];
 }
@@ -53,7 +53,7 @@ const choiceQuestion = payload({
   knowledgePoint: "数轴上的大小比较",
   questionNumber: "1",
   prompt: "在数轴上，比较下列各数的大小。",
-  givens: ["观察数轴位置"],
+  givens: ["分式为 $\\frac{1}{x+2}$"],
   options: ["(A) -2 > 1", "(B) -2 < 1"],
 });
 
@@ -516,6 +516,36 @@ test.describe("产品入口", () => {
   test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
     await mockApi(page);
     await mockMistakeApi(page);
+    const savedAttempts: Record<string, unknown>[] = [];
+    await page.route("**/api/learning/sessions/pw-session", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({ json: {
+        sessionId: "pw-session",
+        learnerId: "local-demo",
+        publicationId: "paper-pw-1",
+        startedAt: 1,
+        attempts: savedAttempts,
+      } });
+    });
+    await page.route("**/api/learning/sessions/pw-session/attempts", async (route) => {
+      savedAttempts.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ json: {
+        attemptId: "pw-attempt",
+        mastery: {
+          learnerId: "local-demo",
+          knowledgePoint: "数轴上的大小比较",
+          score: 0.165,
+          attemptCount: 1,
+          correctCount: 0,
+          lastPracticedAt: 1,
+        },
+        autoMistake: {
+          mistakeId: "paper-mistake-pw-1",
+          status: "unmastered",
+          contentType: "application/vnd.dotty.publication+json",
+        },
+      } });
+    });
     const publication = {
       publicationId: "paper-pw-1",
       title: "第一章 · 互动试卷",
@@ -545,12 +575,22 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("button", { name: "重新生成本题" })).toHaveCount(0);
     await expect(page.getByText(/当前画布动作/)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "分步讲解" })).toHaveCount(0);
+    await expect(page.locator(".student-question-givens .math-inline")).toHaveCount(1);
+    await expect(page.locator(".student-question-givens > span:not(.student-question-givens-heading)")).toHaveCount(1);
+    await expect(page.locator(".student-question-givens .katex")).toHaveCount(1);
     await page.getByRole("button", { name: /B/ }).click();
     await page.getByRole("button", { name: "提交答案" }).click();
     await expect(page.getByText("已经接近了")).toBeVisible();
     await expect(page.getByText("这道错题已自动加入错题本，不需要再次上传。")).toBeVisible();
     await expect(page.getByRole("region", { name: "分步讲解" })).toBeVisible();
     await expect(page.getByLabel("掌握度 17%")).toBeVisible();
+
+    // 学生刷新或返回上一题后，已提交的结构化答案应从学习会话恢复，
+    // 而不是只依赖页面内存状态。
+    await page.reload();
+    await expect(page.getByRole("button", { name: /B/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("textbox", { name: "补充你的思路（可选）" })).toHaveValue(/我选择/);
+    await expect(page.getByRole("button", { name: "重新提交答案" })).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
@@ -647,6 +687,12 @@ test.describe("教材辅导核心交互", () => {
     await page.getByRole("button", { name: "进入动态教材 →" }).click();
 
     await expect(page.getByRole("heading", { name: "数轴上的大小比较" })).toBeVisible();
+    await expect(page.locator(".geometry-canvas-text .math-inline")).toHaveCount(1);
+    // 讲解区会同时显示正文和 TTS 文本副本，两者都必须经过 MathText。
+    await expect(page.locator(".explanation-card .math-inline")).toHaveCount(2);
+    await expect(page.locator(".explanation-card")).not.toContainText("$x-1$");
+    await expect(page.locator(".givens > span:not(.givens-heading)")).toHaveCount(1);
+    await expect(page.locator(".givens .katex")).toHaveCount(1);
     await page.getByRole("button", { name: /\(B\).*-2 < 1/ }).click();
     await expect(page.getByText("已选择 (B)" )).toBeVisible();
     await page.getByRole("button", { name: "Help · 下一步提示" }).click();

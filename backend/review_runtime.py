@@ -17,6 +17,13 @@ from typing import Any
 from model_runtime import Provider, runtime
 
 
+def _normalize_review_math(value: str) -> str:
+    """延迟调用题目规范化，避免 review_runtime 与 question_pipeline 循环导入。"""
+    from question_pipeline import normalize_model_math_text
+
+    return normalize_model_math_text(value)
+
+
 TEXT_REVIEW_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -251,8 +258,8 @@ OCR 原题：
                 for index, step in enumerate(reviewed_steps):
                     corrected["lessonSteps"][index].update({
                         "title": str(step.get("title", corrected["lessonSteps"][index]["title"]))[:80],
-                        "text": str(step.get("text", corrected["lessonSteps"][index]["text"]))[:700],
-                        "speechText": str(step.get("speechText", corrected["lessonSteps"][index]["speechText"]))[:700],
+                        "text": _normalize_review_math(str(step.get("text", corrected["lessonSteps"][index]["text"]))[:700]),
+                        "speechText": _normalize_review_math(str(step.get("speechText", corrected["lessonSteps"][index]["speechText"]))[:700]),
                     })
         except Exception as error:
             text_error = str(error)
@@ -394,8 +401,8 @@ OCR 原题：
                     for index, step in enumerate(repaired_steps):
                         corrected["lessonSteps"][index].update({
                             "title": str(step.get("title", corrected["lessonSteps"][index]["title"]))[:80],
-                            "text": str(step.get("text", corrected["lessonSteps"][index]["text"]))[:700],
-                            "speechText": str(step.get("speechText", corrected["lessonSteps"][index]["speechText"]))[:700],
+                        "text": _normalize_review_math(str(step.get("text", corrected["lessonSteps"][index]["text"]))[:700]),
+                        "speechText": _normalize_review_math(str(step.get("speechText", corrected["lessonSteps"][index]["speechText"]))[:700]),
                         })
                 repaired_review.setdefault("issues", [])
                 repaired_review["issues"] = list(repaired_review["issues"])[:12]

@@ -246,7 +246,8 @@
 .student-question-body .question-prompt { max-width: 100%; margin-top: 0; overflow-x: auto; font-size: clamp(22px, 2.4vw, 32px); }
 .student-question-body .math-display { max-width: 100%; overflow-x: auto; }
 .student-question-givens { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
-.student-question-givens span { padding: 8px 11px; border-radius: 10px; color: #586760; background: #eef1ed; }
+.student-question-givens-heading { width: 100%; padding: 0; color: #53655c; background: transparent !important; font-size: 12px; font-weight: 750; }
+.student-question-givens > span:not(.student-question-givens-heading) { padding: 8px 11px; border-radius: 10px; color: #586760; background: #eef1ed; }
 
 .student-answer-card {
   padding: 24px 30px 28px;

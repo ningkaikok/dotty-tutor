@@ -1,4 +1,5 @@
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
+import MathText from "../../../MathText";
 import { useVariationPractice } from "../useVariationPractice";
 
 const LEVEL_LABELS = {
@@ -57,7 +58,7 @@ export function VariationPractice({ mistakeId }: VariationPracticeProps) {
       {answered && (
         <div className={`variation-feedback ${state.active.assessment}`} role="status">
           <strong>{state.active.assessment === "correct" ? "回答正确" : "这次还没有答对"}</strong>
-          <p>{state.active.feedback}</p>
+          <p><MathText text={state.active.feedback} /></p>
         </div>
       )}
       {answered && state.active.mastery && (

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
+import MathText from "../../../MathText";
 import type { MistakeItem, TutorStage } from "../../../types";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { VariationPractice } from "./VariationPractice";
@@ -36,7 +37,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
         <div className="tutor-question-meta">
           <span>{item.chapter}</span><span>{item.knowledgePoint}</span>
         </div>
-        {item.originalAnswer && <p><strong>原来的答案：</strong>{item.originalAnswer}</p>}
+        {item.originalAnswer && <p><strong>原来的答案：</strong><MathText text={item.originalAnswer} /></p>}
         <QuestionAnswer
           question={question}
           selectedOptions={state.selectedOptions}
@@ -69,7 +70,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           {state.thread.messages?.map((message) => (
             <div key={message.messageId} className={`tutor-message ${message.role}`}>
               <strong>{message.role === "student" ? "我" : "Dotty"}</strong>
-              <p>{message.content}</p>
+              <p><MathText text={message.content} /></p>
               {message.assessment && (
                 <small className={`assessment ${message.assessment}`}>
                   {message.assessment === "correct" ? "本轮正确" : message.assessment === "incorrect" ? "需要修正" : "继续思考"}

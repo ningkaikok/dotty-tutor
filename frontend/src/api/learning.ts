@@ -1,5 +1,5 @@
 import type { MistakeItem } from "../types/mistake";
-import type { ExerciseAttemptInput, LearningSession, MasteryState } from "../types/lesson";
+import type { ExerciseAttemptInput, ExerciseAttemptRecord, LearningSession, MasteryState } from "../types/lesson";
 import { parse } from "./client";
 
 export interface ExerciseAttemptResult {
@@ -23,8 +23,8 @@ export async function loadLearningMastery(learnerId: string): Promise<MasterySta
   return payload.items;
 }
 
-export async function loadLearningSession(sessionId: string): Promise<LearningSession & { attempts: unknown[] }> {
-  return parse<LearningSession & { attempts: unknown[] }>(
+export async function loadLearningSession(sessionId: string): Promise<LearningSession & { attempts: ExerciseAttemptRecord[] }> {
+  return parse<LearningSession & { attempts: ExerciseAttemptRecord[] }>(
     await fetch(`/api/learning/sessions/${sessionId}`, { cache: "no-store" }),
   );
 }

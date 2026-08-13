@@ -17,7 +17,9 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
   return (
     <>
       {blocks.map((block) => block.type === "text" ? (
-        <span key={block.id}>{stripLegacyImageText(block.text)}</span>
+        // 文本块也可能混有 `$...$`。统一交给 MathText，避免 OCR 结构化后
+        // 同一条公式因为落在 text 或 math block 而出现两种显示结果。
+        <MathText key={block.id} text={stripLegacyImageText(block.text)} />
       ) : (
         <MathText key={block.id} text={block.display ? `$$${block.latex}$$` : `$${block.latex}$`} />
       ))}

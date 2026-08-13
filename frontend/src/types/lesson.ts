@@ -83,6 +83,11 @@ export interface LearningSession {
   learnerId: string;
   publicationId: string;
   startedAt: number;
+  /**
+   * 服务端按题目保存的作答快照。学生端恢复试卷时只需要这个只读证据，
+   * 不把模型回复或页面临时状态当成答案来源。
+   */
+  attempts?: ExerciseAttemptRecord[];
 }
 
 export interface ExerciseAttemptInput {
@@ -94,6 +99,11 @@ export interface ExerciseAttemptInput {
   hintLevel: number;
   durationMs: number;
   createdAt: number;
+}
+
+/** 学习会话中已经落库的作答；response 保留结构化控件的原始值。 */
+export interface ExerciseAttemptRecord extends ExerciseAttemptInput {
+  attemptId: string;
 }
 
 export interface MasteryState {

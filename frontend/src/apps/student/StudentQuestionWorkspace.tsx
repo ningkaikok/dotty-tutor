@@ -1,4 +1,5 @@
 import { QuestionAnswer } from "../../components/QuestionAnswer";
+import MathText from "../../MathText";
 import type { QuestionPayload, TutorReply } from "../../types";
 
 interface StudentQuestionWorkspaceProps {
@@ -14,6 +15,7 @@ interface StudentQuestionWorkspaceProps {
   error: string;
   reply: TutorReply | null;
   mistakeNotice: string;
+  hasSubmitted: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onSelectOption: (label: string, answerText: string) => void;
@@ -45,6 +47,7 @@ export function StudentQuestionWorkspace({
   error,
   reply,
   mistakeNotice,
+  hasSubmitted,
   onPrevious,
   onNext,
   onSelectOption,
@@ -90,8 +93,11 @@ export function StudentQuestionWorkspace({
           onDrawConnectionsChange={onDrawConnectionsChange}
         />
         {question.givens.length > 0 && (
-          <div className="student-question-givens" aria-label="题目条件">
-            {question.givens.map((given) => <span key={given}>{given}</span>)}
+          <div className="student-question-givens" aria-label="题目条件（辅助读题）">
+            <span className="student-question-givens-heading">题目条件</span>
+            {question.givens.map((given) => (
+              <span key={given}><MathText text={given} /></span>
+            ))}
           </div>
         )}
       </div>
@@ -118,7 +124,9 @@ export function StudentQuestionWorkspace({
             disabled={loading || (!studentInput.trim() && !hasStructuredAnswer)}
             onClick={onSubmit}
           >
-            {loading ? "正在批改…" : isDrawLine ? "提交作图" : "提交答案"}
+            {loading ? "正在批改…" : isDrawLine
+              ? (hasSubmitted ? "重新提交作图" : "提交作图")
+              : (hasSubmitted ? "重新提交答案" : "提交答案")}
           </button>
         </div>
         {error && <p className="interaction-error" role="alert">{error}</p>}
@@ -130,7 +138,7 @@ export function StudentQuestionWorkspace({
             <strong>{assessment === "correct" ? "回答正确" : assessment === "incorrect" ? "这一步需要修正" : assessment === "partial" ? "已经接近了" : "给你一个提示"}</strong>
             <span>Dotty</span>
           </div>
-          {reply.reply.split("\n").map((line, index) => <p key={index}>{line || <br />}</p>)}
+          {reply.reply.split("\n").map((line, index) => <p key={index}>{line ? <MathText text={line} /> : <br />}</p>)}
         </section>
       )}
 
