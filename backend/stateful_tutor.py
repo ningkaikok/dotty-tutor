@@ -7,7 +7,14 @@ from typing import Any
 
 from question_contracts import HelpRequest
 from tutor_engine import TutorEngine
-from tutor_turn_plan import build_tutor_turn_plan, suggested_stage, teaching_strategy_context
+from tutor_turn_plan import (
+    build_tutor_turn_plan,
+    infer_student_intent,
+    normalize_misconception,
+    select_teaching_action,
+    suggested_stage,
+    teaching_strategy_context,
+)
 
 
 STAGE_LABELS = {
@@ -67,11 +74,26 @@ class StatefulTutor:
             guide_cards=cards,
         )
         context = self._conversation_context(thread, recent_messages, mistake)
+        student_intent = infer_student_intent(
+            mode=request.mode,
+            content=request.content,
+            interaction_result=request.interactionResult,
+        )
+        # 生成前只使用服务端已经知道的事实选择动作。模型随后可以提出误区
+        # 假设，但不能反向改写这次输入的意图或判题权限。
+        generation_action = select_teaching_action(
+            intent=student_intent["id"],
+            error_reason=mistake.get("errorReason"),
+            current_stage=thread["stage"],
+            assessment="partial",
+        )
         # 教学策略必须在生成前进入上下文；只在生成后记录计划会“看起来可审计”，
         # 却不会真正改变老师的下一步行为。
         strategy_context = teaching_strategy_context(
             mistake.get("errorReason"),
             thread["stage"],
+            intent=student_intent,
+            teaching_action=generation_action,
         )
         model_context = f"{context}\n{strategy_context}"[-2_700:]
         tutor_request = HelpRequest(
@@ -91,6 +113,10 @@ class StatefulTutor:
             reply=tutor_reply,
         )
         assessment = str(tutor_reply.guideContext.get("assessment") or "partial")
+        misconception = normalize_misconception(
+            tutor_reply.guideContext.get("misconception"),
+            student_input=request.content,
+        )
         plan = build_tutor_turn_plan(
             error_reason=mistake.get("errorReason"),
             current_stage=thread["stage"],
@@ -100,6 +126,9 @@ class StatefulTutor:
             assessment_authority=str(
                 tutor_reply.guideContext.get("assessmentAuthority") or "guided"
             ),
+            student_intent=student_intent,
+            misconception=misconception,
+            generation_teaching_action=generation_action,
         )
         next_stage = plan["suggestedStage"]
         action = {

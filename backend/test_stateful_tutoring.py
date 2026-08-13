@@ -117,6 +117,9 @@ class StatefulTutoringTests(unittest.TestCase):
         action = incorrect.json()["action"]
         self.assertEqual(action["previousStage"], "diagnose")
         self.assertEqual(action["tutorTurnPlan"]["errorStrategy"]["id"], "concept-foundation")
+        self.assertEqual(action["tutorTurnPlan"]["intent"]["id"], "submit-answer")
+        self.assertEqual(action["tutorTurnPlan"]["teachingAction"], "inspect-first-error")
+        self.assertTrue(action["tutorTurnPlan"]["misconception"]["needsConfirmation"])
         self.assertEqual(action["modelRun"]["provider"], "mock")
         self.assertEqual(action["deduplication"]["retryCount"], 0)
         self.assertIn("modelRun", incorrect.json()["reply"])

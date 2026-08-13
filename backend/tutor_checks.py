@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from question_contracts import CANVAS_ACTIONS, GUIDE_CARDS, HelpRequest, TutorReply
+from tutor_turn_plan import normalize_misconception
 
 
 EQUATION_PATTERN = re.compile(
@@ -134,10 +135,14 @@ def build_reply(
     if any(marker in normalized for marker in ("垂直平分线", "perpendicular bisector")):
         guide_context = {
             "assessment": "correct",
+            "assessmentAuthority": "guided",
             "stuckAt": "学生已经提出正确猜想，需要补全证明。",
             "knowledge": ["全等三角形", "垂直平分线"],
             "hint": "不要停在结论；用 PA = PB、AM = BM 和公共边 PM 说明理由。",
             "question": "你能用 SSS 全等把这个结论证明完整吗？",
+            # 固定回退能判断关键词，却没有足够证据诊断学生误区；必须明确
+            # 标记待确认，避免历史线程把空诊断当成学习画像事实。
+            "misconception": normalize_misconception(None),
         }
         return TutorReply(
             reply="这个猜想是对的。先别急着结束：请说明三角形 PAM 与 PBM 为什么全等。",
@@ -161,10 +166,12 @@ def build_reply(
         reply=f"{prefix}{card['hint']}\n\n{card['question']}",
         guideContext={
             "assessment": "partial" if has_attempt else "incorrect",
+            "assessmentAuthority": "guided",
             "stuckAt": card["stuckAt"],
             "knowledge": card["knowledge"],
             "hint": card["hint"],
             "question": card["question"],
+            "misconception": normalize_misconception(None),
         },
         nextHintLevel=min(request.hintLevel + 1, 3),
         canvasAction=safe_canvas_action(question, card.get("canvasAction")),

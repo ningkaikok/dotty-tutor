@@ -14,6 +14,7 @@ from tutor_checks import (
     normalize_guide_cards,
     safe_canvas_action,
 )
+from tutor_turn_plan import normalize_misconception
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -68,6 +69,7 @@ class TutorEngine:
                     # 来源名用于展示，权限必须显式标记；否则历史预制卡也可能
                     # 因沿用 answer-check 名称而错误获得推进状态机的权限。
                     "assessmentAuthority": "deterministic",
+                    "misconception": normalize_misconception(None),
                 },
                 nextHintLevel=min(request.hintLevel + 1, 3),
                 canvasAction="show-base",
@@ -93,6 +95,7 @@ class TutorEngine:
                         "knowledge": [question.get("knowledgePoint", "概念判断")],
                         "hint": "圈出题干中的关键条件，再逐项核对命题。",
                         "question": "题干中的哪条条件能支持你的判断？",
+                        "misconception": normalize_misconception(None),
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
                     canvasAction=safe_canvas_action(question, "show-base"),
@@ -127,6 +130,7 @@ class TutorEngine:
                         "knowledge": [question.get("knowledgePoint", "几何作图")],
                         "hint": interaction.get("instruction", "先找出题目要求连接的两个点。"),
                         "question": "你连接的线段对应题目中的哪条几何关系？",
+                        "misconception": normalize_misconception(None),
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
                     canvasAction=safe_canvas_action(question, "show-triangles"),
@@ -172,6 +176,9 @@ class TutorEngine:
 3. 如果错误，温和但明确指出哪一步不成立，然后给一个不泄露最终答案的提示。
 4. 如果用户是请求提示，只引导下一步，不给最终答案；如果是提交回答，先明确判断再引导修改或继续。
 5. reply 应像真人老师一样简短，最后提一个学生可以继续回答的问题。
+6. misconception 只是对当前误区的假设：evidence 必须引用学生本轮输入中的具体内容；
+   没有证据或置信度低于 0.65 时 needsConfirmation 必须为 true，并通过问题向学生确认。
+7. 严格遵守最近对话摘要中的“学生意图”和“唯一教学动作”；不能自行改判、切换动作或推进阶段。
 """.strip()
         selection = self.runtime.selection
         try:
@@ -184,7 +191,28 @@ class TutorEngine:
             action = current_card["canvasAction"]
         action = safe_canvas_action(question, action)
         assessment = generated.get("assessment", "partial")
+        if assessment not in {"correct", "partial", "incorrect"}:
+            assessment = "partial"
+        misconception = normalize_misconception(
+            generated.get("misconception"),
+            student_input=request.studentInput,
+        )
         reply_text = _safe_text(generated.get("reply"), current_card["hint"], 1000)
+        confirmation_question = ""
+        if misconception["hypothesis"] and misconception["needsConfirmation"]:
+            if misconception["evidenceMatched"]:
+                confirmation_question = (
+                    f"我还不能确定你是不是卡在“{misconception['hypothesis']}”。"
+                    f"你刚才提到“{misconception['evidence'][:80]}”，这是你真正不确定的地方吗？"
+                )
+            else:
+                confirmation_question = (
+                    "我还不能从这句话确定你的具体卡点。"
+                    "请指出你最不确定的那一步，或者写出你目前得到的中间结果。"
+                )
+            # 不只依赖模型遵守提示词：证据不足时由领域边界直接覆盖武断表述，
+            # 确保学生看到的是确认问题，而不是被包装成事实的模型猜测。
+            reply_text = confirmation_question
         if conflict:
             assessment = "incorrect"
             reply_text = (
@@ -199,7 +227,12 @@ class TutorEngine:
                 "stuckAt": _safe_text(generated.get("stuckAt"), current_card["stuckAt"], 300),
                 "knowledge": _safe_string_list(generated.get("knowledge"), current_card["knowledge"]),
                 "hint": _safe_text(generated.get("hint"), current_card["hint"], 500),
-                "question": _safe_text(generated.get("question"), current_card["question"], 500),
+                "question": confirmation_question or _safe_text(
+                    generated.get("question"), current_card["question"], 500
+                ),
+                "misconception": misconception,
+                # 普通生成结果只用于引导，永远没有客观判题权限。
+                "assessmentAuthority": "guided",
             },
             nextHintLevel=min(request.hintLevel + 1, 3),
             canvasAction=action,
