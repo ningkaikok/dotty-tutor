@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
-import MathText from "../../../MathText";
 import type { MistakeItem, TutorStage } from "../../../types";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { VariationPractice } from "./VariationPractice";
@@ -34,7 +33,6 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
     <section className="tutor-layout">
       <aside className="tutor-question-card">
         <span className="eyebrow">ORIGINAL MISTAKE</span>
-        <MathText text={question.prompt} className="tutor-question-prompt" block />
         <div className="tutor-question-meta">
           <span>{item.chapter}</span><span>{item.knowledgePoint}</span>
         </div>

@@ -65,6 +65,19 @@ export interface BatchProcessResult {
   reviewRuns?: ReviewRun[];
 }
 
+export interface QuestionRegenerationResult {
+  batch: NonNullable<TextbookImportResult["batches"]>[number];
+  questionPayload: QuestionPayload;
+  guideCards: Array<Record<string, unknown>>;
+  ocrRun: OcrRun;
+  modelRun: ModelRun;
+  reviewRun?: ReviewRun;
+  regeneration: {
+    scope: "question";
+    refreshOcr: boolean;
+  };
+}
+
 export interface PdfUploadTask {
   uploadId: string;
   filename: string;

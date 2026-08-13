@@ -97,6 +97,10 @@ set +a
 
 `.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
+> 图片或旧题看起来与刚生成的结果不一致时，先确认服务使用的是同一份环境和数据库：
+> `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录，
+> 于是页面会读取旧数据库中的题目 JSON，而当前工作区并没有对应图片资源。
+
 启动 FastAPI：
 
 ```bash
@@ -146,6 +150,7 @@ npm run dev
 - 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
   PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
 - 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
+- 内容生产端“修复本题”调用 `POST /api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，默认只重跑当前题并复用 OCR 缓存；需要重新识别页面时使用批次接口的 `refreshOcr=true`。
 - 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
   `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `ocr_runtime.py`。
   Docker 后端镜像通过 `poppler-utils` 提供 `pdftoppm`，本机开发也需要 Poppler 才能启用矢量页渲染兜底。

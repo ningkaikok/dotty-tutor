@@ -288,9 +288,28 @@ def get_help(request: HelpRequest) -> TutorReply:
 
 
 @router.post("/api/uploads/{upload_id}/batches/{batch_id}/process")
-def process_pdf_batch(upload_id: str, batch_id: str, force: bool = False) -> dict[str, Any]:
+def process_pdf_batch(
+    upload_id: str,
+    batch_id: str,
+    force: bool = False,
+    refreshOcr: bool = False,
+) -> dict[str, Any]:
     """Delegate one queued page range to the reusable processing service."""
-    return processing_service.process_batch(upload_id, batch_id, force)
+    return processing_service.process_batch(upload_id, batch_id, force, refresh_ocr=refreshOcr)
+
+
+@router.post("/api/uploads/{upload_id}/questions/{question_source_key}/regenerate")
+def regenerate_question(
+    upload_id: str,
+    question_source_key: str,
+    refreshOcr: bool = False,
+) -> dict[str, Any]:
+    """只修复一题；需要重新识别页面时由调用方显式传 refreshOcr。"""
+    return processing_service.regenerate_question(
+        upload_id,
+        question_source_key,
+        refresh_ocr=refreshOcr,
+    )
 
 
 @router.get("/api/uploads/{upload_id}/assets/{batch_id}/{filename}")

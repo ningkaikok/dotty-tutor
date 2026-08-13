@@ -284,8 +284,12 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 已有匹配 PDF 内容哈希、页范围和 Provider 版本的 OCR 结果时复用缓存；升级 Provider 后自动使用新缓存键。
 - `force=true` 会跳过已保存题目并重新调用生成/审核流水线；OCR 中间结果仍按内容哈希复用，避免重复解析 PDF。
   每次成功生成都会获得新的题目修订 ID，但 `sourceQuestionKey` 保持稳定，便于批次定位和历史版本追踪。
+- 内容生产工作台的“修复本题”调用 `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，只重跑当前题的生成、审校和质量门禁，默认复用 OCR 缓存；同批其它题目和排序不变。
+- 当页面本身疑似识别错误时，内容生产者可使用“刷新 OCR 重生成”或在批次接口传 `refreshOcr=true`。这是显式的整批 OCR 刷新操作，不会让每次单题修复都重复运行 MinerU。
 - 图片绑定在审核后再次依据 OCR 原始引用顺序重建。对于“题干图 + A-D 四张选项图”，四张选项图会写入
   `optionImageUrls` 和 options 内容块，模型误写的 `images/...` 文件名不会泄漏到学生页面；旧数据由前端按五图结构做只读兼容推断。
+- 学生端所有题目入口（互动试卷、错题列表、确认页、陪练页）都通过同一套展示清洗函数处理旧数据。
+  这只是向后兼容，不会回写数据库；新数据必须以 `contentBlocks`、`imageUrls` 和 `optionImageUrls` 为图片事实来源。
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。

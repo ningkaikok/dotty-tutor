@@ -2,6 +2,7 @@ import { useState } from "react";
 import { confirmMistake } from "../../../api";
 import MathText from "../../../MathText";
 import type { MistakeConfirmation, MistakeErrorReason, MistakeItem } from "../../../types";
+import { displayedPrompt, optionText } from "../../../questionPresentation";
 
 interface MistakeConfirmProps {
   item: MistakeItem;
@@ -21,7 +22,9 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
   const question = item.questionPayload.question;
   const fromPublishedPaper = item.contentType === "application/vnd.dotty.publication+json";
   const [form, setForm] = useState<Omit<MistakeConfirmation, "errorReason"> & { errorReason: MistakeErrorReason | "" }>({
-    prompt: question.prompt,
+    // 旧错题可能把图片 Markdown 持久化在 prompt；编辑页应展示可读文本，保存后
+    // 由后端继续以结构化图片字段作为权威来源，避免旧字符串再次污染学生端。
+    prompt: displayedPrompt(question),
     originalAnswer: item.originalAnswer,
     subject: item.subject || "数学",
     gradeBand: item.gradeBand || "初中",
@@ -83,7 +86,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
             <span>识别结果预览</span>
             <MathText text={form.prompt} block />
             {question.options?.length ? (
-              <ol>{question.options.map((option) => <li key={option}><MathText text={option} /></li>)}</ol>
+              <ol>{question.options.map((option) => <li key={option}><MathText text={optionText(option)} /></li>)}</ol>
             ) : null}
           </div>
           <small>{fromPublishedPaper ? "来源：已发布互动试卷" : `OCR：${item.ocrRun.provider} · 模型：${item.modelRun.provider}`}</small>

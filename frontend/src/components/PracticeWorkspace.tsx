@@ -18,6 +18,8 @@ type PracticeWorkspaceProps = {
   interactionError: string;
   reply: TutorReply | null;
   onRegenerate: () => void;
+  onRegenerateBatch: () => void;
+  onRegenerateBatchWithOcr: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSelectOption: (label: string, answerText: string) => void;
@@ -45,6 +47,8 @@ export function PracticeWorkspace({
   interactionError,
   reply,
   onRegenerate,
+  onRegenerateBatch,
+  onRegenerateBatchWithOcr,
   onPrevious,
   onNext,
   onSelectOption,
@@ -76,7 +80,13 @@ export function PracticeWorkspace({
               {textbookImport.uploadId && (
                 <>
                   <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate}>
-                    {loadingQuestion ? "自动修复中…" : "重新生成本题"}
+                    {loadingQuestion ? "自动修复中…" : "修复本题"}
+                  </button>
+                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerateBatch} title="保留整批重生成；默认复用 OCR 缓存">
+                    重新生成本批次
+                  </button>
+                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerateBatchWithOcr} title="重新识别本批次页面，再生成全部题目">
+                    刷新 OCR 重生成
                   </button>
                 </>
               )}

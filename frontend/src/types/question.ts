@@ -129,6 +129,8 @@ export interface Question {
   sourceArtifactUrl?: string;
   promptArtifactUrl?: string;
   sourceBatchId?: string;
+  /** Stable OCR source identity; regenerated revisions keep this key. */
+  sourceQuestionKey?: string;
   sourcePages?: { start: number; end: number };
   visualContext?: Array<{ description: string; facts: string[]; conflicts: string[] }>;
 }

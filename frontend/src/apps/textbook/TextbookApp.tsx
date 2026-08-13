@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { processPdfBatch, requestHelp } from "../../api";
+import { processPdfBatch, regenerateQuestion, requestHelp } from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
@@ -184,28 +184,49 @@ export function TextbookApp() {
   };
 
   const regenerateCurrentQuestion = async () => {
-    if (!textbookImport?.uploadId || loadingQuestion) return;
-    const currentBatch = textbookImport.batches?.find(
-      (batch) => batch.id === payload?.question.sourceBatchId,
-    );
-    if (!currentBatch) return;
+    const sourceQuestionKey = payload?.question.sourceQuestionKey;
+    if (!textbookImport?.uploadId || !sourceQuestionKey || loadingQuestion) return;
     setLoadingQuestion(true);
     setInteractionError("");
     try {
-      const regenerated = await processPdfBatch(textbookImport.uploadId, currentBatch.id, true);
+      const regenerated = await regenerateQuestion(textbookImport.uploadId, sourceQuestionKey);
+      const nextBank = questionBank.map((item) => (
+        item.question.sourceQuestionKey === sourceQuestionKey ? regenerated.questionPayload : item
+      ));
+      setQuestionBank(nextBank);
+      setPayload(regenerated.questionPayload);
+      resetLearningState();
+    } catch (error) {
+      setInteractionError(error instanceof Error ? error.message : "题目修复失败");
+    } finally {
+      setLoadingQuestion(false);
+    }
+  };
+
+  const regenerateCurrentBatch = async (refreshOcr = false) => {
+    const batchId = payload?.question.sourceBatchId;
+    if (!textbookImport?.uploadId || !batchId || loadingQuestion) return;
+    setLoadingQuestion(true);
+    setInteractionError("");
+    try {
+      const regenerated = await processPdfBatch(textbookImport.uploadId, batchId, true, refreshOcr);
       const generatedQuestions = regenerated.questionPayloads?.length
         ? regenerated.questionPayloads
         : [regenerated.questionPayload];
-      const nextBank = questionBank.filter((item) => item.question.sourceBatchId !== currentBatch.id);
-      const insertAt = Math.min(questionIndex, nextBank.length);
-      nextBank.splice(insertAt, 0, ...generatedQuestions);
-      nextBank.splice(QUESTION_LIMIT);
+      const firstIndex = questionBank.findIndex((item) => item.question.sourceBatchId === batchId);
+      const retained = questionBank.filter((item) => item.question.sourceBatchId !== batchId);
+      const insertAt = firstIndex < 0 ? retained.length : firstIndex;
+      retained.splice(insertAt, 0, ...generatedQuestions);
+      const nextBank = retained.slice(0, QUESTION_LIMIT);
       setQuestionBank(nextBank);
-      setPayload(nextBank[insertAt]);
-      setQuestionIndex(insertAt);
-      resetLearningState();
+      setTextbookImport((current) => current ? {
+        ...current,
+        extraction: { ...current.extraction, questionCount: nextBank.length },
+        batches: current.batches?.map((batch) => batch.id === regenerated.batch.id ? regenerated.batch : batch),
+      } : current);
+      activateQuestion(Math.min(insertAt, nextBank.length - 1), nextBank);
     } catch (error) {
-      setInteractionError(error instanceof Error ? error.message : "题目重新识别失败");
+      setInteractionError(error instanceof Error ? error.message : "批次重新生成失败");
     } finally {
       setLoadingQuestion(false);
     }
@@ -320,6 +341,8 @@ export function TextbookApp() {
         interactionError={interactionError}
         reply={reply}
         onRegenerate={() => void regenerateCurrentQuestion()}
+        onRegenerateBatch={() => void regenerateCurrentBatch()}
+        onRegenerateBatchWithOcr={() => void regenerateCurrentBatch(true)}
         onPrevious={() => activateQuestion(questionIndex - 1)}
         onNext={() => void goToNextQuestion()}
         onSelectOption={selectOption}
