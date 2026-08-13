@@ -118,13 +118,14 @@ def _run_span(
     routes: list[dict[str, Any]],
     asset_dir: Path,
     asset_url_prefix: str,
+    refresh: bool = False,
 ) -> tuple[str, dict[str, Any]]:
-    """执行一个连续页段；命中缓存时不会再次启动 Provider。"""
+    """执行一个连续页段；默认复用缓存，显式刷新时才重新启动 Provider。"""
     provider = routes[0]["provider"]
     start_page = routes[0]["pageIndex"]
     end_page = routes[-1]["pageIndex"]
     key = _cache_key(content_hash, start_page, end_page, provider)
-    cached = cache.load(key)
+    cached = None if refresh else cache.load(key)
     if cached:
         run = dict(cached.metadata)
         run.update({"cacheHit": True, "cacheKey": key, "imageUrls": list(cached.image_urls)})
@@ -176,6 +177,7 @@ def resolve_routed_ocr_source(
     asset_url_prefix: str,
     cache_dir: Path,
     content_hash: str,
+    refresh: bool = False,
 ) -> tuple[str, dict[str, Any]]:
     """按页解析 PDF，并返回向前兼容的 ``ocrRun`` 审计记录。
 
@@ -246,6 +248,7 @@ def resolve_routed_ocr_source(
                 routes=group,
                 asset_dir=asset_dir,
                 asset_url_prefix=asset_url_prefix,
+                refresh=refresh,
             )
         except Exception as error:
             # OCR 失败时保留该页已有文字层，发布门禁仍会阻止空白或损坏题目进入学生端。

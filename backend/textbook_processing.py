@@ -17,11 +17,12 @@ from pypdf import PdfReader
 from lesson_contracts import lesson_document_from_payload
 from observability import log_event
 from question_pipeline import write_model_prompt_artifact
-from question_processing import process_question_sources
+from question_processing import _generate_validated_question, process_question_sources
 from question_source import (
     MARKDOWN_IMAGE_PATTERN,
     MAX_QUESTIONS_PER_BATCH,
     limited_question_sources,
+    question_key,
     split_question_sources,
 )
 from textbook_ocr_pipeline import resolve_routed_ocr_source
@@ -56,6 +57,58 @@ class TextbookProcessingService:
                 source_upload_id=upload_id,
                 guide_cards=cards,
             ))
+
+    def _load_batch_sources(
+        self,
+        *,
+        upload_id: str,
+        job: dict[str, Any],
+        batch: dict[str, Any],
+        result: dict[str, Any],
+        refresh_ocr: bool = False,
+    ) -> tuple[str, dict[str, Any], Any, list[tuple[str, str, list[str]]]]:
+        """读取批次 OCR 来源，并切成稳定题块。
+
+        单题修复和整批重生成共享这段准备逻辑。默认复用内容寻址缓存，只有明确刷新 OCR
+        时才重新启动 Provider，避免一次修复无谓地重复 MinerU。
+        """
+        source_path = job["directory"] / "source.pdf"
+        start_page = batch["startPage"] - 1
+        end_page = batch["endPage"] - 1
+        ocr_start_page = max(0, start_page - 1)
+        asset_dir = job["directory"] / "assets" / batch["id"]
+        content_hash = result.get("sourceFingerprint")
+        if not content_hash:
+            digest = hashlib.sha256()
+            with source_path.open("rb") as source_file:
+                while block := source_file.read(1024 * 1024):
+                    digest.update(block)
+            content_hash = digest.hexdigest()
+        lesson_source, ocr_run = resolve_routed_ocr_source(
+            runtime=self.ocr_runtime,
+            source_text="",
+            source_path=source_path,
+            start_page=ocr_start_page,
+            end_page=end_page,
+            asset_dir=asset_dir,
+            asset_url_prefix=f"/api/uploads/{upload_id}/assets/{batch['id']}",
+            cache_dir=job["directory"] / "ocr-cache",
+            content_hash=content_hash,
+            refresh=refresh_ocr,
+        )
+        context_note = (
+            f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
+            f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
+        )
+        question_sources = limited_question_sources(lesson_source)
+        if not split_question_sources(lesson_source):
+            question_sources = [
+                ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
+            ]
+        write_model_prompt_artifact(asset_dir, question_sources)
+        ocr_run["sourceArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/source.md"
+        ocr_run["promptArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/model-prompt.md"
+        return lesson_source, ocr_run, asset_dir, question_sources
 
     def complete_upload(self, upload_id: str) -> dict[str, Any]:
         """合并全部分块、验证 PDF，并处理首个页面批次。"""
@@ -276,6 +329,7 @@ class TextbookProcessingService:
         force: bool = False,
         *,
         persist: bool = True,
+        refresh_ocr: bool = False,
     ) -> dict[str, Any]:
         """OCR 一个页范围，并可选择是否立即保存生成练习。
 
@@ -322,47 +376,12 @@ class TextbookProcessingService:
             raise HTTPException(status_code=409, detail="这个批次正在处理中")
         processing.add(batch_id)
         try:
-            source_path = job["directory"] / "source.pdf"
-            start_page = batch["startPage"] - 1
-            end_page = batch["endPage"] - 1
-            # 多读取前一页，因为题干可能从上个批次末尾开始；来源元数据仍记录真实目标页段，
-            # 防止为提高识别完整度而污染页面归属。
-            ocr_start_page = max(0, start_page - 1)
-            asset_dir = job["directory"] / "assets" / batch_id
-            content_hash = result.get("sourceFingerprint")
-            if not content_hash:
-                # 兼容升级前已持久化的上传任务；新任务在首次合并时已保存指纹。
-                digest = hashlib.sha256()
-                with source_path.open("rb") as source_file:
-                    while block := source_file.read(1024 * 1024):
-                        digest.update(block)
-                content_hash = digest.hexdigest()
-            lesson_source, ocr_run = resolve_routed_ocr_source(
-                runtime=self.ocr_runtime,
-                source_text="",
-                source_path=source_path,
-                start_page=ocr_start_page,
-                end_page=end_page,
-                asset_dir=asset_dir,
-                asset_url_prefix=f"/api/uploads/{upload_id}/assets/{batch_id}",
-                cache_dir=job["directory"] / "ocr-cache",
-                content_hash=content_hash,
-            )
-            context_note = (
-                f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
-                f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
-            )
-            question_sources = limited_question_sources(lesson_source)
-            if not split_question_sources(lesson_source):
-                question_sources = [
-                    ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
-                ]
-            write_model_prompt_artifact(asset_dir, question_sources)
-            ocr_run["sourceArtifactUrl"] = (
-                f"/api/uploads/{upload_id}/artifacts/{batch_id}/source.md"
-            )
-            ocr_run["promptArtifactUrl"] = (
-                f"/api/uploads/{upload_id}/artifacts/{batch_id}/model-prompt.md"
+            lesson_source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
+                upload_id=upload_id,
+                job=job,
+                batch=batch,
+                result=result,
+                refresh_ocr=refresh_ocr,
             )
             payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
                 question_sources,
@@ -432,6 +451,117 @@ class TextbookProcessingService:
             raise HTTPException(status_code=422, detail=f"批次处理失败：{error}") from error
         finally:
             processing.discard(batch_id)
+
+    def regenerate_question(
+        self,
+        upload_id: str,
+        source_question_key: str,
+        *,
+        refresh_ocr: bool = False,
+    ) -> dict[str, Any]:
+        """只重新生成一题，并保留同批次其它题目的快照。
+
+        题目修复默认复用 OCR 缓存：模型或审核规则有问题时，不应因为修复一题而重新
+        识别整页。若页面本身疑似识别错，调用方可显式传 ``refresh_ocr=True``，此时
+        仍只处理题目所在批次，并绕过该批次的内容寻址 OCR 缓存。
+        """
+        job = self.upload_registry.get(upload_id)
+        result = job.get("result")
+        if job.get("status") != "complete" or not result:
+            raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+
+        old_payload = job.setdefault("batchPayloads", {}).get(source_question_key)
+        if not old_payload:
+            raise HTTPException(status_code=404, detail="没有找到要修复的题目")
+        batch_id = old_payload.get("question", {}).get("sourceBatchId")
+        batch = next((item for item in result.get("batches", []) if item["id"] == batch_id), None)
+        if not batch:
+            raise HTTPException(status_code=404, detail="没有找到题目所属批次")
+
+        processing = job.setdefault("processingBatches", set())
+        lock_key = f"question:{source_question_key}"
+        if lock_key in processing:
+            raise HTTPException(status_code=409, detail="这个题目正在修复中")
+        processing.add(lock_key)
+        try:
+            _lesson_source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
+                upload_id=upload_id,
+                job=job,
+                batch=batch,
+                result=result,
+                refresh_ocr=refresh_ocr,
+            )
+            target_index = -1
+            target_number = ""
+            target_block = ""
+            target_images: list[str] = []
+            for index, (number, block, images) in enumerate(question_sources):
+                if question_key(batch_id, number, index) == source_question_key:
+                    target_index = index
+                    target_number, target_block, target_images = number, block, images
+                    break
+            if target_index < 0:
+                raise HTTPException(status_code=409, detail="OCR 结果中已找不到这道题，请刷新 OCR 后重试")
+
+            payload, guide_cards, model_run, review_run = _generate_validated_question(
+                number=target_number,
+                block=target_block,
+                images=target_images,
+                index=target_index,
+                batch=batch,
+                ocr_run=ocr_run,
+                asset_dir=asset_dir,
+            )
+            # 业务引用使用稳定的来源键，生成题目的内部 id 可以变化；这样只替换当前题，
+            # 不会让学生端已有的其它题目、排序和发布快照失效。
+            payload["question"]["sourceQuestionKey"] = source_question_key
+            self._persist_lessons(upload_id, [payload], [guide_cards])
+            job["batchPayloads"][source_question_key] = payload
+            job.setdefault("batchGuideCards", {})[source_question_key] = guide_cards
+            result["questionPayload"] = payload
+            ordered_keys = [
+                key
+                for current_batch in result.get("batches", [])
+                for key in job.setdefault("batchQuestionKeys", {}).get(current_batch["id"], [])
+            ]
+            result["questionPayloads"] = [
+                job["batchPayloads"][key]
+                for key in ordered_keys
+                if key in job["batchPayloads"]
+            ]
+            self.upload_registry.update(job, "complete", 100, f"已修复题目 {source_question_key}")
+            log_event(
+                "upload.question.regenerated",
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                batch_id=batch_id,
+                refresh_ocr=refresh_ocr,
+                ocr_provider=ocr_run.get("provider"),
+            )
+            return {
+                "batch": batch,
+                "questionPayload": payload,
+                "guideCards": guide_cards,
+                "ocrRun": ocr_run,
+                "modelRun": model_run,
+                "reviewRun": review_run,
+                "regeneration": {"scope": "question", "refreshOcr": refresh_ocr},
+            }
+        except HTTPException:
+            raise
+        except Exception as error:
+            log_event(
+                "upload.question.regeneration.failed",
+                level=40,
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise HTTPException(status_code=422, detail=f"题目修复失败：{error}") from error
+        finally:
+            processing.discard(lock_key)
 
     def _record_batch_failure(
         self,

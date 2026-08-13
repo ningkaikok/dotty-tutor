@@ -70,7 +70,7 @@ class _Runtime:
 
 
 class TextbookOcrPipelineTests(unittest.TestCase):
-    def _resolve(self, directory: str, runtime: _Runtime, pages: list[_Page]):
+    def _resolve(self, directory: str, runtime: _Runtime, pages: list[_Page], refresh: bool = False):
         root = Path(directory)
         source = root / "source.pdf"
         source.write_bytes(b"%PDF-test")
@@ -88,6 +88,7 @@ class TextbookOcrPipelineTests(unittest.TestCase):
                 asset_url_prefix="/assets",
                 cache_dir=root / "cache",
                 content_hash="a" * 64,
+                refresh=refresh,
             )
 
     def test_auto_routes_only_scanned_page_to_mineru(self) -> None:
@@ -114,6 +115,14 @@ class TextbookOcrPipelineTests(unittest.TestCase):
             _source, second_run = self._resolve(directory, runtime, [_Page("")])
             self.assertEqual(runtime.parse_calls, [(0, 0)])
             self.assertTrue(second_run["cacheHit"])
+
+    def test_refresh_bypasses_cached_provider_output(self) -> None:
+        with TemporaryDirectory() as directory:
+            runtime = _Runtime(provider="mineru")
+            self._resolve(directory, runtime, [_Page("")])
+            _source, refreshed_run = self._resolve(directory, runtime, [_Page("")], refresh=True)
+            self.assertEqual(runtime.parse_calls, [(0, 0), (0, 0)])
+            self.assertFalse(refreshed_run["cacheHit"])
 
     def test_explicit_pypdf_never_upgrades_empty_page(self) -> None:
         with TemporaryDirectory() as directory:

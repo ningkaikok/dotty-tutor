@@ -1,5 +1,11 @@
 import type { QuestionPayload } from "../types/question";
-import type { BatchProcessResult, LibraryItem, PdfUploadTask, TextbookImportResult } from "../types/textbook";
+import type {
+  BatchProcessResult,
+  LibraryItem,
+  PdfUploadTask,
+  QuestionRegenerationResult,
+  TextbookImportResult,
+} from "../types/textbook";
 import { parse } from "./client";
 
 export async function loadQuestion(): Promise<QuestionPayload> {
@@ -46,9 +52,27 @@ export async function completePdfUpload(uploadId: string): Promise<TextbookImpor
   return parse<TextbookImportResult>(await fetch(`/api/uploads/${uploadId}/complete`, { method: "POST" }));
 }
 
-export async function processPdfBatch(uploadId: string, batchId: string, force = false): Promise<BatchProcessResult> {
+export async function processPdfBatch(
+  uploadId: string,
+  batchId: string,
+  force = false,
+  refreshOcr = false,
+): Promise<BatchProcessResult> {
   return parse<BatchProcessResult>(
-    await fetch(`/api/uploads/${uploadId}/batches/${batchId}/process?force=${force}`, { method: "POST" }),
+    await fetch(`/api/uploads/${uploadId}/batches/${batchId}/process?force=${force}&refreshOcr=${refreshOcr}`, { method: "POST" }),
+  );
+}
+
+export async function regenerateQuestion(
+  uploadId: string,
+  sourceQuestionKey: string,
+  refreshOcr = false,
+): Promise<QuestionRegenerationResult> {
+  return parse<QuestionRegenerationResult>(
+    await fetch(
+      `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}/regenerate?refreshOcr=${refreshOcr}`,
+      { method: "POST" },
+    ),
   );
 }
 
