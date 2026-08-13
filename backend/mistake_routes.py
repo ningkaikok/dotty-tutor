@@ -22,9 +22,13 @@ ALLOWED_IMAGE_MIME_TYPES = {
     "image/gif", "image/bmp", "image/tiff",
 }
 RecognizeMistake = Callable[[Path, str, Path, str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any], dict[str, Any]]]
+ArchiveCleanup = Callable[[str, str], int | None]
 
 
-def build_mistake_router(*, store: Any, recognize: RecognizeMistake) -> APIRouter:
+def build_mistake_router(
+    *, store: Any, recognize: RecognizeMistake,
+    archive_cleanup: ArchiveCleanup | None = None,
+) -> APIRouter:
     router = APIRouter(prefix="/api/mistakes", tags=["mistakes"])
 
     @router.post("/import")
@@ -131,7 +135,13 @@ def build_mistake_router(*, store: Any, recognize: RecognizeMistake) -> APIRoute
         item = store.set_archived(mistake_id, request.archived)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
-        log_event("mistake.archived", mistake_id=mistake_id, archived=request.archived)
+        cleared_threads = 0
+        if request.archived and archive_cleanup:
+            cleared_threads = int(archive_cleanup(item["mistakeId"], item["learnerId"]) or 0)
+        log_event(
+            "mistake.archived", mistake_id=mistake_id, archived=request.archived,
+            cleared_tutor_threads=cleared_threads,
+        )
         return _public_item(item)
 
     @router.get("/{mistake_id}/source", response_class=FileResponse)

@@ -10,11 +10,12 @@ const LEVEL_LABELS = {
 
 interface VariationPracticeProps {
   mistakeId: string;
+  autoStart?: boolean;
 }
 
 /** 阶段四的确定性掌握验证仅在本轮对话辅导结束后出现。 */
-export function VariationPractice({ mistakeId }: VariationPracticeProps) {
-  const state = useVariationPractice(mistakeId);
+export function VariationPractice({ mistakeId, autoStart = false }: VariationPracticeProps) {
+  const state = useVariationPractice(mistakeId, autoStart);
 
   if (state.loading) return <div className="variation-practice loading">正在恢复掌握验证记录…</div>;
   if (!state.active) {

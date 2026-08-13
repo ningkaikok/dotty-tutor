@@ -48,9 +48,18 @@ class MistakeCaptureApiTests(unittest.TestCase):
             database_url=f"sqlite+pysqlite:///{self.directory.name}/mistakes.sqlite3",
             data_root=self.directory.name,
         )
+        self.cleared: list[tuple[str, str]] = []
         app = FastAPI()
-        app.include_router(build_mistake_router(store=self.store, recognize=fake_recognize))
+        app.include_router(build_mistake_router(
+            store=self.store,
+            recognize=fake_recognize,
+            archive_cleanup=self._clear_tutor,
+        ))
         self.client = TestClient(app)
+
+    def _clear_tutor(self, mistake_id: str, learner_id: str) -> int:
+        self.cleared.append((mistake_id, learner_id))
+        return 1
 
     def tearDown(self) -> None:
         self.client.close()
@@ -101,6 +110,7 @@ class MistakeCaptureApiTests(unittest.TestCase):
             json={"archived": True},
         )
         self.assertEqual(archived.json()["status"], "archived")
+        self.assertEqual(self.cleared, [(imported["mistakeId"], "local-demo")])
         self.assertEqual(self.client.get("/api/mistakes").json()["items"], [])
 
     def test_rejects_non_image_upload(self) -> None:

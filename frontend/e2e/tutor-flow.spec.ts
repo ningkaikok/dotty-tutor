@@ -641,8 +641,13 @@ test.describe("产品入口", () => {
     await mockMistakeApi(page, true, true);
     await page.goto("/mistakes/mistake-pw-1/tutor");
 
-    await expect(page.getByRole("heading", { name: "用一道新题验证是否真正理解" })).toBeVisible();
-    await page.getByRole("button", { name: "生成第一道验证题" }).click();
+    // 进入 verify 后现在会自动生成第一道验证题；保留按钮分支兼容
+    // 尚未启用自动开始的旧线程或生成失败后的手动重试。
+    await expect(page.getByRole("heading", { name: /用一道新题验证是否真正理解|基础验证/ })).toBeVisible();
+    const firstVariationButton = page.getByRole("button", { name: "生成第一道验证题" });
+    if (await firstVariationButton.isVisible().catch(() => false)) {
+      await firstVariationButton.click();
+    }
     await expect(page.getByRole("heading", { name: "基础验证" })).toBeVisible();
     await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
     await page.getByRole("button", { name: "提交验证答案" }).click();

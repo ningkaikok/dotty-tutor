@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { answerVariation, createVariation, listVariations } from "../../api";
 import type { VariationExercise } from "../../types";
 import { buildStructuredAnswer } from "./structuredAnswer";
 
 /** 管理一次可计分的变式作答，不把掌握证据混入自由对话消息。 */
-export function useVariationPractice(mistakeId: string) {
+export function useVariationPractice(mistakeId: string, autoStart = false) {
   const [items, setItems] = useState<VariationExercise[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
@@ -12,6 +12,7 @@ export function useVariationPractice(mistakeId: string) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const autoStarted = useRef(false);
   const active = items.length ? items[items.length - 1] : null;
 
   useEffect(() => {
@@ -26,6 +27,9 @@ export function useVariationPractice(mistakeId: string) {
     return () => { cancelled = true; };
   }, [mistakeId]);
 
+  // 进入 verify 就代表学生已确认可以继续；第一道验证题直接开始生成，
+  // 不再要求学生在对话区和验证区之间寻找第二个“下一题”按钮。已有记录
+  // 会被复用，因此刷新页面不会重复创建题目。
   const resetDraft = () => {
     setSelectedOptions([]);
     setBlankAnswers({});
@@ -46,6 +50,12 @@ export function useVariationPractice(mistakeId: string) {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoStart || loading || items.length > 0 || autoStarted.current || submitting) return;
+    autoStarted.current = true;
+    void generate();
+  }, [autoStart, items.length, loading, submitting]);
 
   const selectOption = (label: string) => {
     if (!active || active.status === "answered") return;

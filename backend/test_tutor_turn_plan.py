@@ -113,6 +113,7 @@ class TutorTurnPlanTests(unittest.TestCase):
     def test_eight_student_intents_are_stable(self) -> None:
         cases = (
             ("submit-answer", "answer", "我选 A", {}),
+            ("confirm-ready", "answer", "准备好了", {}),
             ("request-hint", "help", "给我一点提示", {}),
             ("request-explanation", "help", "为什么要这样做", {}),
             ("check-step", "answer", "帮我检查这一步", {}),
@@ -140,6 +141,19 @@ class TutorTurnPlanTests(unittest.TestCase):
         )
         self.assertEqual(intent["id"], "submit-answer")
         self.assertEqual(intent["evidence"], ["interaction-result"])
+
+    def test_ready_confirmation_is_a_deterministic_verify_transition(self) -> None:
+        inputs = self._stateful_inputs("准备好了")
+        inputs["request"].mode = "answer"
+        result = StatefulTutor(runtime=SimpleNamespace(
+            selection=SimpleNamespace(provider="mock", model="demo")
+        )).reply(**inputs)
+        self.assertEqual(result["stage"], "verify")
+        self.assertIn("下一步验证", result["reply"].reply)
+        self.assertNotIn("卡在", result["reply"].reply)
+        self.assertEqual(result["action"]["tutorTurnPlan"]["intent"]["id"], "confirm-ready")
+        self.assertEqual(result["action"]["tutorTurnPlan"]["teachingAction"], "generate-micro-practice")
+        self.assertEqual(result["action"]["deduplication"]["status"], "deterministic-ready-transition")
 
     def test_help_schema_is_strict_at_every_new_object_level(self) -> None:
         self.assertEqual(set(HELP_SCHEMA["properties"]), set(HELP_SCHEMA["required"]))

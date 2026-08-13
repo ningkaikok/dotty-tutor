@@ -5,8 +5,9 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from question_contracts import HelpRequest
+from question_contracts import HelpRequest, TutorReply
 from tutor_engine import TutorEngine
+from tutor_checks import mock_model_run
 from tutor_turn_plan import (
     build_tutor_turn_plan,
     infer_student_intent,
@@ -104,14 +105,44 @@ class StatefulTutor:
             interactionResult=request.interactionResult,
             language="zh",
         )
-        tutor_reply = engine.reply(tutor_request, conversation_context=model_context)
-        tutor_reply, deduplication = self._deduplicate_reply(
-            engine=engine,
-            request=tutor_request,
-            conversation_context=model_context,
-            recent_messages=recent_messages,
-            reply=tutor_reply,
-        )
+        if student_intent["id"] == "confirm-ready":
+            # 这是一个确定性的流程操作，不应再交给模型猜测。此前模型把
+            # “准备好了”当成没有新答案，重复追问是否卡住，导致阶段永远停在
+            # explain。显式推进到 verify 后，前端才会显示下一道验证题入口。
+            tutor_reply = TutorReply(
+                reply=(
+                    "好，我们进入下一步验证。接下来生成一道同知识点但不重复原题的练习；"
+                    "连续答对两道后，才会标记为已掌握。"
+                ),
+                guideContext={
+                    "assessment": "partial",
+                    "assessmentAuthority": "deterministic",
+                    "stuckAt": "学生已确认可以进入验证环节。",
+                    "knowledge": [mistake.get("knowledgePoint", "当前知识点")],
+                    "hint": "先完成下一道验证题。",
+                    "question": "准备好后开始作答。",
+                    "misconception": normalize_misconception(None),
+                },
+                nextHintLevel=request.hintLevel,
+                canvasAction="show-base",
+                source="stored-guide-card",
+                modelRun=mock_model_run("deterministic"),
+            )
+            deduplication = {
+                "status": "deterministic-ready-transition",
+                "retryCount": 0,
+                "fallbackUsed": False,
+                "similarity": 0.0,
+            }
+        else:
+            tutor_reply = engine.reply(tutor_request, conversation_context=model_context)
+            tutor_reply, deduplication = self._deduplicate_reply(
+                engine=engine,
+                request=tutor_request,
+                conversation_context=model_context,
+                recent_messages=recent_messages,
+                reply=tutor_reply,
+            )
         assessment = str(tutor_reply.guideContext.get("assessment") or "partial")
         misconception = normalize_misconception(
             tutor_reply.guideContext.get("misconception"),

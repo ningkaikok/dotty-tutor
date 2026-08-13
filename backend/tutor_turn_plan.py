@@ -13,6 +13,7 @@ from typing import Any
 
 STUDENT_INTENTS = (
     "submit-answer",
+    "confirm-ready",
     "request-hint",
     "request-explanation",
     "check-step",
@@ -83,6 +84,7 @@ def infer_student_intent(
         }
 
     patterns: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("confirm-ready", ("准备好了", "准备好啦", "我准备好了", "可以开始", "开始下一题", "进入下一题", "继续下一题", "我好了")),
         ("challenge-answer", ("答案错了", "答案不对", "标准答案", "我不认同", "为什么是", "凭什么")),
         ("request-example", ("举个例", "例子", "类似题", "示范一下")),
         ("check-step", ("这一步", "这样算", "这样写", "对不对", "帮我检查", "检查一下")),
@@ -98,6 +100,12 @@ def infer_student_intent(
     # “提交回答”意味着学生希望被判题；但明确的质疑或步骤检查比空泛文本
     # 更具体。它们不会覆盖结构化选项/画线等客观作答。
     if mode == "answer":
+        if matched and matched[0] == "confirm-ready":
+            return {
+                "id": "confirm-ready",
+                "confidence": 0.99,
+                "evidence": ["mode:answer", f"phrase:{matched[1]}"],
+            }
         if matched and matched[0] in {"challenge-answer", "check-step"}:
             return {
                 "id": matched[0],
@@ -194,6 +202,8 @@ def select_teaching_action(
 ) -> str:
     """根据领域事实选择唯一教学动作，模型无权覆盖结果。"""
     diagnosis = normalize_misconception(misconception)
+    if intent == "confirm-ready":
+        return "generate-micro-practice"
     if intent == "challenge-answer":
         return "run-self-check"
     if intent == "request-example":
@@ -262,6 +272,10 @@ def suggested_stage(
     # 掌握证据。普通模型的 correct 同样没有状态推进权限。
     if student_intent == "challenge-answer":
         return current_stage
+    # “准备好了”是进入下一步验证的明确操作，不是新的判题答案。验证题会在
+    # 前端的 verify 区域生成，避免继续追问“是否卡住”。
+    if student_intent == "confirm-ready":
+        return "verify"
     if assessment == "correct" and assessment_authority == "deterministic":
         return {
             "diagnose": "practice",

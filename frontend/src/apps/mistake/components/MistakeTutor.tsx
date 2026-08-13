@@ -29,6 +29,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
 
   const question = item.questionPayload.question;
   const activeStage = STAGES.findIndex((stage) => stage.id === state.thread?.stage);
+  const hasSubmittedTurn = Boolean(state.thread.messages?.some((message) => message.role === "student"));
 
   return (
     <section className="tutor-layout">
@@ -94,11 +95,11 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
         <div className="tutor-actions">
           <button disabled={state.sending} onClick={() => void state.submit("help")}>给我一点提示</button>
           <button className="mistake-primary-action compact" disabled={state.sending} onClick={() => void state.submit("answer")}>
-            {state.sending ? "正在思考…" : "提交这一轮"}
+            {state.sending ? "正在思考…" : hasSubmittedTurn ? "重新提交" : "提交这一轮"}
           </button>
         </div>
         <small className="tutor-context-note">仅保存结构化状态、摘要和必要消息；不会无限重放全部对话。</small>
-        {state.thread.stage === "verify" && <VariationPractice mistakeId={item.mistakeId} />}
+        {state.thread.stage === "verify" && <VariationPractice mistakeId={item.mistakeId} autoStart />}
       </div>
     </section>
   );
