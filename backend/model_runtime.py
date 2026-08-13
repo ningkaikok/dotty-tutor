@@ -51,10 +51,18 @@ class ModelRuntime:
     期间用户切换下拉框而让日志中的 provider/model 与真实调用不一致。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, env_prefix: str = "") -> None:
+        """Create a runtime with an independent environment/config namespace.
+
+        ``MODEL_*`` controls content generation. The tutor passes ``TUTOR_*`` so
+        changing the student-facing陪练 model cannot silently alter textbook
+        generation or review jobs.
+        """
+        provider_name = f"{env_prefix}MODEL_PROVIDER" if env_prefix else "MODEL_PROVIDER"
+        model_name = f"{env_prefix}MODEL_NAME" if env_prefix else "MODEL_NAME"
         self.selection = ModelSelection(
-            provider=os.getenv("MODEL_PROVIDER", "ollama"),  # type: ignore[arg-type]
-            model=os.getenv("MODEL_NAME", "qwen2.5:3b"),
+            provider=os.getenv(provider_name, "ollama"),  # type: ignore[arg-type]
+            model=os.getenv(model_name, "qwen2.5:3b"),
         )
 
     def ollama_models(self) -> tuple[list[str], str | None]:

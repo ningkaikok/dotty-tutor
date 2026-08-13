@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { playSpeech, preloadSpeech, stopSpeech } from "../speech";
+import MathText from "../MathText";
 import type { CanvasAction, LessonBlock, QuestionPayload } from "../types";
 import { lessonDocumentFromPayload } from "./lessonDocument";
 import { renderLessonBlock } from "./rendererRegistry";
@@ -112,10 +113,10 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
       <aside className="explanation-card panel" aria-live="polite">
         <span className="eyebrow">STEP {step + 1} / {playableBlocks.length}</span>
         <h2>{current.title}</h2>
-        <p>{blockNarration(current)}</p>
+        <p><MathText text={blockNarration(current)} /></p>
         {!studentMode && (
           <>
-            <div className="speech-copy"><span>speechText</span>{blockNarration(current)}</div>
+            <div className="speech-copy"><span>speechText</span><MathText text={blockNarration(current)} /></div>
             <div className="flow-row"><span>Renderer</span><b>+</b><span>Content Block</span><b>+</b><span>TTS</span></div>
           </>
         )}

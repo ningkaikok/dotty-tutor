@@ -1,4 +1,5 @@
 import { useState } from "react";
+import MathText from "../MathText";
 import { QuestionAnswer } from "./QuestionAnswer";
 import type { QuestionPayload, TextbookImportResult, TutorReply } from "../types";
 
@@ -142,14 +143,19 @@ export function PracticeWorkspace({
             <details className="review-details">
               <summary>审校记录 · 文字 {payload.review.text.confidence}% · 视觉 {payload.review.vision.confidence}% · {payload.review.text.corrections.length} 处修正</summary>
               {payload.review.text.corrections.map((item, index) => (
-                <p key={`${item.field}-${index}`}><b>{item.field}</b>：{item.original} → {item.corrected}（{item.reason}）</p>
+                <p key={`${item.field}-${index}`}><b>{item.field}</b>：<MathText text={item.original} /> → <MathText text={item.corrected} />（<MathText text={item.reason} />）</p>
               ))}
-              {payload.review.vision.correctAnswer && <p><b>视觉判定答案：</b>{payload.review.vision.correctAnswer}</p>}
-              {[...payload.review.text.issues, ...payload.review.vision.issues].map((issue, index) => <p key={`${issue}-${index}`}>⚠ {issue}</p>)}
-              {payload.question.visualContext?.map((context, index) => <p key={`visual-${index}`}><b>题图理解：</b>{context.description}</p>)}
+              {payload.review.vision.correctAnswer && <p><b>视觉判定答案：</b><MathText text={payload.review.vision.correctAnswer} /></p>}
+              {[...payload.review.text.issues, ...payload.review.vision.issues].map((issue, index) => <p key={`${issue}-${index}`}>⚠ <MathText text={issue} /></p>)}
+              {payload.question.visualContext?.map((context, index) => <p key={`visual-${index}`}><b>题图理解：</b><MathText text={context.description} /></p>)}
             </details>
           )}
-          <div className="givens">{payload.question.givens.map((given) => <span key={given}>{given}</span>)}</div>
+          {payload.question.givens.length > 0 && (
+            <div className="givens" aria-label="题目条件（辅助读题）">
+              <span className="givens-heading">题目条件</span>
+              {payload.question.givens.map((given) => <span key={given}><MathText text={given} /></span>)}
+            </div>
+          )}
         </div>
 
         <div className="answer-block">
@@ -193,7 +199,7 @@ export function PracticeWorkspace({
                     : reply.source === "stored-guide-card" ? "来自预制引导卡" : "已检查学生答案"}
               </span>
             </div>
-            {reply.reply.split("\n").map((line, index) => <p key={index}>{line || <br />}</p>)}
+            {reply.reply.split("\n").map((line, index) => <p key={index}>{line ? <MathText text={line} /> : <br />}</p>)}
             <button className="debug-toggle" onClick={() => setDebugOpen((value) => !value)}>{debugOpen ? "收起数据流" : "查看本次 guide_context"}</button>
             {debugOpen && <pre>{JSON.stringify(reply.guideContext, null, 2)}</pre>}
           </div>

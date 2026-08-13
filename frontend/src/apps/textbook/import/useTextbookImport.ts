@@ -7,10 +7,12 @@ import {
   loadLibrary,
   loadLibraryItem,
   loadModels,
+  loadTutorModels,
   loadOcrProviders,
   loadReviewModels,
   loadPdfUploadStatus,
   selectModel,
+  selectTutorModel,
   selectOcrProvider,
   selectReviewModel,
   uploadPdfChunk,
@@ -78,6 +80,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
   const [activeUploadId, setActiveUploadId] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [models, setModels] = useState<ModelCatalog | null>(null);
+  const [tutorModels, setTutorModels] = useState<ModelCatalog | null>(null);
   const [reviewModels, setReviewModels] = useState<ReviewModelCatalog | null>(null);
   const [ocrProviders, setOcrProviders] = useState<OcrCatalog | null>(null);
   const [runtimeLoading, setRuntimeLoading] = useState(false);
@@ -99,6 +102,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
 
   useEffect(() => {
     loadModels().then(setModels).catch(() => setGlobalError("模型列表加载失败"));
+    loadTutorModels().then(setTutorModels).catch(() => setGlobalError("陪练模型列表加载失败"));
     loadOcrProviders().then(setOcrProviders).catch(() => setGlobalError("OCR 列表加载失败"));
     loadReviewModels().then(setReviewModels).catch(() => setGlobalError("审核模型列表加载失败"));
     loadLibrary().then(setLibrary).catch(() => setGlobalError("教材库加载失败"));
@@ -259,6 +263,11 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     setGlobalError("");
     try { setModels(await selectModel(provider, model)); } catch { setGlobalError("模型切换失败"); } finally { setRuntimeLoading(false); }
   };
+  const selectTutor = async (provider: ModelProvider, model: string) => {
+    setRuntimeLoading(true);
+    setGlobalError("");
+    try { setTutorModels(await selectTutorModel(provider, model)); } catch { setGlobalError("陪练模型切换失败"); } finally { setRuntimeLoading(false); }
+  };
   const selectOcr = async (provider: OcrProvider) => {
     setRuntimeLoading(true);
     setGlobalError("");
@@ -315,6 +324,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     result: active?.result ?? null,
     sourceText,
     models,
+    tutorModels,
     reviewModels,
     ocrProviders,
     runtimeLoading,
@@ -331,6 +341,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     upload,
     pause,
     selectGenerationModel,
+    selectTutor,
     selectReviewer,
     selectOcr,
     openLibraryItem,

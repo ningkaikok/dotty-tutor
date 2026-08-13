@@ -6,7 +6,7 @@ import {
   recordExerciseAttempt,
   syncExerciseAttempts,
 } from "../../api";
-import type { ExerciseAttemptInput, MasteryState, MistakeItem } from "../../types";
+import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
 const DEMO_LEARNER_ID = "local-demo";
@@ -88,6 +88,7 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
   const [sessionId, setSessionId] = useState("");
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
   const [mastery, setMastery] = useState<MasteryState[]>([]);
+  const [attempts, setAttempts] = useState<ExerciseAttemptRecord[]>([]);
 
   const mergeMastery = useCallback((next: MasteryState) => {
     setMastery((current) => [
@@ -101,12 +102,20 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     let cancelled = false;
     // 新打开的试卷绝不能短暂复用上一份试卷的 sessionId。
     setSessionId("");
+    setAttempts([]);
     setSyncMessage("正在连接学习记录…");
     void openOrRecoverSession(publicationId).then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
+      setAttempts(session.attempts ?? []);
       const delivered = await flushPending(session.sessionId, replacedSessionId);
       if (!cancelled) setSyncMessage(delivered ? "离线学习记录已补传" : "学习记录已同步");
+      // 补传可能包含上一次离线作答；重新读取一次会话，确保题目状态与服务端一致。
+      if (delivered) {
+        void loadLearningSession(session.sessionId).then((latest) => {
+          if (!cancelled) setAttempts(latest.attempts ?? []);
+        }).catch(() => undefined);
+      }
       // 掌握度是作答日志的派生投影；先补传离线记录再加载，避免页面分数落后于答案历史。
       void loadLearningMastery(DEMO_LEARNER_ID).then((items) => {
         if (!cancelled) setMastery(items);
@@ -118,6 +127,12 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
   }, [publicationId]);
 
   const queueAttempt = useCallback(async (attempt: ExerciseAttemptInput): Promise<AttemptQueueResult> => {
+    // 先更新本地快照，再等待网络。这样切题或刷新前，学生刚提交的答案不会因为
+    // 请求延迟而从控件中消失；attemptId 保证随后服务端补传仍然幂等。
+    setAttempts((current) => [
+      ...current.filter((item) => item.attemptId !== attempt.attemptId),
+      attempt,
+    ]);
     if (!sessionId) {
       const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
       writePending([...pending, { sessionId: "", attempt }]);
@@ -137,5 +152,5 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     }
   }, [mergeMastery, sessionId]);
 
-  return { queueAttempt, syncMessage, mastery };
+  return { queueAttempt, syncMessage, mastery, attempts };
 }

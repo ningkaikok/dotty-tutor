@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import MathText from "./MathText";
 import type { CanvasAction } from "./types";
 
 interface GeometryCanvasProps {
@@ -19,6 +20,7 @@ const COLORS = {
 
 export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const geometryMode = /几何|三角|垂直|轨迹|圆|角|线段/.test(topic);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -34,8 +36,6 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
 
     const w = box.width;
     const h = box.height;
-    const geometryMode = /几何|三角|垂直|轨迹|圆|角|线段/.test(topic);
-
     context.clearRect(0, 0, w, h);
     context.fillStyle = COLORS.paper;
     context.fillRect(0, 0, w, h);
@@ -54,10 +54,6 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
       context.fillStyle = COLORS.ink;
       context.font = `700 ${Math.min(30, Math.max(22, w / 22))}px Inter, system-ui, sans-serif`;
       drawWrappedText(context, title, padding, 125, w - padding * 2, 40, 2);
-      context.fillStyle = "#56645d";
-      context.font = "500 16px Inter, system-ui, sans-serif";
-      drawWrappedText(context, text, padding, 205, w - padding * 2, 29, 5);
-
       context.fillStyle = "#eff0eb";
       context.fillRect(padding, h - 58, w - padding * 2, 30);
       context.fillStyle = "#748078";
@@ -132,7 +128,16 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
     }
   }, [action, text, title, topic]);
 
-  return <canvas ref={ref} className="geometry-canvas" aria-label="动态讲解画板" />;
+  return (
+    <div className="geometry-canvas-wrap">
+      <canvas ref={ref} className="geometry-canvas" aria-label="动态讲解画板" />
+      {!geometryMode && (
+        <div className="geometry-canvas-text" aria-label="画布讲解文字">
+          <MathText text={text} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 const CANVAS_STEP: Record<CanvasAction, number> = {

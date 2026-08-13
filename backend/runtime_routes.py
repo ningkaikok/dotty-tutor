@@ -22,7 +22,7 @@ from observability import log_event
 from review_runtime import runtime_reviewer
 
 
-def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]]) -> APIRouter:
+def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]], tutor_runtime: Any) -> APIRouter:
     router = APIRouter()
     qwen_tts_url = os.getenv("QWEN_TTS_URL", "http://127.0.0.1:8020")
     tts_provider = os.getenv("TTS_PROVIDER", "auto").lower()
@@ -127,6 +127,28 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
             return result
         except ValueError as error:
             log_event("model.selection.failed", level=30, provider=request.provider, model=request.model, error=str(error)[:200])
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @router.get("/api/tutor-models")
+    def get_tutor_models() -> dict[str, Any]:
+        """Return the independent model catalog used only by mistake tutoring."""
+        return tutor_runtime.catalog()
+
+    @router.post("/api/tutor-models/select")
+    def select_tutor_model(request: ModelSelectionRequest) -> dict[str, Any]:
+        """Switch future tutoring turns without changing generation/review models."""
+        try:
+            result = tutor_runtime.select(request.provider, request.model)
+            log_event("tutor.model.selection.changed", provider=request.provider, model=request.model)
+            return result
+        except ValueError as error:
+            log_event(
+                "tutor.model.selection.failed",
+                level=30,
+                provider=request.provider,
+                model=request.model,
+                error=str(error)[:200],
+            )
             raise HTTPException(status_code=400, detail=str(error)) from error
 
     @router.get("/api/review-models")

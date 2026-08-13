@@ -7,6 +7,7 @@ import {
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import type {
+  ExerciseAttemptRecord,
   PublicationDetail,
   TutorReply,
 } from "../../types";
@@ -14,6 +15,14 @@ import { PaperLearningProgress } from "./PaperLearningProgress";
 import { StudentQuestionWorkspace } from "./StudentQuestionWorkspace";
 import { usePublishedLearningSession } from "./usePublishedLearningSession";
 import "./student.css";
+
+interface StudentQuestionDraft {
+  studentInput: string;
+  selectedOptions: string[];
+  blankAnswers: Record<string, string>;
+  numericAnswer: string;
+  drawConnections: Array<[string, string]>;
+}
 
 /**
  * 学生专用试卷播放器。
@@ -34,13 +43,79 @@ export function PublishedPaperApp() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [mistakeNotice, setMistakeNotice] = useState("");
   const [reply, setReply] = useState<TutorReply | null>(null);
+  // 未提交的选择也属于学生当前作答上下文。按题目 ID 保存，允许学生先浏览后提交，
+  // 再返回时不会因为切题 effect 而丢掉刚才填写的内容。
+  const [drafts, setDrafts] = useState<Record<string, StudentQuestionDraft>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
-  const { queueAttempt, syncMessage, mastery } = usePublishedLearningSession(publication?.publicationId);
+  const { queueAttempt, syncMessage, mastery, attempts } = usePublishedLearningSession(publication?.publicationId);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
+  const currentQuestionId = payload?.question.id ?? "";
+
+  const latestAttempt = payload
+    ? attempts
+      .filter((attempt) => attempt.questionId === payload.question.id)
+      .sort((left, right) => right.createdAt - left.createdAt)[0]
+    : undefined;
+
+  const restoreAttempt = (attempt?: ExerciseAttemptRecord, draft?: StudentQuestionDraft) => {
+    const response = attempt?.response ?? {};
+    const interaction = response.interactionResult;
+    const structured = interaction && typeof interaction === "object"
+      ? interaction as Record<string, unknown>
+      : {};
+    const selected = attempt ? structured.selectedOptions : draft?.selectedOptions;
+    const blanks = attempt ? structured.blankAnswers : draft?.blankAnswers;
+    const numeric = attempt ? structured.numericAnswer : draft?.numericAnswer;
+    const connections = attempt ? structured.connections : draft?.drawConnections;
+    const nextStudentInput = attempt
+      ? (typeof response.text === "string" ? response.text : "")
+      : (draft?.studentInput ?? "");
+    const nextSelectedOptions = Array.isArray(selected) ? selected.filter((item): item is string => typeof item === "string") : [];
+    const nextBlankAnswers = blanks && typeof blanks === "object" && !Array.isArray(blanks)
+      ? Object.fromEntries(Object.entries(blanks).filter(([, value]) => typeof value === "string")) as Record<string, string>
+      : {};
+    const nextNumericAnswer = typeof numeric === "string" ? numeric : "";
+    const nextDrawConnections = Array.isArray(connections)
+      ? connections.filter((item): item is [string, string] => Array.isArray(item) && item.length === 2 && item.every((value) => typeof value === "string"))
+      : [];
+    setStudentInput(nextStudentInput);
+    setSelectedOptions(nextSelectedOptions);
+    setBlankAnswers(nextBlankAnswers);
+    setNumericAnswer(nextNumericAnswer);
+    setDrawConnections(nextDrawConnections);
+    setHintLevel(attempt?.hintLevel ?? 0);
+    if (currentQuestionId) {
+      setDrafts((current) => ({
+        ...current,
+        [currentQuestionId]: {
+          studentInput: nextStudentInput,
+          selectedOptions: nextSelectedOptions,
+          blankAnswers: nextBlankAnswers,
+          numericAnswer: nextNumericAnswer,
+          drawConnections: nextDrawConnections,
+        },
+      }));
+    }
+  };
+
+  const updateDraft = (patch: Partial<StudentQuestionDraft>) => {
+    if (!currentQuestionId) return;
+    setDrafts((current) => ({
+      ...current,
+      [currentQuestionId]: {
+        studentInput: current[currentQuestionId]?.studentInput ?? "",
+        selectedOptions: current[currentQuestionId]?.selectedOptions ?? [],
+        blankAnswers: current[currentQuestionId]?.blankAnswers ?? {},
+        numericAnswer: current[currentQuestionId]?.numericAnswer ?? "",
+        drawConnections: current[currentQuestionId]?.drawConnections ?? [],
+        ...patch,
+      },
+    }));
+  };
 
   useEffect(() => {
     if (!publicationId) return;
@@ -66,7 +141,20 @@ export function PublishedPaperApp() {
     setShowExplanation(false);
     setMistakeNotice("");
     setLoading(false);
-  }, [questionIndex]);
+    restoreAttempt(latestAttempt, latestAttempt ? undefined : drafts[currentQuestionId]);
+  // 题目切换时恢复该题最后一次提交的结构化答案；模型回复不从历史猜测，避免把旧题
+  // 的讲解误显示到新题上。attempts 变化单独由下面的 effect 处理。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [questionIndex, payload?.question.id]);
+
+  useEffect(() => {
+    // 首次加载会话是异步的，题目可能已经先渲染。只有当前控件为空时才回填，
+    // 防止学生正在编辑时后台同步覆盖输入。
+    if (!latestAttempt || studentInput || selectedOptions.length || Object.keys(blankAnswers).length
+      || numericAnswer || drawConnections.length) return;
+    restoreAttempt(latestAttempt);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attempts, payload?.question.id]);
 
   useEffect(() => () => {
     interactionRequestId.current += 1;
@@ -111,7 +199,10 @@ export function PublishedPaperApp() {
       if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
       setReply(response);
       setHintLevel(response.nextHintLevel);
-      speak(response.reply.replace(/\n/g, " "));
+      // 学生提交答案是判题动作，不应隐式启动昂贵的 TTS 请求。
+      // 语音属于“请求讲解”的显式反馈；否则每次选择选项、重试答案都会
+      // 生成一段音频，多个题目快速切换时还会堆积 /api/tts 请求。
+      if (mode === "help") speak(response.reply.replace(/\n/g, " "));
       if (mode === "answer" && response.guideContext.assessment) {
         const attemptResult = await queueAttempt({
           attemptId: crypto.randomUUID(),
@@ -152,7 +243,9 @@ export function PublishedPaperApp() {
       ? (selectedOptions.includes(label) ? selectedOptions.filter((item) => item !== label) : [...selectedOptions, label])
       : [label];
     setSelectedOptions(next);
-    setStudentInput(`我选择${next.join("、")}${answerText && !multiple ? `：${answerText}` : ""}`);
+    const nextStudentInput = `我选择${next.join("、")}${answerText && !multiple ? `：${answerText}` : ""}`;
+    setStudentInput(nextStudentInput);
+    updateDraft({ selectedOptions: next, studentInput: nextStudentInput });
     setReply(null);
     setError("");
   };
@@ -187,13 +280,27 @@ export function PublishedPaperApp() {
         error={error}
         reply={reply}
         mistakeNotice={mistakeNotice}
+        hasSubmitted={Boolean(latestAttempt)}
         onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}
         onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}
-        onBlankChange={(id, value) => setBlankAnswers((current) => ({ ...current, [id]: value }))}
-        onNumericChange={setNumericAnswer}
-        onDrawConnectionsChange={setDrawConnections}
-        onStudentInputChange={setStudentInput}
+        onBlankChange={(id, value) => {
+          const next = { ...blankAnswers, [id]: value };
+          setBlankAnswers(next);
+          updateDraft({ blankAnswers: next });
+        }}
+        onNumericChange={(value) => {
+          setNumericAnswer(value);
+          updateDraft({ numericAnswer: value });
+        }}
+        onDrawConnectionsChange={(connections) => {
+          setDrawConnections(connections);
+          updateDraft({ drawConnections: connections });
+        }}
+        onStudentInputChange={(value) => {
+          setStudentInput(value);
+          updateDraft({ studentInput: value });
+        }}
         onSubmit={() => void askTutor("answer")}
         onHelp={() => void askTutor("help")}
         onOpenMistakes={() => navigate("/mistakes")}

@@ -122,8 +122,10 @@ def _normalized_steps(generated: dict[str, Any], question: dict[str, Any] | None
         steps.append({
             "id": f"model-step-{index + 1}",
             "title": safe_text(raw.get("title"), f"第 {index + 1} 步", 80),
-            "text": safe_text(raw.get("text"), "根据题目条件继续推理。", 700),
-            "speechText": safe_text(raw.get("speechText"), "我们继续看下一步。", 700),
+            # 题干和选项会经过统一的公式规范化；讲解步骤也必须走同一条路径，
+            # 否则生产端会出现“题目能渲染、讲解仍显示 $...$”的分裂行为。
+            "text": normalize_model_math_text(safe_text(raw.get("text"), "根据题目条件继续推理。", 700)),
+            "speechText": normalize_model_math_text(safe_text(raw.get("speechText"), "我们继续看下一步。", 700)),
             # 目前只有几何题有具体画布动作；其他题保留统一的基础画布，
             # 避免历史几何样例污染普通数学题的讲解状态。
             "action": CANVAS_ACTIONS[index] if is_geometry_question(question) else "show-base",

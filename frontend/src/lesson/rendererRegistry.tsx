@@ -37,11 +37,11 @@ const renderers: Record<LessonBlock["type"], LessonBlockRenderer> = {
     )
     : null,
   annotation: ({ block }) => block.type === "annotation"
-    ? <aside className="lesson-annotation">{block.payload.text}</aside>
+    ? <aside className="lesson-annotation"><MathText text={block.payload.text} /></aside>
     : null,
   quiz: () => null,
   hint: ({ block }) => block.type === "hint"
-    ? <aside className="lesson-hint">{block.payload.hint}</aside>
+    ? <aside className="lesson-hint"><MathText text={block.payload.hint} /></aside>
     : null,
 };
 
