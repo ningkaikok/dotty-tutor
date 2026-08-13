@@ -63,7 +63,12 @@ class TutorEngine:
         if structured:
             return TutorReply(
                 reply=structured["reply"],
-                guideContext={key: structured[key] for key in ("assessment", "stuckAt", "knowledge", "hint", "question")},
+                guideContext={
+                    **{key: structured[key] for key in ("assessment", "stuckAt", "knowledge", "hint", "question")},
+                    # 来源名用于展示，权限必须显式标记；否则历史预制卡也可能
+                    # 因沿用 answer-check 名称而错误获得推进状态机的权限。
+                    "assessmentAuthority": "deterministic",
+                },
                 nextHintLevel=min(request.hintLevel + 1, 3),
                 canvasAction="show-base",
                 source="answer-check",
@@ -83,6 +88,7 @@ class TutorEngine:
                     ),
                     guideContext={
                         "assessment": "correct" if is_correct else "incorrect",
+                        "assessmentAuthority": "deterministic",
                         "stuckAt": "需要根据题干条件判断命题真伪。",
                         "knowledge": [question.get("knowledgePoint", "概念判断")],
                         "hint": "圈出题干中的关键条件，再逐项核对命题。",
@@ -116,6 +122,7 @@ class TutorEngine:
                     ),
                     guideContext={
                         "assessment": assessment,
+                        "assessmentAuthority": "deterministic",
                         "stuckAt": "需要把题目中的几何关系落实为图上的连线。",
                         "knowledge": [question.get("knowledgePoint", "几何作图")],
                         "hint": interaction.get("instruction", "先找出题目要求连接的两个点。"),

@@ -6,6 +6,7 @@ export type TutorStage = "diagnose" | "explain" | "practice" | "verify";
 
 export interface GuideContext {
   assessment?: "correct" | "partial" | "incorrect";
+  assessmentAuthority?: "deterministic" | "guided";
   stuckAt?: string;
   knowledge?: string[];
   hint?: string;
@@ -46,6 +47,22 @@ export interface TutorThread {
   updatedAt: number;
 }
 
+/** 单轮计划由后端领域规则生成；模型只能负责表达，不能覆盖判题或阶段。 */
+export interface TutorTurnPlan {
+  intent: string;
+  assessment: "correct" | "partial" | "incorrect";
+  errorStrategy: { id: string; objective: string; reason: string };
+  teachingAction: string;
+  shouldRevealAnswer: boolean;
+  suggestedStage: TutorStage;
+  replySource: TutorReply["source"];
+  audit: {
+    assessmentAuthority: "deterministic" | "guided";
+    stageAuthority: "tutor-turn-plan";
+    modelMayOverride: false;
+  };
+}
+
 export interface TutorTurnResult {
   thread: TutorThread;
   reply: TutorReply;
@@ -55,5 +72,13 @@ export interface TutorTurnResult {
     nextStage: TutorStage;
     assessment: "correct" | "partial" | "incorrect";
     prompt: string;
+    tutorTurnPlan: TutorTurnPlan;
+    deduplication: {
+      status: string;
+      retryCount: 0 | 1;
+      fallbackUsed: boolean;
+      similarity?: number;
+    };
+    modelRun: Partial<ModelRun>;
   };
 }
