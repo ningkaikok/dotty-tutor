@@ -73,17 +73,22 @@ app.include_router(build_publication_router(
 ))
 app.include_router(textbook_router)
 
+# 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
+tutoring_store = TutoringStore(engine=store.engine)
+stateful_tutor = StatefulTutor(runtime=tutor_runtime)
+
 # 错题域复用 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_recognizer = build_mistake_recognizer(
     resolve_ocr_text=resolve_ocr_text,
     generate_lesson=generate_lesson,
     build_content_blocks=build_question_content_blocks,
 )
-app.include_router(build_mistake_router(store=mistake_store, recognize=mistake_recognizer))
+app.include_router(build_mistake_router(
+    store=mistake_store,
+    recognize=mistake_recognizer,
+    archive_cleanup=tutoring_store.delete_for_mistake,
+))
 
-# 多轮消息单独存储：对话历史增长很快，不应把拍照记录 Store 或通用教材 Store 变成万能仓库。
-tutoring_store = TutoringStore(engine=store.engine)
-stateful_tutor = StatefulTutor(runtime=tutor_runtime)
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,

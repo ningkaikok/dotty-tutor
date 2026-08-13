@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text, create_engine, select
+from sqlalchemy import Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text, create_engine, delete, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
@@ -141,6 +141,34 @@ class TutoringStore:
         """Return the small recent-message window permitted in model context."""
         thread = self.get(thread_id, message_limit=limit)
         return thread["messages"] if thread else []
+
+    def delete_for_mistake(self, mistake_id: str, learner_id: str = "local-demo") -> int:
+        """清理一道错题的陪练上下文，并返回删除的线程数。
+
+        错题本的归档仍是软删除：题目和学习证据保留，列表默认隐藏。但归档后
+        再次进入不应恢复一段已经失效的对话，因此显式删除消息和线程；消息表先删
+        是为了兼容未开启外键级联的 SQLite 本地数据库。
+        """
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            thread_ids = [
+                row[0]
+                for row in connection.execute(
+                    select(tutor_threads.c.thread_id).where(
+                        tutor_threads.c.mistake_id == mistake_id,
+                        tutor_threads.c.learner_id == learner_id,
+                    )
+                ).all()
+            ]
+            if not thread_ids:
+                return 0
+            connection.execute(
+                delete(tutor_messages).where(tutor_messages.c.thread_id.in_(thread_ids))
+            )
+            connection.execute(
+                delete(tutor_threads).where(tutor_threads.c.thread_id.in_(thread_ids))
+            )
+        return len(thread_ids)
 
     def append_turn(
         self,

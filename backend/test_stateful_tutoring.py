@@ -170,6 +170,18 @@ class StatefulTutoringTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.json()["detail"], "请先输入或选择答案")
 
+    def test_ready_confirmation_enters_verification_instead_of_repeating_hint(self) -> None:
+        self._mistake()
+        thread = self.client.post("/api/mistakes/mistake-1/thread").json()
+        response = self.client.post(
+            f"/api/tutor/threads/{thread['threadId']}/messages",
+            json={"content": "准备好了", "mode": "answer", "interactionResult": {}},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["thread"]["stage"], "verify")
+        self.assertIn("下一步验证", response.json()["reply"]["reply"])
+        self.assertNotIn("卡在", response.json()["reply"]["reply"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,7 @@ export interface TutorTurnPlan {
 
 export type TutorStudentIntentId =
   | "submit-answer"
+  | "confirm-ready"
   | "request-hint"
   | "request-explanation"
   | "check-step"
