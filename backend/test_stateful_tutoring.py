@@ -113,6 +113,16 @@ class StatefulTutoringTests(unittest.TestCase):
         self.assertEqual(incorrect.status_code, 200)
         self.assertEqual(incorrect.json()["action"]["assessment"], "incorrect")
         self.assertEqual(incorrect.json()["thread"]["stage"], "explain")
+        # 旧 action 字段仍在，同时新审计字段可供恢复线程和排障使用。
+        action = incorrect.json()["action"]
+        self.assertEqual(action["previousStage"], "diagnose")
+        self.assertEqual(action["tutorTurnPlan"]["errorStrategy"]["id"], "concept-foundation")
+        self.assertEqual(action["tutorTurnPlan"]["intent"]["id"], "submit-answer")
+        self.assertEqual(action["tutorTurnPlan"]["teachingAction"], "inspect-first-error")
+        self.assertTrue(action["tutorTurnPlan"]["misconception"]["needsConfirmation"])
+        self.assertEqual(action["modelRun"]["provider"], "mock")
+        self.assertEqual(action["deduplication"]["retryCount"], 0)
+        self.assertIn("modelRun", incorrect.json()["reply"])
 
         correct = self.client.post(f"/api/tutor/threads/{thread_id}/messages", json={
             "content": "我重新选择 A",

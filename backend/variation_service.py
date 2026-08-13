@@ -4,17 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from tutor_turn_plan import ERROR_STRATEGIES
+
 
 VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]]
-
-ERROR_STRATEGIES = {
-    "concept": ("concept-foundation", "先验证基础概念，再应用到相邻情境"),
-    "reading": ("condition-reading", "改变题面表达，重点训练提取条件和问题目标"),
-    "calculation": ("parallel-calculation", "保持计算结构但替换数值，要求展示关键计算"),
-    "missing_step": ("step-completion", "保留推理主线，设置需要补全的关键步骤"),
-    "unknown": ("scaffolded-transfer", "从更基础的同知识点题开始，再逐步迁移"),
-    "careless": ("self-check", "加入易混条件，要求完成结果与单位自检"),
-}
 
 LEVELS = ("foundation", "parallel", "transfer")
 SUPPORTED_QUESTION_TYPES = {"choice", "multi-select", "fill-blank", "numeric"}

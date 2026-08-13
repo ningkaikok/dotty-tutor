@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 from typing import Any
 
 from question_contracts import HelpRequest
 from tutor_engine import TutorEngine
+from tutor_turn_plan import (
+    build_tutor_turn_plan,
+    infer_student_intent,
+    normalize_misconception,
+    select_teaching_action,
+    suggested_stage,
+    teaching_strategy_context,
+)
 
 
 STAGE_LABELS = {
@@ -65,22 +74,72 @@ class StatefulTutor:
             guide_cards=cards,
         )
         context = self._conversation_context(thread, recent_messages, mistake)
-        tutor_reply = engine.reply(HelpRequest(
+        student_intent = infer_student_intent(
+            mode=request.mode,
+            content=request.content,
+            interaction_result=request.interactionResult,
+        )
+        # 生成前只使用服务端已经知道的事实选择动作。模型随后可以提出误区
+        # 假设，但不能反向改写这次输入的意图或判题权限。
+        generation_action = select_teaching_action(
+            intent=student_intent["id"],
+            error_reason=mistake.get("errorReason"),
+            current_stage=thread["stage"],
+            assessment="partial",
+        )
+        # 教学策略必须在生成前进入上下文；只在生成后记录计划会“看起来可审计”，
+        # 却不会真正改变老师的下一步行为。
+        strategy_context = teaching_strategy_context(
+            mistake.get("errorReason"),
+            thread["stage"],
+            intent=student_intent,
+            teaching_action=generation_action,
+        )
+        model_context = f"{context}\n{strategy_context}"[-2_700:]
+        tutor_request = HelpRequest(
             questionId=question_id,
             studentInput=request.content,
             hintLevel=request.hintLevel,
             mode=request.mode,
             interactionResult=request.interactionResult,
             language="zh",
-        ), conversation_context=context)
+        )
+        tutor_reply = engine.reply(tutor_request, conversation_context=model_context)
+        tutor_reply, deduplication = self._deduplicate_reply(
+            engine=engine,
+            request=tutor_request,
+            conversation_context=model_context,
+            recent_messages=recent_messages,
+            reply=tutor_reply,
+        )
         assessment = str(tutor_reply.guideContext.get("assessment") or "partial")
-        next_stage = self._next_stage(thread["stage"], assessment, request.mode)
+        misconception = normalize_misconception(
+            tutor_reply.guideContext.get("misconception"),
+            student_input=request.content,
+        )
+        plan = build_tutor_turn_plan(
+            error_reason=mistake.get("errorReason"),
+            current_stage=thread["stage"],
+            mode=request.mode,
+            assessment=assessment,
+            reply_source=tutor_reply.source,
+            assessment_authority=str(
+                tutor_reply.guideContext.get("assessmentAuthority") or "guided"
+            ),
+            student_intent=student_intent,
+            misconception=misconception,
+            generation_teaching_action=generation_action,
+        )
+        next_stage = plan["suggestedStage"]
         action = {
             "type": "advance_stage" if next_stage != thread["stage"] else "continue_stage",
             "previousStage": thread["stage"],
             "nextStage": next_stage,
             "assessment": assessment,
             "prompt": tutor_reply.guideContext.get("question", ""),
+            "tutorTurnPlan": plan,
+            "deduplication": deduplication,
+            "modelRun": self._model_audit(tutor_reply.modelRun),
         }
         summary = self._updated_summary(
             thread.get("summary", ""),
@@ -100,17 +159,71 @@ class StatefulTutor:
 
     @staticmethod
     def _next_stage(current: str, assessment: str, mode: str) -> str:
-        # 阶段三最多走到 verify；掌握迁移和连续答对属于阶段四，模型本身无权把错题标记为已掌握。
-        if assessment == "correct":
-            return {
-                "diagnose": "practice",
-                "explain": "practice",
-                "practice": "verify",
-                "verify": "verify",
-            }.get(current, "explain")
-        if current == "diagnose" or assessment == "incorrect":
-            return "explain"
-        return current if mode == "help" else "explain"
+        """兼容旧调用；真正的阶段裁决由 Tutor Turn Plan 统一维护。"""
+        return suggested_stage(current, assessment, mode, assessment_authority="deterministic")
+
+    @staticmethod
+    def _deduplicate_reply(
+        *, engine: TutorEngine, request: HelpRequest, conversation_context: str,
+        recent_messages: list[dict[str, Any]], reply: Any,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Avoid repeating a model prompt forever, with one bounded retry.
+
+        确定性判题的措辞允许重复，因为它是可审计结果；模型回复和预制引导卡
+        都属于教学提示，可升级 hint level 重试一次。重试仍重复时改用固定的
+        下一步问题，避免调用链循环。
+        """
+        previous = next((item.get("content", "") for item in reversed(recent_messages)
+                         if item.get("role") == "assistant"), "")
+        similarity = StatefulTutor._reply_similarity(previous, reply.reply)
+        if not previous or similarity < 0.76:
+            return reply, {
+                "status": "not-repeated", "retryCount": 0,
+                "fallbackUsed": False, "similarity": round(similarity, 3),
+            }
+        if reply.guideContext.get("assessmentAuthority") == "deterministic":
+            return reply, {"status": "deterministic-repeat-allowed", "retryCount": 0, "fallbackUsed": False}
+        retry_request = request.model_copy(update={"hintLevel": min(request.hintLevel + 1, 3)})
+        retried = engine.reply(
+            retry_request,
+            conversation_context=f"{conversation_context}\n本轮必须换一种提示策略，不能复述上一句。",
+        )
+        retry_similarity = StatefulTutor._reply_similarity(previous, retried.reply)
+        if retry_similarity < 0.76:
+            return retried, {
+                "status": "retry-succeeded", "retryCount": 1,
+                "fallbackUsed": False, "similarity": round(retry_similarity, 3),
+            }
+        fallback = retried.model_copy(update={
+            "reply": "我们先不重复刚才的提示。请只写出题目中最关键的一个已知条件，并说明它能用于哪一步。",
+            "source": "stored-guide-card",
+        })
+        return fallback, {
+            "status": "fallback-after-retry", "retryCount": 1,
+            "fallbackUsed": True, "similarity": round(retry_similarity, 3),
+        }
+
+    @staticmethod
+    def _reply_similarity(previous: str, candidate: str) -> float:
+        """Estimate lexical repetition without adding an embedding dependency.
+
+        连续提示通常只改一两个语气词，严格相等无法识别。字符序列比对对中文
+        和公式都可用；阈值只触发一次有界重试，因此比引入第二个模型更稳定。
+        """
+        def normalized(value: str) -> str:
+            return "".join(char for char in value.lower() if char.isalnum() or "\u4e00" <= char <= "\u9fff")
+
+        left, right = normalized(previous), normalized(candidate)
+        if not left or not right:
+            return 0.0
+        if left == right:
+            return 1.0
+        return SequenceMatcher(None, left, right, autojunk=False).ratio()
+
+    @staticmethod
+    def _model_audit(model_run: dict[str, Any]) -> dict[str, Any]:
+        """Keep provider metadata beside the action without changing old reply fields."""
+        return {key: model_run.get(key) for key in ("requestedProvider", "provider", "model", "fallback") if key in model_run}
 
     @staticmethod
     def _conversation_context(

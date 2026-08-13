@@ -6,10 +6,13 @@ export type TutorStage = "diagnose" | "explain" | "practice" | "verify";
 
 export interface GuideContext {
   assessment?: "correct" | "partial" | "incorrect";
+  assessmentAuthority?: "deterministic" | "guided";
   stuckAt?: string;
   knowledge?: string[];
   hint?: string;
   question?: string;
+  /** 模型提出的误区只能作为待确认假设，不能替代确定性判题。 */
+  misconception?: TutorMisconception;
 }
 
 export interface TutorReply {
@@ -46,6 +49,60 @@ export interface TutorThread {
   updatedAt: number;
 }
 
+/** 单轮计划由后端领域规则生成；模型只能负责表达，不能覆盖判题或阶段。 */
+export interface TutorTurnPlan {
+  intent: TutorStudentIntent;
+  assessment: "correct" | "partial" | "incorrect";
+  misconception: TutorMisconception;
+  errorStrategy: { id: string; objective: string; reason: string };
+  teachingAction: TutorTeachingAction;
+  shouldRevealAnswer: boolean;
+  suggestedStage: TutorStage;
+  replySource: TutorReply["source"];
+  audit: {
+    assessmentAuthority: "deterministic" | "guided";
+    stageAuthority: "tutor-turn-plan";
+    misconceptionConfirmed: boolean;
+    generationTeachingAction: TutorTeachingAction;
+    teachingActionAdjusted: boolean;
+    modelMayOverride: false;
+  };
+}
+
+export type TutorStudentIntentId =
+  | "submit-answer"
+  | "request-hint"
+  | "request-explanation"
+  | "check-step"
+  | "challenge-answer"
+  | "request-example"
+  | "express-confusion"
+  | "off-topic";
+
+export interface TutorStudentIntent {
+  id: TutorStudentIntentId;
+  confidence: number;
+  evidence: string[];
+}
+
+export interface TutorMisconception {
+  hypothesis: string;
+  evidence: string;
+  evidenceMatched: boolean;
+  confidence: number;
+  needsConfirmation: boolean;
+}
+
+export type TutorTeachingAction =
+  | "extract-conditions"
+  | "inspect-first-error"
+  | "contrast-concepts"
+  | "complete-step"
+  | "show-micro-example"
+  | "ask-justification"
+  | "generate-micro-practice"
+  | "run-self-check";
+
 export interface TutorTurnResult {
   thread: TutorThread;
   reply: TutorReply;
@@ -55,5 +112,13 @@ export interface TutorTurnResult {
     nextStage: TutorStage;
     assessment: "correct" | "partial" | "incorrect";
     prompt: string;
+    tutorTurnPlan: TutorTurnPlan;
+    deduplication: {
+      status: string;
+      retryCount: 0 | 1;
+      fallbackUsed: boolean;
+      similarity?: number;
+    };
+    modelRun: Partial<ModelRun>;
   };
 }

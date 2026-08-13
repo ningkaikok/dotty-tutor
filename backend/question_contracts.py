@@ -227,8 +227,23 @@ HELP_SCHEMA = {
         "hint": {"type": "string", "maxLength": 120},
         "question": {"type": "string", "maxLength": 120},
         "canvasAction": {"type": "string", "enum": CANVAS_ACTIONS},
+        "misconception": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "hypothesis": {"type": "string", "maxLength": 160},
+                "evidence": {"type": "string", "maxLength": 240},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "needsConfirmation": {"type": "boolean"},
+            },
+            # Codex strict schema 要求 required 覆盖 properties 中的每一个字段。
+            "required": ["hypothesis", "evidence", "confidence", "needsConfirmation"],
+        },
     },
-    "required": ["assessment", "reply", "stuckAt", "knowledge", "hint", "question", "canvasAction"],
+    "required": [
+        "assessment", "reply", "stuckAt", "knowledge", "hint", "question",
+        "canvasAction", "misconception",
+    ],
 }
 
 
