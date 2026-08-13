@@ -1,6 +1,7 @@
 import MathText from "../../../MathText";
 import { useState } from "react";
 import type { MistakeItem } from "../../../types";
+import { displayedPrompt } from "../../../questionPresentation";
 
 interface MistakeLibraryProps {
   items: MistakeItem[];
@@ -96,7 +97,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
                   <span>{item.gradeBand} · {item.subject}</span>
                   {item.errorReason && <span>{ERROR_LABELS[item.errorReason]}</span>}
                 </div>
-                <MathText text={item.questionPayload.question.prompt} className="mistake-list-prompt" />
+                <MathText text={displayedPrompt(item.questionPayload.question)} className="mistake-list-prompt" />
                 <small>{item.chapter} · {item.knowledgePoint}</small>
               </div>
               <div className="mistake-list-actions">

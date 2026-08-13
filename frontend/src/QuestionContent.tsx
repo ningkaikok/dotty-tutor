@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { MathContentBlock, QuestionContentBlock, TextContentBlock } from "./types";
 import MathText from "./MathText";
+import { stripLegacyImageText } from "./questionPresentation";
 
 type InlineBlock = TextContentBlock | MathContentBlock;
 
@@ -26,9 +27,8 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
 
 const CHOICE_MARKER = /(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*/g;
 const MATH_FRAGMENT = /(\$\$[\s\S]+?\$\$|\$[^$]+?\$)/g;
-// 旧版本会把 Markdown 图片完整写进选项文字，例如 `![](images/a.jpg)`。
-// 路径前面可能是 `(`、`/` 或字符串开头，不能只用 `(^|/)images/`，否则页面会把
-// 文件名当作普通题干文字渲染出来。这里只识别允许的本地图片后缀，避免误删正常文本。
+// 旧版本会把图片文件名写入 options content block。这里只用于识别兼容数据，
+// 实际展示清理由 questionPresentation 统一处理，避免不同页面出现不同清洗规则。
 const LEGACY_IMAGE_MARKDOWN = /!\[[^\]]*\]\(([^)]+\.(?:jpg|jpeg|png|webp))\)/i;
 const LEGACY_IMAGE_PATH = /(?:^|[(/])((?:images|api\/uploads)\/[^\s)]+\.(?:jpg|jpeg|png|webp))/i;
 
@@ -36,15 +36,6 @@ function legacyImageReference(text: string): string | null {
   const markdown = LEGACY_IMAGE_MARKDOWN.exec(text)?.[1];
   if (markdown) return markdown;
   return LEGACY_IMAGE_PATH.exec(text)?.[1] ?? null;
-}
-
-function stripLegacyImageText(text: string): string {
-  // 图片已经由 content block 或 option.imageUrl 渲染；旧记录中的 Markdown 只应作为
-  // 来源证据存在，不能再次出现在学生看到的题干里。
-  return text
-    .replace(LEGACY_IMAGE_MARKDOWN, "")
-    .replace(LEGACY_IMAGE_PATH, "")
-    .replace(/[ \t]{2,}/g, " ");
 }
 
 function extractLegacyChoiceValues(blocks: InlineBlock[]): string[] | null {
