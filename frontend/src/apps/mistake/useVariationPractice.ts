@@ -30,12 +30,6 @@ export function useVariationPractice(mistakeId: string, autoStart = false) {
   // 进入 verify 就代表学生已确认可以继续；第一道验证题直接开始生成，
   // 不再要求学生在对话区和验证区之间寻找第二个“下一题”按钮。已有记录
   // 会被复用，因此刷新页面不会重复创建题目。
-  useEffect(() => {
-    if (!autoStart || loading || items.length > 0 || autoStarted.current || submitting) return;
-    autoStarted.current = true;
-    void generate();
-  }, [autoStart, items.length, loading, submitting]);
-
   const resetDraft = () => {
     setSelectedOptions([]);
     setBlankAnswers({});
@@ -56,6 +50,12 @@ export function useVariationPractice(mistakeId: string, autoStart = false) {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoStart || loading || items.length > 0 || autoStarted.current || submitting) return;
+    autoStarted.current = true;
+    void generate();
+  }, [autoStart, items.length, loading, submitting]);
 
   const selectOption = (label: string) => {
     if (!active || active.status === "answered") return;
