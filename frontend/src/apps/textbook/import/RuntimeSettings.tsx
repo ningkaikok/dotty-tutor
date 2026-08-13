@@ -3,11 +3,13 @@ import type { UploadPhase } from "./useTextbookImport";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
+  tutorModels: ModelCatalog | null;
   reviewModels: ReviewModelCatalog | null;
   ocrProviders: OcrCatalog | null;
   loading: boolean;
   phase: UploadPhase;
   onSelectModel: (provider: ModelProvider, model: string) => void;
+  onSelectTutorModel: (provider: ModelProvider, model: string) => void;
   onSelectReviewModel: (provider: ModelProvider, model: string) => void;
   onSelectOcr: (provider: OcrProvider) => void;
 }
@@ -15,11 +17,13 @@ interface RuntimeSettingsProps {
 /** 模型与 OCR 选择器独立于上传状态渲染，避免设置变化重置上传状态机。 */
 export function RuntimeSettings({
   models,
+  tutorModels,
   reviewModels,
   ocrProviders,
   loading,
   phase,
   onSelectModel,
+  onSelectTutorModel,
   onSelectReviewModel,
   onSelectOcr,
 }: RuntimeSettingsProps) {
@@ -54,6 +58,32 @@ export function RuntimeSettings({
       {models && (
         <span className={`runtime-status generation-status ${models.selected.provider}`}>
           <i /> {models.providers.find((item) => item.id === models.selected.provider)?.detail}
+        </span>
+      )}
+
+      <div className="tutor-label">
+        <strong>选择错题陪练模型</strong>
+        <small>独立于题目生成和审核；学生每轮对话会使用这里的模型。</small>
+      </div>
+      <select
+        className="tutor-select"
+        value={tutorModels ? `${tutorModels.selected.provider}::${tutorModels.selected.model}` : ""}
+        disabled={!tutorModels || busy}
+        onChange={(event) => {
+          const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
+          onSelectTutorModel(provider, model);
+        }}
+      >
+        {!tutorModels && <option>正在读取陪练模型…</option>}
+        {tutorModels?.providers.flatMap((provider) => provider.models.map((model) => (
+          <option key={`tutor::${provider.id}::${model}`} value={`${provider.id}::${model}`} disabled={!provider.available}>
+            {provider.label} · {model}
+          </option>
+        )))}
+      </select>
+      {tutorModels && (
+        <span className={`runtime-status tutor-status ${tutorModels.selected.provider}`}>
+          <i /> 当前陪练：{tutorModels.selected.provider} · {tutorModels.selected.model}
         </span>
       )}
 

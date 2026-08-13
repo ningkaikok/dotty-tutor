@@ -101,6 +101,20 @@ set +a
 > `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录，
 > 于是页面会读取旧数据库中的题目 JSON，而当前工作区并没有对应图片资源。
 
+### 独立切换陪练模型
+
+内容生产端的运行时设置包含三个互不影响的选择：题目生成模型、文字审核模型和错题陪练模型。
+陪练模型通过 `GET /api/tutor-models` 查询、`POST /api/tutor-models/select` 切换，默认读取
+`TUTOR_MODEL_PROVIDER` 与 `TUTOR_MODEL_NAME`。例如：
+
+```env
+TUTOR_MODEL_PROVIDER=codex
+TUTOR_MODEL_NAME=gpt-5.6-sol
+```
+
+每轮陪练响应的 `modelRun` 会记录实际 provider、model 和是否回退；看到 `provider=mock` 或
+`source=stored-guide-card` 说明本轮没有调用大模型。
+
 启动 FastAPI：
 
 ```bash

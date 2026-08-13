@@ -17,7 +17,7 @@ from lesson_generation import (
 from mistake_recognition import build_mistake_recognizer
 from mistake_routes import build_mistake_router
 from mistake_store import MistakeStore
-from model_runtime import runtime
+from model_runtime import ModelRuntime, runtime
 from publication_routes import build_publication_router
 from publication_revision import PublicationRevisionService
 from practice_routes import build_practice_router
@@ -54,7 +54,12 @@ from variation_store import VariationStore
 app = create_app()
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
-app.include_router(build_runtime_router(store=store, question_payload=question_payload))
+tutor_runtime = ModelRuntime(env_prefix="TUTOR_")
+app.include_router(build_runtime_router(
+    store=store,
+    question_payload=question_payload,
+    tutor_runtime=tutor_runtime,
+))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
 app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
@@ -78,7 +83,7 @@ app.include_router(build_mistake_router(store=mistake_store, recognize=mistake_r
 
 # 多轮消息单独存储：对话历史增长很快，不应把拍照记录 Store 或通用教材 Store 变成万能仓库。
 tutoring_store = TutoringStore(engine=store.engine)
-stateful_tutor = StatefulTutor(runtime=runtime)
+stateful_tutor = StatefulTutor(runtime=tutor_runtime)
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,

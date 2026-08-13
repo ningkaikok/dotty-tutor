@@ -20,6 +20,18 @@ export async function selectModel(provider: ModelProvider, model: string): Promi
   }));
 }
 
+export async function loadTutorModels(): Promise<ModelCatalog> {
+  return parse<ModelCatalog>(await fetch("/api/tutor-models"));
+}
+
+export async function selectTutorModel(provider: ModelProvider, model: string): Promise<ModelCatalog> {
+  return parse<ModelCatalog>(await fetch("/api/tutor-models/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, model }),
+  }));
+}
+
 export async function loadReviewModels(): Promise<ReviewModelCatalog> {
   return parse<ReviewModelCatalog>(await fetch("/api/review-models"));
 }
