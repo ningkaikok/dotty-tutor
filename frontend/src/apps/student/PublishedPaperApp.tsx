@@ -163,6 +163,9 @@ export function PublishedPaperApp() {
 
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
+    // 作答是静音阶段：如果学生刚看过提示后开始重新选择或提交答案，
+    // 立即停止旧语音，避免 TTS 与当前的思考过程并行占用请求。
+    if (mode === "answer") stopSpeech();
     const questionId = payload.question.id;
     const requestId = ++interactionRequestId.current;
     const questionType = payload.question.questionType;
@@ -238,6 +241,8 @@ export function PublishedPaperApp() {
   };
 
   const selectOption = (label: string, answerText: string) => {
+    // 选项变化表示学生重新进入作答，不应继续播放上一轮提示。
+    stopSpeech();
     const multiple = payload?.question.questionType === "multi-select" || payload?.question.selectionMode === "multiple";
     const next = multiple
       ? (selectedOptions.includes(label) ? selectedOptions.filter((item) => item !== label) : [...selectedOptions, label])
@@ -285,19 +290,23 @@ export function PublishedPaperApp() {
         onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}
         onBlankChange={(id, value) => {
+          stopSpeech();
           const next = { ...blankAnswers, [id]: value };
           setBlankAnswers(next);
           updateDraft({ blankAnswers: next });
         }}
         onNumericChange={(value) => {
+          stopSpeech();
           setNumericAnswer(value);
           updateDraft({ numericAnswer: value });
         }}
         onDrawConnectionsChange={(connections) => {
+          stopSpeech();
           setDrawConnections(connections);
           updateDraft({ drawConnections: connections });
         }}
         onStudentInputChange={(value) => {
+          stopSpeech();
           setStudentInput(value);
           updateDraft({ studentInput: value });
         }}
