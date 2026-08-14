@@ -71,6 +71,60 @@ API 依赖框架对象。评估结果至少记录流程可读性、恢复能力�
 
 Redis、OpenTelemetry、LangGraph 和 MCP 都属于按信号升级项，不是完成上述计划的前置依赖。
 
+## 前端知识表达与互动技术选型
+
+这部分路线服务于“知识动画 + 结构化内容 + 互动学习”，作为学习项目采用渐进式选型，不以堆叠技术名词为目标。
+当前项目已经使用 React、结构化 `LessonDocument`/`LessonBlock`、`rendererRegistry`、KaTeX/`MathText`、
+Canvas/SVG 和错题掌握闭环。新增能力必须先复用这些边界，不能为不同入口再复制一套题目或课程渲染器。
+
+### 当前已采用
+
+- [x] 使用 KaTeX 和统一 `MathText` 处理题干、选项、题目条件、讲解和历史 LaTeX 兼容。
+- [x] 使用结构化课程块连接题目、讲解、提示、公式、图形和 TTS，而不是把整节课保存为一段 HTML。
+- [x] 使用 React 组件、Canvas/SVG 和 Renderer Registry 支撑选择题、判断题、画线题和分步讲解。
+- [x] 使用错题本、变式题、掌握验证和 1/3/7 天复习任务实现 Khan/Duolingo 式学习闭环的基础版本。
+
+### 第一阶段：稳定内容模型和互动渲染边界
+
+- [ ] 在 `frontend/src/types/lesson.ts` 和 `backend/lesson_contracts.py` 明确 `markdown`、`formula`、`diagram`、
+  `interactive-math`、`quiz`、`animation` 内容块的版本化契约。
+- [ ] 新增 `InteractiveMathCanvas` 渲染边界；页面只组合它，不直接依赖具体绘图库。
+- [ ] 为每种内容块补充 MathText、图片、键盘输入、画布动作和错误回退的 Playwright 回归案例。
+- [ ] 在文档中记录“Canvas 负责图形，HTML/MathText 负责公式文字”的边界，避免公式重新回到 `fillText` 路径。
+
+验收标准：同一份 LessonBlock 可以在内容生产端预览和学生端消费；新增渲染器不修改题目业务状态；公式、图片和
+交互状态在刷新后仍有明确的恢复或丢弃策略。
+
+### 第二阶段：选择一个互动数学库做小范围实验
+
+只选择一种，不同时引入 Mafs、JSXGraph 和 Desmos：
+
+- [ ] 函数图像、坐标系、滑块和参数探索：评估 Mafs，限定在 `interactive-math` 实验题型。
+- [ ] 点、线、圆、拖拽几何构造和证明：评估 JSXGraph，限定在几何题 Renderer。
+- [ ] 只有在确实需要外部计算器体验且能接受外部运行时依赖时，才评估 Desmos API。
+
+评估记录至少包括：React 集成复杂度、无障碍能力、移动端触控、导出/回放、许可证、包体积、离线运行和与现有
+题目答案契约的适配成本。实验成功后只保留一个库，并通过 `InteractiveMathCanvas` 隔离；实验失败则回退到现有
+Canvas/SVG，不影响其他题型。
+
+### 第三阶段：动画生产与反馈动效
+
+- [ ] 需要批量生成稳定视频时，评估 Manim 作为服务端/Worker 离线渲染器，前端使用 `<video>` 加字幕和暂停点。
+- [ ] 需要浏览器内实时改变参数时，评估 Motion Canvas；不与 Manim 同时作为同一条生产链路的必选依赖。
+- [ ] 答题反馈、连续学习和掌握升级动效稳定后，再评估 Lottie；仅用于表现层，不承载学习状态。
+- [ ] 只有出现视频生成耗时影响接口时，才把动画渲染迁移到后台任务和对象存储。
+
+### 暂不引入
+
+- [ ] MathJax：当前 KaTeX 已统一且性能更适合题目列表；只有遇到 KaTeX 不支持的教材公式时再做局部评估。
+- [ ] MDX/unified：当前模型生成内容以 JSON 契约为主；人工课程创作需求出现后再作为离线内容生产格式。
+- [ ] Khan Perseus：借鉴其 Widget、答案契约和渐进提示设计，不直接替换现有题目系统。
+- [ ] LangChain、LangGraph 和多智能体：继续遵循“出现复杂跨请求编排信号后局部评估”的决策。
+
+建议拆分为独立 PR：`refactor/lesson-block-contracts`、`feature/interactive-math-canvas`、
+`experiment/mafs-renderer` 或 `experiment/jsxgraph-renderer`、`chore/animation-worker`。每个实验都必须
+可单独回滚，不能与登录、试卷发布或掌握度迁移混在一起。
+
 ## 学生端与内容生产端边界
 
 - `/studio`：内容生产者上传教材、选择 OCR/模型、生成和预览互动内容。
