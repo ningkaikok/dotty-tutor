@@ -281,7 +281,6 @@ def suggested_stage(
     # 掌握证据。普通模型的 correct 同样没有状态推进权限。
     if student_intent == "challenge-answer":
         return current_stage
-
     # “准备好了”离开诊断/解释并进入 practice；practice 阶段则只由首道
     # 变式题的确定性正确结果推进到 verify。
     if student_intent == "confirm-ready":
