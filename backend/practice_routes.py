@@ -38,8 +38,8 @@ def build_practice_router(
         if mistake["status"] != "unmastered":
             raise HTTPException(status_code=409, detail="只有待掌握错题可以生成验证题")
         thread = tutoring_store.find_for_mistake(mistake_id, learnerId)
-        if not thread or thread["stage"] != "verify":
-            raise HTTPException(status_code=409, detail="请先完成单题陪练，再开始变式验证")
+        if not thread or thread["stage"] not in {"practice", "verify"}:
+            raise HTTPException(status_code=409, detail="请先完成原题纠错，再开始变式练习")
 
         sequence = variation_store.count_for_mistake(mistake_id) + 1
         try:
@@ -98,6 +98,18 @@ def build_practice_router(
         if not saved:
             raise HTTPException(status_code=409, detail="这道变式题已经提交过")
         mastery = variation_store.mastery_summary(item["mistakeId"])
+        thread_stage = None
+        thread = tutoring_store.find_for_mistake(item["mistakeId"], item["learnerId"])
+        # 第一题变式答对是一个确定性教学事件：practice 完成，进入 verify。
+        # 不写入伪造对话消息，避免学生看到并不存在的“系统发言”。
+        if result["assessment"] == "correct" and thread and thread["stage"] == "practice":
+            thread = tutoring_store.advance_stage(
+                thread["threadId"],
+                "verify",
+                summary="首道变式题答对，进入掌握验证",
+            )
+        if thread:
+            thread_stage = thread["stage"]
         if mastery["mastered"]:
             promoted = mistake_store.mark_mastered(item["mistakeId"])
             if not promoted:
@@ -113,6 +125,7 @@ def build_practice_router(
                 base_time=saved["answeredAt"],
             )
         saved["mastery"] = mastery
+        saved["tutorStage"] = thread_stage
         log_event(
             "variation.answered",
             mistake_id=item["mistakeId"],

@@ -14,6 +14,8 @@ interface QuestionAnswerProps {
   onBlankChange: (id: string, value: string) => void;
   onNumericChange: (value: string) => void;
   onDrawConnectionsChange: (connections: Array<[string, string]>) => void;
+  /** 复习/陪练展示原题时使用，避免学生误以为还能提交原题。 */
+  readOnly?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export function QuestionAnswer({
   onBlankChange,
   onNumericChange,
   onDrawConnectionsChange,
+  readOnly = false,
 }: QuestionAnswerProps) {
   const questionType = question.questionType ?? "short-answer";
   const multiple = questionType === "multi-select" || question.selectionMode === "multiple";
@@ -47,6 +50,7 @@ export function QuestionAnswer({
           interaction={question.interaction}
           connections={drawConnections}
           onChange={onDrawConnectionsChange}
+          readOnly={readOnly}
         />
       </>
     );
@@ -62,7 +66,8 @@ export function QuestionAnswer({
               key={label}
               type="button"
               className={`question-option ${selectedOptions.includes(label) ? "selected" : ""}`}
-              onClick={() => onSelectOption(label, label)}
+              onClick={readOnly ? undefined : () => onSelectOption(label, label)}
+              disabled={readOnly}
               aria-pressed={selectedOptions.includes(label)}
             >
               <span className="option-label">{label === "正确" ? "✓" : "✕"}</span>
@@ -86,6 +91,7 @@ export function QuestionAnswer({
                 type="text"
                 value={blankAnswers[blank.id] ?? ""}
                 onChange={(event) => onBlankChange(blank.id, event.target.value)}
+                readOnly={readOnly}
                 aria-label={blank.label || `第 ${index + 1} 空`}
               />
               {blank.unit && <small>{blank.unit}</small>}
@@ -107,6 +113,7 @@ export function QuestionAnswer({
             inputMode="decimal"
             value={numericAnswer}
             onChange={(event) => onNumericChange(event.target.value)}
+            readOnly={readOnly}
             aria-label="数值答案"
             placeholder="输入数值或公式"
           />
@@ -126,6 +133,7 @@ export function QuestionAnswer({
         selectedOptions={selectedOptions}
         multiple={multiple}
         onSelectOption={onSelectOption}
+        readOnly={readOnly}
       />
     );
   }
@@ -157,7 +165,8 @@ export function QuestionAnswer({
                 <button
                   type="button"
                   className={`question-option ${selected ? "selected" : ""}`}
-                  onClick={() => onSelectOption(label, optionText(option))}
+                  onClick={readOnly ? undefined : () => onSelectOption(label, optionText(option))}
+                  disabled={readOnly}
                   aria-pressed={selected}
                 >
                   <span className="option-label">{label}</span>

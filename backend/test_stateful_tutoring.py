@@ -154,6 +154,31 @@ class StatefulTutoringTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertIn("请先确认", response.json()["detail"])
 
+    def test_guided_answer_cannot_regress_practice_stage(self) -> None:
+        self._mistake()
+        thread_id = self.client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+        self.client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+            "content": "我选择 B",
+            "mode": "answer",
+            "interactionResult": {"selectedOptions": ["B"]},
+        })
+        correct = self.client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+            "content": "我重新选择 A",
+            "mode": "answer",
+            "interactionResult": {"selectedOptions": ["A"]},
+        })
+        self.assertEqual(correct.json()["thread"]["stage"], "practice")
+
+        guided = self.client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+            "content": "为什么还要再检查这一步？",
+            "mode": "answer",
+            "interactionResult": {},
+        })
+
+        self.assertEqual(guided.status_code, 200)
+        self.assertEqual(guided.json()["action"]["assessment"], "partial")
+        self.assertEqual(guided.json()["thread"]["stage"], "practice")
+
     def test_empty_structured_answer_is_rejected(self) -> None:
         self._mistake()
         thread = self.client.post("/api/mistakes/mistake-1/thread").json()
@@ -178,8 +203,8 @@ class StatefulTutoringTests(unittest.TestCase):
             json={"content": "准备好了", "mode": "answer", "interactionResult": {}},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["thread"]["stage"], "verify")
-        self.assertIn("下一步验证", response.json()["reply"]["reply"])
+        self.assertEqual(response.json()["thread"]["stage"], "practice")
+        self.assertIn("变式练习", response.json()["reply"]["reply"])
         self.assertNotIn("卡在", response.json()["reply"]["reply"])
 
 

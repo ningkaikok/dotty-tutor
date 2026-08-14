@@ -7,13 +7,14 @@ interface DrawLineCanvasProps {
   interaction: QuestionInteraction;
   connections: Connection[];
   onChange: (connections: Connection[]) => void;
+  readOnly?: boolean;
 }
 
 function normalizedPair(first: string, second: string): Connection {
   return [first, second].sort() as Connection;
 }
 
-export function DrawLineCanvas({ interaction, connections, onChange }: DrawLineCanvasProps) {
+export function DrawLineCanvas({ interaction, connections, onChange, readOnly = false }: DrawLineCanvasProps) {
   const [start, setStart] = useState<string | null>(null);
   const points = interaction.points;
   const pointById = useMemo(() => new Map(points.map((point) => [point.id, point])), [points]);
@@ -50,7 +51,7 @@ export function DrawLineCanvas({ interaction, connections, onChange }: DrawLineC
             key={point.id}
             className={`draw-line-point ${start === point.id ? "active" : ""}`}
             data-testid={`draw-point-${point.id}`}
-            onClick={() => connect(point.id)}
+            onClick={readOnly ? undefined : () => connect(point.id)}
           >
             <circle cx={point.x * 100} cy={point.y * 100} r="4.4" />
             <text x={point.x * 100 + 5} y={point.y * 100 - 5}>{point.label}</text>
@@ -59,7 +60,7 @@ export function DrawLineCanvas({ interaction, connections, onChange }: DrawLineC
       </svg>
       <div className="draw-line-actions">
         <span>{start ? `已选 ${pointById.get(start)?.label ?? start}，请选择终点` : `已画 ${connections.length} 条线`}</span>
-        <button type="button" className="ghost compact" onClick={() => { onChange([]); setStart(null); }}>清除连线</button>
+        <button type="button" className="ghost compact" disabled={readOnly} onClick={() => { onChange([]); setStart(null); }}>清除连线</button>
       </div>
     </div>
   );

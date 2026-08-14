@@ -9,12 +9,22 @@ interface MistakeTutorProps {
   item: MistakeItem;
 }
 
-const STAGES: Array<{ id: TutorStage; label: string }> = [
-  { id: "diagnose", label: "定位卡点" },
-  { id: "explain", label: "解释误区" },
-  { id: "practice", label: "引导练习" },
-  { id: "verify", label: "准备验证" },
+const STAGES: Array<{ id: "understanding" | "practice" | "verify"; label: string }> = [
+  { id: "understanding", label: "理解错因" },
+  { id: "practice", label: "变式练习" },
+  { id: "verify", label: "掌握验证" },
 ];
+
+function visibleStage(stage: TutorStage): (typeof STAGES)[number]["id"] {
+  return stage === "diagnose" || stage === "explain" ? "understanding" : stage;
+}
+
+function assessmentLabel(message: { assessment?: string; action: Record<string, unknown> }) {
+  if (message.assessment === "incorrect") return "需要修正";
+  if (message.assessment !== "correct") return "继续思考";
+  const plan = message.action.tutorTurnPlan as { audit?: { assessmentAuthority?: string } } | undefined;
+  return plan?.audit?.assessmentAuthority === "deterministic" ? "答案正确" : "理解方向正确";
+}
 
 export function MistakeTutor({ item }: MistakeTutorProps) {
   const state = useMistakeTutor(item);
@@ -27,9 +37,11 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
   if (state.loading) return <div className="mistake-empty">正在恢复这道题的辅导上下文…</div>;
   if (!state.thread) return <p className="mistake-error" role="alert">{state.error || "无法创建辅导线程"}</p>;
 
+  const thread = state.thread;
   const question = item.questionPayload.question;
-  const activeStage = STAGES.findIndex((stage) => stage.id === state.thread?.stage);
-  const hasSubmittedTurn = Boolean(state.thread.messages?.some((message) => message.role === "student"));
+  const activeStage = STAGES.findIndex((stage) => stage.id === visibleStage(thread.stage));
+  const understanding = visibleStage(thread.stage) === "understanding";
+  const hasSubmittedTurn = Boolean(thread.messages?.some((message) => message.role === "student"));
 
   return (
     <section className="tutor-layout">
@@ -49,6 +61,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           onBlankChange={(id, value) => state.setBlankAnswers((current) => ({ ...current, [id]: value }))}
           onNumericChange={state.setNumericAnswer}
           onDrawConnectionsChange={state.setDrawConnections}
+          readOnly={!understanding}
         />
       </aside>
 
@@ -74,7 +87,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
               <p><MathText text={message.content} /></p>
               {message.assessment && (
                 <small className={`assessment ${message.assessment}`}>
-                  {message.assessment === "correct" ? "本轮正确" : message.assessment === "incorrect" ? "需要修正" : "继续思考"}
+                  {assessmentLabel(message)}
                 </small>
               )}
             </div>
@@ -82,7 +95,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           <div ref={messagesEnd} />
         </div>
 
-        <label className="tutor-input">
+        {understanding && <label className="tutor-input">
           <span>继续回答或描述你的想法</span>
           <textarea
             value={state.studentInput}
@@ -90,16 +103,22 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
             placeholder="例如：我觉得要先比较这些数和 1 的大小……"
             disabled={state.sending}
           />
-        </label>
-        {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
-        <div className="tutor-actions">
+        </label>}
+        {understanding && state.error && <p className="mistake-error" role="alert">{state.error}</p>}
+        {understanding && <div className="tutor-actions">
           <button disabled={state.sending} onClick={() => void state.submit("help")}>给我一点提示</button>
           <button className="mistake-primary-action compact" disabled={state.sending} onClick={() => void state.submit("answer")}>
             {state.sending ? "正在思考…" : hasSubmittedTurn ? "重新提交" : "提交这一轮"}
           </button>
-        </div>
-        <small className="tutor-context-note">仅保存结构化状态、摘要和必要消息；不会无限重放全部对话。</small>
-        {state.thread.stage === "verify" && <VariationPractice mistakeId={item.mistakeId} autoStart />}
+        </div>}
+        {understanding && <small className="tutor-context-note">仅保存结构化状态、摘要和必要消息；不会无限重放全部对话。</small>}
+        {(thread.stage === "practice" || thread.stage === "verify") && (
+          <VariationPractice
+            mistakeId={item.mistakeId}
+            autoStart
+            onStageChange={state.setStage}
+          />
+        )}
       </div>
     </section>
   );

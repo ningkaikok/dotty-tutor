@@ -42,10 +42,10 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     setStep(0);
     setPlaying(false);
     activateBlock(playableBlocks[0]);
-    // 只预热首步。一次性请求整节课的所有旁白会把 Qwen3-TTS 串行队列塞满，切题时
-    // 旧请求也来不及释放；下一步在真正播放前再按需请求，并由 stopSpeech 统一取消。
+    // 内容生产端可以预热首步，但学生端只有点击“播放讲解”才请求 TTS。
+    // 学生做题时不应因为展示讲解区域而自动占用语音队列。
     const firstBlock = playableBlocks[0];
-    if (firstBlock) void preloadSpeech(blockNarration(firstBlock));
+    if (!studentMode && firstBlock) void preloadSpeech(blockNarration(firstBlock));
 
     return stopSpeech;
   }, [document.lessonId]);

@@ -30,6 +30,8 @@ export interface VariationExercise {
   feedback: string;
   createdAt: number;
   answeredAt?: number;
+  /** Returned by the answer endpoint when deterministic evidence changes the tutor stage. */
+  tutorStage?: "practice" | "verify";
   mastery?: {
     correctStreak: number;
     requiredCorrect: number;

@@ -11,6 +11,7 @@ interface QuestionContentProps {
   selectedOptions?: string[];
   multiple?: boolean;
   onSelectOption?: (label: string, answerText: string) => void;
+  readOnly?: boolean;
 }
 
 function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
@@ -103,7 +104,7 @@ function stripDuplicatedChoiceTail(blocks: InlineBlock[], hasOptions: boolean): 
   return trimmed;
 }
 
-export function QuestionContent({ blocks, selectedOption, selectedOptions = [], multiple = false, onSelectOption }: QuestionContentProps) {
+export function QuestionContent({ blocks, selectedOption, selectedOptions = [], multiple = false, onSelectOption, readOnly = false }: QuestionContentProps) {
   // sourceOrder 是 OCR 版面顺序的稳定投影；不要依赖数组当前顺序，否则图片和选项可能互换。
   const nodes: ReactNode[] = [];
   let inlineBlocks: InlineBlock[] = [];
@@ -197,10 +198,11 @@ export function QuestionContent({ blocks, selectedOption, selectedOptions = [], 
             <button
               type="button"
               className={`question-option ${(multiple ? selectedOptions.includes(item.label) : selectedOption === item.label) ? "selected" : ""}`}
-              onClick={() => onSelectOption?.(
+              onClick={readOnly ? undefined : () => onSelectOption?.(
                 item.label,
                 item.contentBlocks.map((content) => content.type === "text" ? content.text : content.latex).join(" "),
               )}
+              disabled={readOnly}
               aria-pressed={multiple ? selectedOptions.includes(item.label) : selectedOption === item.label}
             >
               <span className="option-label">{item.label}</span>
