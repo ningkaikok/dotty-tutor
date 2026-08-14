@@ -627,13 +627,13 @@ test.describe("产品入口", () => {
 
     await page.getByRole("button", { name: "开始陪练" }).click();
     await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/tutor$/);
-    await expect(page.getByText("定位卡点")).toBeVisible();
+    await expect(page.getByText("理解错因")).toBeVisible();
     await page.getByLabel("继续回答或描述你的想法").fill("我算出 x = 1");
     await page.getByRole("button", { name: "提交这一轮" }).click();
 
     await expect(page.getByText("我算出 x = 1")).toBeVisible();
     await expect(page.getByText("先检查移项后符号是否改变，再重新算一次。")).toBeVisible();
-    await expect(page.getByText("解释误区")).toBeVisible();
+    await expect(page.getByText("理解错因")).toBeVisible();
     await expect(page.getByText("需要修正")).toBeVisible();
   });
 
