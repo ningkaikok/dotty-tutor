@@ -11,7 +11,7 @@ export type VariationStrategy =
 
 export type VariationLevel = "foundation" | "parallel" | "transfer";
 
-/** 一道不可变的生成练习，以及提交后对应的最终判题结果。 */
+/** 一道持久化验证题，以及可在答错后修正的结构化判题结果。 */
 export interface VariationExercise {
   variationId: string;
   mistakeId: string;

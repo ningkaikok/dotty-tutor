@@ -5,6 +5,10 @@ Semantic Versioning。
 
 ## [Unreleased]
 
+### Fixed
+
+- 错题掌握验证答错后可修改同一道题并重新提交，答对一次即可完成验证，不再被迫生成第二道题。
+
 ### Added
 
 - 内容生产端新增独立的错题陪练模型切换，可在 Codex、Ollama 和 Mock 之间选择，不会影响题目生成与审核模型。

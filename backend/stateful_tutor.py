@@ -114,7 +114,7 @@ class StatefulTutor:
             tutor_reply = TutorReply(
                 reply=(
                     "好，我们进入变式练习。接下来生成一道同知识点但不重复原题的练习；"
-                    "首题答对后进入掌握验证，连续答对两道才会标记为已掌握。"
+                    "这道题答错可以修改后重新提交，答对一次即可完成掌握验证。"
                 ),
                 guideContext={
                     "assessment": "partial",

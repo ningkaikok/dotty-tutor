@@ -41,7 +41,19 @@ def build_practice_router(
         if not thread or thread["stage"] not in {"practice", "verify"}:
             raise HTTPException(status_code=409, detail="请先完成原题纠错，再开始变式练习")
 
-        sequence = variation_store.count_for_mistake(mistake_id) + 1
+        # 验证阶段只需要一道题。前端刷新、重复点击或阶段从 practice
+        # 推进到 verify 时都复用这条记录，避免再次触发昂贵的模型生成。
+        existing = variation_store.list_for_mistake(mistake_id)
+        if existing:
+            log_event(
+                "variation.reused",
+                mistake_id=mistake_id,
+                variation_id=existing[-1]["variationId"],
+                reason="single-validation-question",
+            )
+            return existing[-1]
+
+        sequence = 1
         try:
             generated = variation_service.generate(mistake, sequence)
         except ValueError as error:
@@ -71,8 +83,8 @@ def build_practice_router(
         item = variation_store.get(variation_id)
         if not item:
             raise HTTPException(status_code=404, detail="变式题不存在")
-        if item["status"] == "answered":
-            raise HTTPException(status_code=409, detail="这道变式题已经提交过")
+        if item["status"] == "answered" and item["assessment"] == "correct":
+            raise HTTPException(status_code=409, detail="这道验证题已经答对")
         if not has_meaningful_answer(request.content, request.interactionResult):
             raise HTTPException(status_code=422, detail="请先输入或选择答案")
         result = evaluate_structured_answer(
@@ -96,12 +108,12 @@ def build_practice_router(
             feedback=result["reply"],
         )
         if not saved:
-            raise HTTPException(status_code=409, detail="这道变式题已经提交过")
+            raise HTTPException(status_code=409, detail="这道验证题已经答对")
         mastery = variation_store.mastery_summary(item["mistakeId"])
         thread_stage = None
         thread = tutoring_store.find_for_mistake(item["mistakeId"], item["learnerId"])
-        # 第一题变式答对是一个确定性教学事件：practice 完成，进入 verify。
-        # 不写入伪造对话消息，避免学生看到并不存在的“系统发言”。
+        # 变式答对是一个确定性教学事件：practice 完成，进入 verify。
+        # 掌握度只需要这一道验证题答对，不再额外生成第二道题。
         if result["assessment"] == "correct" and thread and thread["stage"] == "practice":
             thread = tutoring_store.advance_stage(
                 thread["threadId"],

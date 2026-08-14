@@ -42,7 +42,8 @@ export function useVariationPractice(
   };
 
   const generate = async () => {
-    if (submitting || active?.status === "ready") return;
+    // 一道验证题贯穿整个验证阶段；已有题目只从后端恢复，不再生成下一道。
+    if (submitting || active) return;
     setSubmitting(true);
     setError("");
     try {
@@ -63,7 +64,7 @@ export function useVariationPractice(
   }, [autoStart, items.length, loading, submitting]);
 
   const selectOption = (label: string) => {
-    if (!active || active.status === "answered") return;
+    if (!active || (active.status === "answered" && active.assessment === "correct")) return;
     const question = active.questionPayload.question;
     const multiple = question.questionType === "multi-select" || question.selectionMode === "multiple";
     setSelectedOptions((current) => multiple
@@ -72,7 +73,8 @@ export function useVariationPractice(
   };
 
   const submit = async () => {
-    if (!active || active.status !== "ready" || submitting) return;
+    const retryable = active?.status === "answered" && active.assessment !== "correct";
+    if (!active || (active.status !== "ready" && !retryable) || submitting) return;
     const answer = buildStructuredAnswer(active.questionPayload.question, selectedOptions, blankAnswers, numericAnswer);
     if (!answer.content.trim()) {
       setError("请先输入或选择答案");
