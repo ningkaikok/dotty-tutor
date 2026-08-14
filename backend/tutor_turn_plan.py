@@ -36,6 +36,12 @@ TEACHING_ACTIONS = (
 
 MISCONCEPTION_CONFIDENCE_THRESHOLD = 0.65
 
+# Stage order is deliberately centralized.  Conversation text may explain the
+# current step, but it must never make an already completed teaching step go
+# backwards.  The practice/verify boundary is advanced by deterministic
+# structured evidence (including the variation-practice endpoint).
+STAGE_ORDER = ("diagnose", "explain", "practice", "verify")
+
 ERROR_STRATEGIES = {
     "concept": ("concept-foundation", "先验证基础概念，再应用到相邻情境"),
     "reading": ("condition-reading", "改变题面表达，重点训练提取条件和问题目标"),
@@ -268,24 +274,37 @@ def suggested_stage(
     student_intent: str = "request-hint",
 ) -> str:
     """返回本轮唯一允许的阶段迁移结果。"""
+    if current_stage not in STAGE_ORDER:
+        current_stage = "diagnose"
+
     # 质疑标准答案时必须先复核。即使模型说“正确”，也不能把质疑当成一次
     # 掌握证据。普通模型的 correct 同样没有状态推进权限。
     if student_intent == "challenge-answer":
         return current_stage
-    # “准备好了”是进入下一步验证的明确操作，不是新的判题答案。验证题会在
-    # 前端的 verify 区域生成，避免继续追问“是否卡住”。
+
+    # “准备好了”离开诊断/解释并进入 practice；practice 阶段则只由首道
+    # 变式题的确定性正确结果推进到 verify。
     if student_intent == "confirm-ready":
-        return "verify"
+        return "practice" if current_stage in {"diagnose", "explain"} else current_stage
+
     if assessment == "correct" and assessment_authority == "deterministic":
-        return {
+        next_stage = {
             "diagnose": "practice",
             "explain": "practice",
             "practice": "verify",
             "verify": "verify",
-        }.get(current_stage, "explain")
+        }[current_stage]
+        return next_stage
+
+    # Once practice starts, free text, guided model output, and even an
+    # incorrect legacy submission can only keep the learner in practice.  The
+    # old fallback returned explain for every mode=answer turn, which made a
+    # normal follow-up question undo a completed original answer.
+    if current_stage in {"practice", "verify"}:
+        return current_stage
     if current_stage == "diagnose" or assessment == "incorrect":
         return "explain"
-    return current_stage if mode == "help" else "explain"
+    return current_stage
 
 
 def build_tutor_turn_plan(

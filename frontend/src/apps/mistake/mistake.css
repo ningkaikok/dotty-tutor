@@ -107,7 +107,7 @@
 .tutor-question-meta span { padding: 5px 9px; border-radius: 999px; background: #eaf7f1; color: #197b60; font-size: 12px; }
 .tutor-question-card > p { color: #6d776f; font-size: 13px; }
 .tutor-chat-card { overflow: hidden; }
-.tutor-stage-list { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); margin: 0; padding: 15px; gap: 7px; background: #f4f6f2; border-bottom: 1px solid #e2e6e1; }
+.tutor-stage-list { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; padding: 15px; gap: 7px; background: #f4f6f2; border-bottom: 1px solid #e2e6e1; }
 .tutor-stage-list li { display: flex; align-items: center; gap: 6px; color: #98a099; font-size: 11px; }
 .tutor-stage-list li span { display: grid; place-items: center; width: 21px; height: 21px; border-radius: 50%; background: #e3e7e2; }
 .tutor-stage-list li.active { color: #176e57; font-weight: 700; }
@@ -203,6 +203,6 @@
   .mistake-capture-details, .classification-grid, .error-reason-fieldset > div { grid-template-columns: 1fr; }
   .mistake-confirm-form { padding: 17px; }
   .tutor-layout { margin-top: 62px; }
-  .tutor-stage-list { grid-template-columns: repeat(2, 1fr); }
+  .tutor-stage-list { grid-template-columns: repeat(3, 1fr); }
   .tutor-message { max-width: 94%; }
 }

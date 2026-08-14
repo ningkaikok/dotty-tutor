@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { answerVariation, createVariation, listVariations } from "../../api";
 import type { VariationExercise } from "../../types";
+import type { TutorStage } from "../../types";
 import { buildStructuredAnswer } from "./structuredAnswer";
 
 /** 管理一次可计分的变式作答，不把掌握证据混入自由对话消息。 */
-export function useVariationPractice(mistakeId: string, autoStart = false) {
+export function useVariationPractice(
+  mistakeId: string,
+  autoStart = false,
+  onStageChange?: (stage: TutorStage) => void,
+) {
   const [items, setItems] = useState<VariationExercise[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
@@ -78,6 +83,7 @@ export function useVariationPractice(mistakeId: string, autoStart = false) {
     try {
       const answered = await answerVariation(active.variationId, answer);
       setItems((current) => current.map((item) => item.variationId === answered.variationId ? answered : item));
+      if (answered.tutorStage) onStageChange?.(answered.tutorStage);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "答案提交失败");
     } finally {

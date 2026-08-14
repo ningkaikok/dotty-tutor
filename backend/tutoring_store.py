@@ -170,6 +170,40 @@ class TutoringStore:
             )
         return len(thread_ids)
 
+    def advance_stage(
+        self,
+        thread_id: str,
+        stage: str,
+        *,
+        summary: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Advance a thread without fabricating a chat turn.
+
+        Variation answers are already persisted by ``VariationStore``.  They
+        still need to move the tutoring state from ``practice`` to ``verify``;
+        writing a synthetic student/assistant pair would pollute the dialogue,
+        so this method updates only the durable state and enforces monotonicity.
+        """
+        stage_order = {"diagnose": 0, "explain": 1, "practice": 2, "verify": 3}
+        if stage not in stage_order:
+            raise ValueError(f"未知陪练阶段: {stage}")
+        current = self.get(thread_id, message_limit=1)
+        if not current:
+            return None
+        if stage_order[stage] < stage_order.get(current["stage"], 0):
+            return self.get(thread_id)
+        now = time.time()
+        with self.engine.begin() as connection:
+            values: dict[str, Any] = {"stage": stage, "updated_at": now}
+            if summary is not None:
+                values["summary"] = summary[-2_000:]
+            connection.execute(
+                tutor_threads.update()
+                .where(tutor_threads.c.thread_id == thread_id)
+                .values(**values)
+            )
+        return self.get(thread_id)
+
     def append_turn(
         self,
         thread_id: str,

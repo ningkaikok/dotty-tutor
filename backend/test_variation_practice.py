@@ -109,7 +109,7 @@ class VariationPracticeTests(unittest.TestCase):
             "notes": "",
         })
 
-    def _advance_thread_to_verify(self) -> None:
+    def _advance_thread(self, stage: str = "verify") -> None:
         thread = self.threads.create_or_get("mistake-1", "local-demo")
         self.threads.append_turn(
             thread["threadId"],
@@ -119,10 +119,42 @@ class VariationPracticeTests(unittest.TestCase):
             assessment="correct",
             action={"type": "advance_stage"},
             model_run={},
-            stage="verify",
+            stage=stage,
             hint_level=0,
             summary="完成单题陪练",
         )
+
+    def _advance_thread_to_verify(self) -> None:
+        self._advance_thread("verify")
+
+    def test_practice_thread_can_generate_first_variation_and_advances_on_correct(self) -> None:
+        self._advance_thread("practice")
+        created = self.client.post("/api/mistakes/mistake-1/variations")
+        self.assertEqual(created.status_code, 200)
+
+        answered = self.client.post(
+            f"/api/variations/{created.json()['variationId']}/answer",
+            json={"content": "我选择 A", "interactionResult": {"selectedOptions": ["A"]}},
+        )
+
+        self.assertEqual(answered.status_code, 200)
+        self.assertEqual(answered.json()["assessment"], "correct")
+        self.assertEqual(answered.json()["tutorStage"], "verify")
+        self.assertEqual(self.threads.find_for_mistake("mistake-1", "local-demo")["stage"], "verify")
+
+    def test_incorrect_first_variation_keeps_practice_stage(self) -> None:
+        self._advance_thread("practice")
+        created = self.client.post("/api/mistakes/mistake-1/variations").json()
+
+        answered = self.client.post(
+            f"/api/variations/{created['variationId']}/answer",
+            json={"content": "我选择 B", "interactionResult": {"selectedOptions": ["B"]}},
+        )
+
+        self.assertEqual(answered.status_code, 200)
+        self.assertEqual(answered.json()["assessment"], "incorrect")
+        self.assertEqual(answered.json()["tutorStage"], "practice")
+        self.assertEqual(self.threads.find_for_mistake("mistake-1", "local-demo")["stage"], "practice")
 
     def test_generation_requires_completed_tutoring_and_uses_error_strategy(self) -> None:
         blocked = self.client.post("/api/mistakes/mistake-1/variations")

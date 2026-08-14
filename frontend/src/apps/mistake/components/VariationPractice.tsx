@@ -1,5 +1,6 @@
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import MathText from "../../../MathText";
+import type { TutorStage } from "../../../types";
 import { useVariationPractice } from "../useVariationPractice";
 
 const LEVEL_LABELS = {
@@ -11,22 +12,23 @@ const LEVEL_LABELS = {
 interface VariationPracticeProps {
   mistakeId: string;
   autoStart?: boolean;
+  onStageChange?: (stage: TutorStage) => void;
 }
 
-/** 阶段四的确定性掌握验证仅在本轮对话辅导结束后出现。 */
-export function VariationPractice({ mistakeId, autoStart = false }: VariationPracticeProps) {
-  const state = useVariationPractice(mistakeId, autoStart);
+/** 变式练习承载 practice/verify 两个后端阶段，学生只看到一个连续练习流。 */
+export function VariationPractice({ mistakeId, autoStart = false, onStageChange }: VariationPracticeProps) {
+  const state = useVariationPractice(mistakeId, autoStart, onStageChange);
 
   if (state.loading) return <div className="variation-practice loading">正在恢复掌握验证记录…</div>;
   if (!state.active) {
     return (
       <section className="variation-practice">
         <span className="eyebrow">MASTERY CHECK</span>
-        <h3>用一道新题验证是否真正理解</h3>
-        <p>系统会根据错误原因调整练习策略，不会直接重复原题。</p>
+        <h3>先做一道变式练习</h3>
+        <p>系统会根据错误原因调整练习策略，不会直接重复原题。首题答对后进入掌握验证。</p>
         {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
         <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
-          {state.submitting ? "正在生成…" : "生成第一道验证题"}
+          {state.submitting ? "正在生成…" : "开始变式练习"}
         </button>
       </section>
     );

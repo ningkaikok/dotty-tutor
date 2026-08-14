@@ -142,14 +142,14 @@ class TutorTurnPlanTests(unittest.TestCase):
         self.assertEqual(intent["id"], "submit-answer")
         self.assertEqual(intent["evidence"], ["interaction-result"])
 
-    def test_ready_confirmation_is_a_deterministic_verify_transition(self) -> None:
+    def test_ready_confirmation_is_a_deterministic_practice_transition(self) -> None:
         inputs = self._stateful_inputs("准备好了")
         inputs["request"].mode = "answer"
         result = StatefulTutor(runtime=SimpleNamespace(
             selection=SimpleNamespace(provider="mock", model="demo")
         )).reply(**inputs)
-        self.assertEqual(result["stage"], "verify")
-        self.assertIn("下一步验证", result["reply"].reply)
+        self.assertEqual(result["stage"], "practice")
+        self.assertIn("变式练习", result["reply"].reply)
         self.assertNotIn("卡在", result["reply"].reply)
         self.assertEqual(result["action"]["tutorTurnPlan"]["intent"]["id"], "confirm-ready")
         self.assertEqual(result["action"]["tutorTurnPlan"]["teachingAction"], "generate-micro-practice")
@@ -308,7 +308,7 @@ class TutorTurnPlanTests(unittest.TestCase):
             assessment="incorrect", reply_source="answer-check",
             assessment_authority="deterministic",
         )
-        self.assertEqual(plan["suggestedStage"], "explain")
+        self.assertEqual(plan["suggestedStage"], "practice")
         self.assertTrue(plan["shouldRevealAnswer"])
         self.assertFalse(plan["audit"]["modelMayOverride"])
 
@@ -319,6 +319,23 @@ class TutorTurnPlanTests(unittest.TestCase):
         )
         self.assertEqual(plan["suggestedStage"], "explain")
         self.assertEqual(plan["audit"]["assessmentAuthority"], "guided")
+
+    def test_guided_follow_up_cannot_move_practice_or_verify_backwards(self) -> None:
+        for stage in ("practice", "verify"):
+            with self.subTest(stage=stage):
+                plan = build_tutor_turn_plan(
+                    error_reason="calculation", current_stage=stage, mode="answer",
+                    assessment="correct", reply_source="model-generated",
+                )
+                self.assertEqual(plan["suggestedStage"], stage)
+
+    def test_deterministic_variation_completion_moves_practice_to_verify(self) -> None:
+        plan = build_tutor_turn_plan(
+            error_reason="calculation", current_stage="practice", mode="answer",
+            assessment="correct", reply_source="answer-check",
+            assessment_authority="deterministic",
+        )
+        self.assertEqual(plan["suggestedStage"], "verify")
 
     def test_challenge_answer_stays_in_stage_and_requests_review(self) -> None:
         plan = build_tutor_turn_plan(
