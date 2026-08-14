@@ -365,6 +365,10 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
       await route.fulfill({ json: { items: variations } });
       return;
     }
+    if (variations.length > 0) {
+      await route.fulfill({ json: variations[0] });
+      return;
+    }
     const variation = {
       variationId: `variation-pw-${variations.length + 1}`,
       mistakeId: "mistake-pw-1",
@@ -397,19 +401,22 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
       interactionResult: Record<string, unknown>;
     };
     const current = variations[variations.length - 1];
-    const correctStreak = variations.filter((item) => item.status === "answered").length + 1;
+    const selectedOptions = Array.isArray(answer.interactionResult.selectedOptions)
+      ? answer.interactionResult.selectedOptions as string[]
+      : [];
+    const correct = selectedOptions.includes("(A)");
     const mastery = {
-      correctStreak,
-      requiredCorrect: 2,
-      mastered: correctStreak >= 2,
-      answeredCount: correctStreak,
+      correctStreak: correct ? 1 : 0,
+      requiredCorrect: 1,
+      mastered: correct,
+      answeredCount: 1,
     };
     const answered = {
       ...current,
       status: "answered",
-      assessment: "correct",
+      assessment: correct ? "correct" : "incorrect",
       response: answer,
-      feedback: "回答正确，你已经能独立完成这类移项。",
+      feedback: correct ? "回答正确，你已经能独立完成这类移项。" : "请重新检查移项后的结果。",
       answeredAt: 7,
       mastery,
     };
@@ -649,17 +656,16 @@ test.describe("产品入口", () => {
       await firstVariationButton.click();
     }
     await expect(page.getByRole("heading", { name: "基础验证" })).toBeVisible();
-    await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
+    await page.getByRole("button", { name: /\(B\).*x = 7/ }).click();
     await page.getByRole("button", { name: "提交验证答案" }).click();
 
+    await expect(page.getByText("这次还没有答对", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "重新提交" })).toBeVisible();
+    await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
+    await page.getByRole("button", { name: "重新提交" }).click();
     await expect(page.getByText("回答正确", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "生成下一道" })).toBeVisible();
-
-    await page.getByRole("button", { name: "生成下一道" }).click();
-    await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
-    await page.getByRole("button", { name: "提交验证答案" }).click();
-    await expect(page.getByText("已通过掌握验证")).toBeVisible();
-    await expect(page.getByText("连续答对 2 / 2")).toBeVisible();
+    await expect(page.getByText("已完成掌握验证")).toBeVisible();
+    await expect(page.getByRole("button", { name: "生成下一道" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "← 返回我的错题本" }).click();
     await page.getByRole("button", { name: /进阶本 1/ }).click();

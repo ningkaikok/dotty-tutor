@@ -7,7 +7,7 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import Column, Float, Index, Integer, JSON, MetaData, String, Table, Text, create_engine, select
+from sqlalchemy import Column, Float, Index, Integer, JSON, MetaData, String, Table, Text, and_, create_engine, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 
@@ -48,7 +48,12 @@ Index(
 
 
 class VariationStore:
-    """Store immutable generated questions and one final answer per exercise."""
+    """Store one generated validation question and its latest answer evidence.
+
+    A wrong answer is deliberately editable: the student should correct the same
+    validation question instead of being forced to generate another model-backed
+    question.  Only a correct answer closes the record.
+    """
 
     def __init__(self, *, engine: Engine | None = None, database_url: str | None = None) -> None:
         if engine is None and not database_url:
@@ -129,7 +134,7 @@ class VariationStore:
             ).all()
         return len(rows)
 
-    def mastery_summary(self, mistake_id: str, *, required: int = 2) -> dict[str, Any]:
+    def mastery_summary(self, mistake_id: str, *, required: int = 1) -> dict[str, Any]:
         """Derive the current streak from evidence instead of a mutable counter."""
         attempts = [
             item for item in self.list_for_mistake(mistake_id)
@@ -155,17 +160,31 @@ class VariationStore:
         assessment: str,
         feedback: str,
     ) -> dict[str, Any] | None:
-        """Finalize one exercise once so retries cannot inflate mastery data."""
+        """Save an answer, allowing correction after an incorrect submission.
+
+        The SQL predicate is repeated here instead of trusting the earlier read,
+        so two browser requests cannot overwrite a correctly completed question.
+        A correct record is therefore terminal while an incorrect record remains
+        retryable.
+        """
         self._ensure_initialized()
         current = self.get(variation_id)
-        if not current or current["status"] == "answered":
+        if not current or (
+            current["status"] == "answered" and current["assessment"] == "correct"
+        ):
             return None
         with self.engine.begin() as connection:
             result = connection.execute(
                 variation_exercises.update()
                 .where(
                     variation_exercises.c.variation_id == variation_id,
-                    variation_exercises.c.status == "ready",
+                    or_(
+                        variation_exercises.c.status == "ready",
+                        and_(
+                            variation_exercises.c.status == "answered",
+                            variation_exercises.c.assessment != "correct",
+                        ),
+                    ),
                 )
                 .values(
                     status="answered",

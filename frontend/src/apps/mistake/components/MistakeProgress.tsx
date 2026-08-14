@@ -32,7 +32,7 @@ export function MistakeProgress() {
               onStart={state.start}
               onAnswer={state.answer}
             />
-          )) : <div className="mistake-empty compact">完成两道连续验证题后，这里会自动生成复习任务。</div>}
+          )) : <div className="mistake-empty compact">完成一道掌握验证题后，这里会自动生成复习任务。</div>}
         </section>
         <aside className="knowledge-progress-card">
           <h2>知识点掌握</h2>

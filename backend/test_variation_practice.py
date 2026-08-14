@@ -127,7 +127,7 @@ class VariationPracticeTests(unittest.TestCase):
     def _advance_thread_to_verify(self) -> None:
         self._advance_thread("verify")
 
-    def test_practice_thread_can_generate_first_variation_and_advances_on_correct(self) -> None:
+    def test_first_variation_correct_completes_single_question_mastery(self) -> None:
         self._advance_thread("practice")
         created = self.client.post("/api/mistakes/mistake-1/variations")
         self.assertEqual(created.status_code, 200)
@@ -140,6 +140,9 @@ class VariationPracticeTests(unittest.TestCase):
         self.assertEqual(answered.status_code, 200)
         self.assertEqual(answered.json()["assessment"], "correct")
         self.assertEqual(answered.json()["tutorStage"], "verify")
+        self.assertEqual(answered.json()["mastery"]["requiredCorrect"], 1)
+        self.assertTrue(answered.json()["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
         self.assertEqual(self.threads.find_for_mistake("mistake-1", "local-demo")["stage"], "verify")
 
     def test_incorrect_first_variation_keeps_practice_stage(self) -> None:
@@ -153,8 +156,21 @@ class VariationPracticeTests(unittest.TestCase):
 
         self.assertEqual(answered.status_code, 200)
         self.assertEqual(answered.json()["assessment"], "incorrect")
+        reused = self.client.post("/api/mistakes/mistake-1/variations")
+        self.assertEqual(reused.status_code, 200)
+        self.assertEqual(reused.json()["variationId"], created["variationId"])
+        self.assertEqual(reused.json()["sequence"], 1)
         self.assertEqual(answered.json()["tutorStage"], "practice")
         self.assertEqual(self.threads.find_for_mistake("mistake-1", "local-demo")["stage"], "practice")
+
+        retried = self.client.post(
+            f"/api/variations/{created['variationId']}/answer",
+            json={"content": "我改成选择 A", "interactionResult": {"selectedOptions": ["A"]}},
+        )
+        self.assertEqual(retried.status_code, 200)
+        self.assertEqual(retried.json()["assessment"], "correct")
+        self.assertTrue(retried.json()["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
 
     def test_generation_requires_completed_tutoring_and_uses_error_strategy(self) -> None:
         blocked = self.client.post("/api/mistakes/mistake-1/variations")
@@ -169,7 +185,7 @@ class VariationPracticeTests(unittest.TestCase):
         self.assertEqual(item["level"], "foundation")
         self.assertEqual(item["questionPayload"]["question"]["variationOf"], "question-1")
 
-    def test_answer_is_deterministic_and_cannot_be_submitted_twice(self) -> None:
+    def test_incorrect_answer_can_be_resubmitted_without_generating_a_second_question(self) -> None:
         self._advance_thread_to_verify()
         item = self.client.post("/api/mistakes/mistake-1/variations").json()
 
@@ -184,15 +200,16 @@ class VariationPracticeTests(unittest.TestCase):
 
         self.assertEqual(answered.status_code, 200)
         self.assertEqual(answered.json()["assessment"], "incorrect")
-        self.assertEqual(repeated.status_code, 409)
+        self.assertEqual(repeated.status_code, 200)
+        self.assertEqual(repeated.json()["assessment"], "correct")
+        self.assertTrue(repeated.json()["mastery"]["mastered"])
 
-        next_item = self.client.post("/api/mistakes/mistake-1/variations").json()
-        self.assertEqual(next_item["sequence"], 2)
-        self.assertEqual(next_item["level"], "parallel")
+        next_item = self.client.post("/api/mistakes/mistake-1/variations")
+        self.assertEqual(next_item.status_code, 409)
         listed = self.client.get("/api/mistakes/mistake-1/variations").json()
-        self.assertEqual(len(listed["items"]), 2)
+        self.assertEqual(len(listed["items"]), 1)
 
-    def test_two_consecutive_correct_answers_promote_mistake(self) -> None:
+    def test_one_correct_answer_promotes_mistake_and_schedules_reviews(self) -> None:
         self._advance_thread_to_verify()
         first = self.client.post("/api/mistakes/mistake-1/variations").json()
         first_result = self.client.post(f"/api/variations/{first['variationId']}/answer", json={
@@ -200,19 +217,10 @@ class VariationPracticeTests(unittest.TestCase):
             "interactionResult": {"selectedOptions": ["A"]},
         }).json()
         self.assertEqual(first_result["mastery"]["correctStreak"], 1)
-        self.assertFalse(first_result["mastery"]["mastered"])
-        self.assertEqual(self.mistakes.get("mistake-1")["status"], "unmastered")
-
-        second = self.client.post("/api/mistakes/mistake-1/variations").json()
-        second_result = self.client.post(f"/api/variations/{second['variationId']}/answer", json={
-            "content": "我仍然选择 A",
-            "interactionResult": {"selectedOptions": ["A"]},
-        }).json()
-
-        self.assertEqual(second_result["mastery"]["correctStreak"], 2)
-        self.assertTrue(second_result["mastery"]["mastered"])
+        self.assertEqual(first_result["mastery"]["requiredCorrect"], 1)
+        self.assertTrue(first_result["mastery"]["mastered"])
         self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
-        self.assertEqual([task["intervalDays"] for task in second_result["reviewTasks"]], [1, 3, 7])
+        self.assertEqual([task["intervalDays"] for task in first_result["reviewTasks"]], [1, 3, 7])
         self.assertEqual(len(self.reviews.list_for_mistake("mistake-1")), 3)
         blocked = self.client.post("/api/mistakes/mistake-1/variations")
         self.assertEqual(blocked.status_code, 409)

@@ -141,6 +141,7 @@
 .variation-count { padding: 5px 8px; border-radius: 999px; color: #27755d; background: #e0f2e9; font-size: 10px; white-space: nowrap; }
 .variation-question { margin-top: 15px; padding: 16px; border: 1px solid #dce5df; border-radius: 14px; background: #fff; }
 .variation-question.answered { pointer-events: none; opacity: .78; }
+.variation-question.retryable { border-color: #e9c5b6; }
 .variation-feedback { margin-top: 12px; padding: 12px 14px; border-radius: 12px; }
 .variation-feedback.correct { color: #12694f; background: #dff4e9; }
 .variation-feedback.incorrect { color: #9a4c30; background: #fae9df; }

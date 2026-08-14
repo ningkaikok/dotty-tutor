@@ -194,16 +194,16 @@ concept | reading | calculation | missing_step | unknown | careless
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/mistakes/{mistakeId}/variations` | 按生成顺序读取该错题的验证题和作答结果 |
-| `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `verify` 后，按错误原因生成下一道验证题 |
-| `POST` | `/api/variations/{variationId}/answer` | 提交一次结构化答案并完成确定性判题 |
+| `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `practice`/`verify` 后生成或复用该错题唯一的验证题 |
+| `POST` | `/api/variations/{variationId}/answer` | 提交结构化答案并完成确定性判题；答错可对同一道题重新提交 |
 
-答案请求沿用 `{ "content": "...", "interactionResult": {...} }` 契约。每道验证题只能提交一次，重复提交
-返回 `409`；生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
+答案请求沿用 `{ "content": "...", "interactionResult": {...} }` 契约。答对后的验证题不能再次提交，重复提交
+返回 `409`；答错或部分正确的题目可以修改后再次提交。生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
 正确性仍由答案结构和确定性判题器决定。
 
-作答响应额外包含 `mastery.correctStreak`、`requiredCorrect`、`answeredCount` 和 `mastered`。连续两次
-判定为 `correct` 后，服务把错题状态从 `unmastered` 更新为 `mastered`；任意非正确结果都会自然中断
-连续记录。次数由已保存的验证题推导，不接受客户端传入。
+作答响应额外包含 `mastery.correctStreak`、`requiredCorrect`、`answeredCount` 和 `mastered`。唯一验证题
+判定为 `correct` 后，服务把错题状态从 `unmastered` 更新为 `mastered`；在此之前的错误结果保留在同一题上
+并允许修正。次数由已保存的验证题推导，不接受客户端传入。
 
 ## 间隔复习与学习进度
 

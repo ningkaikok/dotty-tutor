@@ -69,7 +69,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
         <section className="mistake-empty">
           <span className="empty-sheet" aria-hidden="true" />
           <h2>{activeBook === "advanced" ? "还没有进入进阶本的题目" : "还没有错题"}</h2>
-          <p>{activeBook === "advanced" ? "连续答对两道不同变式题后，题目会自动出现在这里。" : "完成互动试卷后，错题会自动出现；也可以补录纸质作业。"}</p>
+          <p>{activeBook === "advanced" ? "掌握验证题答对一次后，题目会自动出现在这里。" : "完成互动试卷后，错题会自动出现；也可以补录纸质作业。"}</p>
           {activeBook === "mistakes" && <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入纸质错题</button>}
         </section>
       ) : (
