@@ -210,6 +210,17 @@
   padding: 0;
 }
 
+.student-paper-completed {
+  margin-bottom: 22px;
+  padding: clamp(32px, 7vw, 72px) clamp(24px, 7vw, 80px);
+  text-align: center;
+}
+.student-paper-completed h1 { margin: 12px 0; color: #183a2e; font-size: clamp(30px, 5vw, 52px); }
+.student-paper-completed p { max-width: 620px; margin: 0 auto; color: #59675f; line-height: 1.8; }
+.student-completed-actions { display: flex; justify-content: center; gap: 10px; margin-top: 26px; }
+.student-completed-actions button { padding: 11px 17px; border: 1px solid #bdcbc3; border-radius: 11px; color: #245c47; background: #f4f8f5; font-weight: 700; }
+.student-completed-actions .student-submit-button { color: #fff; border-color: #183f31; background: #183f31; }
+
 .student-question-header {
   display: flex;
   align-items: flex-start;
@@ -298,6 +309,11 @@
 .student-explanation-heading { max-width: 720px; margin: 0 0 18px 4px; }
 .student-explanation-heading h2 { margin: 7px 0; color: #173b2e; font-size: clamp(27px, 4vw, 42px); }
 .student-explanation-heading p { margin: 0; color: #68766e; }
+
+@media (max-width: 560px) {
+  .student-completed-actions { flex-direction: column; }
+  .student-completed-actions button { width: 100%; }
+}
 
 @media (max-width: 900px) {
   .student-action-grid { grid-template-columns: 1fr; }

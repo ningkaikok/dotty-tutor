@@ -12,8 +12,10 @@ import type {
   TutorReply,
 } from "../../types";
 import { PaperLearningProgress } from "./PaperLearningProgress";
+import { StudentPaperCompleted } from "./StudentPaperCompleted";
 import { StudentQuestionWorkspace } from "./StudentQuestionWorkspace";
 import { usePublishedLearningSession } from "./usePublishedLearningSession";
+import { usePublishedPaperProgress } from "./usePublishedPaperProgress";
 import "./student.css";
 
 interface StudentQuestionDraft {
@@ -48,18 +50,29 @@ export function PublishedPaperApp() {
   const [drafts, setDrafts] = useState<Record<string, StudentQuestionDraft>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [reviewCompleted, setReviewCompleted] = useState(false);
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
-  const { queueAttempt, syncMessage, mastery, attempts } = usePublishedLearningSession(publication?.publicationId);
+  const initializedPaperRef = useRef("");
+  const { queueAttempt, syncMessage, mastery, attempts, sessionReady } = usePublishedLearningSession(publication?.publicationId);
+  const paperProgress = usePublishedPaperProgress(publication, attempts);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
   const currentQuestionId = payload?.question.id ?? "";
 
-  const latestAttempt = payload
-    ? attempts
-      .filter((attempt) => attempt.questionId === payload.question.id)
-      .sort((left, right) => right.createdAt - left.createdAt)[0]
-    : undefined;
+  const latestAttempt = payload ? paperProgress.latestAttempts.get(payload.question.id) : undefined;
+
+  useEffect(() => {
+    if (!publication || !sessionReady) return;
+    const key = publication.publicationId;
+    if (initializedPaperRef.current === key) return;
+    initializedPaperRef.current = key;
+    setReviewCompleted(false);
+    // 首次进入从第一道未完成题开始；全部完成时由完成态接管，不停在最后一次
+    // 提交的题目上等待学生猜下一步。离线回退也会走这里，因为 sessionReady
+    // 在恢复失败时同样会置为 true。
+    if (paperProgress.firstIncompleteIndex >= 0) setQuestionIndex(paperProgress.firstIncompleteIndex);
+  }, [publication, paperProgress.firstIncompleteIndex, sessionReady]);
 
   const restoreAttempt = (attempt?: ExerciseAttemptRecord, draft?: StudentQuestionDraft) => {
     const response = attempt?.response ?? {};
@@ -218,7 +231,12 @@ export function PublishedPaperApp() {
           createdAt: Date.now() / 1000,
         });
         if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
-        if (response.guideContext.assessment !== "correct") {
+        if (response.guideContext.assessment === "correct") {
+          // 先完成本地快照/离线排队，再推进；nextIncompleteIndex 用刚提交的题目
+          // 作为“已完成”覆盖值，避免 React 尚未完成下一轮渲染时又回到当前题。
+          const nextIndex = paperProgress.nextIncompleteIndex(questionIndex, questionId);
+          if (nextIndex !== null) changeQuestion(nextIndex);
+        } else {
           setShowExplanation(true);
           setMistakeNotice(attemptResult.status === "saved" && attemptResult.autoMistake
             ? "这道错题已自动加入错题本，不需要再次上传。"
@@ -256,7 +274,9 @@ export function PublishedPaperApp() {
   };
 
   if (error && !publication) return <main className="center-state"><strong>无法打开互动试卷</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回学生空间</button></main>;
-  if (!publication || !payload) return <main className="center-state"><span>正在打开互动试卷…</span></main>;
+  // 会话恢复完成前不开放输入。否则学生可能已经在第 1 题作答，随后历史 attempts
+  // 才把页面定位到另一道未完成题，造成草稿看似丢失。
+  if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开互动试卷…</span></main>;
 
   return (
     <main className="app-shell">
@@ -272,7 +292,16 @@ export function PublishedPaperApp() {
         mastery={mastery}
         syncMessage={syncMessage}
       />
-      <StudentQuestionWorkspace
+      {paperProgress.completed && !reviewCompleted ? (
+        <StudentPaperCompleted
+          questionCount={publication.lessons.length}
+          onBack={() => navigate("/learn")}
+          onReview={() => {
+            setReviewCompleted(true);
+            setQuestionIndex(0);
+          }}
+        />
+      ) : <StudentQuestionWorkspace
         payload={payload}
         questionIndex={questionIndex}
         questionCount={publication.lessons.length}
@@ -286,6 +315,7 @@ export function PublishedPaperApp() {
         reply={reply}
         mistakeNotice={mistakeNotice}
         hasSubmitted={Boolean(latestAttempt)}
+        lastAssessment={latestAttempt?.assessment}
         onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}
         onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}
@@ -313,7 +343,7 @@ export function PublishedPaperApp() {
         onSubmit={() => void askTutor("answer")}
         onHelp={() => void askTutor("help")}
         onOpenMistakes={() => navigate("/mistakes")}
-      />
+      />}
       {showExplanation && (
         <section className="student-explanation-section" aria-label="分步讲解">
           <div className="student-explanation-heading">

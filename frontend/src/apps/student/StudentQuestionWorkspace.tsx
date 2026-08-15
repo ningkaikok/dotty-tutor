@@ -1,6 +1,6 @@
 import { QuestionAnswer } from "../../components/QuestionAnswer";
 import MathText from "../../MathText";
-import type { QuestionPayload, TutorReply } from "../../types";
+import type { ExerciseAttemptInput, QuestionPayload, TutorReply } from "../../types";
 
 interface StudentQuestionWorkspaceProps {
   payload: QuestionPayload;
@@ -16,6 +16,7 @@ interface StudentQuestionWorkspaceProps {
   reply: TutorReply | null;
   mistakeNotice: string;
   hasSubmitted: boolean;
+  lastAssessment?: ExerciseAttemptInput["assessment"];
   onPrevious: () => void;
   onNext: () => void;
   onSelectOption: (label: string, answerText: string) => void;
@@ -48,6 +49,7 @@ export function StudentQuestionWorkspace({
   reply,
   mistakeNotice,
   hasSubmitted,
+  lastAssessment,
   onPrevious,
   onNext,
   onSelectOption,
@@ -139,6 +141,16 @@ export function StudentQuestionWorkspace({
             <span>Dotty</span>
           </div>
           {reply.reply.split("\n").map((line, index) => <p key={index}>{line ? <MathText text={line} /> : <br />}</p>)}
+        </section>
+      )}
+
+      {!reply && lastAssessment && (
+        <section className={`student-feedback ${lastAssessment}`} aria-live="polite">
+          <div className="student-feedback-heading">
+            <strong>已恢复上次作答</strong>
+            <span>{lastAssessment === "correct" ? "上次回答正确" : lastAssessment === "partial" ? "上次回答接近正确" : "上次回答需要修正"}</span>
+          </div>
+          <p>{lastAssessment === "correct" ? "你可以重新提交，或继续回看这道题。" : "修改答案后重新提交，系统会用最新一次结果更新学习记录。"}</p>
         </section>
       )}
 
