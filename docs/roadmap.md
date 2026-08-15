@@ -4,6 +4,17 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 拍照录入、多轮陪练、掌握验证和 1/3/7 天复习，但尚未达到匿名公网服务所需的安全性、隔离性和
 可运维性。
 
+## 路线图使用方式
+
+路线图已拆成产品路线和技术路线，避免“用户要什么”和“系统怎么实现”互相覆盖：
+
+- **产品优先级**：见 [`product-roadmap.md`](product-roadmap.md)，只记录用户价值、产品阶段和产品验收。
+- **技术优先级**：见 [`engineering-roadmap.md`](engineering-roadmap.md)，只记录正确性、质量、性能和基础设施。
+- **详细设计**：见 [`runtime-governance-plan.md`](runtime-governance-plan.md) 和
+  [`mistake-coach-plan.md`](mistake-coach-plan.md)。
+
+本文件保留历史阶段和已完成记录，迁移期间不再在此新增技术任务；后续执行状态以两份新路线图为准。
+
 ## 已完成
 
 - 图片和大 PDF 分块上传、暂停续传与批次处理。
