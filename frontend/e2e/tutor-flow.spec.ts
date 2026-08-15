@@ -600,6 +600,73 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("button", { name: "重新提交答案" })).toBeVisible();
   });
 
+  test("正确提交后进入下一道未完成题，最后显示完成态且作答阶段不请求 TTS", async ({ page }) => {
+    await mockApi(page);
+    const answerAttempts: Record<string, unknown>[] = [];
+    let ttsRequests = 0;
+    const first = choiceQuestion;
+    const second = payload({
+      id: "pw-progress-second",
+      questionType: "choice",
+      chapter: "第一章",
+      knowledgePoint: "有理数判断",
+      questionNumber: "2",
+      prompt: "负数都小于零。",
+      givens: [],
+      options: ["(A) 正确", "(B) 错误"],
+    });
+    const publication = {
+      publicationId: "paper-progress",
+      title: "推进状态测试",
+      status: "published",
+      lessonIds: [first.question.id, second.question.id],
+      lessonCount: 2,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [
+        { lessonId: first.question.id, title: first.question.knowledgePoint, version: 1, status: "published", questionPayload: first, guideCards: [] },
+        { lessonId: second.question.id, title: second.question.knowledgePoint, version: 1, status: "published", questionPayload: second, guideCards: [] },
+      ],
+    };
+    const session = () => ({ sessionId: "progress-session", learnerId: "local-demo", publicationId: "paper-progress", startedAt: 1, attempts: answerAttempts });
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.route("**/api/publications/paper-progress", async (route) => await route.fulfill({ json: publication }));
+    await page.route("**/api/learning/sessions", async (route) => await route.fulfill({ json: session() }));
+    await page.route("**/api/learning/sessions/progress-session", async (route) => await route.fulfill({ json: session() }));
+    await page.route("**/api/learning/sessions/progress-session/attempts", async (route) => {
+      answerAttempts.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ json: {
+        attemptId: answerAttempts.at(-1)?.attemptId ?? "progress-attempt",
+        mastery: { learnerId: "local-demo", knowledgePoint: "数轴上的大小比较", score: 1, attemptCount: 1, correctCount: 1, lastPracticedAt: 1 },
+        autoMistake: null,
+      } });
+    });
+    await page.route("**/api/help", async (route) => await route.fulfill({ json: {
+      reply: "回答正确。",
+      guideContext: { assessment: "correct", assessmentAuthority: "deterministic" },
+      nextHintLevel: 0,
+      canvasAction: "none",
+      source: "answer-check",
+      modelRun,
+    } }));
+    await page.route("**/api/tts", async (route) => { ttsRequests += 1; await route.fulfill({ status: 204 }); });
+
+    await page.goto("/learn");
+    await page.getByRole("button", { name: /推进状态测试/ }).click();
+    await expect(page.getByRole("heading", { name: "数轴上的大小比较" })).toBeVisible();
+    await page.getByRole("button", { name: /B/ }).click();
+    await page.getByRole("button", { name: "提交答案" }).click();
+    await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
+    await page.getByRole("button", { name: /A/ }).click();
+    await page.getByRole("button", { name: "提交答案" }).click();
+    await expect(page.getByRole("heading", { name: "这套试卷已经完成" })).toBeVisible();
+    expect(ttsRequests).toBe(0);
+
+    // 刷新完成态仍由最新 attempts 推导，不会把学生带回第一题。
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "这套试卷已经完成" })).toBeVisible();
+  });
+
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
     await mockMistakeApi(page);
     await page.goto("/mistakes");

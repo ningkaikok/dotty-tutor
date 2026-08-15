@@ -89,6 +89,9 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
   const [mastery, setMastery] = useState<MasteryState[]>([]);
   const [attempts, setAttempts] = useState<ExerciseAttemptRecord[]>([]);
+  // 只有首次读取会话（或明确进入离线回退）后才可以用 attempts 决定起始题目。
+  // 否则空数组会短暂把已完成试卷误判为未开始。
+  const [sessionReady, setSessionReady] = useState(false);
 
   const mergeMastery = useCallback((next: MasteryState) => {
     setMastery((current) => [
@@ -103,11 +106,13 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     // 新打开的试卷绝不能短暂复用上一份试卷的 sessionId。
     setSessionId("");
     setAttempts([]);
+    setSessionReady(false);
     setSyncMessage("正在连接学习记录…");
     void openOrRecoverSession(publicationId).then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
       setAttempts(session.attempts ?? []);
+      setSessionReady(true);
       const delivered = await flushPending(session.sessionId, replacedSessionId);
       if (!cancelled) setSyncMessage(delivered ? "离线学习记录已补传" : "学习记录已同步");
       // 补传可能包含上一次离线作答；重新读取一次会话，确保题目状态与服务端一致。
@@ -121,7 +126,10 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
         if (!cancelled) setMastery(items);
       }).catch(() => undefined);
     }).catch(() => {
-      if (!cancelled) setSyncMessage("学习记录暂未连接，答案会在本机排队");
+      if (!cancelled) {
+        setSessionReady(true);
+        setSyncMessage("学习记录暂未连接，答案会在本机排队");
+      }
     });
     return () => { cancelled = true; };
   }, [publicationId]);
@@ -152,5 +160,5 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     }
   }, [mergeMastery, sessionId]);
 
-  return { queueAttempt, syncMessage, mastery, attempts };
+  return { queueAttempt, syncMessage, mastery, attempts, sessionReady };
 }
