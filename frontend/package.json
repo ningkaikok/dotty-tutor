@@ -11,7 +11,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "katex": "^0.18.1",
+    "katex": "^0.18.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router": "^8.3.0"
@@ -22,6 +22,6 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "typescript": "^7.0.2",
-    "vite": "^8.1.5"
+    "vite": "^8.2.1"
   }
 }
