@@ -64,8 +64,8 @@ def build_run_config(
                 "fallback": False,
             },
             "visionModelRun": {
-                "provider": runtime_reviewer.vision_provider,
-                "model": runtime_reviewer.vision_model,
+                "provider": runtime_reviewer.text_provider,
+                "model": runtime_reviewer.text_model,
                 "fallback": False,
             },
         }

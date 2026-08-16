@@ -35,7 +35,19 @@ def codex_command() -> str:
     macOS 桌面应用可能把 CLI 放在应用资源目录而不是 ``PATH``，因此允许通过
     ``CODEX_COMMAND`` 显式指定，Docker 中也会据此判断宿主机能力是否可见。
     """
-    return os.getenv("CODEX_COMMAND", "codex")
+    configured = os.getenv("CODEX_COMMAND", "").strip()
+    if configured:
+        return configured
+    # Desktop installs do not always expose the bundled CLI on PATH.
+    return shutil.which("codex") or "/Applications/ChatGPT.app/Contents/Resources/codex"
+
+
+def codex_models() -> list[str]:
+    """Return the subscription models exposed by the local Codex CLI."""
+    configured = os.getenv("CODEX_MODELS", "").strip()
+    if configured:
+        return [item.strip() for item in configured.split(",") if item.strip()]
+    return ["default", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
 
 
 @dataclass
@@ -61,8 +73,8 @@ class ModelRuntime:
         provider_name = f"{env_prefix}MODEL_PROVIDER" if env_prefix else "MODEL_PROVIDER"
         model_name = f"{env_prefix}MODEL_NAME" if env_prefix else "MODEL_NAME"
         self.selection = ModelSelection(
-            provider=os.getenv(provider_name, "ollama"),  # type: ignore[arg-type]
-            model=os.getenv(model_name, "qwen2.5:3b"),
+            provider=os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
+            model=os.getenv(model_name, "default"),
         )
 
     def ollama_models(self) -> tuple[list[str], str | None]:
@@ -92,7 +104,7 @@ class ModelRuntime:
                 "id": "codex",
                 "label": "Codex 订阅",
                 "available": codex_available,
-                "models": ["default", "gpt-5.6-sol"],
+                "models": codex_models(),
                 "detail": (
                     "复用本机 ChatGPT/Codex 登录与套餐额度"
                     if codex_available else

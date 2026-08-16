@@ -13,6 +13,15 @@ from ocr_pipeline import PAGE_MARKER, has_visual_hint
 QUESTION_START_PATTERN = re.compile(
     r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})(?:(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
 )
+# 试卷通常在真正题目之前包含“注意事项”或考试信息。这里只把明确的题型章节
+# 作为题目区起点，避免把注意事项中的“1.”、“2.”误判成题号。没有章节标题的
+# 普通教材片段仍沿用原有的题号切分逻辑。
+QUESTION_SECTION_PATTERN = re.compile(
+    r"(?im)^\s*(?:(?:第\s*[一二三四五六七八九十百\d]+\s*(?:大题|部分|节))|"
+    r"(?:[一二三四五六七八九十百\d]+\s*[、.．]))\s*"
+    r"(?:选择题|填空题|判断题|解答题|计算题|应用题|作图题|证明题|实验题|综合题|"
+    r"单项选择题|多项选择题|非选择题)"
+)
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MAX_QUESTIONS_PER_BATCH = 5
 
@@ -22,6 +31,18 @@ ANSWER_SECTION_PATTERN = re.compile(
 INLINE_ANSWER_PATTERN = re.compile(
     r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?"
 )
+
+
+def _question_area(source: str) -> str:
+    """Return the actual exercise section when an exam heading is present.
+
+    OCR often preserves numbered instructions before the first section.  Slicing at a
+    recognizable heading is safer than trying to blacklist every possible instruction
+    sentence, and leaves non-exam textbook snippets unchanged.
+    """
+    area = ANSWER_SECTION_PATTERN.split(source, maxsplit=1)[0]
+    heading = QUESTION_SECTION_PATTERN.search(area)
+    return area[heading.start():] if heading else area
 
 
 def safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -45,7 +66,7 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
     OCR 页之间可能重复打印同一个题号；相邻的同号块按续题合并，既能保住跨页小问，也不把
     下一题吸进来。图片始终随其所在题块保留，顺序与 OCR Markdown 一致。
     """
-    question_area = ANSWER_SECTION_PATTERN.split(source, maxsplit=1)[0]
+    question_area = _question_area(source)
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
     page_markers = list(PAGE_MARKER.finditer(question_area))
     blocks: list[tuple[str, str, list[str]]] = []
@@ -68,7 +89,12 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
                     (marker.start() for marker in page_markers if marker.start() > page_marker.start()),
                     len(question_area),
                 )
-                images = MARKDOWN_IMAGE_PATTERN.findall(question_area[page_marker.end():section_end])
+                # A page can contain several unrelated figures.  Guessing all of them
+                # creates a valid-looking but wrong question.  Only infer a rendered
+                # page image when it is the sole image candidate on that page; otherwise
+                # the quality gate quarantines the question for an explicit repair.
+                page_images = MARKDOWN_IMAGE_PATTERN.findall(question_area[page_marker.end():section_end])
+                images = page_images if len(page_images) == 1 else []
         number = match.group("number")
         if blocks and blocks[-1][0] == number:
             # 同号重复通常来自跨页页眉或 OCR 将续题重新识别为题首。合并而非新建题，

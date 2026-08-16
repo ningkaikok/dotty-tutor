@@ -21,14 +21,19 @@ OcrProvider = Literal["auto", "mineru", "pypdf"]
 
 @dataclass
 class OcrSelection:
-    provider: OcrProvider = "auto"
+    # MinerU 是教材图片/公式识别的默认路径；没有安装时仍保留请求选择，实际执行层
+    # 会明确回退到 PDF 文字层，避免 Docker 启动后把宿主机 MinerU 路径误当成可用能力。
+    provider: OcrProvider = "mineru"
 
 
 class OcrRuntime:
     """保存进程级 OCR 选择，并隔离 MinerU 命令行细节。"""
 
     def __init__(self) -> None:
-        self.selection = OcrSelection()
+        configured = os.getenv("OCR_PROVIDER", "mineru").strip().lower()
+        self.selection = OcrSelection(
+            provider=configured if configured in {"auto", "mineru", "pypdf"} else "mineru"  # type: ignore[arg-type]
+        )
 
     def mineru_command(self) -> Path | None:
         """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。
@@ -57,9 +62,15 @@ class OcrRuntime:
 
     def catalog(self) -> dict:
         command = self.mineru_command()
+        # ``selected`` describes the requested provider; ``effective`` is the
+        # provider this process can actually execute.  Keep MinerU as the
+        # default preference, but make the Docker/minimal-image fallback
+        # explicit instead of pretending the host installation is available.
         effective = self.selection.provider
         if effective == "auto":
             effective = "mineru" if command else "pypdf"
+        elif effective == "mineru" and not command:
+            effective = "pypdf"
         # compose.yaml 同时写入运行模式，/.dockerenv 作为直接运行容器时的兜底。
         # 两者都只用于解释“为什么不可用”，不会把宿主机路径误报成容器内可执行文件。
         in_container = os.getenv("DOTTY_RUNTIME_MODE") == "docker" or Path("/.dockerenv").is_file()

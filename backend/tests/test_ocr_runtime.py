@@ -10,6 +10,19 @@ from infrastructure.runtime.ocr_runtime import OcrRuntime
 
 
 class OcrRuntimeTests(unittest.TestCase):
+    def test_mineru_is_the_default_requested_provider(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OCR_PROVIDER", None)
+            self.assertEqual(OcrRuntime().selection.provider, "mineru")
+
+    def test_default_mineru_reports_pypdf_when_command_is_unavailable(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("OCR_PROVIDER", None)
+            with patch.object(OcrRuntime, "mineru_command", return_value=None):
+                catalog = OcrRuntime().catalog()
+        self.assertEqual(catalog["selected"], "mineru")
+        self.assertEqual(catalog["effective"], "pypdf")
+
     def test_honours_an_explicit_executable(self) -> None:
         with TemporaryDirectory() as directory:
             command = Path(directory) / "mineru"

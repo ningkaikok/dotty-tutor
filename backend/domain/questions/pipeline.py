@@ -21,6 +21,10 @@ MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
 )
+# Image-option OCR commonly emits a bare label on its own line (``A`` then image)
+# instead of ``A.``.  It is only used when the source already contains four/five
+# images, so ordinary prose containing the letter A is not treated as an option.
+STANDALONE_CHOICE_MARKER_PATTERN = re.compile(r"(?im)^\s*(?:\(([A-D])\)|([A-D]))\s*$")
 ANSWER_LEAK_PATTERN = re.compile(r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?")
 
 
@@ -124,10 +128,7 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
     当作普通文字写回 JSON，因此这里不信任模型的图片字段，而是以 OCR 来源顺序
     重新绑定。也兼容只有四张选项图的旧格式。
     """
-    labels = [
-        match.group(1) or match.group(2)
-        for match in CHOICE_MARKER_PATTERN.finditer(source_block)
-    ]
+    labels = _image_choice_labels(source_block, len(source_images))
     if labels[:4] != ["A", "B", "C", "D"] or len(source_images) not in {4, 5}:
         return
     question = payload["question"]
@@ -137,9 +138,29 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
     option_start = 1 if len(image_urls) == 5 else 0
     question["optionImageUrls"] = image_urls[option_start:option_start + 4]
     question["options"] = ["(A)", "(B)", "(C)", "(D)"]
+    question["imageManifest"] = [
+        {
+            "order": index,
+            "role": "stem" if option_start == 1 and index == 0 else "option",
+            "optionLabel": None if option_start == 1 and index == 0 else chr(65 + index - option_start),
+            "sourceReference": source_images[index],
+            "url": image_urls[index],
+        }
+        for index in range(len(image_urls))
+    ]
     prompt = strip_image_references(str(question.get("prompt", "")))
     prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、])\s*$", "", prompt)
     question["prompt"] = re.sub(r"\n{3,}", "\n\n", prompt).strip()
+
+
+def _image_choice_labels(source_block: str, image_count: int) -> list[str]:
+    """Extract A-D markers while preserving the OCR source order."""
+    labels = [match.group(1) or match.group(2) for match in CHOICE_MARKER_PATTERN.finditer(source_block)]
+    if labels[:4] == ["A", "B", "C", "D"]:
+        return labels
+    if image_count not in {4, 5}:
+        return labels
+    return [match.group(1) or match.group(2) for match in STANDALONE_CHOICE_MARKER_PATTERN.finditer(source_block)]
 
 
 def strip_image_references(text: str) -> str:
@@ -313,6 +334,8 @@ def build_question_content_blocks(payload: dict[str, Any], source_block: str, so
         option_items.append(item)
     options_block = {"id": "options", "type": "options", "items": option_items} if option_items else None
     source_choice_matches = list(CHOICE_MARKER_PATTERN.finditer(source_block))
+    if not source_choice_matches and len(source_images) in {4, 5}:
+        source_choice_matches = list(STANDALONE_CHOICE_MARKER_PATTERN.finditer(source_block))
     first_option_position = source_choice_matches[0].start() if source_choice_matches else -1
     blocks.extend(block for position, block in image_blocks if first_option_position < 0 or position < first_option_position)
     if options_block:
@@ -349,10 +372,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     if leaked_answer:
         evidence = prompt[leaked_answer.start():leaked_answer.start() + 36].replace("\n", " ")
         errors.append(f"题干混入答案/解析证据：{evidence}")
-    source_labels = [
-        match.group(1) or match.group(2)
-        for match in CHOICE_MARKER_PATTERN.finditer(source_block)
-    ]
+    source_labels = _image_choice_labels(source_block, len(source_images))
     if all(label in source_labels for label in ("A", "B", "C", "D")) and len(options) != 4:
         errors.append(f"原题包含 A-D，但结构化选项数为 {len(options)}")
     for index, option in enumerate(options):
@@ -405,9 +425,29 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:
     """重建内容块、附加来源指纹，并把质量状态写回题目。"""
     question = payload["question"]
+    # 模型偶尔会把题目说明或下一题的选项也当成 E 项。对于 OCR 已明确是
+    # A-D 的题，先做一个可逆的展示修复：只保留来源支持的四项，同时记录门禁错误，
+    # 这样内容工作台不会继续展示一个可作答的假选项，发布边界也不会被误放行。
+    source_labels = _image_choice_labels(source_block, len(source_images))
+    options = question.get("options") if isinstance(question.get("options"), list) else []
+    if len(options) > 4 and (
+        all(label in source_labels for label in ("A", "B", "C", "D"))
+        or len(source_images) == 5
+    ):
+        question["options"] = list(options[:4])
+        option_images = question.get("optionImageUrls")
+        if isinstance(option_images, list):
+            question["optionImageUrls"] = list(option_images[:4])
+        question["qualityRepairNotes"] = [
+            *(question.get("qualityRepairNotes") or []),
+            "来源仅支持 A-D，已暂时隐藏结构化结果中的多余选项；请重新生成或人工确认。",
+        ]
     question["contentBlocks"] = build_question_content_blocks(payload, source_block, source_images)
     question["sourceEvidence"] = {"questionNumber": question.get("questionNumber", ""), "sourceHash": hashlib.sha256(source_block.encode("utf-8")).hexdigest(), "imageReferences": list(source_images)}
     quality = validate_question_payload(payload, source_block, source_images)
+    if question.get("qualityRepairNotes"):
+        quality["errors"].extend(str(note) for note in question["qualityRepairNotes"])
+        quality["status"] = "needs_review"
     payload["quality"] = quality
     question["publicationStatus"] = quality["status"]
     if quality["errors"] and payload.get("review"):

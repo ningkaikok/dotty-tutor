@@ -4,13 +4,23 @@ import os
 import unittest
 from unittest.mock import patch
 
-from infrastructure.runtime.model_runtime import ModelRuntime, codex_command
+from infrastructure.runtime.model_runtime import ModelRuntime, codex_command, codex_models
 
 
 class CodexCommandTests(unittest.TestCase):
-    def test_defaults_to_bare_command_name(self) -> None:
+    def test_default_catalog_includes_supported_subscription_models(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(codex_command(), "codex")
+            self.assertEqual(codex_models(), [
+                "default", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4",
+            ])
+
+    def test_catalog_can_be_limited_by_environment(self) -> None:
+        with patch.dict(os.environ, {"CODEX_MODELS": "default, gpt-5.6-sol"}, clear=True):
+            self.assertEqual(codex_models(), ["default", "gpt-5.6-sol"])
+
+    def test_defaults_to_path_available_in_desktop_install(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(codex_command().endswith("/codex"))
 
     def test_respects_override_for_bundled_installs(self) -> None:
         bundled_path = "/Applications/ChatGPT.app/Contents/Resources/codex"

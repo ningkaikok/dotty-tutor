@@ -104,7 +104,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 运行时路由 | `backend/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
 | 模型适配 | `backend/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
 | OCR 适配 | `backend/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
-| 双模型审校 | `backend/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
+| 统一模型审校 | `backend/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `backend/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
 | 教材与学习存储 | `backend/persistence/textbook_store.py`、`learning_store.py` | 教材导入/题目批次、课程/试卷、作答/掌握度；`storage.py` 仅兼容旧调用方 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
@@ -207,7 +207,7 @@ erDiagram
   → 返回 QuestionPayload
 ```
 
-该路径不持久化原文件，也不执行完整 PDF 路径中的来源绑定、双模型审校和质量门禁。
+该路径不持久化原文件，也不执行完整 PDF 路径中的来源绑定、统一模型审校和质量门禁。
 
 ## 整本 PDF 导入
 
@@ -218,11 +218,20 @@ erDiagram
 3. 浏览器按 5 MB 调用分块上传接口，暂停后只补传缺失块。
 4. `POST /api/uploads/{uploadId}/complete` 合并文件并校验大小、SHA-256 和页数。
 5. 后端每 5 页规划一个批次，合并成功后删除分块并保留 `source.pdf`。
-6. 首批先探测各页文字、图片和公式信号；电子文本页走 pypdf，扫描页和公式页走 MinerU。
-7. 页面质量门禁只把损坏或空白页段升级到 MinerU；结果以 PDF 哈希、页范围和 Provider 版本缓存。
-8. OCR Markdown 按中文题号切分，合并跨页续题并截断答案区；每批最多处理 5 道完整题。
-9. 每道题依次生成、绑定来源、审校、标准化、质量检查并持久化。
-10. 前端每 800 ms 查询状态并显示进度。
+6. 首批先读取每页文字层和图片数量，计算扫描、公式和图形信号；电子文本页默认走 pypdf，扫描页、公式页
+   或含“如图/左视图/展开图”等视觉提示的页面优先走 MinerU。
+7. 自动模式下，pypdf 页面先经过页面质量门禁；空文字、疑似扫描或内容损坏的页段局部升级到 MinerU。
+   显式选择 pypdf 时不偷偷升级，显式选择 MinerU 时按连续页段执行。Provider 不可用时保留回退原因，
+   不把“识别成功”伪装成高质量结果。
+8. 每个 Provider 页段按 PDF 内容哈希、起止页、Provider 和流水线版本生成缓存键，缓存 Markdown、图片 URL
+   和运行元数据；重复处理默认命中缓存，只有“刷新 OCR 重生成”才跳过缓存。
+9. 将 Markdown 按题号切分，合并跨页续题，截断答案/解析章节，并把题号、页码和图片引用绑定到稳定的
+   `sourceQuestionKey`；每批最多处理 5 道完整题。
+10. 每道题进入独立生成循环：结构化生成 → 来源绑定 → 审核 → 确定性规范化 → 内容块重建 → 质量门禁。
+    质量失败时只携带当前题的错误证据重试，最多额外重试 2 次；最终仍失败的题目保留给工作台诊断并隔离，
+    不进入学生可见发布。
+11. 批次结果写入课程文档、题目当前视图和 revision 审计链；前端通过状态接口看到批次进度，后续批次按需处理。
+12. 前端每 800 ms 查询状态并显示进度。
 
 当前 `complete` 和后续批次处理仍在 HTTP 请求中同步运行，不是后台任务。
 
@@ -246,20 +255,96 @@ erDiagram
 完整阶段、验收标准和何时升级 Redis、OpenTelemetry、LangGraph 或 MCP，见
 [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。
 
+## OCR 到题目：一条请求的实际流水线
+
+下面的流程描述的是 `TextbookProcessingService` 和 `question_processing` 当前真正执行的顺序。它把“识别”
+与“出题”拆成两个边界：OCR 只负责还原来源，模型只负责提出候选结构，最终能否发布由确定性门禁决定。
+
+```mermaid
+flowchart TD
+  A[PDF source.pdf] --> B[读取页数与 PDF 校验]
+  B --> C[按 5 页规划 batch]
+  C --> D[逐页读取文字层 / 图片数量]
+  D --> E[probe_page 页面信号]
+  E --> F{选择 Provider}
+  F -->|电子文本| G[pypdf 文字层]
+  F -->|扫描 / 公式 / 图形页| H[MinerU 页段 OCR]
+  G --> I[页面质量门禁]
+  H --> I
+  I -->|需要升级且 auto| H
+  I --> J[内容寻址 OCR 缓存]
+  J --> K[Markdown 题号切分]
+  K --> L[跨页合并 / 答案区截断 / 图片引用绑定]
+  L --> M[生成模型 JSON Schema]
+  M --> N[统一审核模型：文字 + 题图]
+  N --> O[重新绑定来源图片]
+  O --> P[公式、选项、contentBlocks 规范化]
+  P --> Q[题目质量门禁]
+  Q -->|ready| R[保存 lesson + question revision]
+  Q -->|needs_review| S{还有重试次数?}
+  S -->|是| M
+  S -->|否| T[隔离题目，不发布]
+```
+
+### 1. 页面路由与 OCR
+
+`backend/ocr_pipeline.py` 只做低成本决策，不直接启动 OCR。`probe_page` 根据文字长度、PDF 图片数量、
+公式命令和图形提示计算页面信号：
+
+- `pypdf`：电子文本且没有明显公式/图形依赖时，速度快，输出文字层。
+- `MinerU`：扫描页、公式页、图形页或视觉提示明显时，输出 Markdown、LaTeX 和图片资源。
+- `auto`：先用 pypdf 预检，质量状态为 `retry` 时只升级失败页段；不会重新处理整本 PDF。
+
+`backend/textbook_ocr_pipeline.py` 再把相邻且 Provider 相同的页面合并成连续 span，调用
+`OcrResultCache` 保存结果。缓存命中仍会返回 `pageRoutes`、`quality`、`retries` 和 `spans`，因此页面能够解释
+“为什么使用这个 Provider”，而不是只返回一段不可追踪的 Markdown。
+
+### 2. 从 Markdown 到稳定题块
+
+`backend/domain/questions/source.py` 负责题源切分：识别“第 N 题”、`N.`、`N、` 和带括号题号；相邻同号跨页
+内容会合并，图片引用按来源顺序去重；遇到答案、解析或答案章节会截断。`limited_question_sources` 再限制单批
+最多 5 题，避免一次模型请求过大。
+
+处理服务会为每个题块保留：
+
+- `sourceQuestionKey`：批次、题号和索引组成的稳定定位键；
+- OCR 原始题块和 `sourceHash`；
+- 页码范围、OCR Provider、缓存键和图片引用；
+- `sourceArtifactUrl`、`promptArtifactUrl`，方便在内容生产端查看原文和送给模型的提示。
+
+### 3. 生成、统一审核与确定性修复
+
+```text
+题块 + 来源图片
+  → 生成模型（JSON Schema）输出题干、选项、答案、四步讲解和引导卡
+  → attach_question_source 绑定题号、页码、题干图和选项图
+  → 统一审核模型检查文字、公式、单位、讲解，以及题干图/选项图的归属和事实
+  → 审核后再次绑定来源图片，防止模型删除图片或把文件名写进正文
+  → 确定性规范化：公式命令、选项标签、图片顺序、contentBlocks
+  → 质量门禁：题号、选项数量、答案泄漏、图片归属、公式环境和语义冲突
+```
+
+文字审核和图片审核不是两个可独立选择的模型。`ReviewRuntime` 使用同一组
+`REVIEW_PROVIDER`/`REVIEW_MODEL`，但在有图片时会产生独立的 `textModelRun` 和 `visionModelRun` 审计记录，
+这样可以分别定位文字检查和视觉检查耗时，同时保证同一题的裁判模型一致。视觉冲突还会触发一次讲解复修；
+复修仍使用同一个审核模型，不会悄悄切换到另一个模型。
+
+质量门禁发现“来源只有 A-D、模型却生成 E”时，会暂时隐藏多余选项并标记 `needs_review`；这只是可逆的工作台
+诊断修复，不代表题目通过。只有重新生成/修复后门禁为 `ready`，题目才允许送审或发布。
+
 ## 单题生成与审校
 
 ```text
-OCR 题块
-  → 第一模型按 JSON Schema 生成题目、4 步讲解和 3 层引导卡
-  → 绑定题号、页码、OCR 产物和题图
-  → 第二文本模型核对错字、公式、选项和讲解
-  → 有题图时执行视觉归属和事实复核
-  → 有冲突时再次修复讲解
+OCR 题块 + 来源图片
+  → 生成模型按 JSON Schema 输出候选题
+  → attach_question_source 绑定来源
+  → 同一个审核模型执行文字审核；有图片时继续执行视觉审核
+  → 审核后再次绑定来源，避免模型改坏图片归属
   → 确定性修复公式、`(A)`/`A.` 等选项标记和图片结构
   → 构建 contentBlocks
   → 质量门禁校验来源、图片顺序、选项、公式命令和单位语义
-  → 结构失败时携带校验错误仅重新生成当前题（最多 2 次）
-  → 写入 PostgreSQL 和内存读取缓存
+  → 失败时携带校验错误仅重新生成当前题（最多 2 次）
+  → 通过后写入 PostgreSQL 和 revision 审计链；失败则隔离
 ```
 
 质量门禁发现错误时会把 `publicationStatus` 标记为 `needs_review`，流水线使用同一份 OCR 来源和题图
@@ -271,7 +356,7 @@ OCR 题块
 LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型之后执行确定性规范化，并把“题干使用百分比、
 选项却全部是温度值”这类无法安全猜测的冲突标记为 `needs_review`，而不是静默改题或发布。
 
-生成模型和文字审核模型是两个独立进程级 Runtime。工作台分别调用 `/api/models/select` 和
+生成模型和统一审核模型是两个独立进程级 Runtime。工作台分别调用 `/api/models/select` 和
 `/api/review-models/select`；切换审核模型不会改变 Help 或题目生成模型。整套重新审核不会直接改写旧
 `lesson_documents`，而是让处理服务以 transient 模式重新运行来源批次，再用新题目 ID 创建下一版
 `lesson_publications`。旧版、学习会话和作答记录因此仍能回放和回滚。

@@ -319,7 +319,15 @@ def attach_question_source(
         url for url in ocr_run.get("imageUrls", [])
         if isinstance(url, str) and url.startswith("/api/uploads/")
     ]
-    references = source_image_references or question.pop("imageReferences", [])
+    # ``[]`` 是一个有意义的结果：OCR 已明确判断本题没有图片。
+    # 不能用 ``or`` 回退到模型返回的 imageReferences，否则模型可能把同一批次
+    # 其他题目的图片重新带进来，造成题干图/选项图串题。只有调用方没有提供
+    # 确定的 OCR 引用（None）时，才兼容读取历史模型字段。
+    if source_image_references is None:
+        references = question.pop("imageReferences", [])
+    else:
+        references = list(source_image_references)
+        question.pop("imageReferences", None)
     available_by_name = {Path(url).name: url for url in available_images}
     question["imageUrls"] = [
         available_by_name[Path(reference).name]

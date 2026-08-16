@@ -24,7 +24,7 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 - **大文件摄取**：大 PDF 分块上传、暂停续传、按页范围批处理和历史教材恢复。
 - **版面解析**：MinerU OCR 与 PDF 文字层双路解析，提取公式与题图。
 - **多路生成**：Ollama、Codex CLI 和 Mock 三种题目生成路径可切换。
-- **质量门禁**：文本与视觉双模型审校，叠加一层确定性的结构质量校验，不合格不放行。
+- **质量门禁**：统一审核模型同时执行文字与题图审校，叠加一层确定性的结构质量校验，不合格不放行。
 - **送审发布**：多道已生成题目可送审并发布为互动试卷，学生端只看到已发布内容。
 - **运行审计**：单题修复、刷新 OCR、批次重生成和整套重新审核均保留 `run_id`、revision、实际模型/审核/OCR
   与 validator 版本；旧题目版本可追溯且不会被覆盖。
@@ -128,7 +128,7 @@ cp .env.example .env
 # 编辑 .env，填写 POSTGRES_PASSWORD 后导出到当前 shell
 set -a; source .env; set +a
 cd backend
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
+MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
   ../.venv/bin/python -m uvicorn app:app --reload --port 8010
 ```
 

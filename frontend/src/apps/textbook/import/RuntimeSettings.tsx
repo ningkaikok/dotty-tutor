@@ -35,7 +35,7 @@ export function RuntimeSettings({
       <div>
         <span className="eyebrow">MODEL RUNTIME</span>
         <strong>选择实际生成模型</strong>
-        <small>默认优先本地模型；切换后会影响教材脚本和 Help 回答。</small>
+        <small>默认使用 Codex default；切换后会影响教材脚本和 Help 回答。</small>
       </div>
       <select
         value={models ? `${models.selected.provider}::${models.selected.model}` : ""}
@@ -91,8 +91,8 @@ export function RuntimeSettings({
       )}
 
       <div className="review-label">
-        <strong>选择文字审核模型</strong>
-        <small>审核模型独立于生成模型；教材事实、公式和单位建议使用能力更强的模型。</small>
+        <strong>选择审核模型</strong>
+        <small>同一个审核模型同时检查文字、题干图和选项图；教材事实、公式和单位建议使用能力更强的模型。</small>
       </div>
       <select
         className="review-select"

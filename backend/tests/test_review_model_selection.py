@@ -43,6 +43,12 @@ class ReviewModelSelectionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "当前不可用于审核"):
                 reviewer.select_text("ollama", "qwen2.5:7b")
 
+    def test_catalog_uses_one_reviewer_for_text_and_images(self) -> None:
+        reviewer = ReviewRuntime()
+        self.assertEqual(reviewer.text_provider, "codex")
+        self.assertEqual(reviewer.text_model, "gpt-5.6-sol")
+        self.assertNotIn("visionSelected", reviewer.catalog())
+
 
 if __name__ == "__main__":
     unittest.main()

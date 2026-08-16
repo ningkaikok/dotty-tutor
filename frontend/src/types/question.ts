@@ -119,6 +119,14 @@ export interface Question {
   options?: string[];
   imageUrls?: string[];
   optionImageUrls?: string[];
+  /** OCR 来源顺序投影；多图选择题用它区分题干图和 A-D 选项图。 */
+  imageManifest?: Array<{
+    order: number;
+    role: "stem" | "option";
+    optionLabel: string | null;
+    sourceReference: string;
+    url: string;
+  }>;
   contentBlocks?: QuestionContentBlock[];
   publicationStatus?: "ready" | "needs_review";
   sourceEvidence?: {

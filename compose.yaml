@@ -40,8 +40,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       REVIEW_PROVIDER: ${REVIEW_PROVIDER:-mock}
       REVIEW_MODEL: ${REVIEW_MODEL:-static-demo}
-      VISION_PROVIDER: ${VISION_PROVIDER:-mock}
-      VISION_MODEL: ${VISION_MODEL:-static-demo}
       TTS_PROVIDER: ${TTS_PROVIDER:-auto}
       QWEN_TTS_URL: ${QWEN_TTS_URL:-http://host.docker.internal:8020}
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}

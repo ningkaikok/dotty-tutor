@@ -19,7 +19,7 @@ export interface ModelCatalog {
   }>;
 }
 
-/** 文字审核模型独立于生成模型，便于用更强模型复核低成本生成结果。 */
+/** 文字和题图审核共用同一个裁判模型，保证审核结论来自同一上下文。 */
 export type ReviewModelCatalog = ModelCatalog;
 
 export type OcrProvider = "auto" | "mineru" | "pypdf";
