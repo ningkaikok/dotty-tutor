@@ -1,12 +1,12 @@
 import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types";
-import type { UploadPhase } from "./useTextbookImport";
+import type { RuntimeLoadingState, UploadPhase } from "./useTextbookImport";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
   tutorModels: ModelCatalog | null;
   reviewModels: ReviewModelCatalog | null;
   ocrProviders: OcrCatalog | null;
-  loading: boolean;
+  loading: RuntimeLoadingState;
   phase: UploadPhase;
   onSelectModel: (provider: ModelProvider, model: string) => void;
   onSelectTutorModel: (provider: ModelProvider, model: string) => void;
@@ -27,7 +27,8 @@ export function RuntimeSettings({
   onSelectReviewModel,
   onSelectOcr,
 }: RuntimeSettingsProps) {
-  const busy = loading || phase === "uploading" || phase === "processing";
+  const uploadBusy = phase === "uploading" || phase === "processing";
+  const disabledHint = uploadBusy ? "教材正在上传或识别，完成后可切换运行时" : undefined;
 
   return (
     <section className="model-switcher panel">
@@ -38,7 +39,8 @@ export function RuntimeSettings({
       </div>
       <select
         value={models ? `${models.selected.provider}::${models.selected.model}` : ""}
-        disabled={!models || busy}
+        disabled={!models || uploadBusy || loading.generation}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectModel(provider, model);
@@ -68,7 +70,8 @@ export function RuntimeSettings({
       <select
         className="tutor-select"
         value={tutorModels ? `${tutorModels.selected.provider}::${tutorModels.selected.model}` : ""}
-        disabled={!tutorModels || busy}
+        disabled={!tutorModels || uploadBusy || loading.tutor}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectTutorModel(provider, model);
@@ -94,7 +97,8 @@ export function RuntimeSettings({
       <select
         className="review-select"
         value={reviewModels ? `${reviewModels.selected.provider}::${reviewModels.selected.model}` : ""}
-        disabled={!reviewModels || busy}
+        disabled={!reviewModels || uploadBusy || loading.review}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectReviewModel(provider, model);
@@ -124,7 +128,8 @@ export function RuntimeSettings({
       <select
         className="ocr-select"
         value={ocrProviders?.selected ?? ""}
-        disabled={!ocrProviders || busy}
+        disabled={!ocrProviders || uploadBusy || loading.ocr}
+        title={disabledHint}
         onChange={(event) => onSelectOcr(event.target.value as OcrProvider)}
       >
         {!ocrProviders && <option>正在读取 OCR…</option>}

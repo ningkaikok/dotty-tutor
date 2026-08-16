@@ -37,6 +37,14 @@ import {
 
 export type UploadPhase = "idle" | "queued" | "uploading" | "paused" | "processing" | "error" | "done";
 
+/** 每个运行时选择器独立维护请求状态，避免 OCR 请求锁住模型选择器。 */
+export interface RuntimeLoadingState {
+  generation: boolean;
+  tutor: boolean;
+  review: boolean;
+  ocr: boolean;
+}
+
 export interface TextbookUploadItem {
   id: string;
   file: File;
@@ -83,7 +91,13 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
   const [tutorModels, setTutorModels] = useState<ModelCatalog | null>(null);
   const [reviewModels, setReviewModels] = useState<ReviewModelCatalog | null>(null);
   const [ocrProviders, setOcrProviders] = useState<OcrCatalog | null>(null);
-  const [runtimeLoading, setRuntimeLoading] = useState(false);
+  const [runtimeLoading, setRuntimeLoading] = useState<RuntimeLoadingState>({
+    generation: false,
+    tutor: false,
+    review: false,
+    ocr: false,
+  });
+  const runtimeRequests = useRef(new Map<keyof RuntimeLoadingState, AbortController>());
   const [globalError, setGlobalError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoadingId, setLibraryLoadingId] = useState("");
@@ -98,6 +112,8 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     uploadsRef.current.forEach((item) => {
       if (item.preview) URL.revokeObjectURL(item.preview);
     });
+    runtimeRequests.current.forEach((controller) => controller.abort());
+    runtimeRequests.current.clear();
   }, []);
 
   useEffect(() => {
@@ -258,26 +274,56 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     setActiveUploadId((current) => current === id ? (uploadsRef.current.find((entry) => entry.id !== id)?.id ?? "") : current);
   };
 
-  const selectGenerationModel = async (provider: ModelProvider, model: string) => {
-    setRuntimeLoading(true);
+  const runRuntimeSelection = async <T,>(
+    target: keyof RuntimeLoadingState,
+    request: (signal: AbortSignal) => Promise<T>,
+    apply: (result: T) => void,
+    errorMessage: string,
+  ) => {
+    // 同一个下拉连续操作时，取消上一次 UI 请求；否则慢响应可能把新选择覆盖回旧值。
+    runtimeRequests.current.get(target)?.abort();
+    const controller = new AbortController();
+    runtimeRequests.current.set(target, controller);
+    setRuntimeLoading((current) => ({ ...current, [target]: true }));
     setGlobalError("");
-    try { setModels(await selectModel(provider, model)); } catch { setGlobalError("模型切换失败"); } finally { setRuntimeLoading(false); }
+    try {
+      apply(await request(controller.signal));
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setGlobalError(errorMessage);
+      }
+    } finally {
+      if (runtimeRequests.current.get(target) === controller) {
+        runtimeRequests.current.delete(target);
+        setRuntimeLoading((current) => ({ ...current, [target]: false }));
+      }
+    }
   };
-  const selectTutor = async (provider: ModelProvider, model: string) => {
-    setRuntimeLoading(true);
-    setGlobalError("");
-    try { setTutorModels(await selectTutorModel(provider, model)); } catch { setGlobalError("陪练模型切换失败"); } finally { setRuntimeLoading(false); }
-  };
-  const selectOcr = async (provider: OcrProvider) => {
-    setRuntimeLoading(true);
-    setGlobalError("");
-    try { setOcrProviders(await selectOcrProvider(provider)); } catch { setGlobalError("OCR 切换失败"); } finally { setRuntimeLoading(false); }
-  };
-  const selectReviewer = async (provider: ModelProvider, model: string) => {
-    setRuntimeLoading(true);
-    setGlobalError("");
-    try { setReviewModels(await selectReviewModel(provider, model)); } catch { setGlobalError("审核模型切换失败"); } finally { setRuntimeLoading(false); }
-  };
+
+  const selectGenerationModel = (provider: ModelProvider, model: string) => runRuntimeSelection(
+    "generation",
+    (signal) => selectModel(provider, model, signal),
+    setModels,
+    "模型切换失败",
+  );
+  const selectTutor = (provider: ModelProvider, model: string) => runRuntimeSelection(
+    "tutor",
+    (signal) => selectTutorModel(provider, model, signal),
+    setTutorModels,
+    "陪练模型切换失败",
+  );
+  const selectOcr = (provider: OcrProvider) => runRuntimeSelection(
+    "ocr",
+    (signal) => selectOcrProvider(provider, signal),
+    setOcrProviders,
+    "OCR 切换失败",
+  );
+  const selectReviewer = (provider: ModelProvider, model: string) => runRuntimeSelection(
+    "review",
+    (signal) => selectReviewModel(provider, model, signal),
+    setReviewModels,
+    "审核模型切换失败",
+  );
 
   const openLibraryItem = async (item: LibraryItem) => {
     setLibraryLoadingId(item.uploadId);

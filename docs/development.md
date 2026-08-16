@@ -227,7 +227,7 @@ psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
 | `MODEL_PROVIDER` | `ollama` | `ollama`、`codex` 或 `mock` |
 | `MODEL_NAME` | `qwen2.5:3b` | 生成模型名称 |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama 地址 |
-| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径 |
+| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径；本机脚本会优先注入仓库根目录 `.mineru-venv/bin/mineru` |
 | `REVIEW_PROVIDER` | `ollama` | 文本审校 provider |
 | `REVIEW_MODEL` | `qwen2.5:7b` | 文本审校模型 |
 | `VISION_PROVIDER` | `codex` | 视觉审校 provider |
@@ -265,6 +265,14 @@ python3.12 -m venv .mineru-venv
 .mineru-venv/bin/uv pip install -U "mineru[all]"
 export MINERU_COMMAND="$PWD/.mineru-venv/bin/mineru"
 ```
+
+如果上传页仍显示“MinerU OCR · 未安装”，先确认浏览器连接的是本机后端 `8010`，而不是
+Docker 的 `8080` 网关：`curl http://127.0.0.1:8010/api/ocr` 返回的 `providers` 中，`id=mineru`
+的 `available` 应为 `true`。
+Docker 基础镜像只包含 FastAPI 和 pypdf，不会自动看到宿主机的 `.mineru-venv`（尤其不能把
+macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正确的安全行为，避免选择后任务
+悄悄回退到 PDF 文字层；需要 Docker 使用 MinerU 时，应提供 Linux MinerU 镜像或独立 OCR
+服务，再增加对应 Runtime 适配器。
 
 整本 PDF 每 5 页规划一个批次，首批优先生成，其余批次按需处理。相邻且路由相同的页面合并调用，
 减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。

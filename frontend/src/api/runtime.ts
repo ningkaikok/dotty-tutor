@@ -16,11 +16,12 @@ export async function loadModels(): Promise<ModelCatalog> {
   return parse<ModelsResponse>(await fetch("/api/models"));
 }
 
-export async function selectModel(provider: ModelProvider, model: string): Promise<ModelCatalog> {
+export async function selectModel(provider: ModelProvider, model: string, signal?: AbortSignal): Promise<ModelCatalog> {
   return parse<SelectedModelsResponse>(await fetch("/api/models/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model }),
+    signal,
   }));
 }
 
@@ -28,11 +29,12 @@ export async function loadTutorModels(): Promise<ModelCatalog> {
   return parse<ModelCatalog>(await fetch("/api/tutor-models"));
 }
 
-export async function selectTutorModel(provider: ModelProvider, model: string): Promise<ModelCatalog> {
+export async function selectTutorModel(provider: ModelProvider, model: string, signal?: AbortSignal): Promise<ModelCatalog> {
   return parse<ModelCatalog>(await fetch("/api/tutor-models/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model }),
+    signal,
   }));
 }
 
@@ -40,12 +42,13 @@ export async function loadReviewModels(): Promise<ReviewModelCatalog> {
   return parse<ReviewModelCatalog>(await fetch("/api/review-models"));
 }
 
-export async function selectReviewModel(provider: ModelProvider, model: string): Promise<ReviewModelCatalog> {
+export async function selectReviewModel(provider: ModelProvider, model: string, signal?: AbortSignal): Promise<ReviewModelCatalog> {
   // 审核模型使用独立端点，切换它不会改变下一道题使用的生成模型。
   return parse<ReviewModelCatalog>(await fetch("/api/review-models/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model }),
+    signal,
   }));
 }
 
@@ -53,10 +56,11 @@ export async function loadOcrProviders(): Promise<OcrCatalog> {
   return parse<OcrResponse>(await fetch("/api/ocr"));
 }
 
-export async function selectOcrProvider(provider: OcrProvider): Promise<OcrCatalog> {
+export async function selectOcrProvider(provider: OcrProvider, signal?: AbortSignal): Promise<OcrCatalog> {
   return parse<OcrCatalog>(await fetch("/api/ocr/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider }),
+    signal,
   }));
 }

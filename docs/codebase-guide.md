@@ -109,6 +109,16 @@ flowchart LR
 依赖只能向右。Runtime、Store 和领域函数不得导入 `app.py`，否则会产生循环依赖并让单元测试必须启动
 整个 Web 应用。
 
+### 本机与 Docker 的 Runtime 边界
+
+运行时下拉框展示的是后端进程的能力，不是浏览器本身的能力。开发脚本会优先探测仓库根目录
+`.mineru-venv/bin/mineru`；因此本机后端（`8010`）能选择 MinerU 时，浏览器应使用
+`scripts/dev-local.sh` 启动的 API。Docker API 运行在 Linux 容器中，不能执行宿主机 macOS
+虚拟环境，也不会自动继承宿主机安装的模型。容器没有 Linux MinerU 或独立 OCR 服务时，
+`/api/ocr` 必须把 MinerU 标记为不可用，前端保留“自动选择”和“PDF 文字层”，避免选择后静默
+回退导致用户误以为扫描图已经被识别。若要在 Docker 中启用 MinerU，应新增 Linux OCR 镜像或
+独立服务，并在 Runtime 适配器中显式注册其健康检查、版本和资源边界。
+
 ### `app.py` 为什么保持很小
 
 `app.py` 是 Uvicorn 的固定入口。它负责：
