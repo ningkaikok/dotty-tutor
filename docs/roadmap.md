@@ -97,7 +97,7 @@ Canvas/SVG 和错题掌握闭环。新增能力必须先复用这些边界，不
 
 ### 第一阶段：稳定内容模型和互动渲染边界
 
-- [ ] 在 `frontend/src/types/lesson.ts` 和 `backend/lesson_contracts.py` 明确 `markdown`、`formula`、`diagram`、
+- [ ] 在 `frontend/src/types/lesson.ts` 和 `backend/domain/contracts/lesson.py` 明确 `markdown`、`formula`、`diagram`、
   `interactive-math`、`quiz`、`animation` 内容块的版本化契约。
 - [ ] 新增 `InteractiveMathCanvas` 渲染边界；页面只组合它，不直接依赖具体绘图库。
 - [ ] 为每种内容块补充 MathText、图片、键盘输入、画布动作和错误回退的 Playwright 回归案例。

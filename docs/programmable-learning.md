@@ -59,7 +59,7 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 | `quiz` | 结构化练习入口 | 由练习工作区承载 |
 | `hint` | 分层提示 | 提示卡片 |
 
-`backend/lesson_contracts.py` 负责 Schema 校验和旧 `QuestionPayload` 适配，
+`backend/domain/contracts/lesson.py` 负责 Schema 校验和旧 `QuestionPayload` 适配，
 `frontend/src/lesson/rendererRegistry.tsx` 负责把块类型映射到组件。增加新表达形式时，应新增块契约和
 独立渲染器，避免继续扩张 `App.tsx`。
 

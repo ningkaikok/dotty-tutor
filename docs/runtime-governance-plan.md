@@ -23,7 +23,7 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 
 | 能力 | 当前基础 | 下一步 |
 | --- | --- | --- |
-| 模型调用 | `model_runtime.py` 统一适配 Ollama、Codex 和 Mock | 统一请求/结果契约并显式记录实际回退 |
+| 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock | 统一请求/结果契约并显式记录实际回退 |
 | OCR | 页面路由、局部升级、质量门禁和内容寻址缓存 | 把长流程交给可恢复 Worker |
 | 状态 | `upload_jobs` 保存任务进度，领域状态机约束学习流程 | 增加任务租约、取消、有限重试和幂等键 |
 | 可观测性 | JSON 日志、请求 ID、运行快照和关键业务事件 | 将同步编排迁移到可恢复 Worker，并统一后台任务事件 |
@@ -44,8 +44,8 @@ flowchart LR
   Worker --> Events
 ```
 
-这里的 Worker 是同一代码库中的独立进程，不是新的微服务。`textbook_processing.py` 和
-`question_processing.py` 继续作为领域服务，由 HTTP 路由或 Worker 调用。
+这里的 Worker 是同一代码库中的独立进程，不是新的微服务。`application/services/textbook_processing.py` 和
+`application/services/question_processing.py` 继续作为应用服务，由 HTTP 路由或 Worker 调用。
 
 ## G1：不可变运行快照（已落地）
 

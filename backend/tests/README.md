@@ -16,4 +16,6 @@ cd backend
 ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-生产代码的分层迁移应单独提交，不要在移动测试时同时改变路由、领域服务或 Store 的行为。
+生产代码现在按 `api/routers`、`application/services`、`domain`、`infrastructure` 和 `persistence` 分层。
+测试仍集中在本目录，根目录旧模块只作为兼容 shim；新增测试应直接导入规范包路径，只有维护旧脚本时才使用
+旧路径。分层迁移保持行为不变，因此可以用同一套测试验证重构前后的结果。

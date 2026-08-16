@@ -1,12 +1,7 @@
-"""Validated contracts for adaptive variation practice."""
+"""Backward-compatible import path for practice contracts."""
 
-from __future__ import annotations
+import importlib
+import sys
 
-from typing import Any
+sys.modules[__name__] = importlib.import_module("domain.contracts.practice")
 
-from pydantic import BaseModel, Field
-
-
-class VariationAnswerRequest(BaseModel):
-    content: str = Field(default="", max_length=2_000)
-    interactionResult: dict[str, Any] = Field(default_factory=dict)

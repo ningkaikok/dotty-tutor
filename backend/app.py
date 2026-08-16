@@ -6,8 +6,8 @@
 """
 
 from application import create_app
-from learning_routes import build_learning_router
-from lesson_generation import (
+from api.routers.learning_routes import build_learning_router
+from application.services.lesson_generation import (
     attach_question_source,
     generate_lesson,
     generate_model_reply,
@@ -15,14 +15,14 @@ from lesson_generation import (
     question_payload,
 )
 from mistake_recognition import build_mistake_recognizer
-from mistake_routes import build_mistake_router
-from mistake_store import MistakeStore
-from model_runtime import ModelRuntime, runtime
-from publication_routes import build_publication_router
+from api.routers.mistake_routes import build_mistake_router
+from persistence.mistake_store import MistakeStore
+from infrastructure.runtime.model_runtime import ModelRuntime, runtime
+from api.routers.publication_routes import build_publication_router
 from publication_revision import PublicationRevisionService
-from practice_routes import build_practice_router
-from question_contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
-from question_pipeline import (
+from api.routers.practice_routes import build_practice_router
+from domain.questions.contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
+from domain.questions.pipeline import (
     apply_question_quality_gate,
     build_question_content_blocks,
     normalize_image_choice_question,
@@ -32,23 +32,23 @@ from question_pipeline import (
     validate_question_payload,
     write_model_prompt_artifact,
 )
-from question_source import (
+from domain.questions.source import (
     limited_question_sources,
     select_complete_question_source,
     split_question_sources,
 )
-from review_routes import build_review_router
-from review_store import ReviewStore
-from runtime_routes import build_runtime_router
+from api.routers.review_routes import build_review_router
+from persistence.review_store import ReviewStore
+from api.routers.runtime_routes import build_runtime_router
 from storage import store
-from stateful_tutor import StatefulTutor
+from application.services.stateful_tutor import StatefulTutor
 from textbook_ocr import resolve_ocr_text
-from textbook_routes import pdf_uploads, process_pdf_batch, processing_service, router as textbook_router
-from tutor_checks import build_reply, equation_conflict, equivalent_linear_equations
-from tutoring_routes import build_tutoring_router
-from tutoring_store import TutoringStore
+from api.routers.textbook_routes import pdf_uploads, process_pdf_batch, processing_service, router as textbook_router
+from domain.tutoring.checks import build_reply, equation_conflict, equivalent_linear_equations
+from api.routers.tutoring_routes import build_tutoring_router
+from persistence.tutoring_store import TutoringStore
 from variation_service import VariationService
-from variation_store import VariationStore
+from persistence.variation_store import VariationStore
 
 
 app = create_app()

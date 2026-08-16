@@ -184,14 +184,14 @@ npm run check:api
 - 修改顶层页面或 URL：`frontend/src/App.tsx` 与对应 `frontend/src/apps/*`。
 - 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
   PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
-- 修改教材 API/PDF 批次：`backend/textbook_routes.py`。
+- 修改教材 API/PDF 批次：`backend/api/routers/textbook_routes.py`；长流程在 `backend/application/services/textbook_processing.py`。
 - 内容生产端“修复本题”调用 `POST /api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，默认只重跑当前题并复用 OCR 缓存；需要重新识别页面时使用批次接口的 `refreshOcr=true`。
 - 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
-  `ocr_pipeline.py`、`ocr_quality.py`；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `ocr_runtime.py`。
+  `domain/questions/` 下的 OCR 纯函数；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `infrastructure/runtime/ocr_runtime.py`。
   Docker 后端镜像通过 `poppler-utils` 提供 `pdftoppm`，本机开发也需要 Poppler 才能启用矢量页渲染兜底。
-- 修改模型题目结构：`lesson_generation.py`、`question_contracts.py` 和 `question_pipeline.py`。
+- 修改模型题目结构：`application/services/lesson_generation.py`、`domain/questions/contracts.py` 和 `domain/questions/pipeline.py`。
 - 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
-- 修改多轮状态：`backend/stateful_tutor.py`、`tutoring_routes.py`、`tutoring_store.py` 和
+- 修改多轮状态：`backend/application/services/stateful_tutor.py`、`api/routers/tutoring_routes.py`、`persistence/tutoring_store.py` 和
   `frontend/src/apps/mistake/useMistakeTutor.ts`。
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
@@ -278,7 +278,7 @@ Qwen3-TTS 使用独立 Python 环境：
 python3.12 -m venv .qwen3-tts-venv
 .qwen3-tts-venv/bin/pip install -U qwen-tts
 cd backend
-../.qwen3-tts-venv/bin/python qwen_tts_service.py
+../.qwen3-tts-venv/bin/python infrastructure/runtime/qwen_tts_service.py
 ```
 
 首次启动可能会下载 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`。默认音色为 `Serena`，可以通过
