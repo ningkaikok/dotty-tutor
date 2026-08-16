@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from app import app
-from textbook_routes import pdf_uploads, process_pdf_batch, processing_service
+from api.routers.textbook_routes import pdf_uploads, process_pdf_batch, processing_service
 
 
 class TextbookProcessingTests(unittest.TestCase):
@@ -53,26 +53,26 @@ class TextbookProcessingTests(unittest.TestCase):
             }
             try:
                 with (
-                    patch("textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
+                    patch("api.routers.textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
                     # Patch where the service resolves the dependency, not at
                     # the HTTP facade that merely delegates the call.
                     patch(
-                        "textbook_processing.resolve_routed_ocr_source",
+                        "application.services.textbook_processing.resolve_routed_ocr_source",
                         return_value=("page text", {"provider": "mineru"}),
                     ) as resolve,
                     patch(
-                        "question_processing.generate_lesson",
+                        "application.services.question_processing.generate_lesson",
                         return_value=(payload, [], payload["modelRun"]),
                     ),
                     patch(
-                        "question_processing.review_lesson_payload",
+                        "application.services.question_processing.review_lesson_payload",
                         side_effect=lambda item, _source, _images, _cards: (
                             item,
                             {"provider": "test"},
                         ),
                     ),
                     patch(
-                        "question_processing.apply_question_quality_gate",
+                        "application.services.question_processing.apply_question_quality_gate",
                         side_effect=lambda item, _source, _images: (
                             item.update({
                                 "quality": {
@@ -85,9 +85,9 @@ class TextbookProcessingTests(unittest.TestCase):
                             or item["quality"]
                         ),
                     ),
-                    patch("textbook_routes.store.save_questions"),
-                    patch("textbook_routes.store.save_lesson"),
-                    patch("textbook_routes.store.save_job"),
+                    patch("api.routers.textbook_routes.store.save_questions"),
+                    patch("api.routers.textbook_routes.store.save_lesson"),
+                    patch("api.routers.textbook_routes.store.save_job"),
                 ):
                     response = process_pdf_batch("test-upload", "batch-002")
                 self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
@@ -152,11 +152,11 @@ class TextbookProcessingTests(unittest.TestCase):
                         return_value=("2、题目", {"provider": "mineru"}, Path(directory), [("2", "2、题目", [])]),
                     ),
                     patch(
-                        "textbook_processing._generate_validated_question",
+                        "application.services.textbook_processing._generate_validated_question",
                         return_value=(new_payload, [], new_payload["modelRun"], {"provider": "test"}),
                     ),
-                    patch("textbook_processing.TextbookProcessingService._persist_lessons"),
-                    patch("textbook_routes.store.save_job"),
+                    patch("application.services.textbook_processing.TextbookProcessingService._persist_lessons"),
+                    patch("api.routers.textbook_routes.store.save_job"),
                 ):
                     response = processing_service.regenerate_question(job["uploadId"], source_key)
                 self.assertEqual(response["questionPayload"]["question"]["id"], "new-2")

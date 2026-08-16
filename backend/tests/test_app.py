@@ -30,10 +30,10 @@ from app import (
     validate_question_payload,
     write_model_prompt_artifact,
 )
-from model_runtime import ModelSelection
-from question_contracts import CANVAS_ACTIONS
-from question_pipeline import strip_choice_text_from_prompt
-from review_runtime import formula_anomaly_score, normalize_ocr_question
+from infrastructure.runtime.model_runtime import ModelSelection
+from domain.questions.contracts import CANVAS_ACTIONS
+from domain.questions.pipeline import strip_choice_text_from_prompt
+from infrastructure.runtime.review_runtime import formula_anomaly_score, normalize_ocr_question
 from storage import TutorStore
 
 

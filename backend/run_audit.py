@@ -8,10 +8,10 @@ import time
 import uuid
 from typing import Any
 
-from question_contracts import LESSON_SCHEMA
-from model_runtime import runtime as model_runtime
-from ocr_runtime import runtime as ocr_runtime
-from review_runtime import runtime_reviewer
+from domain.questions.contracts import LESSON_SCHEMA
+from infrastructure.runtime.model_runtime import runtime as model_runtime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+from infrastructure.runtime.review_runtime import runtime_reviewer
 
 
 PROMPT_VERSION = "lesson-generation-v1"

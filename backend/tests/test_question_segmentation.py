@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from question_pipeline import apply_question_quality_gate, normalize_model_math_text
-from question_source import split_question_sources
+from domain.questions.pipeline import apply_question_quality_gate, normalize_model_math_text
+from domain.questions.source import split_question_sources
 
 
 class QuestionSegmentationTests(unittest.TestCase):

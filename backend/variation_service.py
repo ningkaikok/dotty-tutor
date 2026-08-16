@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from tutor_turn_plan import ERROR_STRATEGIES
+from domain.tutoring.turn_plan import ERROR_STRATEGIES
 
 
 VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]]

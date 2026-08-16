@@ -9,12 +9,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from mistake_store import MistakeStore
-from practice_routes import build_practice_router
-from review_store import ReviewStore
-from tutoring_store import TutoringStore
+from persistence.mistake_store import MistakeStore
+from api.routers.practice_routes import build_practice_router
+from persistence.review_store import ReviewStore
+from persistence.tutoring_store import TutoringStore
 from variation_service import VariationService
-from variation_store import VariationStore
+from persistence.variation_store import VariationStore
 
 
 def fake_generator(source_text: str) -> tuple[dict, list[dict], dict]:

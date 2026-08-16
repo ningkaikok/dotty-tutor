@@ -23,7 +23,7 @@ from ocr_pipeline import (
     has_visual_hint,
 )
 from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
-from question_source import QUESTION_START_PATTERN, split_question_sources
+from domain.questions.source import QUESTION_START_PATTERN, split_question_sources
 
 
 # 渲染矢量页图属于缓存结果的一部分；升级版本可以避免旧缓存继续沿用“只有文字”的结果。
