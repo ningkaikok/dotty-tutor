@@ -47,11 +47,11 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant UI as React
-  participant Route as textbook_routes.py
-  participant Registry as upload_registry.py
-  participant Service as textbook_processing.py
+  participant Route as api/routers/textbook_routes.py
+  participant Registry as infrastructure/files/upload_registry.py
+  participant Service as application/services/textbook_processing.py
   participant OCR as textbook_ocr_pipeline.py
-  participant Pipeline as question_processing.py
+  participant Pipeline as application/services/question_processing.py
   participant Store as persistence/*_store.py
 
   UI->>Route: POST /api/uploads/{id}/complete
@@ -68,10 +68,10 @@ sequenceDiagram
 
 这里有三个刻意保留的边界：
 
-- `textbook_routes.py` 只理解 HTTP 和文件传输。
-- `textbook_processing.py` 理解“完成教材处理”的步骤顺序。
+- `api/routers/textbook_routes.py` 只理解 HTTP 和文件传输。
+- `application/services/textbook_processing.py` 理解“完成教材处理”的步骤顺序。
 - `textbook_ocr_pipeline.py` 读取页面信号并决定“文字层、MinerU、缓存或局部升级”。
-- `question_processing.py` 只处理一组已提取题目，因此未来可被 Worker 直接复用。
+- `application/services/question_processing.py` 只处理一组已提取题目，因此未来可被 Worker 直接复用。
 
 当前服务仍在 HTTP 请求内同步执行。将来如果真实 PDF 处理时间影响部署，只需要让 Route 入队，并让 Worker
 调用 `TextbookProcessingService.complete_upload()` 或 `process_batch()`；无需复制 OCR 和生成逻辑。
@@ -87,10 +87,10 @@ sequenceDiagram
 
 具体查询放在领域 Store：
 
-- `textbook_store.py`：上传任务、教材库和题目批次。
-- `learning_store.py`：课程文档、学习会话、作答和掌握度。
-- `mistake_store.py`：错题条目和原图。
-- `tutoring_store.py`：多轮线程和消息。
+- `persistence/textbook_store.py`：上传任务、教材库和题目批次。
+- `persistence/learning_store.py`：课程文档、学习会话、作答和掌握度。
+- `persistence/mistake_store.py`：错题条目和原图。
+- `persistence/tutoring_store.py`：多轮线程和消息。
 
 `storage.py` 是兼容门面。旧测试和迁移脚本可以继续使用 `TutorStore`，新代码应依赖更窄的 Store。这样一个
 模块的修改不会让无关功能同时承担回归风险。
@@ -99,18 +99,18 @@ sequenceDiagram
 
 模型相关代码分成“业务要求”和“供应商调用”两部分：
 
-- `question_contracts.py` 定义模型必须返回什么。
-- `question_pipeline.py` 做确定性规范化和质量门禁。
-- `model_runtime.py` 决定调用 Mock、Codex CLI 或 Ollama。
-- `review_runtime.py` 执行第二次文字/视觉复核。
-- `ocr_runtime.py` 选择 MinerU 或回退路径。
-- `ocr_pipeline.py` 和 `ocr_quality.py` 是不调用外部进程的纯函数层，分别负责路由/缓存契约和质量决策。
+- `domain/questions/contracts.py` 定义模型必须返回什么。
+- `domain/questions/pipeline.py` 做确定性规范化和质量门禁。
+- `infrastructure/runtime/model_runtime.py` 决定调用 Mock、Codex CLI 或 Ollama。
+- `infrastructure/runtime/review_runtime.py` 执行第二次文字/视觉复核。
+- `infrastructure/runtime/ocr_runtime.py` 选择 MinerU 或回退路径。
+- `domain/questions/` 中的 OCR 纯函数负责路由/缓存契约和质量决策。
 
 重要原则是：模型输出永远不是最终事实。它必须先经过 Pydantic/JSON Schema、确定性修复和质量检查，才能
 进入数据库和前端。
 
 生成模型与文字审核模型刻意独立选择：低成本模型可以负责初稿，更强模型负责发现结构、公式与语义冲突；
-视觉审核继续接收来源页图片，不能被纯文本审核替代。`question_processing.py` 对失败题只进行有上限的局部重试，
+视觉审核继续接收来源页图片，不能被纯文本审核替代。`application/services/question_processing.py` 对失败题只进行有上限的局部重试，
 仍无法恢复的题进入隔离诊断，避免一题永久阻塞整份试卷，又避免静默发布错误内容。
 
 OCR 也遵守同一原则。自动模式不会先把整本 PDF 交给 MinerU，而是读取每页文字长度、图片与公式信号，
@@ -134,10 +134,10 @@ Provider 和流水线版本组成缓存键，因此重新生成题目不会重�
 错题链路适合学习“状态机比无限聊天更可靠”：
 
 ```text
-mistake_routes.py      录入与确认错题
-stateful_tutor.py      diagnose → explain → practice → verify
-tutoring_routes.py     HTTP 边界
-tutoring_store.py      线程、摘要和有限消息历史
+api/routers/mistake_routes.py      录入与确认错题
+application/services/stateful_tutor.py  diagnose → explain → practice → verify
+api/routers/tutoring_routes.py     HTTP 边界
+persistence/tutoring_store.py      线程、摘要和有限消息历史
 ```
 
 每轮不会把全部历史重新发送给模型，而是携带状态摘要和最近必要消息。这样成本、延迟和模型偏移都更可控。
@@ -195,7 +195,7 @@ npm run test:e2e
 
 1. 给 `TextbookStore` 增加一个只读统计方法和测试。
 2. 给教材上传增加一种明确的失败状态，并观察前端轮询。
-3. 为 `question_pipeline.py` 新增一种题型的纯函数规范化。
+3. 为 `domain/questions/pipeline.py` 新增一种题型的纯函数规范化。
 4. 给 `StatefulTutor` 增加一个不会改变数据库结构的提示策略。
 5. 用一个内存队列模拟 Worker，调用 `TextbookProcessingService`，但不修改 Service 本身。
 

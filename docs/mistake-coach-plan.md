@@ -79,20 +79,20 @@ diagnose → explain → practice → verify → mastered
 
 ### 直接复用
 
-- OCR 与题图提取：`backend/ocr_runtime.py`。
-- 结构化生成：`backend/model_runtime.py`、`backend/question_pipeline.py`。
-- 题型与答案契约：`backend/question_contracts.py`。
+- OCR 与题图提取：`backend/infrastructure/runtime/ocr_runtime.py`。
+- 结构化生成：`backend/infrastructure/runtime/model_runtime.py`、`backend/domain/questions/pipeline.py`。
+- 题型与答案契约：`backend/domain/questions/contracts.py`。
 - 确定性判题：`backend/answer_evaluator.py`。
-- 审校与质量门禁：`backend/review_runtime.py`。
+- 审校与质量门禁：`backend/infrastructure/runtime/review_runtime.py`。
 - 应用、日志、PostgreSQL、Docker 与 Playwright 基础设施。
 - 前端公式、题图和结构化作答组件。
 
 ### 适配后复用
 
-- `backend/tutor_engine.py`：从单次 Help 扩展为带线程状态的策略引擎。
+- `backend/application/services/tutor_engine.py`：从单次 Help 扩展为带线程状态的策略引擎。
 - `backend/storage.py`：增加错题、消息和复习任务仓储，不继续堆积单文件职责。
 - `frontend/src/components/PracticeWorkspace.tsx`：抽出可在错题陪练中复用的题目与答案区域。
-- `backend/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
+- `backend/api/routers/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
 
 ### 学生入口不直接复用
 
@@ -123,8 +123,8 @@ frontend/src/
 backend/
   mistake_*.py            # 错题录入、归类和仓储
   tutoring_*.py           # 线程契约、路由和消息仓储
-  stateful_tutor.py       # 状态机与有限上下文
-  learning_routes.py      # 教材学习掌握度；错题验证和复习使用独立路由
+  application/services/stateful_tutor.py # 状态机与有限上下文
+  api/routers/learning_routes.py         # 教材学习掌握度；错题验证和复习使用独立路由
 ```
 
 计划新增的核心数据模型：

@@ -83,40 +83,40 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | API 契约 | `frontend/src/api/`、`frontend/src/types/` | 按产品域组织请求和类型；根文件只做兼容导出 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
-| ASGI 组合根 | `backend/app.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
-| 教材 HTTP 边界 | `backend/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
-| 教材处理服务 | `backend/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
-| 批次题目处理 | `backend/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
-| 教材库路由 | `backend/library_routes.py` | 教材列表、恢复和软删除 |
+| ASGI 组合根 | `backend/app.py`、`backend/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
+| 教材 HTTP 边界 | `backend/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
+| 教材处理服务 | `backend/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
+| 批次题目处理 | `backend/application/services/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
+| 教材库路由 | `backend/api/routers/library_routes.py` | 教材列表、恢复和软删除 |
 | 教材 OCR 编排 | `backend/textbook_ocr_pipeline.py` | 页面探测、连续页段路由、局部 Provider 升级、矢量图页面渲染、结果缓存和审计记录 |
 | OCR 路由与缓存 | `backend/ocr_pipeline.py` | 页面信号、Provider 选择、内容寻址缓存键和原子缓存文件 |
 | OCR 来源质量 | `backend/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
-| 课程生成 | `backend/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
-| OCR 题源切分 | `backend/question_source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
-| 应用工厂 | `backend/application.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
-| 上传状态注册 | `backend/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
-| 课程与学习路由 | `backend/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
-| 试卷发布路由 | `backend/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
-| 可编程课程契约 | `backend/lesson_contracts.py` | `LessonDocument`、内容块和学习数据请求校验 |
-| 题目契约 | `backend/question_contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
-| 题目流水线 | `backend/question_pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
+| 课程生成 | `backend/application/services/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
+| OCR 题源切分 | `backend/domain/questions/source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
+| 应用工厂 | `backend/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
+| 上传状态注册 | `backend/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
+| 课程与学习路由 | `backend/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
+| 试卷发布路由 | `backend/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
+| 可编程课程契约 | `backend/domain/contracts/lesson.py` | `LessonDocument`、内容块和学习数据请求校验 |
+| 题目契约 | `backend/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
+| 题目流水线 | `backend/domain/questions/pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `backend/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
-| 运行时路由 | `backend/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
-| 模型适配 | `backend/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
-| OCR 适配 | `backend/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
-| 双模型审校 | `backend/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
+| 运行时路由 | `backend/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
+| 模型适配 | `backend/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
+| OCR 适配 | `backend/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
+| 双模型审校 | `backend/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复 |
 | 持久化基础 | `backend/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
 | 教材与学习存储 | `backend/persistence/textbook_store.py`、`learning_store.py` | 教材导入/题目批次、课程/试卷、作答/掌握度；`storage.py` 仅兼容旧调用方 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
-| 本地语音 | `backend/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
-| 错题路由与契约 | `backend/mistake_routes.py`、`mistake_contracts.py` | 图片校验、错题确认和稳定错误原因枚举 |
+| 本地语音 | `backend/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
+| 错题路由与契约 | `backend/api/routers/mistake_routes.py`、`backend/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `backend/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
-| 错题持久化 | `backend/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
-| 多轮辅导 | `backend/stateful_tutor.py`、`tutoring_routes.py` | 状态转换、有限上下文和线程 API |
-| 辅导持久化 | `backend/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
+| 错题持久化 | `backend/persistence/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
+| 多轮辅导 | `backend/application/services/stateful_tutor.py`、`backend/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
+| 辅导持久化 | `backend/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `backend/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
-| 验证持久化 | `backend/variation_store.py` | 保存唯一验证题快照、可修正答案和确定性判题结果 |
-| 间隔复习 | `backend/review_routes.py`、`review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
+| 验证持久化 | `backend/persistence/variation_store.py` | 保存唯一验证题快照、可修正答案和确定性判题结果 |
+| 间隔复习 | `backend/api/routers/review_routes.py`、`backend/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
 ## 错题录入与确认
 
