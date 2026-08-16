@@ -31,6 +31,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dotty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dotty_tutor}
       DOTTY_DATA_DIR: /data
+      DOTTY_RUNTIME_MODE: docker
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1}
@@ -39,8 +40,6 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       REVIEW_PROVIDER: ${REVIEW_PROVIDER:-mock}
       REVIEW_MODEL: ${REVIEW_MODEL:-static-demo}
-      VISION_PROVIDER: ${VISION_PROVIDER:-mock}
-      VISION_MODEL: ${VISION_MODEL:-static-demo}
       TTS_PROVIDER: ${TTS_PROVIDER:-auto}
       QWEN_TTS_URL: ${QWEN_TTS_URL:-http://host.docker.internal:8020}
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}

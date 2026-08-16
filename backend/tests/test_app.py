@@ -381,6 +381,28 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertEqual(quality["status"], "ready")
         self.assertEqual(payload["question"]["publicationStatus"], "ready")
 
+    def test_quality_gate_hides_extra_choice_without_publishing_it(self) -> None:
+        payload = {
+            "question": {
+                "questionNumber": "3",
+                "prompt": "下列运算正确的是（ ）",
+                "options": ["A", "B", "C", "D", "E"],
+                "imageUrls": ["images/stem.png", "images/a.png", "images/b.png", "images/c.png", "images/d.png"],
+                "optionImageUrls": ["images/a.png", "images/b.png", "images/c.png", "images/d.png", "images/e.png"],
+                "givens": [],
+            },
+            "lessonSteps": [{"title": "", "text": "", "speechText": ""}] * 4,
+        }
+        quality = apply_question_quality_gate(
+            payload,
+            "3. 下列运算正确的是（ ）\nA\nimages/a.png\nB\nimages/b.png\nC\nimages/c.png\nD\nimages/d.png",
+            payload["question"]["imageUrls"],
+        )
+        self.assertEqual(payload["question"]["options"], ["A", "B", "C", "D"])
+        self.assertEqual(payload["question"]["optionImageUrls"], ["images/a.png", "images/b.png", "images/c.png", "images/d.png"])
+        self.assertEqual(quality["status"], "needs_review")
+        self.assertTrue(any("多余选项" in error for error in quality["errors"]))
+
     def test_limits_each_ocr_batch_to_five_questions(self) -> None:
         markdown = "\n".join(f"{number}.这是第{number}道完整测试题。" for number in range(1, 9))
         self.assertEqual(
@@ -437,6 +459,27 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertEqual(payload["question"]["optionImageUrls"], urls[1:])
         self.assertNotIn("images/", payload["question"]["prompt"])
         self.assertEqual([block["type"] for block in blocks], ["text", "image", "options"])
+        self.assertEqual([item["imageUrl"] for item in blocks[-1]["items"]], urls[1:])
+
+    def test_binds_bare_image_option_labels_in_source_order(self) -> None:
+        names = ["stem", "a", "b", "c", "d"]
+        urls = [f"/api/uploads/u/assets/batch/{name}.jpg" for name in names]
+        source = "3. 观察下图选择正确答案\n" + "\n".join(
+            f"{'' if name == 'stem' else chr(64 + index)}\n![](images/{name}.jpg)"
+            for index, name in enumerate(names)
+        )
+        payload = {"question": {
+            "prompt": "观察下图选择正确答案",
+            "options": ["A", "B", "C", "D"],
+            "imageUrls": urls,
+        }}
+        normalize_image_choice_question(payload, source, [f"images/{name}.jpg" for name in names])
+        self.assertEqual(payload["question"]["optionImageUrls"], urls[1:])
+        self.assertEqual(
+            [item["optionLabel"] for item in payload["question"]["imageManifest"]],
+            [None, "A", "B", "C", "D"],
+        )
+        blocks = build_question_content_blocks(payload, source, [f"images/{name}.jpg" for name in names])
         self.assertEqual([item["imageUrl"] for item in blocks[-1]["items"]], urls[1:])
 
     def test_splits_all_numbered_questions_before_answers(self) -> None:
@@ -512,6 +555,15 @@ class QuestionExtractionTests(unittest.TestCase):
         ocr_run = {"imageUrls": ["/api/uploads/u/assets/batch-001/q1-a.jpg"]}
         attach_question_source(payload, batch, ocr_run)
         self.assertEqual(payload["question"]["imageUrls"], [])
+
+    def test_explicit_empty_source_images_override_model_references(self) -> None:
+        """OCR 的空引用必须阻止模型字段把相邻题目的图片带回来。"""
+        payload = {"question": {"imageReferences": ["images/wrong-question.jpg"]}}
+        batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
+        ocr_run = {"imageUrls": ["/api/uploads/u/assets/batch-001/wrong-question.jpg"]}
+        attach_question_source(payload, batch, ocr_run, [])
+        self.assertEqual(payload["question"]["imageUrls"], [])
+        self.assertNotIn("imageReferences", payload["question"])
 
     def test_recovers_stacked_equation_solution_choices(self) -> None:
         payload = {"question": {"prompt": "broken", "options": ["(A)", "(B)", "(C)", "(D)"]}}

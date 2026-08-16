@@ -112,7 +112,7 @@ set +a
 
 ### 独立切换陪练模型
 
-内容生产端的运行时设置包含三个互不影响的选择：题目生成模型、文字审核模型和错题陪练模型。
+内容生产端的运行时设置包含三个互不影响的选择：题目生成模型、统一审核模型（文字与图片共用）和错题陪练模型。
 陪练模型通过 `GET /api/tutor-models` 查询、`POST /api/tutor-models/select` 切换，默认读取
 `TUTOR_MODEL_PROVIDER` 与 `TUTOR_MODEL_NAME`。例如：
 
@@ -123,6 +123,13 @@ TUTOR_MODEL_NAME=gpt-5.6-sol
 
 每轮陪练响应的 `modelRun` 会记录实际 provider、model 和是否回退；看到 `provider=mock` 或
 `source=stored-guide-card` 说明本轮没有调用大模型。
+
+题目生成和审核共用同一份 Codex 订阅模型目录，但审核仍是独立 Runtime；图片审核不会再额外占用一套
+模型选择。Codex 目录默认包含 `default`、`gpt-5.6-sol`、`gpt-5.6-luna`、`gpt-5.6-terra`、
+`gpt-5.5` 和 `gpt-5.4`，可通过 `CODEX_MODELS` 用逗号覆盖。目录只代表本机 Codex CLI 已登录且可执行，
+不代表套餐一定授予每一个模型；真正的模型权限要到请求时由 Codex 返回。若下拉框中的 Codex 整组变灰，
+通常是后端进程找不到 CLI（桌面版默认路径为 `/Applications/ChatGPT.app/Contents/Resources/codex`），
+请重启后端或设置 `CODEX_COMMAND`，不要只刷新浏览器页面。
 
 启动 FastAPI：
 
@@ -135,7 +142,7 @@ cd backend
 
 ```bash
 cd backend
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
+MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
   ../.venv/bin/python -m uvicorn app:app --reload --port 8010
 ```
 
@@ -224,14 +231,13 @@ psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
 | `DOTTY_DATA_DIR` | 项目下 `data/` | PDF、Markdown 和题图目录 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
-| `MODEL_PROVIDER` | `ollama` | `ollama`、`codex` 或 `mock` |
-| `MODEL_NAME` | `qwen2.5:3b` | 生成模型名称 |
+| `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |
+| `MODEL_NAME` | `default` | 生成模型名称 |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama 地址 |
-| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径 |
-| `REVIEW_PROVIDER` | `ollama` | 文本审校 provider |
-| `REVIEW_MODEL` | `qwen2.5:7b` | 文本审校模型 |
-| `VISION_PROVIDER` | `codex` | 视觉审校 provider |
-| `VISION_MODEL` | `default` | 视觉审校模型 |
+| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径；本机脚本会优先注入仓库根目录 `.mineru-venv/bin/mineru` |
+| `REVIEW_PROVIDER` | `codex` | 统一文字与图片审校 provider |
+| `REVIEW_MODEL` | `gpt-5.6-sol` | 统一文字与图片审校模型 |
+| `CODEX_MODELS` | 内置常用订阅模型 | 可选；控制 Codex 下拉框模型列表 |
 | `TTS_PROVIDER` | `auto` | `auto`、`azure` 或 `qwen` |
 | `QWEN_TTS_URL` | `http://127.0.0.1:8020` | Qwen3-TTS 服务地址 |
 
@@ -265,6 +271,14 @@ python3.12 -m venv .mineru-venv
 .mineru-venv/bin/uv pip install -U "mineru[all]"
 export MINERU_COMMAND="$PWD/.mineru-venv/bin/mineru"
 ```
+
+如果上传页仍显示“MinerU OCR · 未安装”，先确认浏览器连接的是本机后端 `8010`，而不是
+Docker 的 `8080` 网关：`curl http://127.0.0.1:8010/api/ocr` 返回的 `providers` 中，`id=mineru`
+的 `available` 应为 `true`。
+Docker 基础镜像只包含 FastAPI 和 pypdf，不会自动看到宿主机的 `.mineru-venv`（尤其不能把
+macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正确的安全行为，避免选择后任务
+悄悄回退到 PDF 文字层；需要 Docker 使用 MinerU 时，应提供 Linux MinerU 镜像或独立 OCR
+服务，再增加对应 Runtime 适配器。
 
 整本 PDF 每 5 页规划一个批次，首批优先生成，其余批次按需处理。相邻且路由相同的页面合并调用，
 减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。

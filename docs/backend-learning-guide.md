@@ -58,8 +58,9 @@ sequenceDiagram
   Route->>Service: complete_upload(id)
   Service->>Registry: 获取并更新上传状态
   Service->>Service: 合并分块、校验哈希和 PDF
-  Service->>OCR: 提取首批页面内容
-  Service->>Pipeline: 生成、审校、质量门禁
+  Service->>OCR: 逐页探测并路由 pypdf / MinerU
+  OCR-->>Service: Markdown、题图、缓存与页面质量证据
+  Service->>Pipeline: 切题、来源绑定、生成、统一审校和质量门禁
   Service->>Store: 原子保存题目与课程
   Service->>Registry: 标记 complete
   Service-->>Route: 结构化结果
@@ -75,6 +76,13 @@ sequenceDiagram
 
 当前服务仍在 HTTP 请求内同步执行。将来如果真实 PDF 处理时间影响部署，只需要让 Route 入队，并让 Worker
 调用 `TextbookProcessingService.complete_upload()` 或 `process_batch()`；无需复制 OCR 和生成逻辑。
+
+实际处理顺序可以概括为：`probe_page` 读取文字层、图片数量、公式和视觉提示；`auto` 模式先用 pypdf
+预检，质量不合格时只把对应连续页段升级到 MinerU；OCR 结果按 PDF 哈希、页范围、Provider 和流水线版本
+缓存。随后 `domain/questions/source.py` 切分题号、合并跨页内容、截断答案区并绑定图片，
+`question_processing.py` 对每道题独立执行结构化生成、来源绑定、统一文字/图片审核、确定性规范化和质量门禁。
+失败题目最多局部重试 2 次，仍失败则隔离，不影响同批合格题发布。详细字段和重试边界见
+[`系统架构与调用流程`](architecture.md)。
 
 ## 4. 为什么 Store 要按领域拆分
 
@@ -106,17 +114,36 @@ sequenceDiagram
 - `infrastructure/runtime/ocr_runtime.py` 选择 MinerU 或回退路径。
 - `domain/questions/` 中的 OCR 纯函数负责路由/缓存契约和质量决策。
 
+教材解析默认请求 MinerU；如果后端运行在没有 MinerU 的 Docker 容器中，运行时会明确显示实际
+使用的 pypdf 文字层和回退原因。文字审核与图片审核共用一个可切换的审核模型，保证题干、选项图、
+答案和讲解由同一个裁判上下文核对。
+
+当确定性门禁发现来源只有 A-D、模型却生成了额外选项时，工作台只展示来源支持的四项，同时把
+“多余选项已隐藏”保留为 `needs_review` 错误。这样异常候选可以继续修复或重新生成，但不会被误
+当成可发布题目。
+
 重要原则是：模型输出永远不是最终事实。它必须先经过 Pydantic/JSON Schema、确定性修复和质量检查，才能
 进入数据库和前端。
 
-生成模型与文字审核模型刻意独立选择：低成本模型可以负责初稿，更强模型负责发现结构、公式与语义冲突；
-视觉审核继续接收来源页图片，不能被纯文本审核替代。`application/services/question_processing.py` 对失败题只进行有上限的局部重试，
+生成模型与审核模型刻意独立选择：低成本模型可以负责初稿，更强模型负责发现结构、公式与语义冲突；
+审核模型在需要时接收来源页图片，不能被纯文本输入替代。`application/services/question_processing.py` 对失败题只进行有上限的局部重试，
 仍无法恢复的题进入隔离诊断，避免一题永久阻塞整份试卷，又避免静默发布错误内容。
 
 OCR 也遵守同一原则。自动模式不会先把整本 PDF 交给 MinerU，而是读取每页文字长度、图片与公式信号，
 将相邻且 Provider 相同的页面合并执行。pypdf 页若为空、乱码、公式定界符不平衡或出现已知损坏命令，
 只升级对应连续页段；MinerU 仍无法恢复时进入隔离，不做无限重试。中间结果使用 PDF SHA-256、页范围、
 Provider 和流水线版本组成缓存键，因此重新生成题目不会重复执行昂贵 OCR，Provider 升级也不会误用旧缓存。
+
+题目切分和题图绑定还有两条容易反复回归的边界：
+
+- 题号只从明确的“选择题/填空题/解答题”等章节标题之后开始解析。考试“注意事项”中的编号不是题目，
+  因此不会再进入结构化生成。
+- 多图题不让模型猜图片角色。OCR 原始顺序是唯一事实，后端生成 `imageManifest`（题干图或 A-D
+  选项图）和 `contentBlocks`，质量门禁同时检查图片数量、顺序和选项绑定。页面中出现多个无法归属的
+  图时宁可隔离待修复，也不把整页图片批量绑定到一题。
+
+旧版本已经保存的“裸 A/B/C/D + 图片块”仍由前端兼容层按四图/五图规则只读修复；新生成数据必须通过
+后端清单和质量门禁，避免每个页面各自实现一套图片猜测逻辑。
 
 互动试卷发布采用不可变版本。`publication_revision.py` 从原 PDF 创建完整新版本并送回审核，旧发布版本、学习
 会话与作答记录保持可追溯。写入顺序要求“先保存新课程，再创建版本关系，最后切换当前版本”；任何一步失败
@@ -165,7 +192,7 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 常用命令：
 
 ```bash
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
+MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
   cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 
 cd frontend

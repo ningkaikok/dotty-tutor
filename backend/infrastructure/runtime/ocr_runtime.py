@@ -21,30 +21,64 @@ OcrProvider = Literal["auto", "mineru", "pypdf"]
 
 @dataclass
 class OcrSelection:
-    provider: OcrProvider = "auto"
+    # MinerU 是教材图片/公式识别的默认路径；没有安装时仍保留请求选择，实际执行层
+    # 会明确回退到 PDF 文字层，避免 Docker 启动后把宿主机 MinerU 路径误当成可用能力。
+    provider: OcrProvider = "mineru"
 
 
 class OcrRuntime:
     """保存进程级 OCR 选择，并隔离 MinerU 命令行细节。"""
 
     def __init__(self) -> None:
-        self.selection = OcrSelection()
+        configured = os.getenv("OCR_PROVIDER", "mineru").strip().lower()
+        self.selection = OcrSelection(
+            provider=configured if configured in {"auto", "mineru", "pypdf"} else "mineru"  # type: ignore[arg-type]
+        )
 
     def mineru_command(self) -> Path | None:
-        """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。"""
-        configured = os.getenv("MINERU_COMMAND")
+        """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。
+
+        ``ocr_runtime.py`` 位于 ``backend/infrastructure/runtime``，过去使用
+        ``parents[1]`` 查找虚拟环境，实际会落到 ``backend/infrastructure/.mineru-venv``。
+        本机安装脚本和文档约定的环境在仓库根目录 ``.mineru-venv``，所以安装成功却会被
+        UI 报告为“未安装”。这里同时兼容仓库根目录和 backend 目录，避免迁移目录时再次
+        产生静默回退；Docker 则必须显式挂载 Linux MinerU 或接入独立 OCR 服务。
+        """
+        configured = os.getenv("MINERU_COMMAND", "").strip()
+        module_path = Path(__file__).resolve()
+        project_root = module_path.parents[3]
+        backend_root = module_path.parents[2]
         candidates = [
             Path(configured).expanduser() if configured else None,
-            Path(__file__).resolve().parents[1] / ".mineru-venv" / "bin" / "mineru",
+            project_root / ".mineru-venv" / "bin" / "mineru",
+            backend_root / ".mineru-venv" / "bin" / "mineru",
+            Path("/opt/mineru/bin/mineru"),
             Path(shutil.which("mineru")) if shutil.which("mineru") else None,
         ]
-        return next((path for path in candidates if path and path.is_file()), None)
+        return next(
+            (path for path in candidates if path and path.is_file() and os.access(path, os.X_OK)),
+            None,
+        )
 
     def catalog(self) -> dict:
         command = self.mineru_command()
+        # ``selected`` describes the requested provider; ``effective`` is the
+        # provider this process can actually execute.  Keep MinerU as the
+        # default preference, but make the Docker/minimal-image fallback
+        # explicit instead of pretending the host installation is available.
         effective = self.selection.provider
         if effective == "auto":
             effective = "mineru" if command else "pypdf"
+        elif effective == "mineru" and not command:
+            effective = "pypdf"
+        # compose.yaml 同时写入运行模式，/.dockerenv 作为直接运行容器时的兜底。
+        # 两者都只用于解释“为什么不可用”，不会把宿主机路径误报成容器内可执行文件。
+        in_container = os.getenv("DOTTY_RUNTIME_MODE") == "docker" or Path("/.dockerenv").is_file()
+        unavailable_detail = (
+            "Docker API 未挂载 MinerU；请使用本机后端，或配置 Linux MinerU/独立 OCR 服务"
+            if in_container
+            else "未安装：需要独立 Python 3.12 环境和模型"
+        )
         return {
             "selected": self.selection.provider,
             "effective": effective,
@@ -59,7 +93,7 @@ class OcrRuntime:
                     "id": "mineru",
                     "label": "MinerU OCR",
                     "available": bool(command),
-                    "detail": str(command) if command else "未安装：需要独立 Python 3.12 环境和模型",
+                    "detail": str(command) if command else unavailable_detail,
                 },
                 {
                     "id": "pypdf",

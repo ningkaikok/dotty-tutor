@@ -1,7 +1,8 @@
 """题目文字与视觉审核编排。
 
 生成模型的职责是“产出候选题”，审核模型的职责是“对照 OCR 来源纠错”。两者故意使用
-独立选择，避免小型本地生成模型同时充当自己的裁判。模型审核之后仍会进入确定性质量门禁；
+独立选择，避免小型本地生成模型同时充当自己的裁判；同一个审核模型会同时检查文字和题图，
+避免文本审核与视觉审核给出互相矛盾的结论。模型审核之后仍会进入确定性质量门禁；
 审核分数和 ``needsHumanReview`` 只是证据，不是允许发布的最终条件。
 """
 
@@ -163,14 +164,12 @@ class ReviewRuntime:
     """协调文本审核、图片审核及视觉冲突后的二次修复。"""
 
     def __init__(self) -> None:
-        self.text_provider: Provider = os.getenv("REVIEW_PROVIDER", "ollama")  # type: ignore[assignment]
-        self.text_model = os.getenv("REVIEW_MODEL", "qwen2.5:7b")
-        self.vision_provider: Provider = os.getenv("VISION_PROVIDER", "codex")  # type: ignore[assignment]
-        self.vision_model = os.getenv("VISION_MODEL", "default")
+        # 文字和题图审核使用同一个裁判模型，避免一题得到两套相互矛盾的审核结论。
+        self.text_provider: Provider = os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
+        self.text_model = os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
 
     def catalog(self) -> dict[str, Any]:
-        """返回独立审核模型目录，不改变题目生成模型。"""
-        """Expose the independent text-review selection to the studio UI."""
+        """返回统一审核模型目录，不改变题目生成模型。"""
         return {
             "selected": {
                 "provider": self.text_provider,
@@ -180,8 +179,7 @@ class ReviewRuntime:
         }
 
     def select_text(self, provider: Provider, model: str) -> dict[str, Any]:
-        """切换文字审核模型，并拒绝当前环境中不可用的选项。"""
-        """Switch future reviews without changing the generation model."""
+        """切换统一审核模型，并拒绝当前环境中不可用的选项。"""
         provider_info = next(
             (item for item in runtime.providers() if item["id"] == provider),
             None,
@@ -292,8 +290,8 @@ OCR 原题：
 """.strip()
             try:
                 vision_review, vision_run = runtime.generate_json_as(
-                    self.vision_provider,
-                    self.vision_model,
+                    self.text_provider,
+                    self.text_model,
                     vision_prompt,
                     VISION_REVIEW_SCHEMA,
                     max_tokens=1400,
@@ -309,9 +307,9 @@ OCR 原题：
                     "needsHumanReview": True,
                 }
                 vision_run = {
-                    "requestedProvider": self.vision_provider,
+                    "requestedProvider": self.text_provider,
                     "provider": "none",
-                    "model": self.vision_model,
+                    "model": self.text_model,
                     "fallback": True,
                     "error": vision_error,
                 }
@@ -324,9 +322,9 @@ OCR 原题：
                 "needsHumanReview": False,
             }
             vision_run = {
-                "requestedProvider": self.vision_provider,
+                "requestedProvider": self.text_provider,
                 "provider": "none",
-                "model": self.vision_model,
+                "model": self.text_model,
                 "fallback": False,
                 "skipped": "题目没有图片",
             }

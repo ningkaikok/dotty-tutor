@@ -1,12 +1,12 @@
 import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types";
-import type { UploadPhase } from "./useTextbookImport";
+import type { RuntimeLoadingState, UploadPhase } from "./useTextbookImport";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
   tutorModels: ModelCatalog | null;
   reviewModels: ReviewModelCatalog | null;
   ocrProviders: OcrCatalog | null;
-  loading: boolean;
+  loading: RuntimeLoadingState;
   phase: UploadPhase;
   onSelectModel: (provider: ModelProvider, model: string) => void;
   onSelectTutorModel: (provider: ModelProvider, model: string) => void;
@@ -27,18 +27,20 @@ export function RuntimeSettings({
   onSelectReviewModel,
   onSelectOcr,
 }: RuntimeSettingsProps) {
-  const busy = loading || phase === "uploading" || phase === "processing";
+  const uploadBusy = phase === "uploading" || phase === "processing";
+  const disabledHint = uploadBusy ? "教材正在上传或识别，完成后可切换运行时" : undefined;
 
   return (
     <section className="model-switcher panel">
       <div>
         <span className="eyebrow">MODEL RUNTIME</span>
         <strong>选择实际生成模型</strong>
-        <small>默认优先本地模型；切换后会影响教材脚本和 Help 回答。</small>
+        <small>默认使用 Codex default；切换后会影响教材脚本和 Help 回答。</small>
       </div>
       <select
         value={models ? `${models.selected.provider}::${models.selected.model}` : ""}
-        disabled={!models || busy}
+        disabled={!models || uploadBusy || loading.generation}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectModel(provider, model);
@@ -68,7 +70,8 @@ export function RuntimeSettings({
       <select
         className="tutor-select"
         value={tutorModels ? `${tutorModels.selected.provider}::${tutorModels.selected.model}` : ""}
-        disabled={!tutorModels || busy}
+        disabled={!tutorModels || uploadBusy || loading.tutor}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectTutorModel(provider, model);
@@ -88,13 +91,14 @@ export function RuntimeSettings({
       )}
 
       <div className="review-label">
-        <strong>选择文字审核模型</strong>
-        <small>审核模型独立于生成模型；教材事实、公式和单位建议使用能力更强的模型。</small>
+        <strong>选择审核模型</strong>
+        <small>同一个审核模型同时检查文字、题干图和选项图；教材事实、公式和单位建议使用能力更强的模型。</small>
       </div>
       <select
         className="review-select"
         value={reviewModels ? `${reviewModels.selected.provider}::${reviewModels.selected.model}` : ""}
-        disabled={!reviewModels || busy}
+        disabled={!reviewModels || uploadBusy || loading.review}
+        title={disabledHint}
         onChange={(event) => {
           const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
           onSelectReviewModel(provider, model);
@@ -124,7 +128,8 @@ export function RuntimeSettings({
       <select
         className="ocr-select"
         value={ocrProviders?.selected ?? ""}
-        disabled={!ocrProviders || busy}
+        disabled={!ocrProviders || uploadBusy || loading.ocr}
+        title={disabledHint}
         onChange={(event) => onSelectOcr(event.target.value as OcrProvider)}
       >
         {!ocrProviders && <option>正在读取 OCR…</option>}

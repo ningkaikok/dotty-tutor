@@ -147,7 +147,7 @@ function legacyPromptBlocks(question: Question, seenImages: Set<string>): Questi
  * whether an image came from `contentBlocks`, `imageUrls`, or `optionImageUrls`.
  */
 export function questionContentBlocks(question: Question): QuestionContentBlock[] {
-  if (question.contentBlocks?.length) return question.contentBlocks;
+  if (question.contentBlocks?.length) return repairStructuredImageOptions(question.contentBlocks);
 
   const blocks: QuestionContentBlock[] = [];
   const seenImages = new Set<string>();
@@ -184,4 +184,39 @@ export function questionContentBlocks(question: Question): QuestionContentBlock[
     });
   }
   return blocks;
+}
+
+/**
+ * Repair the old persisted shape where A-D were stored as label-only options and
+ * their images were emitted as ordinary image blocks after the options.  New data
+ * is produced by the backend manifest, but this read-only boundary keeps existing
+ * lessons usable without a destructive migration.
+ */
+function repairStructuredImageOptions(blocks: QuestionContentBlock[]): QuestionContentBlock[] {
+  const optionIndex = blocks.findIndex((block) => block.type === "options");
+  if (optionIndex < 0) return blocks;
+  const optionBlock = blocks[optionIndex];
+  if (optionBlock.type !== "options" || optionBlock.items.length !== 4) return blocks;
+  if (optionBlock.items.some((item) => item.imageUrl)) return blocks;
+  const imageIndexes = blocks
+    .map((block, index) => block.type === "image" ? index : -1)
+    .filter((index) => index >= 0);
+  if (imageIndexes.length !== 4 && imageIndexes.length !== 5) return blocks;
+  const imageBlocks = imageIndexes.map((index) => blocks[index]).filter(
+    (block): block is Extract<QuestionContentBlock, { type: "image" }> => block.type === "image",
+  );
+  const optionImages = (imageBlocks.length === 5 ? imageBlocks.slice(1) : imageBlocks).map((block) => block.url);
+  const repairedOptions: QuestionContentBlock = {
+    ...optionBlock,
+    items: optionBlock.items.map((item, index) => ({
+      ...item,
+      imageUrl: optionImages[index],
+      assetId: item.assetId || optionImages[index],
+      contentBlocks: item.contentBlocks.filter((content) => !(content.type === "text" && Boolean(content.text.match(LEGACY_IMAGE_PATH)))),
+    })),
+  };
+  const optionImageSet = new Set(optionImages);
+  return blocks
+    .filter((block) => block.type !== "image" || !optionImageSet.has(block.url))
+    .map((block) => block.type === "options" ? repairedOptions : block);
 }

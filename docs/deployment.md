@@ -69,15 +69,15 @@ DOTTY_DATA_DIR=/srv/dotty-tutor/data
 CORS_ORIGINS=https://tutor.example.com
 TRUSTED_HOSTS=tutor.example.com
 
-MODEL_PROVIDER=ollama
-MODEL_NAME=qwen2.5:3b
+MODEL_PROVIDER=codex
+MODEL_NAME=default
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 MINERU_COMMAND=/opt/dotty-tutor/.mineru-venv/bin/mineru
 
-REVIEW_PROVIDER=ollama
-REVIEW_MODEL=qwen2.5:7b
-VISION_PROVIDER=codex
-VISION_MODEL=default
+REVIEW_PROVIDER=codex
+REVIEW_MODEL=gpt-5.6-sol
+# 可选：限制 Codex 下拉框中的订阅模型
+CODEX_MODELS=default,gpt-5.6-sol,gpt-5.6-luna,gpt-5.6-terra,gpt-5.5,gpt-5.4
 
 TTS_PROVIDER=azure
 AZURE_SPEECH_KEY=replace-with-secret

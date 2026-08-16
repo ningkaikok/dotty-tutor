@@ -25,6 +25,12 @@ set -a
 source "$ENV_FILE"
 set +a
 
+# 本机 MinerU 与主后端使用不同虚拟环境；显式传绝对路径，避免后端从
+# backend/infrastructure/runtime 的相对目录误判为“未安装”。Docker 后端不会执行这段逻辑。
+if [[ -z "${MINERU_COMMAND:-}" && -x "$ROOT_DIR/.mineru-venv/bin/mineru" ]]; then
+  export MINERU_COMMAND="$ROOT_DIR/.mineru-venv/bin/mineru"
+fi
+
 cd "$ROOT_DIR"
 docker compose up -d db
 

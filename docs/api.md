@@ -27,13 +27,13 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/health` | 检查 API 和数据库连接 |
 | `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型 |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
-| `GET` | `/api/review-models` | 返回当前文字审核模型和可用模型目录 |
-| `POST` | `/api/review-models/select` | 独立切换后续题目使用的文字审核模型 |
+| `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
+| `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
 
-生成模型、文字审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
+生成模型、统一审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
 
 ## 题目与教材导入
 
