@@ -15,7 +15,7 @@ from infrastructure.runtime.review_runtime import runtime_reviewer
 
 
 PROMPT_VERSION = "lesson-generation-v1"
-VALIDATOR_VERSION = "p0-v3"
+VALIDATOR_VERSION = "p0-v4"
 SCHEMA_VERSION = hashlib.sha256(
     json.dumps(LESSON_SCHEMA, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()[:16]
@@ -36,7 +36,7 @@ def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
         key: run.get(key)
         for key in (
             "provider", "model", "version", "requestedProvider", "requestedModel",
-            "fallback", "fallbackReason", "durationMs", "usage",
+            "fallback", "fallbackReason", "durationMs", "usage", "questionSegmentationVersion",
         )
         if run.get(key) is not None
     }

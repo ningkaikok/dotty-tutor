@@ -88,7 +88,7 @@ class RunAuditStoreTests(unittest.TestCase):
             self.assertEqual(config["ocr"]["provider"], "pypdf")
             self.assertEqual(config["review"]["text"]["provider"], "codex")
             self.assertEqual(config["operation"], {"force": True, "refreshOcr": True})
-            self.assertEqual(config["validatorVersion"], "p0-v3")
+            self.assertEqual(config["validatorVersion"], "p0-v4")
         finally:
             model_runtime.selection = old_model
             ocr_runtime.selection.provider = old_ocr
@@ -148,7 +148,7 @@ class RunAuditStoreTests(unittest.TestCase):
             self.assertEqual(run["targetUploadId"], "upload-audit")
             self.assertEqual(run["targetQuestionKey"], target.get("question_key"))
             self.assertEqual(run["targetPublicationId"], target.get("publication_id"))
-            self.assertEqual(run["config"]["validatorVersion"], "p0-v3")
+            self.assertEqual(run["config"]["validatorVersion"], "p0-v4")
             audit.fail(run["runId"], "fixture failure", stage="test")
 
 
