@@ -9,9 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from mistake_store import MistakeStore
-from review_routes import build_review_router
-from review_store import ReviewStore
+from persistence.mistake_store import MistakeStore
+from api.routers.review_routes import build_review_router
+from persistence.review_store import ReviewStore
 from variation_service import VariationService
 
 

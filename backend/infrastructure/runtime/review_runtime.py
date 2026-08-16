@@ -19,7 +19,7 @@ from infrastructure.runtime.model_runtime import Provider, runtime
 
 def _normalize_review_math(value: str) -> str:
     """延迟调用题目规范化，避免 review_runtime 与 question_pipeline 循环导入。"""
-    from question_pipeline import normalize_model_math_text
+    from domain.questions.pipeline import normalize_model_math_text
 
     return normalize_model_math_text(value)
 

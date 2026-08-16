@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from lesson_generation import generate_lesson, lesson_store
-from model_runtime import ModelSelection, runtime
-from tutor_checks import normalize_guide_cards, safe_canvas_action
+from application.services.lesson_generation import generate_lesson, lesson_store
+from infrastructure.runtime.model_runtime import ModelSelection, runtime
+from domain.tutoring.checks import normalize_guide_cards, safe_canvas_action
 
 
 class TutorContextTests(unittest.TestCase):

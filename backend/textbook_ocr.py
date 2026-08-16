@@ -13,7 +13,7 @@ from typing import Any
 from pypdf import PdfReader
 
 from observability import log_event
-from ocr_runtime import runtime as ocr_runtime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 
 
 def extract_pdf_text(reader: PdfReader, max_pages: int = 10, max_chars: int = 16_000) -> str:

@@ -8,7 +8,7 @@ import time
 import uuid
 from typing import Any
 
-from lesson_contracts import lesson_document_from_payload
+from domain.contracts.lesson import lesson_document_from_payload
 from run_audit import RunAudit, build_run_config
 
 

@@ -7,13 +7,13 @@ from tempfile import TemporaryDirectory
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from learning_routes import build_learning_router
-from lesson_contracts import (
+from api.routers.learning_routes import build_learning_router
+from domain.contracts.lesson import (
     LearningSessionCreate,
     LessonDocument,
     lesson_document_from_payload,
 )
-from mistake_store import MistakeStore
+from persistence.mistake_store import MistakeStore
 from storage import TutorStore
 
 

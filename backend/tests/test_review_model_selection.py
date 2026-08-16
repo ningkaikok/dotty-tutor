@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from model_runtime import runtime
-from review_runtime import ReviewRuntime
+from infrastructure.runtime.model_runtime import runtime
+from infrastructure.runtime.review_runtime import ReviewRuntime
 
 
 class ReviewModelSelectionTests(unittest.TestCase):

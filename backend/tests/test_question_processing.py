@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from question_processing import _generate_validated_question
+from application.services.question_processing import _generate_validated_question
 
 
 def _candidate() -> tuple[dict, list[dict], dict]:
@@ -47,17 +47,17 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             with (
                 patch(
-                    "question_processing.generate_lesson",
+                    "application.services.question_processing.generate_lesson",
                     side_effect=lambda _source, **_kwargs: _candidate(),
                 ) as generate,
                 patch(
-                    "question_processing.review_lesson_payload",
+                    "application.services.question_processing.review_lesson_payload",
                     side_effect=lambda payload, _source, _images, _cards: (
                         payload,
                         {"provider": "test"},
                     ),
                 ),
-                patch("question_processing.apply_question_quality_gate", side_effect=apply_gate),
+                patch("application.services.question_processing.apply_question_quality_gate", side_effect=apply_gate),
             ):
                 payload, _cards, _model_run, _review_run = _generate_validated_question(
                     number="2",
@@ -100,15 +100,15 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             with (
-                patch("question_processing.generate_lesson", return_value=fallback) as generate,
+                patch("application.services.question_processing.generate_lesson", return_value=fallback) as generate,
                 patch(
-                    "question_processing.review_lesson_payload",
+                    "application.services.question_processing.review_lesson_payload",
                     side_effect=lambda payload, _source, _images, _cards: (
                         payload,
                         {"provider": "test"},
                     ),
                 ),
-                patch("question_processing.apply_question_quality_gate", side_effect=failed_gate),
+                patch("application.services.question_processing.apply_question_quality_gate", side_effect=failed_gate),
             ):
                 payload, _cards, _model_run, _review_run = _generate_validated_question(
                     number="3",

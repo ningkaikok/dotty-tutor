@@ -8,10 +8,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from mistake_routes import build_mistake_router
-from mistake_store import MistakeStore
-from tutoring_store import TutoringStore
-from variation_store import VariationStore
+from api.routers.mistake_routes import build_mistake_router
+from persistence.mistake_store import MistakeStore
+from persistence.tutoring_store import TutoringStore
+from persistence.variation_store import VariationStore
 
 
 def fake_recognize(

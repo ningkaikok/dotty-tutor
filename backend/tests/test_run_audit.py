@@ -4,11 +4,11 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from audit_contracts import BatchProcessResponse
+from domain.contracts.audit import BatchProcessResponse
 from persistence.textbook_store import TextbookStore
-from model_runtime import ModelSelection, runtime as model_runtime
-from ocr_runtime import runtime as ocr_runtime
-from review_runtime import runtime_reviewer
+from infrastructure.runtime.model_runtime import ModelSelection, runtime as model_runtime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+from infrastructure.runtime.review_runtime import runtime_reviewer
 from run_audit import RunAudit, build_run_config
 
 

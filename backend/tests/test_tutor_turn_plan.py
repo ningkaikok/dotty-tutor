@@ -3,10 +3,10 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from question_contracts import HELP_SCHEMA, HelpRequest, TutorReply
-from stateful_tutor import StatefulTutor
-from tutor_checks import build_reply
-from tutor_turn_plan import (
+from domain.questions.contracts import HELP_SCHEMA, HelpRequest, TutorReply
+from application.services.stateful_tutor import StatefulTutor
+from domain.tutoring.checks import build_reply
+from domain.tutoring.turn_plan import (
     build_tutor_turn_plan,
     infer_student_intent,
     normalize_misconception,
