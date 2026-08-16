@@ -168,7 +168,7 @@ npm run dev
 ## 测试
 
 ```bash
-.venv/bin/python -m unittest discover -s backend -p 'test_*.py'
+cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 cd frontend && npm run build
 ```
 

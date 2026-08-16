@@ -330,7 +330,7 @@ PGPASSWORD="$POSTGRES_PASSWORD" psql \
 ## 测试
 
 ```bash
-.venv/bin/python -m unittest discover -s backend -p 'test_*.py' -v
+cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 cd frontend
 npm run build
 npx playwright install chromium   # 首次运行或浏览器版本更新时执行

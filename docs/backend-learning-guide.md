@@ -166,7 +166,7 @@ tutoring_store.py      线程、摘要和有限消息历史
 
 ```bash
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
-  .venv/bin/python -m unittest discover -s backend -p 'test_*.py'
+  cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 
 cd frontend
 npm ci
