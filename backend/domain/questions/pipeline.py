@@ -12,6 +12,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from domain.questions.source import (
+    QUESTION_SEGMENTATION_VERSION,
+    is_likely_exam_instruction,
+)
 from infrastructure.runtime.review_runtime import formula_anomaly_score, normalize_ocr_question
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
@@ -72,6 +76,7 @@ def write_model_prompt_artifact(asset_dir: Path, question_sources: list[tuple[st
     sections = [
         "# OCR 后结构化模型提示词\n",
         "> MinerU 不使用自然语言提示词；下列内容是 OCR 完成后实际交给结构化模型的提示词。\n",
+        f"> 题目切分版本：`{QUESTION_SEGMENTATION_VERSION}`。旧版本提示词不会被视为本次切分结果。\n",
     ]
     for index, (number, block, _images) in enumerate(question_sources, start=1):
         sections.append(f"\n## 第 {number or index} 题\n\n```text\n{build_lesson_prompt(block)}\n```\n")
@@ -363,6 +368,11 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("图片选择题必须按 A、B、C、D 绑定四张当前题图片")
     options = [str(item).strip() for item in question.get("options", [])]
     prompt = str(question.get("prompt", ""))
+    # 题源边界优先于模型结构化结果：考试说明即使被模型包装成合法 JSON，也不能
+    # 作为学生可作答题发布。把它放在统一门禁而不是提示词里，避免不同模型绕过边界。
+    if is_likely_exam_instruction(source_block):
+        evidence = re.sub(r"\s+", " ", source_block).strip()[:120]
+        errors.append(f"题源疑似考试说明/作答要求，禁止生成题目：{evidence}")
     source_number = QUESTION_START_PATTERN.match(source_block)
     if source_number and str(question.get("questionNumber", "")).strip() not in {"", source_number.group("number")}:
         errors.append(
@@ -419,7 +429,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v3", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v4", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:

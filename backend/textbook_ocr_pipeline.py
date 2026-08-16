@@ -23,7 +23,11 @@ from ocr_pipeline import (
     has_visual_hint,
 )
 from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
-from domain.questions.source import QUESTION_START_PATTERN, split_question_sources
+from domain.questions.source import (
+    QUESTION_SEGMENTATION_VERSION,
+    QUESTION_START_PATTERN,
+    split_question_sources,
+)
 
 
 # 渲染矢量页图属于缓存结果的一部分；升级版本可以避免旧缓存继续沿用“只有文字”的结果。
@@ -196,6 +200,7 @@ def resolve_routed_ocr_source(
             "pageRoutes": [],
             "quality": [],
             "retries": [],
+            "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
         }
 
     reader = PdfReader(str(source_path))
@@ -349,4 +354,5 @@ def resolve_routed_ocr_source(
         "retries": retries,
         "spans": span_runs,
         "pipelineVersion": OCR_PIPELINE_VERSION,
+        "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
     }

@@ -14,16 +14,21 @@ QUESTION_START_PATTERN = re.compile(
     r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})(?:(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
 )
 # 试卷通常在真正题目之前包含“注意事项”或考试信息。这里只把明确的题型章节
-# 作为题目区起点，避免把注意事项中的“1.”、“2.”误判成题号。没有章节标题的
-# 普通教材片段仍沿用原有的题号切分逻辑。
+# 作为题目区起点，避免把注意事项中的“1.”、“2.”误判成题号。OCR 可能在汉字
+# 之间插入空格或换行，因此章节标题的每个字之间都允许空白；这是版面 OCR 中
+# 比“精确匹配整行标题”更稳定的做法。
 QUESTION_SECTION_PATTERN = re.compile(
-    r"(?im)^\s*(?:(?:第\s*[一二三四五六七八九十百\d]+\s*(?:大题|部分|节))|"
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:(?:第\s*[一二三四五六七八九十百\d]+\s*(?:大题|部分|节))|"
     r"(?:[一二三四五六七八九十百\d]+\s*[、.．]))\s*"
-    r"(?:选择题|填空题|判断题|解答题|计算题|应用题|作图题|证明题|实验题|综合题|"
-    r"单项选择题|多项选择题|非选择题)"
+    r"(?:选\s*择\s*题|填\s*空\s*题|判\s*断\s*题|解\s*答\s*题|计\s*算\s*题|"
+    r"应\s*用\s*题|作\s*图\s*题|证\s*明\s*题|实\s*验\s*题|综\s*合\s*题|"
+    r"单\s*项\s*选\s*择\s*题|多\s*项\s*选\s*择\s*题|非\s*选\s*择\s*题)"
 )
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MAX_QUESTIONS_PER_BATCH = 5
+# 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
+# 旧版本产物不能静默当成新规则的结果，重新 OCR/生成时会写入新的版本证据。
+QUESTION_SEGMENTATION_VERSION = "question-segmentation-v2"
 
 ANSWER_SECTION_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?(?:参考答案与解析|答案与解析|参考答案|答案|解答|解析)\s*$"
@@ -31,6 +36,82 @@ ANSWER_SECTION_PATTERN = re.compile(
 INLINE_ANSWER_PATTERN = re.compile(
     r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?"
 )
+
+# 当题型章节标题因分页、OCR 断行或版式丢失而无法匹配时，使用一组高精度的
+# 文档语义信号识别考试前置说明。这里不把“请”或“选择”这种普通词作为信号，
+# 避免误伤真正的题干；只有和答题卡、准考证、考试时间等强上下文一起出现时才
+# 过滤。该规则对应业界常见的“文档区域分类 + 题块白名单”两阶段切分。
+EXAM_INSTRUCTION_MARKERS = (
+    r"注意事项",
+    r"本试卷",
+    r"考试时间",
+    r"满分\s*\d+",
+    r"准考证",
+    r"条形码",
+    r"答题卡",
+    r"监考",
+    r"签字笔",
+    r"涂黑",
+    r"填涂",
+    r"作图必须",
+    r"答题.{0,12}(?:无效|位置)",
+    r"姓名.{0,12}(?:考试|准考证)",
+)
+QUESTION_EVIDENCE_MARKERS = (
+    r"下列",
+    r"计算",
+    r"求(?:出|得|值|证)?",
+    r"解(?:方程|不等式|集)?",
+    r"判断",
+    r"等于",
+    r"的是",
+    r"已知",
+    r"若",
+    r"如图",
+    r"证明",
+    r"化简",
+    r"取值",
+    r"结果",
+    r"填空",
+    r"方程",
+    r"不等式",
+    r"平均数|中位数|概率",
+)
+
+
+def _has_any_marker(text: str, markers: tuple[str, ...]) -> bool:
+    return any(re.search(marker, text, flags=re.IGNORECASE) for marker in markers)
+
+
+def is_likely_exam_instruction(text: str) -> bool:
+    """识别不可直接生成题目的考试说明/作答要求块。
+
+    这是来源级安全边界，不是题型判断器：说明块即使被模型“补全”为合法 JSON，
+    也必须在发布前被拦截。题干同时包含明确数学任务时不判为说明，避免把“请计算”
+    之类的正常题目误杀。
+    """
+    source = str(text or "").strip()
+    return bool(source) and _has_any_marker(source, EXAM_INSTRUCTION_MARKERS) and not _has_any_marker(
+        source, QUESTION_EVIDENCE_MARKERS
+    )
+
+
+def _trim_leading_exam_instructions(source: str) -> str:
+    """在章节标题缺失时，跳过开头的编号说明并保留第一个题块。
+
+    题号可能重复（说明中的 ``1.`` 后面再次出现真正的第 1 题），所以不能按题号去重；
+    必须先对每个候选块做语义分类，再从第一个非说明块开始切分。
+    """
+    matches = list(QUESTION_START_PATTERN.finditer(source))
+    if not matches:
+        return source
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(source)
+        candidate = source[match.start():end]
+        if not is_likely_exam_instruction(candidate):
+            return source[match.start():]
+    # 全部都是说明时返回空白；调用方会把它标记为无可发布题源，而不是交给模型猜题。
+    return ""
 
 
 def _question_area(source: str) -> str:
@@ -42,7 +123,11 @@ def _question_area(source: str) -> str:
     """
     area = ANSWER_SECTION_PATTERN.split(source, maxsplit=1)[0]
     heading = QUESTION_SECTION_PATTERN.search(area)
-    return area[heading.start():] if heading else area
+    if heading:
+        return area[heading.start():]
+    # 章节标题可能被 OCR 拆散或落在上一页，使用语义分类作为保底；普通教材没有
+    # 考试说明时保持原行为，不改变已有的无章节题号切分。
+    return _trim_leading_exam_instructions(area) if _has_any_marker(area, EXAM_INSTRUCTION_MARKERS) else area
 
 
 def safe_text(value: Any, fallback: str, limit: int = 600) -> str:
