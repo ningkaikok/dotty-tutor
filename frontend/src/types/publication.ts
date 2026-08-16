@@ -1,4 +1,5 @@
 import type { QuestionPayload } from "./question";
+import type { RevisionSummary, RunSummary } from "./textbook";
 
 export type PublicationStatus = "draft" | "in_review" | "published" | "archived";
 
@@ -24,6 +25,8 @@ export interface PublicationSummary {
 export interface PublicationRevisionResult {
   publication: PublicationSummary;
   questionPayloads: QuestionPayload[];
+  run: RunSummary;
+  revisions?: RevisionSummary[];
 }
 
 export interface PublicationWorkspaceState {

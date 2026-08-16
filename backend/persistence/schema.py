@@ -71,6 +71,36 @@ lesson_publications = Table(
     Column("updated_at", Float, nullable=False),
 )
 
+run_snapshots = Table(
+    "run_snapshots", metadata,
+    Column("run_id", String(64), primary_key=True),
+    Column("operation", String(64), nullable=False),
+    Column("scope", String(64), nullable=False),
+    Column("target_upload_id", String(64)),
+    Column("target_question_key", String(255)),
+    Column("target_publication_id", String(64)),
+    Column("status", String(16), nullable=False, default="running"),
+    Column("config_json", json_document, nullable=False),
+    Column("result_json", json_document),
+    Column("error_json", json_document),
+    Column("started_at", Float, nullable=False),
+    Column("completed_at", Float),
+)
+
+question_revisions = Table(
+    "question_revisions", metadata,
+    Column("revision_id", String(64), primary_key=True),
+    Column("upload_id", String(64), ForeignKey("upload_jobs.upload_id", ondelete="CASCADE"), nullable=False),
+    Column("source_question_key", String(255), nullable=False),
+    Column("revision_number", Integer, nullable=False),
+    Column("operation", String(64), nullable=False),
+    Column("previous_revision_id", String(64)),
+    Column("payload_json", json_document, nullable=False),
+    Column("guide_cards_json", json_document, nullable=False, default=list),
+    Column("run_id", String(64), nullable=False),
+    Column("created_at", Float, nullable=False),
+)
+
 learning_sessions = Table(
     "learning_sessions", metadata,
     Column("session_id", String(64), primary_key=True),
@@ -104,6 +134,10 @@ mastery_states = Table(
 )
 
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
+Index("idx_run_snapshots_target", run_snapshots.c.target_upload_id, run_snapshots.c.started_at.desc())
+Index("idx_run_snapshots_operation", run_snapshots.c.operation, run_snapshots.c.started_at.desc())
+Index("idx_question_revisions_source", question_revisions.c.upload_id, question_revisions.c.source_question_key, question_revisions.c.revision_number.desc())
+Index("uq_question_revisions_source_number", question_revisions.c.upload_id, question_revisions.c.source_question_key, question_revisions.c.revision_number, unique=True)
 Index("idx_lesson_publications_status", lesson_publications.c.status, lesson_publications.c.updated_at.desc())
 Index("idx_lesson_publications_revision", lesson_publications.c.revision_of, lesson_publications.c.version.desc())
 Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())

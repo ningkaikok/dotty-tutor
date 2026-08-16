@@ -7,7 +7,7 @@ interface MathTextProps {
   block?: boolean;
 }
 
-const MATH_FRAGMENT = /(\$\$[\s\S]+?\$\$|\$[^$]+?\$)/g;
+const INLINE_FRAGMENT = /(!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|\$\$[\s\S]+?\$\$|\$[^$]+?\$)/g;
 const RAW_MATH_COMMAND = /\\{1,2}(?:frac|sqrt|sum|int|text|mathrm|mathbf|mathbb|circ|times|div|leq|geq|left|right|begin|end)\b/i;
 
 /**
@@ -57,11 +57,32 @@ function normalizeMathDelimiters(text: string) {
 export default function MathText({ text, className, block = false }: MathTextProps) {
   const Tag = block ? "h2" : "span";
   const normalizedText = normalizeMathDelimiters(text);
-  const fragments = addMissingMathDelimiters(normalizedText).split(MATH_FRAGMENT).filter(Boolean);
+  const source = addMissingMathDelimiters(normalizedText);
+  const fragments: string[] = [];
+  let cursor = 0;
+  for (const match of source.matchAll(INLINE_FRAGMENT)) {
+    const index = match.index ?? 0;
+    if (index > cursor) fragments.push(source.slice(cursor, index));
+    fragments.push(match[0]);
+    cursor = index + match[0].length;
+  }
+  if (cursor < source.length) fragments.push(source.slice(cursor));
 
   return (
     <Tag className={className}>
       {fragments.map((fragment, index) => {
+        const image = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/.exec(fragment);
+        if (image) {
+          return (
+            <img
+              key={index}
+              className="inline-content-image"
+              src={image[2]}
+              alt={image[1] || "题目图片"}
+              loading="lazy"
+            />
+          );
+        }
         const displayMode = fragment.startsWith("$$");
         const isMath = displayMode || (fragment.startsWith("$") && fragment.endsWith("$"));
         if (!isMath) return <span key={index}>{fragment}</span>;

@@ -6,9 +6,12 @@ from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
 
 from mistake_routes import build_mistake_router
 from mistake_store import MistakeStore
+from tutoring_store import TutoringStore
+from variation_store import VariationStore
 
 
 def fake_recognize(
@@ -136,6 +139,62 @@ class MistakeCaptureApiTests(unittest.TestCase):
             },
         )
         self.assertEqual(invalid.status_code, 422)
+
+    def test_archive_keeps_learning_evidence_clears_thread_and_restore_starts_new_thread(self) -> None:
+        """归档是错题软删除；陪练上下文清理，但验证证据必须可追溯。"""
+        engine = create_engine(f"sqlite:///{self.directory.name}/archive.sqlite3", future=True)
+        mistakes = MistakeStore(engine=engine, data_root=self.directory.name)
+        tutoring = TutoringStore(engine=engine)
+        variations = VariationStore(engine=engine)
+        now = 1.0
+        mistakes.create({
+            "mistakeId": "archive-mistake",
+            "learnerId": "local-demo",
+            "sourceFilename": "source.png",
+            "contentType": "image/png",
+            "sourceImagePath": "",
+            "sourceImageUrl": "",
+            "questionPayload": {"question": {"id": "archive-question", "prompt": "题目"}},
+            "guideCards": [], "ocrRun": {}, "modelRun": {}, "originalAnswer": "B",
+            "chapter": "章节", "knowledgePoint": "知识点", "status": "unmastered",
+            "confirmedAt": now, "createdAt": now, "updatedAt": now,
+        })
+        variation = variations.create(
+            mistake_id="archive-mistake", learner_id="local-demo", strategy="foundation",
+            level="basic", question_payload={"question": {"id": "variation-question"}}, model_run={},
+        )
+        answered = variations.answer(
+            variation["variationId"], response={"selectedOptions": ["(A)"]},
+            assessment="correct", feedback="验证正确",
+        )
+        thread = tutoring.create_or_get("archive-mistake", "local-demo")
+        tutoring.append_turn(
+            thread["threadId"], student_content="我的答案是 A", input_mode="text",
+            assistant_content="我们继续验证", assessment="correct", action={}, model_run={},
+            stage="verify", hint_level=0, summary="已完成一轮",
+        )
+        app = FastAPI()
+        app.include_router(build_mistake_router(
+            store=mistakes, recognize=fake_recognize, archive_cleanup=tutoring.delete_for_mistake,
+        ))
+        client = TestClient(app)
+        try:
+            archived = client.patch("/api/mistakes/archive-mistake/archive", json={"archived": True})
+            self.assertEqual(archived.status_code, 200)
+            self.assertEqual(archived.json()["status"], "archived")
+            self.assertEqual(mistakes.get("archive-mistake")["questionPayload"]["question"]["id"], "archive-question")
+            self.assertEqual(variations.get(variation["variationId"])["response"], answered["response"])
+            self.assertEqual(variations.get(variation["variationId"])["assessment"], "correct")
+            self.assertIsNone(tutoring.get(thread["threadId"]))
+
+            restored = client.patch("/api/mistakes/archive-mistake/archive", json={"archived": False})
+            self.assertEqual(restored.status_code, 200)
+            new_thread = tutoring.create_or_get("archive-mistake", "local-demo")
+            self.assertNotEqual(new_thread["threadId"], thread["threadId"])
+            self.assertEqual(new_thread["messages"], [])
+        finally:
+            client.close()
+            engine.dispose()
 
 
 if __name__ == "__main__":

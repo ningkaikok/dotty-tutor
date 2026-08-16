@@ -1,7 +1,6 @@
 import { DrawLineCanvas } from "../DrawLineCanvas";
-import MathText from "../MathText";
 import { QuestionContent } from "../QuestionContent";
-import { displayedPrompt, hasImageOptions, optionLabel, optionText } from "../questionPresentation";
+import { questionContentBlocks } from "../questionPresentation";
 import type { Question } from "../types";
 
 interface QuestionAnswerProps {
@@ -38,8 +37,8 @@ export function QuestionAnswer({
 }: QuestionAnswerProps) {
   const questionType = question.questionType ?? "short-answer";
   const multiple = questionType === "multi-select" || question.selectionMode === "multiple";
-  const imageChoices = hasImageOptions(question);
-  const promptNode = <MathText text={displayedPrompt(question)} className="question-prompt" block />;
+  const contentBlocks = questionContentBlocks(question);
+  const promptNode = <QuestionContent blocks={contentBlocks} showOptions={false} />;
 
   // 画线题的连接关系是结构化坐标，而不是画布截图；这样后端才能稳定判题并回放答案。
   if (questionType === "draw-line" && question.interaction) {
@@ -123,63 +122,25 @@ export function QuestionAnswer({
     );
   }
 
-  if (question.contentBlocks?.length) {
-    // 新生成题优先走内容块协议，以保留题干、公式、图片和选项的原始顺序。
-    // 下面的旧字段分支仅用于兼容早期已经持久化的课程。
+  if (questionType === "choice" || questionType === "multi-select" || question.options?.length) {
+    // Both current and legacy questions now enter the same renderer. The normalizer keeps
+    // old image arrays and option strings at this boundary, so this component only owns input.
     return (
-      <QuestionContent
-        blocks={question.contentBlocks}
-        selectedOption={selectedOptions[0] ?? null}
-        selectedOptions={selectedOptions}
-        multiple={multiple}
-        onSelectOption={onSelectOption}
-        readOnly={readOnly}
-      />
+      <>
+        <QuestionContent
+          blocks={contentBlocks}
+          selectedOption={selectedOptions[0] ?? null}
+          selectedOptions={selectedOptions}
+          multiple={multiple}
+          onSelectOption={onSelectOption}
+          readOnly={readOnly}
+        />
+        {selectedOptions.length > 0 && (
+          <p className="selected-option">已选择 {selectedOptions.join("、")}，确认后点击“提交回答”。</p>
+        )}
+      </>
     );
   }
 
-  return (
-    <>
-      <MathText text={displayedPrompt(question)} className="question-prompt" block />
-      {question.imageUrls?.length && !imageChoices && (
-        <div className="question-images">
-          {question.imageUrls.map((url, index) => (
-            <a key={url} href={url} target="_blank" rel="noreferrer" title="打开原始题图">
-              <img src={url} alt={`题目对应图片 ${index + 1}`} loading="lazy" />
-            </a>
-          ))}
-        </div>
-      )}
-      {question.options?.length ? (
-        <ol className={`question-options ${imageChoices ? "image-options" : ""}`}>
-          {question.options.map((option, index) => {
-            const label = optionLabel(index);
-            const imageOption = /!\[[^\]]*\]\(([^)]+)\)/.exec(option);
-            const inferredImageIndex = question.imageUrls?.length === 5 ? index + 1 : index;
-            const optionImage = question.optionImageUrls?.[index]
-              ?? (imageChoices ? question.imageUrls?.[inferredImageIndex] : null)
-              ?? (imageOption ? question.imageUrls?.[inferredImageIndex] ?? imageOption[1] : null);
-            const selected = selectedOptions.includes(label);
-            return (
-              <li key={`${option}-${index}`}>
-                <button
-                  type="button"
-                  className={`question-option ${selected ? "selected" : ""}`}
-                  onClick={readOnly ? undefined : () => onSelectOption(label, optionText(option))}
-                  disabled={readOnly}
-                  aria-pressed={selected}
-                >
-                  <span className="option-label">{label}</span>
-                  {optionImage ? <img src={optionImage} alt={`选项${String.fromCharCode(65 + index)}`} loading="lazy" /> : <MathText text={optionText(option)} />}
-                </button>
-              </li>
-            );
-          })}
-        </ol>
-      ) : null}
-      {selectedOptions.length > 0 && (
-        <p className="selected-option">已选择 {selectedOptions.join("、")}，确认后点击“提交回答”。</p>
-      )}
-    </>
-  );
+  return <>{promptNode}</>;
 }

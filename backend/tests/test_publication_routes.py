@@ -79,6 +79,11 @@ class PublicationBoundaryTests(unittest.TestCase):
                         "lessonIds": ["lesson-v2"],
                     },
                     "questionPayloads": [{"question": {"id": "lesson-v2"}}],
+                    "run": {
+                        "runId": "run-test", "operation": "publication_rereview", "scope": "publication",
+                        "status": "succeeded", "config": {}, "startedAt": 1.0, "completedAt": 2.0,
+                        "targetPublicationId": publication_id,
+                    },
                 }
 
         app = FastAPI()

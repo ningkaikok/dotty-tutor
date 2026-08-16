@@ -10,6 +10,16 @@ FastAPI 交互文档启动后可从以下地址查看：
 - Swagger UI：<http://127.0.0.1:8010/docs>
 - OpenAPI JSON：<http://127.0.0.1:8010/openapi.json>
 
+前端 API 类型由应用自身的 OpenAPI 文档生成，不要手工修改
+`frontend/src/types/generated/api.ts`。接口响应模型变更后，在 `frontend` 目录执行：
+
+```bash
+npm run generate:api  # 重新生成
+npm run check:api     # 只校验，过期时返回非零状态
+```
+
+生成器使用与 API 应用相同的 `app.openapi()`；生成类型只作为 API 层的契约，页面领域类型仍可通过适配器保留。
+
 ## 健康与运行时
 
 | 方法 | 路径 | 说明 |
@@ -36,6 +46,9 @@ FastAPI 交互文档启动后可从以下地址查看：
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 合并 PDF、规划批次并处理首批 |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 按需处理后续批次或重新生成 |
+| `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate` | 修复单题；传 `refreshOcr=true` 时先重新 OCR |
+| `GET` | `/api/runs/{runId}` | 查询冻结的运行配置、状态和结果/失败证据 |
+| `GET` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions` | 按来源题键读取不可变题目修订链 |
 
 PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF` 结束标记。文件缺少
 `%%EOF` 通常表示源 PDF 本身被截断，需要重新下载或重新导出。
@@ -80,6 +93,11 @@ v0.6.0 客户端提交的旧字段 `lessonId` 暂时仍可作为 `publicationId`
 试卷新版不会覆盖原课程文档。接口为每道题创建新的 `lessonId`，将试卷 `version` 加一并记录
 `revisionOf`；新版本从 `in_review` 开始，仍须通过质量门禁后发布。若原 PDF、来源批次或 OCR 所需文件
 已经丢失，接口返回 `409`，需要重新上传原 PDF，而不是使用已污染的题干继续猜测。
+
+内容生产操作会返回审计摘要：`question_repair` 复用 OCR，`question_reocr` 显式刷新 OCR，
+`batch_regenerate` 重新生成批次，`publication_rereview` 创建整套审核新版。摘要包含 `runId`、题目
+`revisionNumber`、实际模型/审核/OCR provider 及 Prompt/Schema/validator 版本或摘要；不会返回完整 Prompt、密钥或学生数据。
+运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
 
 Help 示例：
 

@@ -1,6 +1,6 @@
 # AI 运行治理与后台任务演进计划
 
-> 状态：规划中。本文描述下一阶段的演进顺序和验收标准，不代表这些能力已经实现。
+> 状态：G1/G2 已落地，G3 仍在规划中。本文保留下一阶段的演进顺序和验收标准，并标注已经实现的边界。
 
 Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL 持久化等基础能力。下一步的重点不是
 引入更多代理框架，而是让一次 AI 处理过程可以被复现、观察、取消和评测。本计划参考通用 Agent Platform
@@ -26,7 +26,7 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 | 模型调用 | `model_runtime.py` 统一适配 Ollama、Codex 和 Mock | 统一请求/结果契约并显式记录实际回退 |
 | OCR | 页面路由、局部升级、质量门禁和内容寻址缓存 | 把长流程交给可恢复 Worker |
 | 状态 | `upload_jobs` 保存任务进度，领域状态机约束学习流程 | 增加任务租约、取消、有限重试和幂等键 |
-| 可观测性 | JSON 日志、请求 ID 和关键业务事件 | 增加贯穿模型/OCR/发布的 `run_id` 和稳定事件名 |
+| 可观测性 | JSON 日志、请求 ID、运行快照和关键业务事件 | 将同步编排迁移到可恢复 Worker，并统一后台任务事件 |
 | 质量 | 单元测试、Playwright、结构质量门禁 | 建立脱敏离线样本和可重复评测报告 |
 
 ```mermaid
@@ -47,17 +47,22 @@ flowchart LR
 这里的 Worker 是同一代码库中的独立进程，不是新的微服务。`textbook_processing.py` 和
 `question_processing.py` 继续作为领域服务，由 HTTP 路由或 Worker 调用。
 
-## G1：不可变运行快照
+## G1：不可变运行快照（已落地）
 
-为每次教材处理、重新审核和重要陪练运行创建 `RunSnapshot`，至少记录：
+教材内容生产的单题修复、刷新 OCR、批次重生成和整套重新审核已经创建 `RunSnapshot`，至少记录：
 
 - `runId`、`taskType` 和创建时间；
 - 生成模型、审核模型和 OCR Provider；
 - `promptVersion`、`schemaVersion` 和 `validatorVersion`；
 - 是否允许回退，以及实际使用的 Provider/Model。
 
-运行开始后不读取全局下拉框的新值。用户切换模型只影响下一次运行，避免同一批题目前后使用不同配置。
+运行开始时从当前 Runtime 的实际选择冻结配置；用户切换模型只影响下一次运行，避免同一批题目前后使用不同配置。
 题目、审校记录和日志只保存 `runId` 引用，详细配置由运行快照统一解释。
+
+`run_snapshots` 只允许 `running → succeeded/failed` 一次状态收敛，配置字段不可更新；`question_revisions`
+为追加写入，旧 payload 不被覆盖。当前 `batch_questions` 物化视图与 revision 证据通过同一事务写入，失败时保留
+上一份成功题目。配置只保留模型、Provider、版本、Prompt/Schema/validator 标识和摘要，不保存完整 Prompt、密钥
+或学生数据。
 
 验收标准：
 
@@ -65,7 +70,7 @@ flowchart LR
 - 服务重启后仍能查询该运行使用的实际模型与版本；
 - Mock、Ollama 和 Codex 路径均有契约测试。
 
-## G2：稳定的运行事件
+## G2：稳定的运行事件（内容生产链路已落地）
 
 在现有 JSON 日志上统一事件名和公共字段，不立即新建事件平台。建议的最小事件集合：
 
@@ -85,7 +90,9 @@ run.failed
 文本、学生答案、模型密钥和原始教材内容不能进入日志。
 
 验收标准：给定一个 `run_id`，能够仅通过结构化日志还原执行顺序、耗时、Provider、重试和最终状态。
-只有在产品需要运行历史页面或长期审计时，才把事件另存数据库表。
+内容生产已经将运行摘要另存 `run_snapshots`，并通过 `GET /api/runs/{runId}` 查询；其余日志仍保持 JSON 输出，
+避免重复建设事件平台。内容生产的 `run_id` 已出现在生成、质量修复/隔离、批次 OCR 结果摘要、发布和
+API 返回中；陪练与未来 Worker 的全链路事件仍按技术路线图逐步补齐。
 
 ## G3：PostgreSQL Job Store 与单 Worker
 

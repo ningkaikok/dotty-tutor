@@ -7,7 +7,7 @@ import {
   updatePublicationStatus,
 } from "../../api";
 import { lessonDocumentFromPayload } from "../../lesson/lessonDocument";
-import type { PublicationSummary, QuestionPayload, TextbookImportResult } from "../../types";
+import type { PublicationSummary, QuestionPayload, RunSummary, TextbookImportResult } from "../../types";
 
 /**
  * 协调明确的 draft → in_review → published 发布状态流。
@@ -25,6 +25,7 @@ export function usePaperPublication(
   const [restoredQuestionBank, setRestoredQuestionBank] = useState<QuestionPayload[] | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [lastRun, setLastRun] = useState<RunSummary | null>(null);
 
   useEffect(() => {
     // 路由状态在刷新后会丢失，因此按 sourceUploadId 从数据库恢复最新试卷及其题目快照。
@@ -104,6 +105,7 @@ export function usePaperPublication(
     setNotice("");
     try {
       const result = await createPublicationRevision(publication.publicationId);
+      setLastRun(result.run || null);
       setPublication(result.publication);
       setRestoredQuestionBank(result.questionPayloads);
       setNotice(
@@ -124,6 +126,7 @@ export function usePaperPublication(
     publicationBusy: busy || restoring,
     publicationError: error,
     publicationNotice: notice,
+    lastRun,
     restoredQuestionBank,
     submitForReview,
     publish,

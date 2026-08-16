@@ -32,6 +32,7 @@ export function TextbookApp() {
   const [loading, setLoading] = useState(false);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
+  const [lastRun, setLastRun] = useState<import("../../types").RunSummary | null>(null);
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
   const {
@@ -44,6 +45,7 @@ export function TextbookApp() {
     publish,
     regenerateRevision,
     resetPublication,
+    lastRun: publicationRun,
   } = usePaperPublication(textbookImport, questionBank);
 
   useEffect(() => {
@@ -165,6 +167,7 @@ export function TextbookApp() {
     setInteractionError("");
     try {
       const generated = await processPdfBatch(textbookImport.uploadId, nextBatch.id);
+      setLastRun(generated.run || null);
       const generatedQuestions = generated.questionPayloads?.length
         ? generated.questionPayloads
         : [generated.questionPayload];
@@ -190,6 +193,7 @@ export function TextbookApp() {
     setInteractionError("");
     try {
       const regenerated = await regenerateQuestion(textbookImport.uploadId, sourceQuestionKey);
+      setLastRun(regenerated.run || null);
       const nextBank = questionBank.map((item) => (
         item.question.sourceQuestionKey === sourceQuestionKey ? regenerated.questionPayload : item
       ));
@@ -210,6 +214,7 @@ export function TextbookApp() {
     setInteractionError("");
     try {
       const regenerated = await processPdfBatch(textbookImport.uploadId, batchId, true, refreshOcr);
+      setLastRun(regenerated.run || null);
       const generatedQuestions = regenerated.questionPayloads?.length
         ? regenerated.questionPayloads
         : [regenerated.questionPayload];
@@ -317,6 +322,16 @@ export function TextbookApp() {
 
       {publicationError && <p className="import-error" role="alert">{publicationError}</p>}
       {publicationNotice && <p className="publication-notice" role="status">{publicationNotice}</p>}
+
+      {(lastRun || publicationRun) && (() => {
+        const run = lastRun || publicationRun;
+        return run ? (
+          <p className="publication-notice" role="status">
+            审计：{run.operation} · run_id {run.runId.slice(0, 12)} · {run.status}
+            {run.config?.model && typeof run.config.model === "object" ? " · 已冻结模型配置" : ""}
+          </p>
+        ) : null;
+      })()}
 
       <section className="source-strip">
         <span>扫描页</span><strong>{textbookImport.filename}</strong><b>→</b>

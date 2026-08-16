@@ -26,6 +26,8 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 - **多路生成**：Ollama、Codex CLI 和 Mock 三种题目生成路径可切换。
 - **质量门禁**：文本与视觉双模型审校，叠加一层确定性的结构质量校验，不合格不放行。
 - **送审发布**：多道已生成题目可送审并发布为互动试卷，学生端只看到已发布内容。
+- **运行审计**：单题修复、刷新 OCR、批次重生成和整套重新审核均保留 `run_id`、revision、实际模型/审核/OCR
+  与 validator 版本；旧题目版本可追溯且不会被覆盖。
 
 ### 学生学习空间（`/learn`）
 
@@ -113,7 +115,7 @@ docker compose down
 `docker compose down` 会保留数据卷。完整 Docker 配置、外部模型连接和生产部署说明见
 [部署与运维](docs/deployment.md)。
 
-不使用 Docker 时，需要 Python 3.12、Node.js 20+ 和 PostgreSQL：
+不使用 Docker 时，需要 Python 3.12、Node.js 20.19+（20.x）或 22.12+ 和 PostgreSQL：
 
 ```bash
 python3.12 -m venv .venv
@@ -166,7 +168,7 @@ npm run dev
 ## 测试
 
 ```bash
-.venv/bin/python -m unittest discover -s backend -p 'test_*.py'
+cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 cd frontend && npm run build
 ```
 

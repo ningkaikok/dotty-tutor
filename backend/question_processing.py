@@ -47,6 +47,7 @@ def _generate_validated_question(
     batch: dict[str, Any],
     ocr_run: dict[str, Any],
     asset_dir: Path,
+    run_id: str | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """生成单题，并对未通过质量门禁的结果进行有限自动重试。
 
@@ -111,6 +112,7 @@ def _generate_validated_question(
                     question_number=number or index + 1,
                     attempts=attempt,
                     validator_version=quality.get("validatorVersion"),
+                    run_id=run_id,
                 )
             return final
         if can_retry:
@@ -123,6 +125,7 @@ def _generate_validated_question(
                 attempt=attempt + 1,
                 error_count=len(quality.get("errors", [])),
                 validator_version=quality.get("validatorVersion"),
+                run_id=run_id,
             )
         else:
             break
@@ -141,6 +144,7 @@ def _generate_validated_question(
         error_count=len(final_quality.get("errors", [])),
         validation_errors=[str(error)[:180] for error in final_quality.get("errors", [])[:5]],
         validator_version=final_quality.get("validatorVersion"),
+        run_id=run_id,
     )
     return final
 
@@ -152,6 +156,7 @@ def process_question_sources(
     asset_dir: Path,
     job: dict[str, Any] | None = None,
     update_job: ProgressUpdater | None = None,
+    run_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[list[dict[str, Any]]], list[dict[str, Any]], list[dict[str, Any]]]:
     """生成、绑定来源、审核并返回一个 OCR 批次中的所有题目。
 
@@ -163,9 +168,9 @@ def process_question_sources(
     model_runs: list[dict[str, Any]] = []
     review_runs: list[dict[str, Any]] = []
     total = max(1, len(question_sources))
-    log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"))
+    log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"), run_id=run_id)
     for index, (number, block, images) in enumerate(question_sources):
-        log_event("question.started", batch_id=batch.get("id"), question_number=number or index + 1, image_count=len(images))
+        log_event("question.started", batch_id=batch.get("id"), question_number=number or index + 1, image_count=len(images), run_id=run_id)
         payload, guide_cards, model_run, review_run = _generate_validated_question(
             number=number,
             block=block,
@@ -174,6 +179,7 @@ def process_question_sources(
             batch=batch,
             ocr_run=ocr_run,
             asset_dir=asset_dir,
+            run_id=run_id,
         )
         payloads.append(payload)
         guide_cards_list.append(guide_cards)
@@ -188,6 +194,7 @@ def process_question_sources(
             question_type=payload.get("question", {}).get("questionType"),
             model_provider=model_run.get("provider"),
             review_provider=review_run.get("provider"),
+            run_id=run_id,
         )
-    log_event("question.batch.completed", question_count=len(payloads), batch_id=batch.get("id"))
+    log_event("question.batch.completed", question_count=len(payloads), batch_id=batch.get("id"), run_id=run_id)
     return payloads, guide_cards_list, model_runs, review_runs

@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${DOTTY_LOCAL_ENV_FILE:-$ROOT_DIR/.env.local}"
 
+# Validate the runtime before touching Docker or starting any local process.  Keeping this
+# check in a standalone script makes it reusable by CI and easy to exercise with another
+# `node` executable (for example an nvm/fnm managed version).
+"$ROOT_DIR/scripts/check-node-version.sh"
+
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "未找到 $ENV_FILE。请先复制 .env.local.example 并填写数据库密码。" >&2
   exit 1

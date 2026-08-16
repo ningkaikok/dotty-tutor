@@ -122,6 +122,13 @@ Provider 和流水线版本组成缓存键，因此重新生成题目不会重�
 会话与作答记录保持可追溯。写入顺序要求“先保存新课程，再创建版本关系，最后切换当前版本”；任何一步失败
 都不能让学生入口指向半成品。
 
+内容生产的四类变更也遵守同一条不可变边界：`question_repair` 复用已有 OCR，`question_reocr` 明确刷新 OCR，
+`batch_regenerate` 重生成一个批次，`publication_rereview` 创建整套审核新版。每次操作先创建冻结的
+`run_snapshots`，再把 `runId` 传入生成、审核、质量门禁和结构化日志；题目版本追加到 `question_revisions`，
+通过 `previousRevisionId` 串成链。单题/批次的 revision 和当前 `batch_questions` 视图在同一事务中写入，失败
+不会覆盖上一次成功题目。可以通过 `GET /api/runs/{runId}` 和题目 revisions API 检查配置与版本证据，返回只包含
+模型、Provider、版本和摘要，不包含完整 Prompt 或密钥。
+
 ## 6. 错题多轮陪练怎样保持上下文
 
 错题链路适合学习“状态机比无限聊天更可靠”：
@@ -159,7 +166,7 @@ tutoring_store.py      线程、摘要和有限消息历史
 
 ```bash
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock VISION_PROVIDER=mock \
-  .venv/bin/python -m unittest discover -s backend -p 'test_*.py'
+  cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 
 cd frontend
 npm ci
