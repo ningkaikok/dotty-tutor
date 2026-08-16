@@ -1,5 +1,9 @@
 import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../types/runtime";
-import { parse } from "./client";
+import { GeneratedSuccess, parse } from "./client";
+
+type ModelsResponse = ModelCatalog & GeneratedSuccess<"get_models_api_models_get">;
+type SelectedModelsResponse = ModelCatalog & GeneratedSuccess<"select_model_api_models_select_post">;
+type OcrResponse = OcrCatalog & GeneratedSuccess<"get_ocr_providers_api_ocr_get">;
 
 /**
  * 运行时配置 API。
@@ -9,11 +13,11 @@ import { parse } from "./client";
  */
 
 export async function loadModels(): Promise<ModelCatalog> {
-  return parse<ModelCatalog>(await fetch("/api/models"));
+  return parse<ModelsResponse>(await fetch("/api/models"));
 }
 
 export async function selectModel(provider: ModelProvider, model: string): Promise<ModelCatalog> {
-  return parse<ModelCatalog>(await fetch("/api/models/select", {
+  return parse<SelectedModelsResponse>(await fetch("/api/models/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ provider, model }),
@@ -46,7 +50,7 @@ export async function selectReviewModel(provider: ModelProvider, model: string):
 }
 
 export async function loadOcrProviders(): Promise<OcrCatalog> {
-  return parse<OcrCatalog>(await fetch("/api/ocr"));
+  return parse<OcrResponse>(await fetch("/api/ocr"));
 }
 
 export async function selectOcrProvider(provider: OcrProvider): Promise<OcrCatalog> {

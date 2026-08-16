@@ -25,7 +25,7 @@ GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL�
 
 ## 服务器准备
 
-以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 20+、Nginx 和 PostgreSQL。
+以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 20.19+（20.x）或 22.12+、Nginx 和 PostgreSQL。
 示例路径、用户和域名需要替换为实际值。
 
 ```bash
@@ -95,7 +95,8 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
   `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
   `005_spaced_review.sql`、`006_publications_and_sync.sql`、
-  `007_learning_session_publication.sql` 和 `008_publication_revisions.sql`；执行前先备份数据库。
+  `007_learning_session_publication.sql`、`008_publication_revisions.sql` 和
+  `009_run_snapshots_question_revisions.sql`；执行前先备份数据库。
 
 ## 启动前检查
 
@@ -374,7 +375,7 @@ sudo systemctl reload nginx
 `.github/workflows/ci.yml` 在推送和 Pull Request 时执行：
 
 - Python 3.12 后端测试；
-- Node.js 20 前端构建；
+- Node.js 20.19+（20.x）或 22.12+ 前端构建；
 - 后端 Docker 镜像构建。
 
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流

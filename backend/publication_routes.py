@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from lesson_contracts import PublicationCreate, PublicationStatusUpdate
+from audit_contracts import PublicationRevisionResponse
 from observability import log_event
 from publication_quality import PublicationQualityError
 
@@ -98,7 +99,7 @@ def build_publication_router(*, store: Any, revision_service: Any | None = None)
             "questionPayloads": [lesson["questionPayload"] for lesson in lessons],
         }
 
-    @router.post("/{publication_id}/revisions")
+    @router.post("/{publication_id}/revisions", response_model=PublicationRevisionResponse)
     def create_publication_revision(publication_id: str) -> dict[str, Any]:
         if revision_service is None:
             raise HTTPException(status_code=501, detail="试卷版本服务未配置")
@@ -115,6 +116,7 @@ def build_publication_router(*, store: Any, revision_service: Any | None = None)
             revision_of=publication_id,
             version=revised["version"],
             lesson_count=len(revised["lessonIds"]),
+            run_id=(result.get("run") or {}).get("runId"),
         )
         return result
 

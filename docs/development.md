@@ -6,7 +6,7 @@ Qwen3-TTS 和 Azure Speech。
 ## 环境要求
 
 - Python 3.12
-- Node.js 20+
+- Node.js 20.19+（20.x）或 22.12+
 - PostgreSQL 16+
 - 可选：Ollama、MinerU、Qwen3-TTS、Codex CLI
 
@@ -25,7 +25,16 @@ cp .env.local.example .env.local
 scripts/dev-local.sh
 ```
 
-脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 Vite 和 Qwen3-TTS。打开
+脚本会先检查 Node.js 是否满足 Vite 8 的运行基线；检查失败时不会启动 Docker 或本机服务。也可以单独运行
+`scripts/check-node-version.sh`，或使用仓库根目录的 `.nvmrc`：
+
+```bash
+nvm install
+nvm use
+scripts/check-node-version.sh
+```
+
+检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:5174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
 本机 Codex、MinerU 和 Qwen3-TTS 的状态可以分别检查：
@@ -140,6 +149,18 @@ npm ci
 npm run dev
 ```
 
+修改 FastAPI 的 `response_model` 或路径契约后，同步刷新前端生成类型并检查工作树：
+
+```bash
+npm run generate:api
+npm run check:api
+```
+
+`check:api` 会在临时目录生成 OpenAPI 类型并与已提交文件逐字比较；它不会用生成结果静默覆盖工作树。
+
+`frontend/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
+收到可操作的切换提示。
+
 打开 <http://localhost:5174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
 
 前端入口：
@@ -182,7 +203,9 @@ psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
 ```
 
 试卷发布和学习记录同步使用 `006_publications_and_sync.sql`；学习会话字段修正使用
-`007_learning_session_publication.sql`。升级已有 PostgreSQL 时按编号顺序执行迁移。
+`007_learning_session_publication.sql`，发布版本使用 `008_publication_revisions.sql`，运行与题目审计使用
+`009_run_snapshots_question_revisions.sql`。升级已有 PostgreSQL 时按编号顺序执行迁移。
+其中 009 会创建不可变的 `run_snapshots` 与 `question_revisions`；SQLite 测试由 SQLAlchemy 元数据自动建表。
 
 开发环境仍会通过 SQLAlchemy `create_all()` 幂等创建缺失表；显式 SQL 便于学习和部署审查，不能替代
 生产环境中的正式迁移版本管理。

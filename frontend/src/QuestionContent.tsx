@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import type { MathContentBlock, QuestionContentBlock, TextContentBlock } from "./types";
 import MathText from "./MathText";
-import { stripLegacyImageText } from "./questionPresentation";
 
 type InlineBlock = TextContentBlock | MathContentBlock;
 
@@ -12,6 +11,7 @@ interface QuestionContentProps {
   multiple?: boolean;
   onSelectOption?: (label: string, answerText: string) => void;
   readOnly?: boolean;
+  showOptions?: boolean;
 }
 
 function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
@@ -20,7 +20,7 @@ function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
       {blocks.map((block) => block.type === "text" ? (
         // 文本块也可能混有 `$...$`。统一交给 MathText，避免 OCR 结构化后
         // 同一条公式因为落在 text 或 math block 而出现两种显示结果。
-        <MathText key={block.id} text={stripLegacyImageText(block.text)} />
+        <MathText key={block.id} text={block.text} />
       ) : (
         <MathText key={block.id} text={block.display ? `$$${block.latex}$$` : `$${block.latex}$`} />
       ))}
@@ -104,7 +104,7 @@ function stripDuplicatedChoiceTail(blocks: InlineBlock[], hasOptions: boolean): 
   return trimmed;
 }
 
-export function QuestionContent({ blocks, selectedOption, selectedOptions = [], multiple = false, onSelectOption, readOnly = false }: QuestionContentProps) {
+export function QuestionContent({ blocks, selectedOption, selectedOptions = [], multiple = false, onSelectOption, readOnly = false, showOptions = true }: QuestionContentProps) {
   // sourceOrder 是 OCR 版面顺序的稳定投影；不要依赖数组当前顺序，否则图片和选项可能互换。
   const nodes: ReactNode[] = [];
   let inlineBlocks: InlineBlock[] = [];
@@ -157,6 +157,7 @@ export function QuestionContent({ blocks, selectedOption, selectedOptions = [], 
       );
       return;
     }
+    if (!showOptions) return;
     const containsOnlyLabels = block.items.every((item) => {
       const value = item.contentBlocks
         .map((content) => content.type === "text" ? content.text : content.latex)

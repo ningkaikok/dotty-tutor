@@ -1,3 +1,13 @@
+import type { operations } from "../types/generated/api";
+
+/** Extract the documented 200 response while keeping domain adapters local to each API module. */
+export type GeneratedSuccess<Operation extends keyof operations> =
+  operations[Operation] extends { responses: infer Responses }
+    ? Responses extends { 200: { content: { "application/json": infer Payload } } }
+      ? Payload
+      : never
+    : never;
+
 /**
  * Parse the shared JSON error envelope used by every frontend API module.
  *

@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
 from lesson_generation import generate_lesson, generate_model_reply, lesson_store
+from audit_contracts import BatchProcessResponse, QuestionRegenerationResponse, RevisionSummary, RunSummary
 from library_routes import build_library_router
 from observability import log_event
 from ocr_runtime import runtime as ocr_runtime
@@ -287,7 +288,7 @@ def get_help(request: HelpRequest) -> TutorReply:
     return reply
 
 
-@router.post("/api/uploads/{upload_id}/batches/{batch_id}/process")
+@router.post("/api/uploads/{upload_id}/batches/{batch_id}/process", response_model=BatchProcessResponse)
 def process_pdf_batch(
     upload_id: str,
     batch_id: str,
@@ -298,7 +299,7 @@ def process_pdf_batch(
     return processing_service.process_batch(upload_id, batch_id, force, refresh_ocr=refreshOcr)
 
 
-@router.post("/api/uploads/{upload_id}/questions/{question_source_key}/regenerate")
+@router.post("/api/uploads/{upload_id}/questions/{question_source_key}/regenerate", response_model=QuestionRegenerationResponse)
 def regenerate_question(
     upload_id: str,
     question_source_key: str,
@@ -310,6 +311,19 @@ def regenerate_question(
         question_source_key,
         refresh_ocr=refreshOcr,
     )
+
+
+@router.get("/api/runs/{run_id}", response_model=RunSummary)
+def get_run_snapshot(run_id: str) -> dict[str, Any]:
+    snapshot = store.get_run_snapshot(run_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="运行记录不存在")
+    return snapshot
+
+
+@router.get("/api/uploads/{upload_id}/questions/{question_source_key}/revisions", response_model=list[RevisionSummary])
+def list_question_revisions(upload_id: str, question_source_key: str) -> list[dict[str, Any]]:
+    return store.list_question_revisions(upload_id, question_source_key)
 
 
 @router.get("/api/uploads/{upload_id}/assets/{batch_id}/{filename}")

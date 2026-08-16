@@ -1,4 +1,9 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
+
+const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
 
 const modelRun = {
   requestedProvider: "mock",
@@ -160,7 +165,30 @@ const priorityImportResult = {
   questionPayloads: [multiSelectQuestion, fillBlankQuestion, numericQuestion],
 };
 
+// Regression fixture for the historical split-image bug: legacy prompt/options are still
+// accepted, but explicit image arrays and Markdown must enter the same renderer in source order.
+const renderingQuestion = payload({
+  id: "pw-rendering",
+  questionType: "choice",
+  chapter: "图文题",
+  knowledgePoint: "公式与题图",
+  questionNumber: "7",
+  prompt: "观察 ![题干图](/fixtures/stem.png)，计算 $\\frac{1}{2} + 1$。",
+  givens: ["条件图：![条件图](/fixtures/given.png)，且 $x > 0$"],
+  options: ["(A) ![选项图 A](/fixtures/a.png)", "(B) $x=2$"],
+  imageUrls: ["/fixtures/stem.png"],
+  optionImageUrls: ["/fixtures/a.png", ""],
+});
+
+const renderingImportResult = {
+  ...importResult,
+  importId: "pw-rendering-import",
+  questionPayload: renderingQuestion,
+  questionPayloads: [renderingQuestion],
+};
+
 async function mockApi(page: Page, result = importResult) {
+  await mockFixtureImages(page);
   await page.route("**/api/learning/sessions/*/attempts", async (route) => {
     await route.fulfill({
       json: {
@@ -244,7 +272,25 @@ async function mockApi(page: Page, result = importResult) {
   });
 }
 
-async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = false) {
+async function mockFixtureImages(page: Page) {
+  await page.route("**/fixtures/*.png", async (route) => {
+    await route.fulfill({ status: 200, contentType: "image/png", body: TINY_PNG });
+  });
+}
+
+async function expectLoadedUniqueImages(images: Locator) {
+  await expect.poll(async () => images.evaluateAll((elements) => elements.every((element) => {
+    const image = element as HTMLImageElement;
+    return image.complete && image.naturalWidth > 0;
+  }))).toBe(true);
+  const sources = await images.evaluateAll((elements) => elements.map((element) => {
+    const image = element as HTMLImageElement;
+    return image.currentSrc || image.getAttribute("src") || "";
+  }));
+  expect(new Set(sources).size).toBe(sources.length);
+}
+
+async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = false, richHistory = false) {
   let items: Array<Record<string, unknown>> = [];
   const pendingItem = {
     mistakeId: "mistake-pw-1",
@@ -290,7 +336,11 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
   if (startConfirmed) items = [confirmedItem];
 
   let tutorStage = startVerify ? "verify" : "diagnose";
-  let tutorMessages: Array<Record<string, unknown>> = [];
+  let tutorMessages: Array<Record<string, unknown>> = richHistory ? [{
+    messageId: "history-pw-1", threadId: "thread-pw-1", role: "assistant",
+    content: "历史题图 ![历史题图](/fixtures/history.png)，公式 $\\frac{1}{2}$。",
+    inputMode: "text", action: {}, modelRun, createdAt: 3.5,
+  }] : [];
   let variations: Array<Record<string, unknown>> = [];
   let reviewTasks: Array<Record<string, unknown>> = [];
   const tutorThread = () => ({
@@ -711,6 +761,16 @@ test.describe("产品入口", () => {
     await expect(page.getByText("需要修正")).toBeVisible();
   });
 
+  test("错题陪练历史消息统一渲染 Markdown 图片和公式", async ({ page }) => {
+    await mockMistakeApi(page, true, false, true);
+    await mockFixtureImages(page);
+    await page.goto("/mistakes/mistake-pw-1/tutor");
+
+    await expect(page.locator(".tutor-messages .inline-content-image")).toHaveCount(1);
+    await expect(page.locator(".tutor-messages .katex")).toHaveCount(1);
+    await expectLoadedUniqueImages(page.locator(".tutor-messages img"));
+  });
+
   test("陪练完成后可生成并提交错误原因自适应验证题", async ({ page }) => {
     await mockMistakeApi(page, true, true);
     await page.goto("/mistakes/mistake-pw-1/tutor");
@@ -750,6 +810,57 @@ test.describe("产品入口", () => {
 });
 
 test.describe("教材辅导核心交互", () => {
+  test("内容生产端按来源顺序统一渲染公式、题干图、条件图和选项图", async ({ page }) => {
+    await mockApi(page, renderingImportResult);
+    await page.goto("/studio");
+    await page.locator('input[type="file"]').setInputFiles({
+      name: "rendering-fixture.png",
+      mimeType: "image/png",
+      buffer: Buffer.from("fixture"),
+    });
+    await page.getByRole("button", { name: /开始识别/ }).click();
+    await page.getByRole("button", { name: "进入动态教材 →" }).click();
+
+    await expect(page.getByRole("heading", { name: "公式与题图" })).toBeVisible();
+    await expect(page.locator(".canonical-question-content .question-images img")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content .question-options img")).toHaveCount(1);
+    await expect(page.locator(".givens .inline-content-image")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content")).not.toContainText("/fixtures/");
+    await expect(page.locator(".canonical-question-content .katex")).toHaveCount(2);
+    await expectLoadedUniqueImages(page.locator(".canonical-question-content img, .givens img"));
+  });
+
+  test("学生入口复用同一套题图和公式渲染", async ({ page }) => {
+    await mockApi(page, renderingImportResult);
+    const publication = {
+      publicationId: "paper-rendering",
+      title: "图文渲染回归",
+      status: "published",
+      lessonIds: [renderingQuestion.question.id],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [{
+        lessonId: renderingQuestion.question.id,
+        title: renderingQuestion.question.knowledgePoint,
+        version: 1,
+        status: "published",
+        questionPayload: renderingQuestion,
+        guideCards: [],
+      }],
+    };
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.route("**/api/publications/paper-rendering", async (route) => await route.fulfill({ json: publication }));
+    await page.goto("/learn");
+    await page.getByRole("button", { name: /图文渲染回归/ }).click();
+    await expect(page.getByRole("heading", { name: "公式与题图" })).toBeVisible();
+    await expect(page.locator(".canonical-question-content .question-images img")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content .question-options img")).toHaveCount(1);
+    await expect(page.locator(".student-question-givens .inline-content-image")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content")).not.toContainText("![");
+    await expectLoadedUniqueImages(page.locator(".canonical-question-content img, .student-question-givens img"));
+  });
+
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
     await mockApi(page);
     await page.goto("/studio");

@@ -1,6 +1,32 @@
 import type { QuestionPayload } from "./question";
 import type { ModelRun, OcrRun, ReviewRun } from "./runtime";
 
+export interface RunSummary {
+  runId: string;
+  operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch";
+  scope: string;
+  targetUploadId?: string | null;
+  targetQuestionKey?: string | null;
+  targetPublicationId?: string | null;
+  status: "running" | "succeeded" | "failed";
+  config: Record<string, unknown>;
+  result?: Record<string, unknown> | null;
+  error?: Record<string, unknown> | null;
+  startedAt: number;
+  completedAt?: number | null;
+}
+
+export interface RevisionSummary {
+  revisionId: string;
+  uploadId: string;
+  sourceQuestionKey: string;
+  revisionNumber: number;
+  operation: RunSummary["operation"];
+  previousRevisionId?: string | null;
+  runId: string;
+  createdAt: number;
+}
+
 export interface ImportStage {
   id: string;
   label: string;
@@ -63,6 +89,8 @@ export interface BatchProcessResult {
   modelRuns?: ModelRun[];
   reviewRun?: ReviewRun;
   reviewRuns?: ReviewRun[];
+  run?: RunSummary | null;
+  revisions?: RevisionSummary[];
 }
 
 export interface QuestionRegenerationResult {
@@ -74,8 +102,11 @@ export interface QuestionRegenerationResult {
   reviewRun?: ReviewRun;
   regeneration: {
     scope: "question";
+    operation?: "question_repair" | "question_reocr";
     refreshOcr: boolean;
   };
+  run: RunSummary;
+  revision?: RevisionSummary | null;
 }
 
 export interface PdfUploadTask {

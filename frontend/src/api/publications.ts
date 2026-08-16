@@ -6,7 +6,9 @@ import type {
   PublicationWorkspaceState,
 } from "../types/publication";
 import type { LessonDocument } from "../types/lesson";
-import { parse } from "./client";
+import { GeneratedSuccess, parse } from "./client";
+
+type GeneratedPublicationRevisionResponse = GeneratedSuccess<"create_publication_revision_api_publications__publication_id__revisions_post">;
 
 /**
  * 互动试卷发布 API。
@@ -47,7 +49,7 @@ export async function updatePublicationStatus(
 }
 
 export async function createPublicationRevision(publicationId: string): Promise<PublicationRevisionResult> {
-  return parse<PublicationRevisionResult>(await fetch(`/api/publications/${publicationId}/revisions`, {
+  return parse<PublicationRevisionResult & GeneratedPublicationRevisionResponse>(await fetch(`/api/publications/${publicationId}/revisions`, {
     method: "POST",
   }));
 }

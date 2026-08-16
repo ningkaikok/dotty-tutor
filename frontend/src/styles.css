@@ -251,6 +251,7 @@ h2 { letter-spacing: -0.025em; }
 .math-display { display: block; margin: 12px 0; overflow-x: auto; }
 .math-inline { display: inline-block; color: inherit; vertical-align: -.08em; }
 .math-inline .katex { font-size: 1em; }
+.inline-content-image { display: inline-block; max-width: min(100%, 420px); max-height: 320px; margin: 6px 0; object-fit: contain; vertical-align: middle; border-radius: 8px; background: white; }
 .question-options { display: grid; gap: 10px; margin: -5px 0 20px; padding-left: 0; color: #405149; list-style: none; }
 .question-options li { min-height: 48px; border-radius: 9px; background: #f4f5f1; }
 .question-option { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px 12px; border: 2px solid transparent; border-radius: 9px; color: inherit; background: transparent; text-align: left; }

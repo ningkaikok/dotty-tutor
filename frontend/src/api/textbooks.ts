@@ -6,7 +6,10 @@ import type {
   QuestionRegenerationResult,
   TextbookImportResult,
 } from "../types/textbook";
-import { parse } from "./client";
+import { GeneratedSuccess, parse } from "./client";
+
+type GeneratedBatchProcessResponse = GeneratedSuccess<"process_pdf_batch_api_uploads__upload_id__batches__batch_id__process_post">;
+type GeneratedQuestionRepairResponse = GeneratedSuccess<"regenerate_question_api_uploads__upload_id__questions__question_source_key__regenerate_post">;
 
 export async function loadQuestion(): Promise<QuestionPayload> {
   return parse<QuestionPayload>(await fetch("/api/question"));
@@ -58,7 +61,7 @@ export async function processPdfBatch(
   force = false,
   refreshOcr = false,
 ): Promise<BatchProcessResult> {
-  return parse<BatchProcessResult>(
+  return parse<BatchProcessResult & GeneratedBatchProcessResponse>(
     await fetch(`/api/uploads/${uploadId}/batches/${batchId}/process?force=${force}&refreshOcr=${refreshOcr}`, { method: "POST" }),
   );
 }
@@ -68,7 +71,7 @@ export async function regenerateQuestion(
   sourceQuestionKey: string,
   refreshOcr = false,
 ): Promise<QuestionRegenerationResult> {
-  return parse<QuestionRegenerationResult>(
+  return parse<QuestionRegenerationResult & GeneratedQuestionRepairResponse>(
     await fetch(
       `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}/regenerate?refreshOcr=${refreshOcr}`,
       { method: "POST" },

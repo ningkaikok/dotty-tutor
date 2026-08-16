@@ -25,6 +25,7 @@ from question_source import (
     question_key,
     split_question_sources,
 )
+from run_audit import RunAudit, build_run_config, is_persistence_test_double
 from textbook_ocr_pipeline import resolve_routed_ocr_source
 
 
@@ -38,25 +39,46 @@ class TextbookProcessingService:
         self.store = store
         self.upload_registry = upload_registry
         self.ocr_runtime = ocr_runtime
+        self.audit = RunAudit(store)
 
     def _persist_lessons(
         self,
         upload_id: str,
         payloads: list[dict[str, Any]],
         guide_cards_list: list[list[dict[str, Any]]],
-    ) -> None:
-        """同时保存生成题快照和对应可编程课程文档。"""
+        *,
+        run_id: str | None = None,
+        operation: str = "initial_batch",
+    ) -> list[dict[str, Any]]:
+        """保存课程文档，并在一个事务中提交题目当前视图与 revision 证据。
+
+        ``lesson_documents`` 仍是独立存储边界；先写课程文档，再提交题目当前视图和
+        revision 链，确保课程文档失败时不会覆盖上一份成功题目。极端情况下题目事务
+        失败可能留下未被当前视图引用的课程文档，但不会污染学生入口。
+        """
         question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
-        self.store.save_questions(
-            upload_id,
-            list(zip(question_keys, payloads, guide_cards_list)),
-        )
+        revisions: list[dict[str, Any]] = []
         for item, cards in zip(payloads, guide_cards_list):
             self.store.save_lesson(lesson_document_from_payload(
                 item,
                 source_upload_id=upload_id,
                 guide_cards=cards,
             ))
+        if (
+            run_id and hasattr(self.store, "append_revisions_and_save_questions")
+            and not is_persistence_test_double(self.store)
+        ):
+            # 课程文档先按不可变 lessonId 保存；随后 revision 与当前题目视图在同一事务提交，
+            # 因而批次失败不会部分替换学生可见题目。极端数据库失败最多留下尚未被引用的课程文档。
+            revisions = self.store.append_revisions_and_save_questions(
+                upload_id=upload_id,
+                questions=list(zip(question_keys, payloads, guide_cards_list)),
+                operation=operation,
+                run_id=run_id,
+            )
+        else:
+            self.store.save_questions(upload_id, list(zip(question_keys, payloads, guide_cards_list)))
+        return revisions
 
     def _load_batch_sources(
         self,
@@ -259,6 +281,7 @@ class TextbookProcessingService:
             asset_dir,
             job,
             self.upload_registry.update,
+            run_id=None,
         )
         payload = payloads[0]
         question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
@@ -330,6 +353,7 @@ class TextbookProcessingService:
         *,
         persist: bool = True,
         refresh_ocr: bool = False,
+        run_id: str | None = None,
     ) -> dict[str, Any]:
         """OCR 一个页范围，并可选择是否立即保存生成练习。
 
@@ -375,6 +399,19 @@ class TextbookProcessingService:
         if batch_id in processing:
             raise HTTPException(status_code=409, detail="这个批次正在处理中")
         processing.add(batch_id)
+        operation = "batch_regenerate" if force else "initial_batch"
+        own_run = run_id is None
+        run = self.audit.start(
+            operation,
+            "batch",
+            upload_id=upload_id,
+            config=build_run_config(
+                ocr_run={"provider": self.ocr_runtime.selection.provider, "fallback": False},
+                operation_details={"force": force, "refreshOcr": refresh_ocr},
+            ),
+            run_id=run_id,
+        ) if own_run else self.store.get_run_snapshot(run_id)
+        active_run_id = (run or {}).get("runId") or run_id
         try:
             lesson_source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
                 upload_id=upload_id,
@@ -390,14 +427,20 @@ class TextbookProcessingService:
                 asset_dir,
                 job,
                 self.upload_registry.update,
+                active_run_id,
             )
             payload = payloads[0]
             question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
             response_batch = dict(batch)
             response_batch["status"] = "processed"
+            revisions: list[dict[str, Any]] = []
             if persist:
                 batch["status"] = "processed"
-                self._persist_lessons(upload_id, payloads, guide_cards_list)
+                revisions = self._persist_lessons(
+                    upload_id, payloads, guide_cards_list,
+                    run_id=active_run_id,
+                    operation=operation,
+                )
                 for key, item, cards in zip(question_keys, payloads, guide_cards_list):
                     job["batchPayloads"][key] = item
                     job.setdefault("batchGuideCards", {})[key] = cards
@@ -427,9 +470,18 @@ class TextbookProcessingService:
                 "upload.batch.completed",
                 upload_id=upload_id,
                 batch_id=batch_id,
+                run_id=active_run_id,
                 question_count=len(payloads),
                 ocr_provider=ocr_run.get("provider"),
             )
+            if own_run and active_run_id:
+                run = self.audit.finish(active_run_id, result={
+                    "batchId": batch_id,
+                    "questionCount": len(payloads),
+                    "modelRun": model_runs[0],
+                    "reviewRun": review_runs[0],
+                    "ocrRun": ocr_run,
+                })
             return {
                 "batch": response_batch,
                 "questionPayload": payload,
@@ -440,12 +492,18 @@ class TextbookProcessingService:
                 "modelRuns": model_runs,
                 "reviewRun": review_runs[0],
                 "reviewRuns": review_runs,
+                "run": run or self.store.get_run_snapshot(active_run_id),
+                "revisions": revisions,
             }
         except HTTPException as error:
+            if own_run and active_run_id:
+                self.audit.fail(active_run_id, error, stage="batch")
             if persist:
                 self._record_batch_failure(job, batch, batch_id, str(error.detail), error)
             raise
         except Exception as error:
+            if own_run and active_run_id:
+                self.audit.fail(active_run_id, error, stage="batch")
             if persist:
                 self._record_batch_failure(job, batch, batch_id, str(error), error)
             raise HTTPException(status_code=422, detail=f"批次处理失败：{error}") from error
@@ -483,6 +541,18 @@ class TextbookProcessingService:
         if lock_key in processing:
             raise HTTPException(status_code=409, detail="这个题目正在修复中")
         processing.add(lock_key)
+        operation = "question_reocr" if refresh_ocr else "question_repair"
+        run = self.audit.start(
+            operation,
+            "question",
+            upload_id=upload_id,
+            question_key=source_question_key,
+            config=build_run_config(
+                ocr_run={"provider": self.ocr_runtime.selection.provider, "fallback": False},
+                operation_details={"refreshOcr": refresh_ocr},
+            ),
+        )
+        run_id = run["runId"]
         try:
             _lesson_source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
                 upload_id=upload_id,
@@ -511,11 +581,15 @@ class TextbookProcessingService:
                 batch=batch,
                 ocr_run=ocr_run,
                 asset_dir=asset_dir,
+                run_id=run_id,
             )
             # 业务引用使用稳定的来源键，生成题目的内部 id 可以变化；这样只替换当前题，
             # 不会让学生端已有的其它题目、排序和发布快照失效。
             payload["question"]["sourceQuestionKey"] = source_question_key
-            self._persist_lessons(upload_id, [payload], [guide_cards])
+            revisions = self._persist_lessons(
+                upload_id, [payload], [guide_cards], run_id=run_id, operation=operation,
+            )
+            revision = revisions[0] if revisions else None
             job["batchPayloads"][source_question_key] = payload
             job.setdefault("batchGuideCards", {})[source_question_key] = guide_cards
             result["questionPayload"] = payload
@@ -535,9 +609,16 @@ class TextbookProcessingService:
                 upload_id=upload_id,
                 source_question_key=source_question_key,
                 batch_id=batch_id,
+                run_id=run_id,
                 refresh_ocr=refresh_ocr,
                 ocr_provider=ocr_run.get("provider"),
             )
+            run = self.audit.finish(run_id, result={
+                "revisionId": revision["revisionId"] if revision else None,
+                "modelRun": model_run,
+                "reviewRun": review_run,
+                "ocrRun": ocr_run,
+            })
             return {
                 "batch": batch,
                 "questionPayload": payload,
@@ -545,11 +626,15 @@ class TextbookProcessingService:
                 "ocrRun": ocr_run,
                 "modelRun": model_run,
                 "reviewRun": review_run,
-                "regeneration": {"scope": "question", "refreshOcr": refresh_ocr},
+                "regeneration": {"scope": "question", "operation": operation, "refreshOcr": refresh_ocr},
+                "run": run,
+                "revision": revision,
             }
-        except HTTPException:
+        except HTTPException as error:
+            self.audit.fail(run_id, error, stage="question")
             raise
         except Exception as error:
+            self.audit.fail(run_id, error, stage="question")
             log_event(
                 "upload.question.regeneration.failed",
                 level=40,
