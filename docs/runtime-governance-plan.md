@@ -1,6 +1,6 @@
 # AI 运行治理与后台任务演进计划
 
-> 状态：G1/G2 已落地，G3 仍在规划中。本文保留下一阶段的演进顺序和验收标准，并标注已经实现的边界。
+> 状态：G1～G3 已落地，G4/G5 仍在规划中。本文记录真实实现边界、下一阶段顺序和验收标准。
 
 Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL 持久化等基础能力。下一步的重点不是
 引入更多代理框架，而是让一次 AI 处理过程可以被复现、观察、取消和评测。本计划参考通用 Agent Platform
@@ -12,8 +12,8 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
    编排是否真正有价值。
 2. **短请求保持同步，长任务进入后台**：普通 Help、判题和状态查询继续使用 HTTP；整本 PDF、OCR、批量
    生成和重新审核改为可恢复任务。
-3. **优先复用 PostgreSQL**：第一版 Job Store 直接使用现有 `upload_jobs` 和单个 Python Worker，不为了
-   “像生产系统”提前引入 Redis、Kafka 或多个服务。
+3. **优先复用 PostgreSQL**：第一版使用独立 `background_jobs` 表和单个 Python Worker；`upload_jobs`
+   继续保存教材上传领域状态，不把领域记录与任务租约混为一张表，也不提前引入 Redis 或 Kafka。
 4. **模型只提供建议，领域状态机拥有决定权**：发布门禁、掌握度、重试上限和状态迁移继续由确定性代码
    控制，不能由模型输出直接覆盖。
 5. **每个阶段可以单独测试和回滚**：运行快照、事件、后台任务和模型网关分别提交，不把架构重构与产品
@@ -25,8 +25,8 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 | --- | --- | --- |
 | 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock | 统一请求/结果契约并显式记录实际回退 |
 | OCR | 页面路由、局部升级、质量门禁和内容寻址缓存 | 把长流程交给可恢复 Worker |
-| 状态 | `upload_jobs` 保存任务进度，领域状态机约束学习流程 | 增加任务租约、取消、有限重试和幂等键 |
-| 可观测性 | JSON 日志、请求 ID、运行快照和关键业务事件 | 将同步编排迁移到可恢复 Worker，并统一后台任务事件 |
+| 状态 | `upload_jobs` 保存教材进度，`background_jobs` 保存后台执行状态 | 为整套重新审核等后续长任务复用同一 Job Store |
+| 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情 | 将 `run_id` 继续贯穿陪练与后续 Worker 任务 |
 | 质量 | 单元测试、Playwright、结构质量门禁 | 建立脱敏离线样本和可重复评测报告 |
 
 ```mermaid
@@ -92,9 +92,9 @@ run.failed
 验收标准：给定一个 `run_id`，能够仅通过结构化日志还原执行顺序、耗时、Provider、重试和最终状态。
 内容生产已经将运行摘要另存 `run_snapshots`，并通过 `GET /api/runs/{runId}` 查询；其余日志仍保持 JSON 输出，
 避免重复建设事件平台。内容生产的 `run_id` 已出现在生成、质量修复/隔离、批次 OCR 结果摘要、发布和
-API 返回中；陪练与未来 Worker 的全链路事件仍按技术路线图逐步补齐。
+API 返回中；陪练与整套重新审核等后续长任务的全链路事件仍按技术路线图逐步补齐。
 
-## G3：PostgreSQL Job Store 与单 Worker
+## G3：PostgreSQL Job Store 与单 Worker（已落地）
 
 把整本 PDF 完成、OCR、批量生成和整套重新审核从同步 HTTP 请求迁出：
 
@@ -107,8 +107,21 @@ POST complete
   → 前端按 jobId 查询多个文件的独立进度
 ```
 
-第一版复用 `upload_jobs`，补充 `attempt_count`、`last_error`、`cancel_requested`、`lease_owner`、
-`lease_expires_at` 和幂等键。Worker 以有限并发运行，进程异常后由过期租约恢复任务。
+第一版新增 `background_jobs`，保留 `upload_jobs` 的教材领域语义。任务记录包含 `attempt_count`、
+`max_attempts`、`last_error`、`cancel_requested`、`lease_owner`、`lease_expires_at`、幂等键、运行快照和结果。
+PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务；SQLite 只作为测试回退。Worker 定时续租，失去租约后
+不会用旧执行者身份提交结果；过期租约会按取消请求、重试预算和失败上限确定性恢复。
+
+当前已异步化：
+
+- `POST /api/uploads/{uploadId}/complete`：返回 `202` 和任务快照；
+- `POST /api/uploads/{uploadId}/batches/{batchId}/process`：返回 `202` 和任务快照；
+- `GET /api/jobs/{jobId}`、`POST /api/jobs/{jobId}/cancel`、`POST /api/jobs/{jobId}/retry`：查询、取消和人工重试；
+- `python -m worker --registry api.routers.textbook_routes:textbook_job_registry`：独立 Worker 进程；
+- Compose 和 systemd 分别运行 API 与 Worker，但两者复用同一应用服务、数据库和文件目录。
+
+自动重试预算不会被人工重试清零；人工重试只给失败任务增加一次明确预算并保留最后错误。任务错误统一记录
+稳定 `code`、用户可读 `message`、是否可重试、异常类型和请求 ID，前端不需要解析 Python 异常文本。
 
 验收标准：
 
@@ -164,8 +177,8 @@ Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显
 
 1. `feature/run-snapshots`：运行快照、版本字段和查询接口。
 2. `refactor/run-events`：稳定事件名、公共字段和日志测试。
-3. `feature/postgres-job-worker`：202 接口、单 Worker 和状态轮询。
-4. `feature/job-recovery`：取消、租约、幂等和有限重试。
+3. `feature/postgres-job-worker`：202 接口、单 Worker 和状态轮询（已完成）。
+4. `feature/job-recovery`：取消、租约、幂等和有限重试（已完成）。
 5. `test/offline-ai-evaluation`：脱敏样本、指标脚本和基线报告。
 6. `refactor/model-gateway-contracts`：统一 ModelRequest/ModelResult 和显式回退。
 

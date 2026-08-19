@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from infrastructure.runtime.model_runtime import Provider, runtime
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 
 
 def _normalize_review_math(value: str) -> str:
@@ -168,6 +169,30 @@ class ReviewRuntime:
         self.text_provider: Provider = os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
         self.text_model = os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
 
+    def _audit_run(
+        self,
+        run: dict[str, Any],
+        *,
+        schema: dict[str, Any],
+        prompt: str,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """Normalize successful and fallback model runs to the review runtime."""
+        existing = run.get("config") if isinstance(run, dict) else None
+        if isinstance(existing, dict):
+            snapshot = RuntimeConfigSnapshot.from_mapping({**existing, "runtime": "review"})
+        else:
+            snapshot = RuntimeConfigSnapshot.for_model(
+                provider or self.text_provider,
+                model or self.text_model,
+                schema=schema,
+                prompt=prompt,
+                runtime="review",
+                timeout=240.0,
+            )
+        return attach_runtime_config(run, snapshot)
+
     def catalog(self) -> dict[str, Any]:
         """返回统一审核模型目录，不改变题目生成模型。"""
         return {
@@ -232,6 +257,7 @@ OCR 原题：
                 TEXT_REVIEW_SCHEMA,
                 max_tokens=2200,
             )
+            self._audit_run(text_run, schema=TEXT_REVIEW_SCHEMA, prompt=text_prompt)
             question = corrected["question"]
             if text_review.get("correctedPrompt"):
                 question["prompt"] = str(text_review["correctedPrompt"])[:4000]
@@ -275,6 +301,7 @@ OCR 原题：
                 "fallback": True,
                 "error": text_error,
             }
+            self._audit_run(text_run, schema=TEXT_REVIEW_SCHEMA, prompt=text_prompt)
 
         vision_error = None
         vision_review: dict[str, Any]
@@ -297,6 +324,7 @@ OCR 原题：
                     max_tokens=1400,
                     image_paths=image_paths,
                 )
+                self._audit_run(vision_run, schema=VISION_REVIEW_SCHEMA, prompt=vision_prompt)
             except Exception as error:
                 vision_error = str(error)
                 vision_review = {
@@ -313,6 +341,7 @@ OCR 原题：
                     "fallback": True,
                     "error": vision_error,
                 }
+                self._audit_run(vision_run, schema=VISION_REVIEW_SCHEMA, prompt=vision_prompt)
         else:
             vision_review = {
                 "correctAnswer": "",
@@ -328,6 +357,7 @@ OCR 原题：
                 "fallback": False,
                 "skipped": "题目没有图片",
             }
+            self._audit_run(vision_run, schema=VISION_REVIEW_SCHEMA, prompt="no-image-review")
 
         assessments = vision_review.get("imageAssessments", [])
         if assessments:
@@ -385,6 +415,7 @@ OCR 原题：
                     TEXT_REVIEW_SCHEMA,
                     max_tokens=2200,
                 )
+                self._audit_run(repair_run, schema=TEXT_REVIEW_SCHEMA, prompt=repair_prompt)
                 repaired_prompt = str(repaired_review.get("correctedPrompt", ""))
                 if repaired_prompt:
                     corrected["question"]["prompt"] = repaired_prompt[:4000]
@@ -423,6 +454,13 @@ OCR 原题：
             "visionModelRun": vision_run,
             "needsHumanReview": bool(text_review.get("needsHumanReview") or vision_review.get("needsHumanReview")),
         }
+        self._audit_run(
+            review_run,
+            schema=TEXT_REVIEW_SCHEMA,
+            prompt="review-orchestration",
+            provider=self.text_provider,
+            model=self.text_model,
+        )
         corrected["review"] = review_run
         return corrected, review_run
 

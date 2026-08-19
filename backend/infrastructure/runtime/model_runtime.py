@@ -23,6 +23,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from observability import log_event
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    RuntimeExecutionError,
+    attach_runtime_config,
+)
 
 
 Provider = Literal["ollama", "codex", "mock"]
@@ -148,6 +153,26 @@ class ModelRuntime:
         self.selection = ModelSelection(provider, model)
         return self.catalog()
 
+    def config_snapshot(
+        self,
+        provider: str,
+        model: str,
+        *,
+        schema: dict[str, Any] | None = None,
+        prompt: str | None = None,
+        runtime_name: str = "generation",
+    ) -> RuntimeConfigSnapshot:
+        """Create a content-free snapshot shared by generation and review calls."""
+        timeout = 180.0 if provider == "ollama" else 240.0
+        return RuntimeConfigSnapshot.for_model(
+            provider,
+            model,
+            schema=schema,
+            prompt=prompt,
+            runtime=runtime_name,
+            timeout=timeout,
+        )
+
     def generate_json(
         self,
         prompt: str,
@@ -158,6 +183,13 @@ class ModelRuntime:
         selection = ModelSelection(self.selection.provider, self.selection.model)
         if selection.provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
+        snapshot = self.config_snapshot(
+            selection.provider,
+            selection.model,
+            schema=schema,
+            prompt=prompt,
+            runtime_name="generation",
+        )
         started = time.perf_counter()
         log_event("model.request.started", provider=selection.provider, model=selection.model)
         try:
@@ -166,29 +198,34 @@ class ModelRuntime:
             else:
                 result = self._codex_json(selection.model, prompt, schema)
         except Exception as error:
+            execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
+                f"模型调用失败：{error}", snapshot=snapshot, cause=error
+            )
             log_event(
                 "model.request.failed",
                 level=40,
                 provider=selection.provider,
                 model=selection.model,
                 duration_ms=round((time.perf_counter() - started) * 1000, 1),
-                error_type=type(error).__name__,
-                error=str(error)[:300],
+                error_type=type(execution_error).__name__,
+                error=str(execution_error)[:300],
                 exc_info=True,
             )
-            raise
+            raise execution_error from error
         log_event(
             "model.request.completed",
             provider=selection.provider,
             model=selection.model,
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        return result, {
+        run = {
             "requestedProvider": selection.provider,
             "provider": selection.provider,
             "model": selection.model,
             "fallback": False,
         }
+        attach_runtime_config(run, snapshot)
+        return result, run
 
     def generate_json_as(
         self,
@@ -206,6 +243,13 @@ class ModelRuntime:
         images = image_paths or []
         if provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
+        snapshot = self.config_snapshot(
+            provider,
+            model,
+            schema=schema,
+            prompt=prompt,
+            runtime_name="review",
+        )
         started = time.perf_counter()
         log_event("model.review.started", provider=provider, model=model, image_count=len(images))
         try:
@@ -214,6 +258,9 @@ class ModelRuntime:
             else:
                 result = self._codex_json(model, prompt, schema, images)
         except Exception as error:
+            execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
+                f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
+            )
             log_event(
                 "model.review.failed",
                 level=30,
@@ -221,11 +268,11 @@ class ModelRuntime:
                 model=model,
                 image_count=len(images),
                 duration_ms=round((time.perf_counter() - started) * 1000, 1),
-                error_type=type(error).__name__,
-                error=str(error)[:300],
+                error_type=type(execution_error).__name__,
+                error=str(execution_error)[:300],
                 exc_info=True,
             )
-            raise
+            raise execution_error from error
         log_event(
             "model.review.completed",
             provider=provider,
@@ -233,12 +280,14 @@ class ModelRuntime:
             image_count=len(images),
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        return result, {
+        run = {
             "requestedProvider": provider,
             "provider": provider,
             "model": model,
             "fallback": False,
         }
+        attach_runtime_config(run, snapshot)
+        return result, run
 
     def _ollama_json(
         self,

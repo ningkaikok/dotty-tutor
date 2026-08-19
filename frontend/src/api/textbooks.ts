@@ -1,6 +1,7 @@
 import type { QuestionPayload } from "../types/question";
 import type {
   BatchProcessResult,
+  BackgroundJob,
   LibraryItem,
   PdfUploadTask,
   QuestionRegenerationResult,
@@ -8,7 +9,6 @@ import type {
 } from "../types/textbook";
 import { GeneratedSuccess, parse } from "./client";
 
-type GeneratedBatchProcessResponse = GeneratedSuccess<"process_pdf_batch_api_uploads__upload_id__batches__batch_id__process_post">;
 type GeneratedQuestionRepairResponse = GeneratedSuccess<"regenerate_question_api_uploads__upload_id__questions__question_source_key__regenerate_post">;
 
 export async function loadQuestion(): Promise<QuestionPayload> {
@@ -51,8 +51,20 @@ export async function loadPdfUploadStatus(uploadId: string): Promise<PdfUploadTa
   return parse<PdfUploadTask>(await fetch(`/api/uploads/${uploadId}/status`, { cache: "no-store" }));
 }
 
-export async function completePdfUpload(uploadId: string): Promise<TextbookImportResult> {
-  return parse<TextbookImportResult>(await fetch(`/api/uploads/${uploadId}/complete`, { method: "POST" }));
+export async function completePdfUpload(uploadId: string): Promise<BackgroundJob<TextbookImportResult>> {
+  return parse<BackgroundJob<TextbookImportResult>>(await fetch(`/api/uploads/${uploadId}/complete`, { method: "POST" }));
+}
+
+export async function loadBackgroundJob<T = unknown>(jobId: string): Promise<BackgroundJob<T>> {
+  return parse<BackgroundJob<T>>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }));
+}
+
+export async function cancelBackgroundJob<T = unknown>(jobId: string): Promise<BackgroundJob<T>> {
+  return parse<BackgroundJob<T>>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }));
+}
+
+export async function retryBackgroundJob<T = unknown>(jobId: string): Promise<BackgroundJob<T>> {
+  return parse<BackgroundJob<T>>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" }));
 }
 
 export async function processPdfBatch(
@@ -61,9 +73,18 @@ export async function processPdfBatch(
   force = false,
   refreshOcr = false,
 ): Promise<BatchProcessResult> {
-  return parse<BatchProcessResult & GeneratedBatchProcessResponse>(
+  const queued = await parse<BackgroundJob<BatchProcessResult>>(
     await fetch(`/api/uploads/${uploadId}/batches/${batchId}/process?force=${force}&refreshOcr=${refreshOcr}`, { method: "POST" }),
   );
+  let job = queued;
+  while (job.status === "queued" || job.status === "running") {
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+    job = await loadBackgroundJob<BatchProcessResult>(queued.jobId);
+  }
+  if (job.status !== "succeeded" || !job.result) {
+    throw new Error(job.lastError?.message || job.message || "批次处理失败");
+  }
+  return job.result;
 }
 
 export async function regenerateQuestion(

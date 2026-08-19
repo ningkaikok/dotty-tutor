@@ -152,6 +152,20 @@ class DatabaseStore:
                             "ALTER TABLE lesson_publications "
                             "ADD COLUMN revision_of VARCHAR(64)"
                         )
+                    background_columns = {
+                        row[1]
+                        for row in connection.exec_driver_sql(
+                            "PRAGMA table_info(background_jobs)"
+                        ).fetchall()
+                    }
+                    if "progress" not in background_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE background_jobs ADD COLUMN progress INTEGER NOT NULL DEFAULT 0"
+                        )
+                    if "message" not in background_columns:
+                        connection.exec_driver_sql(
+                            "ALTER TABLE background_jobs ADD COLUMN message TEXT NOT NULL DEFAULT ''"
+                        )
             self._initialized = True
 
     def _upsert(

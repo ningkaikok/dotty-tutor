@@ -1,4 +1,6 @@
-FROM node:20-alpine AS build
+# React Router 8 requires Node 22.22+ in the container build.  Keep the
+# development and production toolchains on the same supported major line.
+FROM node:22-alpine AS build
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./

@@ -69,6 +69,8 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
           onSourceTextChange={state.setSourceText}
           onUpload={() => void state.upload()}
           onPause={state.pause}
+          onCancelProcessing={state.cancelProcessing}
+          onRetryProcessing={state.retryProcessing}
         />
         <PipelinePanel
           result={state.result}

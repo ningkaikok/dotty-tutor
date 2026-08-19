@@ -143,9 +143,12 @@ api/routers/textbook_routes.py（HTTP、上传状态）
   → persistence/learning_store.py（生成后的课程文档）
 ```
 
-`TextbookProcessingService` 和 `question_processing.py` 已把长流程与 APIRouter 分离。当前 Route 仍同步
-调用服务；迁移后台任务时，Worker 可分别调用 `complete_upload()` 和 `process_batch()`，不需要复制业务
-逻辑，也不应按每个 HTTP 端点创建一个类。
+`TextbookProcessingService` 和 `question_processing.py` 已把长流程与 APIRouter 分离。Route 只创建
+`background_jobs` 并返回 `202`；`application/textbook_jobs.py` 从 payload 调用 `complete_upload()` 或
+`process_batch()`。Worker 不复制 OCR、生成、审校和持久化逻辑，也不应按每个 HTTP 端点创建一个类。
+
+`persistence/job_store.py` 只管理任务生命周期、幂等、租约和错误，不管理教材批次；教材领域进度仍由
+`upload_registry.py` 与教材 Store 负责。保持这两层分离可以避免一次任务重试篡改教材当前视图。
 
 ### 错题链路
 
@@ -295,9 +298,8 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ## 已知架构债务
 
-- PDF 完成和批次处理已有独立应用服务，但仍由 HTTP 请求同步调用；下一阶段按
-  [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)复用 PostgreSQL Job Store 和单 Worker，
-  不提前引入 Redis 或多服务控制平面。
+- PDF 完成和批次处理已有独立应用服务，并由 PostgreSQL Job Store 与单 Worker 异步执行；HTTP 只返回
+  `202 + jobId`。后续长任务应注册同类 handler，不复制任务领取、续租和重试循环。
 - `storage.py` 仅为旧调用方提供兼容门面；新代码应直接依赖 `TextbookStore` 或 `LearningStore`，并继续
   保持错题、陪练仓储各自独立。
 - `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   completePdfUpload,
+  cancelBackgroundJob,
   deleteLibraryItem,
   importTextbook,
   initPdfUpload,
@@ -11,6 +12,8 @@ import {
   loadOcrProviders,
   loadReviewModels,
   loadPdfUploadStatus,
+  loadBackgroundJob,
+  retryBackgroundJob,
   selectModel,
   selectTutorModel,
   selectOcrProvider,
@@ -26,6 +29,7 @@ import type {
   PdfUploadTask,
   ReviewModelCatalog,
   TextbookImportResult,
+  BackgroundJob,
 } from "../../../types";
 import {
   IMAGE_MAX_SIZE,
@@ -209,19 +213,65 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
           },
         });
         let keepPolling = true;
+        const activeJobState = { current: null as BackgroundJob<TextbookImportResult> | null };
         const polling = (async () => {
           while (keepPolling) {
             try {
-              updateUpload(id, { processingTask: await loadPdfUploadStatus(task!.uploadId) });
+              const uploadStatus = await loadPdfUploadStatus(task!.uploadId);
+              if (activeJobState.current) {
+                const job = activeJobState.current;
+                updateUpload(id, {
+                  processingTask: {
+                    ...uploadStatus,
+                    jobId: job.jobId,
+                    jobStatus: job.status,
+                    attemptCount: job.attemptCount,
+                    progress: Math.max(uploadStatus.progress, job.progress),
+                    message: job.message || uploadStatus.message,
+                  },
+                });
+              } else {
+                updateUpload(id, { processingTask: uploadStatus });
+              }
             } catch {
-              // completion 请求仍在运行时，单次状态查询失败不应误报任务失败。
+              // 创建任务或 Worker 执行期间，单次状态查询失败不应误报整个上传失败。
             }
+            if (activeJobState.current && ["succeeded", "failed", "cancelled"].includes(activeJobState.current.status)) break;
             await new Promise((resolve) => window.setTimeout(resolve, 800));
           }
         })();
         try {
-          const result = await completePdfUpload(task.uploadId);
-          updateUpload(id, { result, progress: 100, phase: "done" });
+          activeJobState.current = await completePdfUpload(task.uploadId);
+          let activeJob = activeJobState.current;
+          updateUpload(id, {
+            processingTask: {
+              ...task,
+              jobId: activeJob.jobId,
+              jobStatus: activeJob.status,
+              attemptCount: activeJob.attemptCount,
+              progress: activeJob.progress,
+              message: activeJob.message,
+            },
+          });
+          while (activeJob.status === "queued" || activeJob.status === "running") {
+            await new Promise((resolve) => window.setTimeout(resolve, 800));
+            activeJob = await loadBackgroundJob<TextbookImportResult>(activeJob.jobId);
+            activeJobState.current = activeJob;
+            updateUpload(id, {
+              processingTask: {
+                ...task,
+                jobId: activeJob.jobId,
+                jobStatus: activeJob.status,
+                attemptCount: activeJob.attemptCount,
+                progress: activeJob.progress,
+                message: activeJob.message,
+              },
+            });
+          }
+          if (activeJob.status !== "succeeded" || !activeJob.result) {
+            throw new Error(activeJob.lastError?.message || activeJob.message || "教材识别失败");
+          }
+          updateUpload(id, { result: activeJob.result, progress: 100, phase: "done" });
           loadLibrary().then(setLibrary).catch(() => undefined);
         } finally {
           keepPolling = false;
@@ -263,6 +313,27 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     if (!controller) return;
     controller.pauseRequested = true;
     updateUpload(id, { phase: "paused" });
+  };
+
+  const cancelProcessing = async (id: string) => {
+    const item = uploadsRef.current.find((entry) => entry.id === id);
+    const jobId = item?.processingTask?.jobId;
+    if (!jobId) return;
+    try {
+      const job = await cancelBackgroundJob(jobId);
+      updateUpload(id, { processingTask: { ...(item.processingTask as PdfUploadTask), jobStatus: job.status, progress: job.progress, message: job.message } });
+    } catch { setGlobalError("取消任务失败，请稍后重试"); }
+  };
+
+  const retryProcessing = async (id: string) => {
+    const item = uploadsRef.current.find((entry) => entry.id === id);
+    const jobId = item?.processingTask?.jobId;
+    if (!jobId) return;
+    try {
+      const job = await retryBackgroundJob<TextbookImportResult>(jobId);
+      updateUpload(id, { phase: "processing", error: "", processingTask: { ...(item.processingTask as PdfUploadTask), jobStatus: job.status, progress: job.progress, message: job.message, attemptCount: job.attemptCount } });
+      void runUpload(id);
+    } catch { setGlobalError("任务重试失败，请稍后重试"); }
   };
 
   const removeUpload = (id: string) => {
@@ -386,6 +457,8 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     setSourceText,
     upload,
     pause,
+    cancelProcessing,
+    retryProcessing,
     selectGenerationModel,
     selectTutor,
     selectReviewer,

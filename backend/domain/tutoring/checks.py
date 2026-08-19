@@ -7,6 +7,7 @@ from typing import Any
 
 from domain.questions.contracts import CANVAS_ACTIONS, GUIDE_CARDS, HelpRequest, TutorReply
 from domain.tutoring.turn_plan import normalize_misconception
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 
 
 EQUATION_PATTERN = re.compile(
@@ -120,6 +121,17 @@ def mock_model_run(requested_provider: str = "mock", error: str | None = None) -
     }
     if error:
         result["error"] = error
+    attach_runtime_config(
+        result,
+        RuntimeConfigSnapshot(
+            provider="mock",
+            model="static-demo",
+            runtime="tutor",
+            schema="help-schema",
+            prompt="deterministic-fallback",
+            timeout=0.0,
+        ),
+    )
     return result
 
 

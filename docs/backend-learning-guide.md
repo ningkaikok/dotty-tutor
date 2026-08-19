@@ -50,12 +50,18 @@ sequenceDiagram
   participant Route as api/routers/textbook_routes.py
   participant Registry as infrastructure/files/upload_registry.py
   participant Service as application/services/textbook_processing.py
+  participant Worker as application/job_worker.py
   participant OCR as textbook_ocr_pipeline.py
   participant Pipeline as application/services/question_processing.py
   participant Store as persistence/*_store.py
 
   UI->>Route: POST /api/uploads/{id}/complete
-  Route->>Service: complete_upload(id)
+  Route->>Service: 创建 background_job
+  Service-->>Route: jobId + 202 Accepted
+  Route-->>UI: 任务快照
+  UI->>Route: GET /api/jobs/{jobId}
+  Worker->>Store: 领取任务租约
+  Worker->>Service: complete_upload(id)
   Service->>Registry: 获取并更新上传状态
   Service->>Service: 合并分块、校验哈希和 PDF
   Service->>OCR: 逐页探测并路由 pypdf / MinerU
@@ -63,8 +69,8 @@ sequenceDiagram
   Service->>Pipeline: 切题、来源绑定、生成、统一审校和质量门禁
   Service->>Store: 原子保存题目与课程
   Service->>Registry: 标记 complete
-  Service-->>Route: 结构化结果
-  Route-->>UI: JSON
+  Worker->>Store: 收敛 succeeded/failed/cancelled
+  UI->>Route: POST /api/jobs/{jobId}/cancel 或 retry
 ```
 
 这里有三个刻意保留的边界：
@@ -72,10 +78,11 @@ sequenceDiagram
 - `api/routers/textbook_routes.py` 只理解 HTTP 和文件传输。
 - `application/services/textbook_processing.py` 理解“完成教材处理”的步骤顺序。
 - `textbook_ocr_pipeline.py` 读取页面信号并决定“文字层、MinerU、缓存或局部升级”。
-- `application/services/question_processing.py` 只处理一组已提取题目，因此未来可被 Worker 直接复用。
+- `application/services/question_processing.py` 只处理一组已提取题目，因此可以被 HTTP 或 Worker 直接复用。
 
-当前服务仍在 HTTP 请求内同步执行。将来如果真实 PDF 处理时间影响部署，只需要让 Route 入队，并让 Worker
-调用 `TextbookProcessingService.complete_upload()` 或 `process_batch()`；无需复制 OCR 和生成逻辑。
+Route 只负责创建 `background_jobs` 并快速返回 `202`；Worker 调用
+`TextbookProcessingService.complete_upload()` 或 `process_batch()`，无需复制 OCR 和生成逻辑。
+前端通过 `GET /api/jobs/{jobId}` 展示进度，并可请求取消或有限重试；租约失效后旧 Worker 不能覆盖新执行者的结果。
 
 实际处理顺序可以概括为：`probe_page` 读取文字层、图片数量、公式和视觉提示；`auto` 模式先用 pypdf
 预检，质量不合格时只把对应连续页段升级到 MinerU；OCR 结果按 PDF 哈希、页范围、Provider 和流水线版本

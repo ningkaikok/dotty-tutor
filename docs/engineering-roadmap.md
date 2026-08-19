@@ -11,6 +11,22 @@
 - **T2 可靠性与性能**：让长任务可恢复、模型调用可控、陪练延迟可测量。
 - **T3 实验能力**：只有产品验证需要时才引入新库、新模型或新基础设施。
 
+## 当前执行队列（2026-08）
+
+本轮 P0（任务状态、Worker、错误契约和 Runtime 配置）已经完成并通过后端、前端和 Docker 验收。接下来只推进
+能够提升正确性和可复现性的任务，暂不引入新的代理框架或基础设施：
+
+1. **T1 / `test/offline-ai-evaluation`**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练。
+2. **T1 / `feature/badcase-replay-loop`**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
+3. **T2 / `feat/job-summary`**：为现有后台任务增加成功/失败/隔离汇总，补齐多 PDF 与整套审核的可操作反馈。
+4. **T2 / `feat/ocr-preflight-report`**：增加页面预检和脏页报告，复用现有页面级 OCR 路由、质量门禁和局部重试。
+5. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
+6. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、Alembic、备份恢复、限流和资源生命周期；只有准备公网
+   测试时才进入开发。
+
+每一项都必须单独有测试、文档和回滚边界；完成当前项后再进入下一项，不把模型接入、UI 重构和数据库迁移混在
+同一个 PR 中。
+
 ## T0：正确性与回归保护
 
 - [x] 统一 `MathText`、图片 URL 和 Markdown 解析，覆盖题干、选项、条件、讲解、历史消息和错误回退；内容生产端与学生端 Playwright 回归已覆盖公式和题图顺序。
@@ -39,7 +55,7 @@
 1. [ ] 建立脱敏金标准集，覆盖 OCR、公式、题图、七类题型和陪练。
 2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
-4. [ ] 将内容生产已经具备的 `run_id` 继续扩展到陪练和未来 Worker 的全部结构化日志。
+4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
 
@@ -65,8 +81,8 @@
 
 ## T2：可恢复的长任务
 
-- [ ] 复用 PostgreSQL `upload_jobs` 和单 Worker，支持任务 ID、独立进度、有限并发和限流。
-- [ ] 增加取消、重试、租约恢复和幂等键，Worker 重启不重复发布或丢失已完成页面。
+- [x] 使用 PostgreSQL `background_jobs` 和单 Worker，支持任务 ID、独立进度、快速 `202` 响应和有限并发。
+- [x] 增加取消、有限自动重试、人工重试、租约恢复和幂等键；失去租约的旧 Worker 不得提交结果。
 - [ ] 为多 PDF、批量 OCR、批量生成和整套重新审核提供成功/失败/隔离汇总。
 - [ ] 只有吞吐基准证明单 Worker 不足时，才评估 Redis 或其他队列。
 
@@ -94,8 +110,10 @@
 
 ## 推荐 PR 顺序
 
-`fix/student-answer-flow` → `fix/formula-image-rendering` → `fix/tutor-request-boundary` →
-`fix/question-repair-flow` → `test/offline-ai-evaluation` → `feat/run-snapshot-events` →
-`feat/model-capability-registry` → `feat/ocr-preflight-report` → `feat/resumable-content-jobs`。
+历史正确性修复、`RunSnapshot`、事件模型和可恢复后台任务已经完成；新的 PR 顺序为：
+
+`test/offline-ai-evaluation` → `feature/badcase-replay-loop` → `feat/job-summary` →
+`feat/ocr-preflight-report` → `feat/model-capability-registry` → `test/postgres-integration` →
+`chore/public-test-hardening`。
 
 每个 PR 只处理一个主题，必须有测试、文档和回滚边界；不要把新模型接入、UI 重构和数据库迁移混在一起。

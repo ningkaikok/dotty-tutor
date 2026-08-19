@@ -28,10 +28,25 @@ from domain.questions.source import (
     QUESTION_START_PATTERN,
     split_question_sources,
 )
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 
 
 # 渲染矢量页图属于缓存结果的一部分；升级版本可以避免旧缓存继续沿用“只有文字”的结果。
 OCR_PIPELINE_VERSION = "page-routing-v2"
+
+
+def _with_ocr_config(run: dict[str, Any], *, provider: str, prompt: str = "page-routing") -> dict[str, Any]:
+    """Attach an audit identity while retaining the existing OCR run fields."""
+    return attach_runtime_config(
+        run,
+        RuntimeConfigSnapshot(
+            provider=provider,
+            runtime="ocr",
+            schema=OCR_PIPELINE_VERSION,
+            prompt=prompt,
+            timeout=900.0,
+        ),
+    )
 
 
 def _inject_page_render(markdown: str, page_number: int, reference: str) -> str:
@@ -190,7 +205,7 @@ def resolve_routed_ocr_source(
     执行，以尊重内容生产者的选择。
     """
     if source_text.strip():
-        return source_text.strip(), {
+        return source_text.strip(), _with_ocr_config({
             "requestedProvider": "manual",
             "provider": "manual",
             "mode": "pasted-text",
@@ -201,7 +216,7 @@ def resolve_routed_ocr_source(
             "quality": [],
             "retries": [],
             "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
-        }
+        }, provider="manual", prompt="pasted-text")
 
     reader = PdfReader(str(source_path))
     requested = runtime.selection.provider
@@ -335,7 +350,7 @@ def resolve_routed_ocr_source(
         )
         for number, block, images in split_question_sources(lesson_source)
     ]
-    return lesson_source, {
+    return lesson_source, _with_ocr_config({
         "requestedProvider": requested,
         "provider": provider,
         "mode": "page-routing",
@@ -355,4 +370,4 @@ def resolve_routed_ocr_source(
         "spans": span_runs,
         "pipelineVersion": OCR_PIPELINE_VERSION,
         "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
-    }
+    }, provider=provider)

@@ -7,8 +7,8 @@
 GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL、MinerU 或 Qwen3-TTS。
 推荐将前端构建为静态文件，后端运行在 Linux 主机或容器平台，数据库使用托管 PostgreSQL。
 
-当前仓库包含后端 Dockerfile，但尚未包含 Alembic、对象存储和任务队列，因此以下方案适合
-单机、单进程和受控用户内测。当前实现包含进程内状态，暂时只能使用一个 Uvicorn worker。
+当前仓库包含后端 Dockerfile、PostgreSQL Job Store 和独立 Worker，因此以下方案适合单机和受控用户内测。
+API 仍建议只运行一个 Uvicorn worker；Worker 是单独进程，和 API 共享数据库、运行配置及持久化目录。
 
 ```text
 浏览器
@@ -17,10 +17,11 @@ GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL�
   → FastAPI（1 worker）
        ├─ PostgreSQL
        ├─ 持久化磁盘
+       ├─ 独立后台 Worker（PDF/OCR/批次生成）
        └─ 独立模型、OCR 和 TTS 服务
 ```
 
-目标生产架构应增加对象存储、Redis 和 OCR/出题后台 worker。详细优先级见
+目标生产架构应增加对象存储、认证、监控和备份；当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
 [路线图](roadmap.md)。
 
 ## 服务器准备
@@ -96,7 +97,7 @@ QWEN_TTS_URL=http://127.0.0.1:8020
   `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
   `005_spaced_review.sql`、`006_publications_and_sync.sql`、
   `007_learning_session_publication.sql`、`008_publication_revisions.sql` 和
-  `009_run_snapshots_question_revisions.sql`；执行前先备份数据库。
+  `009_run_snapshots_question_revisions.sql`、`010_background_jobs.sql`；执行前先备份数据库。
 
 ## 启动前检查
 
@@ -152,8 +153,42 @@ sudo systemctl status dotty-tutor-api
 sudo journalctl -u dotty-tutor-api -f
 ```
 
-生产环境不要添加 `--reload`。当前同步 OCR 和模型调用可能持续数分钟，反向代理超时需要覆盖
-最长请求；完成任务队列改造后再缩短超时。
+创建 `/etc/systemd/system/dotty-tutor-worker.service`，与 API 使用同一个环境文件和工作目录：
+
+```ini
+[Unit]
+Description=Dotty Tutor background worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dotty
+Group=dotty
+WorkingDirectory=/opt/dotty-tutor/backend
+EnvironmentFile=/etc/dotty-tutor/backend.env
+ExecStart=/opt/dotty-tutor/.venv/bin/python -m worker --registry api.routers.textbook_routes:textbook_job_registry
+Restart=on-failure
+RestartSec=5
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now dotty-tutor-worker
+sudo systemctl status dotty-tutor-worker
+sudo journalctl -u dotty-tutor-worker -f
+```
+
+API 的 `complete` 和批次处理接口只负责创建任务并返回 `202 + jobId`；不要再为这些接口配置数分钟的
+请求超时。Worker 执行期间会续租，应用服务在合并、OCR 和题目循环的安全点检查取消请求。
+
+生产环境不要添加 `--reload`。PDF/OCR/模型批处理已经由独立 Worker 执行，反向代理只需覆盖短请求和
+任务状态轮询；Worker 的超时、租约和重试由 Job Store 控制。
 
 ## 前端构建
 
@@ -214,8 +249,8 @@ Docker 部署包含：
 
 | 文件 | 作用 |
 | --- | --- |
-| `compose.yaml` | 编排 PostgreSQL、FastAPI 和前端 Nginx |
-| `Dockerfile.backend` | 构建单 worker、非 root 用户运行的 API 镜像 |
+| `compose.yaml` | 编排 PostgreSQL、FastAPI、后台 Worker 和前端 Nginx |
+| `Dockerfile.backend` | 构建 API/Worker 共用的非 root 后端镜像 |
 | `Dockerfile.frontend` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
 | `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
 | `.env.docker.example` | Docker 环境变量模板 |
@@ -253,6 +288,7 @@ localhost:8080
   → web（Nginx + React）
        → api:8010（FastAPI）
             → db:5432（PostgreSQL）
+        worker（同镜像，消费 background_jobs）
 ```
 
 API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会等待数据库和
@@ -263,6 +299,7 @@ API 健康后再启动依赖服务。
 ```bash
 docker compose ps
 docker compose logs --follow api
+docker compose logs --follow worker
 docker compose logs --follow db
 curl -fsS http://127.0.0.1:8080/healthz
 curl -fsS http://127.0.0.1:8080/api/health
@@ -335,10 +372,11 @@ WEB_PORT=8080
 1. GitHub Actions 全部通过。
 2. `/api/health` 返回正常且数据库可访问。
 3. 上传一个小 PDF，验证暂停续传和首题生成。
-4. 验证题图、OCR 产物、选择/判断/画线交互和 Help。
-5. 验证 TTS 以及浏览器回退。
-6. 确认 `needs_review` 题目没有直接发布给真实学生。
-7. 检查日志中没有密钥、数据库连接串和内部堆栈泄漏。
+4. 验证任务状态从 `queued` 到 `running`/`succeeded`，并验证取消与失败后的人工重试。
+5. 验证题图、OCR 产物、选择/判断/画线交互和 Help。
+6. 验证 TTS 以及浏览器回退。
+7. 确认 `needs_review` 题目没有直接发布给真实学生。
+8. 检查日志中没有密钥、数据库连接串和内部堆栈泄漏。
 
 ## 备份与恢复
 
@@ -362,7 +400,7 @@ sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
   -r /opt/dotty-tutor/backend/requirements.txt
 sudo -u dotty bash -lc 'cd /opt/dotty-tutor/frontend && npm ci && npm run build'
 sudo rsync -a --delete /opt/dotty-tutor/frontend/dist/ /var/www/dotty-tutor/
-sudo systemctl restart dotty-tutor-api
+sudo systemctl restart dotty-tutor-api dotty-tutor-worker
 sudo systemctl reload nginx
 ```
 
