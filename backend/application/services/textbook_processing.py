@@ -27,6 +27,7 @@ from domain.questions.source import (
 )
 from run_audit import RunAudit, build_run_config, is_persistence_test_double
 from textbook_ocr_pipeline import resolve_routed_ocr_source
+from application.job_worker import JobCancelled
 
 
 PDF_BATCH_PAGES = 5
@@ -80,6 +81,11 @@ class TextbookProcessingService:
             self.store.save_questions(upload_id, list(zip(question_keys, payloads, guide_cards_list)))
         return revisions
 
+    @staticmethod
+    def _check_cancel(cancellation_check: Any) -> None:
+        if cancellation_check and cancellation_check():
+            raise JobCancelled()
+
     def _load_batch_sources(
         self,
         *,
@@ -132,9 +138,10 @@ class TextbookProcessingService:
         ocr_run["promptArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/model-prompt.md"
         return lesson_source, ocr_run, asset_dir, question_sources
 
-    def complete_upload(self, upload_id: str) -> dict[str, Any]:
+    def complete_upload(self, upload_id: str, *, cancellation_check: Any = None) -> dict[str, Any]:
         """合并全部分块、验证 PDF，并处理首个页面批次。"""
         job = self.upload_registry.get(upload_id)
+        self._check_cancel(cancellation_check)
         log_event("upload.processing.started", upload_id=upload_id, filename=job.get("filename"))
         if job["status"] == "complete" and job.get("result"):
             return job["result"]
@@ -153,6 +160,7 @@ class TextbookProcessingService:
         written = 0
         with source_path.open("wb") as merged:
             for chunk_path in chunk_paths:
+                self._check_cancel(cancellation_check)
                 with chunk_path.open("rb") as chunk:
                     while block := chunk.read(1024 * 1024):
                         merged.write(block)
@@ -218,6 +226,7 @@ class TextbookProcessingService:
             35,
             f"校验完成，共 {page_count} 页；正在规划处理批次",
         )
+        self._check_cancel(cancellation_check)
         batches = []
         for start in range(0, page_count, PDF_BATCH_PAGES):
             end = min(start + PDF_BATCH_PAGES, page_count)
@@ -259,6 +268,7 @@ class TextbookProcessingService:
             cache_dir=job["directory"] / "ocr-cache",
             content_hash=digest.hexdigest(),
         )
+        self._check_cancel(cancellation_check)
         self.upload_registry.update(
             job,
             "generating",
@@ -283,6 +293,7 @@ class TextbookProcessingService:
             self.upload_registry.update,
             run_id=None,
         )
+        self._check_cancel(cancellation_check)
         payload = payloads[0]
         question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
         result = {
@@ -354,6 +365,7 @@ class TextbookProcessingService:
         persist: bool = True,
         refresh_ocr: bool = False,
         run_id: str | None = None,
+        cancellation_check: Any = None,
     ) -> dict[str, Any]:
         """OCR 一个页范围，并可选择是否立即保存生成练习。
 
@@ -361,6 +373,7 @@ class TextbookProcessingService:
         静默覆盖已发布版本引用的旧课程文档。
         """
         job = self.upload_registry.get(upload_id)
+        self._check_cancel(cancellation_check)
         log_event("upload.batch.started", upload_id=upload_id, batch_id=batch_id, force=force)
         result = job.get("result")
         if job.get("status") != "complete" or not result:
@@ -420,6 +433,7 @@ class TextbookProcessingService:
                 result=result,
                 refresh_ocr=refresh_ocr,
             )
+            self._check_cancel(cancellation_check)
             payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
                 question_sources,
                 batch,
@@ -429,6 +443,7 @@ class TextbookProcessingService:
                 self.upload_registry.update,
                 active_run_id,
             )
+            self._check_cancel(cancellation_check)
             payload = payloads[0]
             question_keys = [item["question"]["sourceQuestionKey"] for item in payloads]
             response_batch = dict(batch)

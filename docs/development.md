@@ -34,7 +34,7 @@ nvm use
 scripts/check-node-version.sh
 ```
 
-检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 Vite 和 Qwen3-TTS。打开
+检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:5174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
 本机 Codex、MinerU 和 Qwen3-TTS 的状态可以分别检查：
@@ -65,7 +65,7 @@ curl -v --proxy http://127.0.0.1:7897 https://api.openai.com
 
 后端的 Codex 适配器为每一次结构化生成、文字审核和视觉审核启动一个隔离的
 `codex exec --ephemeral` 子进程；一题可能连续触发多次调用，因此浏览器网络面板会看到多次请求，
-这不等于每次都发生了网络断线。批量处理还会等待这些调用完成，当前是同步流程。若 CLI 日志出现
+这不等于每次都发生了网络断线。批量处理由独立 Worker 执行，HTTP 请求只创建任务并返回 `202`，前端通过任务状态接口观察进度。若 CLI 日志出现
 `state db discrepancy ... falling_back`，它是本机 Codex 状态库的回退警告，不是 OpenAI TLS 失败。
 真正的网络错误通常会在后端日志的 `model.request.failed` / `model.review.failed` 中包含超时、代理或
 连接拒绝信息。切换网络或代理后需要重启 `scripts/dev-local.sh`，让 FastAPI 继承新的代理环境变量。

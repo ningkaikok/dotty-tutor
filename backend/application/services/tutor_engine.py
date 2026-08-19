@@ -15,6 +15,7 @@ from domain.tutoring.checks import (
     safe_canvas_action,
 )
 from domain.tutoring.turn_plan import normalize_misconception
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -185,6 +186,25 @@ class TutorEngine:
             generated, run = self.runtime.generate_json(prompt, HELP_SCHEMA, max_tokens=450)
         except Exception as error:
             return build_reply(request, cards, mock_model_run(selection.provider, str(error)), question)
+
+        # The model adapter is also used by generation/review. Mark this call as
+        # tutor runtime without changing the selected provider/model UI state.
+        existing_config = run.get("config") if isinstance(run, dict) else None
+        if isinstance(existing_config, dict):
+            snapshot = RuntimeConfigSnapshot.from_mapping({**existing_config, "runtime": "tutor"})
+            attach_runtime_config(run, snapshot)
+        elif isinstance(run, dict):
+            attach_runtime_config(
+                run,
+                RuntimeConfigSnapshot.for_model(
+                    str(run.get("provider") or selection.provider),
+                    str(run.get("model") or selection.model),
+                    schema=HELP_SCHEMA,
+                    prompt=prompt,
+                    runtime="tutor",
+                    timeout=450.0,
+                ),
+            )
 
         action = generated.get("canvasAction")
         if action not in CANVAS_ACTIONS:

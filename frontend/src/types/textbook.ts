@@ -121,4 +121,26 @@ export interface PdfUploadTask {
   message: string;
   elapsedSeconds: number;
   result?: TextbookImportResult;
+  jobId?: string;
+  jobStatus?: BackgroundJobStatus;
+  attemptCount?: number;
+}
+
+export type BackgroundJobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export interface BackgroundJob<T = unknown> {
+  jobId: string;
+  jobType: string;
+  status: BackgroundJobStatus;
+  progress: number;
+  message: string;
+  attemptCount: number;
+  maxAttempts: number;
+  cancelRequested: boolean;
+  lastError?: { message?: string; code?: string; [key: string]: unknown } | null;
+  result?: T | null;
+  createdAt: number;
+  updatedAt: number;
+  startedAt?: number | null;
+  completedAt?: number | null;
 }

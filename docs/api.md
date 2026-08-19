@@ -44,14 +44,21 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/uploads/init` | 初始化最大 500 MB 的 PDF 分块任务 |
 | `PUT` | `/api/uploads/{uploadId}/chunks/{index}` | 幂等上传一个 5 MB 分块 |
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
-| `POST` | `/api/uploads/{uploadId}/complete` | 合并 PDF、规划批次并处理首批 |
-| `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 按需处理后续批次或重新生成 |
+| `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 完成与首批处理任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
+| `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
+| `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
+| `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
+| `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
 | `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate` | 修复单题；传 `refreshOcr=true` 时先重新 OCR |
 | `GET` | `/api/runs/{runId}` | 查询冻结的运行配置、状态和结果/失败证据 |
 | `GET` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions` | 按来源题键读取不可变题目修订链 |
 
 PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF` 结束标记。文件缺少
 `%%EOF` 通常表示源 PDF 本身被截断，需要重新下载或重新导出。
+
+后台任务状态为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`。任务创建请求可以携带稳定
+`Idempotency-Key`；相同任务和幂等键不会重复入队。前端应以 `jobId` 轮询，不要持续占用创建任务的 HTTP
+连接。失败详情中的 `code` 与 `retryable` 用于决定展示“重试”还是“重新上传”，不要解析 Python 异常字符串。
 
 ## 学习与语音
 
@@ -141,6 +148,10 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `GET` | `/api/library/{uploadId}` | 恢复教材和已生成题目 |
 
 ## 错误与安全边界
+
+应用错误统一返回 Problem JSON 风格字段：`errorCode`、`message`、`requestId`、`retryable` 和可选
+`details`。兼容调用方仍可读取 `detail`，新调用方应优先使用稳定字段。未知异常不会向浏览器暴露堆栈、文件路径、
+密钥或完整模型响应；详细证据只进入脱敏日志和任务的内部错误记录。
 
 - 不支持的文件类型返回 `415`。
 - 文件、分块或 PDF 结构校验失败返回 `4xx`。

@@ -12,6 +12,7 @@ from domain.questions.contracts import LESSON_SCHEMA
 from infrastructure.runtime.model_runtime import runtime as model_runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot
 
 
 PROMPT_VERSION = "lesson-generation-v1"
@@ -32,7 +33,7 @@ def is_persistence_test_double(store: Any) -> bool:
 def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
     run = run or {}
     # Keep provider/model/version/fallback evidence, but never persist prompt text or secrets.
-    return {
+    identity = {
         key: run.get(key)
         for key in (
             "provider", "model", "version", "requestedProvider", "requestedModel",
@@ -40,6 +41,12 @@ def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
         )
         if run.get(key) is not None
     }
+    if isinstance(run.get("config"), dict):
+        identity["config"] = RuntimeConfigSnapshot.from_mapping(run["config"]).to_dict()
+    elif run:
+        # Legacy result dictionaries are upgraded when they enter a RunSnapshot.
+        identity["config"] = RuntimeConfigSnapshot.from_mapping(run).to_dict()
+    return identity
 
 
 def build_run_config(
@@ -47,6 +54,7 @@ def build_run_config(
     model_run: dict[str, Any] | None = None,
     review_run: dict[str, Any] | None = None,
     ocr_run: dict[str, Any] | None = None,
+    tutor_run: dict[str, Any] | None = None,
     operation_details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if model_run is None:
@@ -71,19 +79,82 @@ def build_run_config(
         }
     if ocr_run is None:
         ocr_run = {"provider": ocr_runtime.selection.provider, "fallback": False}
-    return {
-        "model": _run_identity(model_run),
+    model_config = RuntimeConfigSnapshot.for_model(
+        str(model_run.get("provider") or model_runtime.selection.provider),
+        str(model_run.get("model") or model_runtime.selection.model),
+        schema=LESSON_SCHEMA,
+        prompt=PROMPT_VERSION,
+        runtime="generation",
+        timeout=180.0 if str(model_run.get("provider") or "") == "ollama" else 240.0,
+    )
+    if isinstance(model_run.get("config"), dict):
+        model_config = RuntimeConfigSnapshot.from_mapping(model_run["config"], runtime="generation")
+    text_model_run = (review_run or {}).get("textModelRun") or {
+        "provider": runtime_reviewer.text_provider,
+        "model": runtime_reviewer.text_model,
+    }
+    vision_model_run = (review_run or {}).get("visionModelRun") or text_model_run
+    text_config = RuntimeConfigSnapshot.for_model(
+        str(text_model_run.get("provider") or runtime_reviewer.text_provider),
+        str(text_model_run.get("model") or runtime_reviewer.text_model),
+        schema="review-text",
+        prompt="review",
+        runtime="review",
+        timeout=240.0,
+    )
+    vision_config = RuntimeConfigSnapshot.for_model(
+        str(vision_model_run.get("provider") or runtime_reviewer.text_provider),
+        str(vision_model_run.get("model") or runtime_reviewer.text_model),
+        schema="review-vision",
+        prompt="review-vision",
+        runtime="review",
+        timeout=240.0,
+    )
+    if isinstance(text_model_run.get("config"), dict):
+        text_config = RuntimeConfigSnapshot.from_mapping(text_model_run["config"], runtime="review")
+    if isinstance(vision_model_run.get("config"), dict):
+        vision_config = RuntimeConfigSnapshot.from_mapping(vision_model_run["config"], runtime="review")
+    ocr_config = RuntimeConfigSnapshot(
+        provider=str(ocr_run.get("provider") or ocr_runtime.selection.provider),
+        runtime="ocr",
+        schema="ocr-pipeline",
+        prompt="ocr",
+        timeout=900.0,
+    )
+    if isinstance(ocr_run.get("config"), dict):
+        ocr_config = RuntimeConfigSnapshot.from_mapping(ocr_run["config"], runtime="ocr")
+    config: dict[str, Any] = {
+        "model": {**_run_identity(model_run), **model_config.to_dict(), "config": model_config.to_dict()},
         "review": {
-            "provider": (review_run or {}).get("provider"),
-            "text": _run_identity((review_run or {}).get("textModelRun")),
-            "vision": _run_identity((review_run or {}).get("visionModelRun")),
+            "provider": (review_run or {}).get("provider") or runtime_reviewer.text_provider,
+            "text": {**_run_identity(text_model_run), **text_config.to_dict(), "config": text_config.to_dict()},
+            "vision": {**_run_identity(vision_model_run), **vision_config.to_dict(), "config": vision_config.to_dict()},
         },
-        "ocr": _run_identity(ocr_run),
+        "ocr": {**_run_identity(ocr_run), **ocr_config.to_dict(), "config": ocr_config.to_dict()},
         "promptVersion": PROMPT_VERSION,
         "schemaVersion": SCHEMA_VERSION,
         "validatorVersion": VALIDATOR_VERSION,
         "operation": operation_details or {},
     }
+    if tutor_run is not None:
+        tutor_config = RuntimeConfigSnapshot.from_mapping(
+            tutor_run.get("config") if isinstance(tutor_run, dict) else None,
+            provider=(tutor_run or {}).get("provider", "mock"),
+            model=(tutor_run or {}).get("model", "static-demo"),
+            runtime="tutor",
+        )
+        config["tutor"] = {**_run_identity(tutor_run), **tutor_config.to_dict(), "config": tutor_config.to_dict()}
+    config["runtimeConfig"] = {
+        key: value
+        for key, value in {
+            "generation": config["model"].get("config"),
+            "review": config["review"].get("text", {}).get("config"),
+            "ocr": config["ocr"].get("config"),
+            "tutor": config.get("tutor", {}).get("config"),
+        }.items()
+        if value is not None
+    }
+    return config
 
 
 class RunAudit:

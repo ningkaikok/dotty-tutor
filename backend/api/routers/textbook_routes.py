@@ -15,12 +15,13 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
 from application.services.lesson_generation import generate_lesson, generate_model_reply, lesson_store
-from domain.contracts.audit import BatchProcessResponse, QuestionRegenerationResponse, RevisionSummary, RunSummary
+from application.errors import AppError
+from domain.contracts.audit import BackgroundJobSummary, QuestionRegenerationResponse, RevisionSummary, RunSummary
 from api.routers.library_routes import build_library_router
 from observability import log_event
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
@@ -29,6 +30,8 @@ from storage import store
 from textbook_ocr import extract_pdf_text, resolve_ocr_text
 from application.services.textbook_processing import PDF_BATCH_PAGES, TextbookProcessingService
 from infrastructure.files.upload_registry import UploadRegistry
+from persistence.job_store import JobStore
+from application.textbook_jobs import build_textbook_registry
 
 
 router = APIRouter()
@@ -58,6 +61,8 @@ processing_service = TextbookProcessingService(
     upload_registry=upload_registry,
     ocr_runtime=ocr_runtime,
 )
+job_store = JobStore(database_url=store.database_url, data_root=store.root)
+textbook_job_registry = build_textbook_registry(processing_service)
 
 # 兼容旧测试和 ASGI 组合根的导出；新流程应优先依赖 upload_registry 或 processing_service。
 pdf_uploads = upload_registry.uploads
@@ -243,10 +248,64 @@ def get_pdf_upload_status(upload_id: str) -> dict:
     return upload_status(upload_job(upload_id))
 
 
-@router.post("/api/uploads/{upload_id}/complete")
-def complete_pdf_upload(upload_id: str) -> dict[str, Any]:
-    """Delegate merge, OCR and first-batch generation to the application service."""
-    return processing_service.complete_upload(upload_id)
+def _job_response(job: dict[str, Any]) -> dict[str, Any]:
+    """Expose a stable, JSON-safe job snapshot to API clients."""
+    return {
+        key: job.get(key)
+        for key in (
+            "jobId", "jobType", "status", "progress", "message", "attemptCount",
+            "maxAttempts", "cancelRequested", "lastError", "result", "createdAt", "updatedAt",
+            "startedAt", "completedAt",
+        )
+    }
+
+
+@router.get("/api/jobs/{job_id}", response_model=BackgroundJobSummary)
+def get_background_job(job_id: str) -> dict[str, Any]:
+    job = job_store.get_job(job_id)
+    if not job:
+        raise AppError("后台任务不存在", status_code=404, error_code="JOB_NOT_FOUND")
+    return _job_response(job)
+
+
+@router.post("/api/jobs/{job_id}/cancel", response_model=BackgroundJobSummary)
+def cancel_background_job(job_id: str) -> dict[str, Any]:
+    job = job_store.request_cancel(job_id)
+    if not job:
+        raise AppError("后台任务不存在", status_code=404, error_code="JOB_NOT_FOUND")
+    return _job_response(job)
+
+
+@router.post("/api/jobs/{job_id}/retry", response_model=BackgroundJobSummary)
+def retry_background_job(job_id: str) -> dict[str, Any]:
+    job = job_store.retry_job(job_id)
+    if not job:
+        raise AppError(
+            "只有失败任务可以重试",
+            status_code=409,
+            error_code="JOB_NOT_RETRYABLE",
+        )
+    return _job_response(job)
+
+
+@router.post(
+    "/api/uploads/{upload_id}/complete",
+    status_code=202,
+    response_model=BackgroundJobSummary,
+)
+def complete_pdf_upload(
+    upload_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    """快速注册合并/OCR/首批生成任务；长流程由独立 Worker 执行。"""
+    upload_job(upload_id)
+    key = idempotency_key if isinstance(idempotency_key, str) else None
+    job = job_store.create_job(
+        "textbook.upload.complete",
+        {"uploadId": upload_id},
+        idempotency_key=key or f"textbook-upload-complete:{upload_id}",
+    )
+    return _job_response(job)
 
 
 @router.post("/api/help", response_model=TutorReply)
@@ -288,15 +347,34 @@ def get_help(request: HelpRequest) -> TutorReply:
     return reply
 
 
-@router.post("/api/uploads/{upload_id}/batches/{batch_id}/process", response_model=BatchProcessResponse)
+@router.post(
+    "/api/uploads/{upload_id}/batches/{batch_id}/process",
+    status_code=202,
+    response_model=BackgroundJobSummary,
+)
 def process_pdf_batch(
     upload_id: str,
     batch_id: str,
     force: bool = False,
     refreshOcr: bool = False,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
-    """Delegate one queued page range to the reusable processing service."""
-    return processing_service.process_batch(upload_id, batch_id, force, refresh_ocr=refreshOcr)
+    """快速注册一个批次任务；原同步服务仍由 Worker 调用。"""
+    upload_job(upload_id)
+    key = idempotency_key if isinstance(idempotency_key, str) else None
+    job = job_store.create_job(
+        "textbook.batch.process",
+        {
+            "uploadId": upload_id,
+            "batchId": batch_id,
+            "force": force,
+            "refreshOcr": refreshOcr,
+        },
+        idempotency_key=key or (
+            f"textbook-batch:{upload_id}:{batch_id}:{int(force)}:{int(refreshOcr)}"
+        ),
+    )
+    return _job_response(job)
 
 
 @router.post("/api/uploads/{upload_id}/questions/{question_source_key}/regenerate", response_model=QuestionRegenerationResponse)

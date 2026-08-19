@@ -6,7 +6,7 @@ metadata. New product domains such as mistakes and tutoring intentionally keep
 their own schemas next to their stores.
 """
 
-from sqlalchemy import BigInteger, Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB
 
 
@@ -31,6 +31,37 @@ upload_jobs = Table(
     Column("started_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
     Column("completed_at", Float),
+)
+
+# Generic executable work is deliberately separate from upload metadata.  An
+# upload may produce several jobs (OCR, generation, review), while its upload
+# row remains the durable domain record and is not a queue state machine.
+background_jobs = Table(
+    "background_jobs", metadata,
+    Column("job_id", String(64), primary_key=True),
+    Column("job_type", String(128), nullable=False),
+    Column("idempotency_key", String(255)),
+    Column("payload_json", json_document, nullable=False),
+    Column("status", String(16), nullable=False, default="queued"),
+    Column("max_attempts", Integer, nullable=False, default=3),
+    Column("attempt_count", Integer, nullable=False, default=0),
+    Column("last_error_json", json_document),
+    Column("cancel_requested", Boolean, nullable=False, default=False),
+    Column("lease_owner", String(128)),
+    Column("lease_expires_at", Float),
+    Column("result_json", json_document),
+    Column("progress", Integer, nullable=False, default=0),
+    Column("message", Text, nullable=False, default=""),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+    Column("started_at", Float),
+    Column("completed_at", Float),
+    CheckConstraint(
+        "status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
+        name="ck_background_jobs_status",
+    ),
+    CheckConstraint("max_attempts > 0", name="ck_background_jobs_max_attempts"),
+    CheckConstraint("attempt_count >= 0", name="ck_background_jobs_attempt_count"),
 )
 
 batch_questions = Table(
@@ -134,6 +165,9 @@ mastery_states = Table(
 )
 
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
+Index("uq_background_jobs_idempotency", background_jobs.c.idempotency_key, unique=True)
+Index("idx_background_jobs_claim", background_jobs.c.status, background_jobs.c.lease_expires_at, background_jobs.c.created_at)
+Index("idx_background_jobs_type", background_jobs.c.job_type, background_jobs.c.created_at.desc())
 Index("idx_run_snapshots_target", run_snapshots.c.target_upload_id, run_snapshots.c.started_at.desc())
 Index("idx_run_snapshots_operation", run_snapshots.c.operation, run_snapshots.c.started_at.desc())
 Index("idx_question_revisions_source", question_revisions.c.upload_id, question_revisions.c.source_question_key, question_revisions.c.revision_number.desc())

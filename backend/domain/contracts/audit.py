@@ -81,6 +81,30 @@ class BatchProcessResponse(BaseModel):
     revisions: list[RevisionSummary] = Field(default_factory=list)
 
 
+class BackgroundJobSummary(BaseModel):
+    """Client-safe snapshot of one durable background job.
+
+    The payload, lease owner and idempotency key are intentionally not exposed:
+    they are execution details and may contain source identifiers that the UI
+    does not need. ``result`` is the completed operation response.
+    """
+
+    jobId: str
+    jobType: str
+    status: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    progress: int = Field(ge=0, le=100)
+    message: str
+    attemptCount: int = Field(ge=0)
+    maxAttempts: int = Field(ge=1)
+    cancelRequested: bool = False
+    lastError: dict[str, Any] | None = None
+    result: Any = None
+    createdAt: float
+    updatedAt: float
+    startedAt: float | None = None
+    completedAt: float | None = None
+
+
 class PublicationRevisionResponse(AuditedOperationResponse):
     """整套重新审核创建新发布版本时返回的审计结果。"""
 

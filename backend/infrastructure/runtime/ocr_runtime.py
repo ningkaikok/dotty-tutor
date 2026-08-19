@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
+
 
 OcrProvider = Literal["auto", "mineru", "pypdf"]
 
@@ -113,6 +115,23 @@ class OcrRuntime:
     def should_use_mineru(self) -> bool:
         return self.mineru_command() is not None and self.selection.provider in ("auto", "mineru")
 
+    def config_snapshot(
+        self,
+        *,
+        provider: str | None = None,
+        runtime_name: str = "ocr",
+        timeout: float = 900.0,
+    ) -> RuntimeConfigSnapshot:
+        """Return provider/fallback configuration without exposing local paths."""
+        return RuntimeConfigSnapshot(
+            provider=provider or self.selection.provider,
+            model=None,
+            runtime=runtime_name,
+            schema="ocr-markdown-v1",
+            prompt="ocr-pipeline",
+            timeout=timeout,
+        )
+
     def page_count(self, source_path: Path) -> int:
         """使用 MinerU 环境中的 PDFium 快速读取页数。
 
@@ -204,7 +223,7 @@ class OcrRuntime:
                     copied.add(source_image.name)
                     image_urls.append(f"{asset_url_prefix}/{source_image.name}")
                 (asset_dir / "source.md").write_text(markdown, encoding="utf-8")
-            return markdown[:40_000], {
+            run = {
                 "requestedProvider": self.selection.provider,
                 "provider": "mineru",
                 "mode": "pipeline-auto",
@@ -214,6 +233,8 @@ class OcrRuntime:
                 "endPage": None if end_page is None else end_page + 1,
                 "imageUrls": image_urls,
             }
+            attach_runtime_config(run, self.config_snapshot(provider="mineru"))
+            return markdown[:40_000], run
 
     def render_page_image(
         self,

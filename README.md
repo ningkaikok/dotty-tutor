@@ -28,6 +28,8 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 - **送审发布**：多道已生成题目可送审并发布为互动试卷，学生端只看到已发布内容。
 - **运行审计**：单题修复、刷新 OCR、批次重生成和整套重新审核均保留 `run_id`、revision、实际模型/审核/OCR
   与 validator 版本；旧题目版本可追溯且不会被覆盖。
+- **可恢复处理**：PDF 完成和批次识别由 PostgreSQL Job Store 与独立 Worker 执行，支持进度查询、取消、
+  有限重试和进程重启后的租约恢复。
 
 ### 学生学习空间（`/learn`）
 
@@ -109,6 +111,7 @@ docker compose up --build --detach
 ```bash
 docker compose ps
 docker compose logs --follow api
+docker compose logs --follow worker
 docker compose down
 ```
 
@@ -180,7 +183,8 @@ Compose 构建和健康检查。
 当前版本已完成教材导入、结构化出题、审校、互动练习、分层提示、TTS 和 PostgreSQL
 持久化闭环，并完成互动试卷发布、学生消费、学习记录同步、双产品入口、错题拍照裁切、错误原因确认、
 错题本存储和有状态多轮陪练。
-错题陪练已覆盖录入、多轮辅导、变式掌握验证和 1/3/7 天复习闭环。公网生产部署仍需要用户鉴权、对象存储、后台任务、Alembic、
+错题陪练已覆盖录入、多轮辅导、变式掌握验证和 1/3/7 天复习闭环。PDF 后台任务已使用 PostgreSQL Job Store
+与单 Worker；公网生产部署仍需要用户鉴权、对象存储、Alembic、
 限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。其中运行快照、PostgreSQL Job Store、单 Worker
 和离线评测的实施顺序见[AI 运行治理计划](docs/runtime-governance-plan.md)。
 

@@ -14,6 +14,8 @@ interface UploadPanelProps {
   onSourceTextChange: (value: string) => void;
   onUpload: () => void;
   onPause: (id: string) => void;
+  onCancelProcessing: (id: string) => void;
+  onRetryProcessing: (id: string) => void;
 }
 
 const phaseLabels: Record<UploadPhase, string> = {
@@ -51,6 +53,8 @@ export function UploadPanel({
   onSourceTextChange,
   onUpload,
   onPause,
+  onCancelProcessing,
+  onRetryProcessing,
 }: UploadPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -113,6 +117,8 @@ export function UploadPanel({
                 </div>
                 <div className="upload-item-actions">
                   {itemBusy && item.phase === "uploading" && <button className="text-button" onClick={() => onPause(item.id)}>暂停</button>}
+                  {itemBusy && item.phase === "processing" && <button className="text-button" onClick={() => void onCancelProcessing(item.id)}>取消</button>}
+                  {item.phase === "error" && item.processingTask?.jobId && <button className="text-button" onClick={() => void onRetryProcessing(item.id)}>重试</button>}
                   {!itemBusy && item.phase !== "done" && <button className="text-button" onClick={() => onRemoveUpload(item.id)}>移除</button>}
                   {item.phase === "done" && <span className="upload-done-mark">✓</span>}
                 </div>

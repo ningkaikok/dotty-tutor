@@ -41,6 +41,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Background Job */
+        get: operations["get_background_job_api_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Background Job */
+        post: operations["cancel_background_job_api_jobs__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Background Job */
+        post: operations["retry_background_job_api_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/learning/mastery/{learner_id}": {
         parameters: {
             query?: never;
@@ -829,7 +880,7 @@ export interface paths {
         put?: never;
         /**
          * Process Pdf Batch
-         * @description Delegate one queued page range to the reusable processing service.
+         * @description 快速注册一个批次任务；原同步服务仍由 Worker 调用。
          */
         post: operations["process_pdf_batch_api_uploads__upload_id__batches__batch_id__process_post"];
         delete?: never;
@@ -869,7 +920,7 @@ export interface paths {
         put?: never;
         /**
          * Complete Pdf Upload
-         * @description Delegate merge, OCR and first-batch generation to the application service.
+         * @description 快速注册合并/OCR/首批生成任务；长流程由独立 Worker 执行。
          */
         post: operations["complete_pdf_upload_api_uploads__upload_id__complete_post"];
         delete?: never;
@@ -977,52 +1028,50 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * BatchProcessResponse
-         * @description Batch endpoint also serves an idempotent read from an existing cache.
+         * BackgroundJobSummary
+         * @description Client-safe snapshot of one durable background job.
          *
-         *     The cache branch is not an operation and therefore intentionally has no
-         *     fabricated run. Forced batch regeneration still returns a completed run.
+         *     The payload, lease owner and idempotency key are intentionally not exposed:
+         *     they are execution details and may contain source identifiers that the UI
+         *     does not need. ``result`` is the completed operation response.
          */
-        BatchProcessResponse: {
-            /** Batch */
-            batch: {
-                [key: string]: unknown;
-            };
-            /** Guidecards */
-            guideCards?: {
-                [key: string]: unknown;
-            }[][];
-            /** Modelrun */
-            modelRun?: {
-                [key: string]: unknown;
-            } | null;
-            /** Modelruns */
-            modelRuns?: {
-                [key: string]: unknown;
-            }[];
-            /** Ocrrun */
-            ocrRun?: {
-                [key: string]: unknown;
-            } | null;
-            /** Questionpayload */
-            questionPayload?: {
+        BackgroundJobSummary: {
+            /** Attemptcount */
+            attemptCount: number;
+            /**
+             * Cancelrequested
+             * @default false
+             */
+            cancelRequested: boolean;
+            /** Completedat */
+            completedAt?: number | null;
+            /** Createdat */
+            createdAt: number;
+            /** Jobid */
+            jobId: string;
+            /** Jobtype */
+            jobType: string;
+            /** Lasterror */
+            lastError?: {
                 [key: string]: unknown;
             } | null;
-            /** Questionpayloads */
-            questionPayloads?: {
-                [key: string]: unknown;
-            }[];
-            /** Reviewrun */
-            reviewRun?: {
-                [key: string]: unknown;
-            } | null;
-            /** Reviewruns */
-            reviewRuns?: {
-                [key: string]: unknown;
-            }[];
-            /** Revisions */
-            revisions?: components["schemas"]["RevisionSummary"][];
-            run?: components["schemas"]["RunSummary"] | null;
+            /** Maxattempts */
+            maxAttempts: number;
+            /** Message */
+            message: string;
+            /** Progress */
+            progress: number;
+            /** Result */
+            result?: unknown;
+            /** Startedat */
+            startedAt?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Updatedat */
+            updatedAt: number;
         };
         /** Body_import_mistake_api_mistakes_import_post */
         Body_import_mistake_api_mistakes_import_post: {
@@ -1539,6 +1588,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TutorReply"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_background_job_api_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_background_job_api_jobs__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_background_job_api_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
                 };
             };
             /** @description Validation Error */
@@ -3072,7 +3214,9 @@ export interface operations {
                 force?: boolean;
                 refreshOcr?: boolean;
             };
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 batch_id: string;
                 upload_id: string;
@@ -3082,12 +3226,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BatchProcessResponse"];
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
                 };
             };
             /** @description Validation Error */
@@ -3138,7 +3282,9 @@ export interface operations {
     complete_pdf_upload_api_uploads__upload_id__complete_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 upload_id: string;
             };
@@ -3147,14 +3293,12 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
                 };
             };
             /** @description Validation Error */

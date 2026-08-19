@@ -22,12 +22,19 @@ flowchart LR
   Web -->|"/api/*"| API["FastAPI :8010"]
 
   subgraph Backend["后端编排层"]
-    API --> Pipeline["上传、出题与辅导流水线"]
+    API --> Pipeline["短请求：单页、Help、学习"]
+    API --> JobStore["PostgreSQL Job Store"]
+    JobStore --> Worker["独立 Python Worker"]
+    Worker --> Processing["PDF 完成与批次处理"]
     API --> Learning["课程与学习记录"]
     Pipeline --> OCR["OCR Runtime"]
     Pipeline --> Model["Model Runtime"]
     Pipeline --> Review["Review Runtime"]
     Pipeline --> Store["TutorStore"]
+    Processing --> OCR
+    Processing --> Model
+    Processing --> Review
+    Processing --> Store
     Learning --> Store
     API --> TTS["TTS Router"]
     API --> MistakeStore["MistakeStore"]
@@ -42,6 +49,7 @@ flowchart LR
   Model --> Codex["Codex CLI"]
   Model --> Mock["Mock 回退"]
   Store --> PostgreSQL["PostgreSQL"]
+  JobStore --> PostgreSQL
   MistakeStore --> PostgreSQL
   ThreadStore --> PostgreSQL
   MistakeStore --> MistakeFiles["错题原图 / 题图"]
@@ -86,6 +94,10 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | ASGI 组合根 | `backend/app.py`、`backend/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
 | 教材 HTTP 边界 | `backend/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
 | 教材处理服务 | `backend/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
+| 后台任务用例 | `backend/application/textbook_jobs.py` | 把任务 payload 还原为应用服务调用；不复制 OCR 或生成业务流程 |
+| Worker 循环 | `backend/application/job_worker.py`、`backend/worker.py` | 原子领取任务、续租、取消检查、有限重试和最终状态收敛 |
+| Job Store | `backend/persistence/job_store.py` | 持久化任务、幂等键、租约、运行快照、错误和结果；PostgreSQL 负责并发领取 |
+| 应用错误契约 | `backend/application/errors.py` | 将业务失败映射为稳定错误码、可重试标记和请求 ID |
 | 批次题目处理 | `backend/application/services/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
 | 教材库路由 | `backend/api/routers/library_routes.py` | 教材列表、恢复和软删除 |
 | 教材 OCR 编排 | `backend/textbook_ocr_pipeline.py` | 页面探测、连续页段路由、局部 Provider 升级、矢量图页面渲染、结果缓存和审计记录 |
@@ -216,8 +228,8 @@ erDiagram
 1. 浏览器检查 `%PDF-` 和 `%%EOF`，文件最大 500 MB。
 2. `POST /api/uploads/init` 创建任务和资源目录。
 3. 浏览器按 5 MB 调用分块上传接口，暂停后只补传缺失块。
-4. `POST /api/uploads/{uploadId}/complete` 合并文件并校验大小、SHA-256 和页数。
-5. 后端每 5 页规划一个批次，合并成功后删除分块并保留 `source.pdf`。
+4. `POST /api/uploads/{uploadId}/complete` 使用幂等键创建 `queued` 任务，快速返回 `202 + jobId`。
+5. 独立 Worker 领取租约后合并文件并校验大小、SHA-256 和页数；随后每 5 页规划一个批次，删除已合并分块并保留 `source.pdf`。
 6. 首批先读取每页文字层和图片数量，计算扫描、公式和图形信号；电子文本页默认走 pypdf，扫描页、公式页
    或含“如图/左视图/展开图”等视觉提示的页面优先走 MinerU。
 7. 自动模式下，pypdf 页面先经过页面质量门禁；空文字、疑似扫描或内容损坏的页段局部升级到 MinerU。
@@ -230,24 +242,25 @@ erDiagram
 10. 每道题进入独立生成循环：结构化生成 → 来源绑定 → 审核 → 确定性规范化 → 内容块重建 → 质量门禁。
     质量失败时只携带当前题的错误证据重试，最多额外重试 2 次；最终仍失败的题目保留给工作台诊断并隔离，
     不进入学生可见发布。
-11. 批次结果写入课程文档、题目当前视图和 revision 审计链；前端通过状态接口看到批次进度，后续批次按需处理。
-12. 前端每 800 ms 查询状态并显示进度。
+11. 批次结果写入课程文档、题目当前视图和 revision 审计链；任务成功时保存结果，失败时保存结构化错误。
+12. 前端每 800 ms 查询 `/api/jobs/{jobId}` 与上传领域状态，分别展示多个文件的任务进度；后续批次也通过 `202` 任务执行。
 
-当前 `complete` 和后续批次处理仍在 HTTP 请求中同步运行，不是后台任务。
+取消采用协作式边界：排队任务直接收敛为 `cancelled`，运行任务设置 `cancel_requested`，应用服务在合并、OCR
+和题目循环的安全点终止。Worker 必须持有有效租约才可提交成功或失败，避免进程暂停后由旧执行者覆盖新结果。
 
 ## 运行治理的当前边界与目标
 
-当前系统已经具备统一模型适配、OCR 页面路由、`upload_jobs`、领域状态机、结构化日志和请求 ID，但一次
-长流程仍会读取进程级运行时选择，且 PDF/OCR/生成由 HTTP 请求同步等待。它们是后续演进的基础，不应被
-误解为已经实现了完整的任务队列或 Agent 平台。
+当前系统已经具备统一模型适配、OCR 页面路由、不可变运行快照、PostgreSQL `background_jobs`、单 Worker、
+领域状态机、结构化日志和请求 ID。PDF 完成与批次处理已经脱离 HTTP 请求；它是模块化单体中的可恢复任务，
+不是 Redis 队列、分布式调度平台或 Agent 编排框架。
 
 下一阶段按以下最小边界演进：
 
 - **Run Snapshot**：运行开始时固定生成模型、审核模型、OCR、提示词、Schema 和校验器版本；后续切换只
   影响新运行。
 - **Run Events**：使用 `run_id` 串联 OCR 路由、局部重试、生成、审校、隔离、发布和结束事件。
-- **PostgreSQL Job Store**：先复用现有数据库和单个 Worker 执行 PDF/OCR/批量生成，HTTP 返回 `202` 和
-  `jobId`；不预先引入 Redis。
+- **PostgreSQL Job Store（已完成）**：使用独立任务表和单个 Worker 执行 PDF/OCR/批量生成，HTTP 返回
+  `202 + jobId`；支持幂等、取消、有限重试和租约恢复，不预先引入 Redis。
 - **离线评测**：通过脱敏固定样本测量公式损坏、切题偏差、质量门禁、审核纠错、陪练判定和耗时。
 - **轻量 Model Gateway**：在现有 Runtime 上统一请求与结果字段，显式记录实际 Provider、Model、回退和
   错误，而不是新增独立服务。

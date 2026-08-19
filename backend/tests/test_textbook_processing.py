@@ -7,27 +7,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
-from app import app
-from api.routers.textbook_routes import pdf_uploads, process_pdf_batch, processing_service
+from api.routers.textbook_routes import pdf_uploads, processing_service
 
 
 class TextbookProcessingTests(unittest.TestCase):
-    def test_cached_batch_read_does_not_fabricate_a_run(self) -> None:
-        cached = {
-            "batch": {"id": "batch-001", "status": "processed"},
-            "questionPayload": {"question": {"id": "cached-question"}},
-            "questionPayloads": [{"question": {"id": "cached-question"}}],
-            "ocrRun": {"provider": "pypdf"},
-            "modelRun": {"provider": "mock", "model": "fixture"},
-        }
-        with patch.object(processing_service, "process_batch", return_value=cached) as process:
-            response = TestClient(app).post("/api/uploads/upload-cache/batches/batch-001/process")
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(response.json()["run"])
-        self.assertEqual(response.json()["modelRun"]["model"], "fixture")
-        process.assert_called_once_with("upload-cache", "batch-001", False, refresh_ocr=False)
-
     def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
         """A later batch includes the previous page to recover split questions."""
         with TemporaryDirectory() as directory:
@@ -89,7 +72,7 @@ class TextbookProcessingTests(unittest.TestCase):
                     patch("api.routers.textbook_routes.store.save_lesson"),
                     patch("api.routers.textbook_routes.store.save_job"),
                 ):
-                    response = process_pdf_batch("test-upload", "batch-002")
+                    response = processing_service.process_batch("test-upload", "batch-002")
                 self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
                 self.assertEqual(response["batch"]["status"], "processed")
                 self.assertEqual(resolve.call_args.kwargs["start_page"], 4)

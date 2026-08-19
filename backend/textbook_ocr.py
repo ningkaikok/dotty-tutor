@@ -13,7 +13,22 @@ from typing import Any
 from pypdf import PdfReader
 
 from observability import log_event
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+
+
+def _with_ocr_config(run: dict[str, Any], *, provider: str, prompt: str) -> dict[str, Any]:
+    """Keep legacy OCR metadata while adding the content-free runtime snapshot."""
+    return attach_runtime_config(
+        run,
+        RuntimeConfigSnapshot(
+            provider=provider,
+            runtime="ocr",
+            schema="ocr-text-v1",
+            prompt=prompt,
+            timeout=900.0,
+        ),
+    )
 
 
 def extract_pdf_text(reader: PdfReader, max_pages: int = 10, max_chars: int = 16_000) -> str:
@@ -47,13 +62,13 @@ def resolve_ocr_text(
     """
     if source_text.strip():
         log_event("ocr.completed", provider="manual", mode="pasted-text", fallback=False)
-        return source_text.strip(), {
+        return source_text.strip(), _with_ocr_config({
             "requestedProvider": "manual",
             "provider": "manual",
             "mode": "pasted-text",
             "fallback": False,
             "output": "text",
-        }
+        }, provider="manual", prompt="pasted-text")
 
     requested = ocr_runtime.selection.provider
     if source_path and ocr_runtime.should_use_mineru():
@@ -72,7 +87,7 @@ def resolve_ocr_text(
                 asset_url_prefix,
             )
             log_event("ocr.completed", provider=result[1].get("provider"), fallback=False)
-            return result
+            return result[0], _with_ocr_config(result[1], provider=str(result[1].get("provider") or "mineru"), prompt="mineru")
         except Exception as error:
             log_event(
                 "ocr.failed",
@@ -83,14 +98,14 @@ def resolve_ocr_text(
                 error=str(error)[:300],
                 exc_info=True,
             )
-            return extracted_text, {
+            return extracted_text, _with_ocr_config({
                 "requestedProvider": requested,
                 "provider": "pypdf" if extracted_text else "none",
                 "mode": "text-layer-fallback" if extracted_text else "ocr-failed",
                 "fallback": True,
                 "error": str(error),
                 "output": "text",
-            }
+            }, provider="pypdf" if extracted_text else "none", prompt="text-layer-fallback")
 
     log_event(
         "ocr.completed",
@@ -98,10 +113,10 @@ def resolve_ocr_text(
         mode="text-layer" if extracted_text else "no-text-layer",
         fallback=False,
     )
-    return extracted_text, {
+    return extracted_text, _with_ocr_config({
         "requestedProvider": requested,
         "provider": "pypdf" if extracted_text else "none",
         "mode": "text-layer" if extracted_text else "no-text-layer",
         "fallback": False,
         "output": "text",
-    }
+    }, provider="pypdf" if extracted_text else "none", prompt="text-layer")

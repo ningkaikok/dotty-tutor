@@ -6,10 +6,13 @@ import os
 import time
 import uuid
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 
+from application.errors import AppError, problem_details
 from observability import log_event, request_id_var
 
 
@@ -20,6 +23,103 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Dotty Tutor", version="0.6.0")
+
+    def current_request_id(request: Request) -> str:
+        """Prefer the middleware context, with a safe fallback for direct handlers."""
+        return request_id_var.get() or request.headers.get("X-Request-ID", "")
+
+    def response(
+        request: Request,
+        *,
+        status_code: int,
+        payload: dict,
+        headers: dict[str, str] | None = None,
+    ) -> JSONResponse:
+        response_headers = {"X-Request-ID": current_request_id(request)}
+        response_headers.update(headers or {})
+        return JSONResponse(status_code=status_code, content=payload, headers=response_headers)
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, error: AppError) -> JSONResponse:
+        return response(
+            request,
+            status_code=error.status_code,
+            payload=error.to_problem(current_request_id(request)),
+            headers=error.headers,
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_error_handler(request: Request, error: HTTPException) -> JSONResponse:
+        detail = error.detail
+        if isinstance(detail, str):
+            message = detail
+            details = None
+        elif detail is None:
+            message = "请求失败"
+            details = None
+        else:
+            message = "请求失败"
+            details = detail
+        retryable = error.status_code in {408, 425, 429, 502, 503, 504}
+        return response(
+            request,
+            status_code=error.status_code,
+            payload=problem_details(
+                request_id=current_request_id(request),
+                error_code="HTTP_ERROR",
+                message=message,
+                retryable=retryable,
+                details=details,
+            ),
+            headers=dict(error.headers or {}),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
+        # ``input`` and ``ctx`` may contain full student/document content or an
+        # unserialisable exception; location and message are sufficient to fix a request.
+        details = [
+            {
+                "loc": list(item.get("loc", ())),
+                "message": str(item.get("msg", "参数无效")),
+                "type": str(item.get("type", "value_error")),
+            }
+            for item in error.errors()
+        ]
+        return response(
+            request,
+            status_code=422,
+            payload=problem_details(
+                request_id=current_request_id(request),
+                error_code="VALIDATION_ERROR",
+                message="请求参数校验失败",
+                details=details,
+            ),
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_error_handler(request: Request, error: Exception) -> JSONResponse:
+        # Middleware records the exception with request metadata. Keep the HTTP
+        # response deliberately generic so provider errors and paths do not leak.
+        log_event(
+            "http.exception.unhandled",
+            level=40,
+            method=request.method,
+            path=request.url.path,
+            error_type=type(error).__name__,
+            exc_info=True,
+        )
+        return response(
+            request,
+            status_code=500,
+            payload=problem_details(
+                request_id=current_request_id(request),
+                error_code="INTERNAL_ERROR",
+                message="服务器内部错误",
+                retryable=False,
+            ),
+        )
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_csv_env(
@@ -27,7 +127,7 @@ def create_app() -> FastAPI:
             "http://localhost:5174,http://127.0.0.1:5174",
         ),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-ID", "Idempotency-Key"],
     )
     trusted_hosts = _csv_env("TRUSTED_HOSTS", "")
     if trusted_hosts:
