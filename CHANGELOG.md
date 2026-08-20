@@ -7,6 +7,8 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.19.0] - 2026-08-20
+
 ### Added
 
 - 内容生产预览支持在首批 5 题之后显式排队生成有安全上限的整套试卷，并可取消、恢复或重试任务，查看每个
@@ -309,7 +311,18 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.18.0...v0.19.0
+[0.18.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.16.0...v0.17.0
+[0.16.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.15.0...v0.16.0
+[0.15.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.14.1...v0.15.0
+[0.14.1]: https://github.com/ningkaikok/dotty-tutor/compare/v0.14.0...v0.14.1
+[0.14.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.13.0...v0.14.0
+[0.13.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.6.0...v0.7.0
