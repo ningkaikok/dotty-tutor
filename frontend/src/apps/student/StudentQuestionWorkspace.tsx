@@ -1,6 +1,6 @@
 import { QuestionAnswer } from "../../components/QuestionAnswer";
 import MathText from "../../MathText";
-import type { ExerciseAttemptInput, QuestionPayload, TutorReply } from "../../types";
+import type { ExerciseAttemptInput, QuestionPayload, TutorReply } from "../../types/index";
 
 interface StudentQuestionWorkspaceProps {
   payload: QuestionPayload;

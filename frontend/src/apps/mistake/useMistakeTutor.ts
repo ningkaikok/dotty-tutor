@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api";
-import type { MistakeItem, TutorStage, TutorThread } from "../../types";
+import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api/tutoring";
+import type { MistakeItem, TutorStage, TutorThread } from "../../types/index";
 
 /**
  * 管理一个持久化陪练线程的客户端状态。
@@ -79,9 +79,8 @@ export function useMistakeTutor(item: MistakeItem) {
       setError("请先输入或选择答案");
       return;
     }
-    // Keep the request shape backward compatible, but do not label an empty
-    // selection as a structured answer.  This matters when a learner asks a
-    // follow-up question after the original answer has been cleared.
+    // Do not label an empty selection as a structured answer. This matters when
+    // a learner asks a follow-up question after the original answer is cleared.
     const meaningfulInteractionResult = hasStructuredAnswer ? interactionResult : {};
     setSending(true);
     setError("");

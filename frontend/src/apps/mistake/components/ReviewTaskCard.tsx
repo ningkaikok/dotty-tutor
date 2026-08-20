@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import MathText from "../../../MathText";
-import type { ReviewTask, StructuredAnswerInput } from "../../../types";
+import type { ReviewTask, StructuredAnswerInput } from "../../../types/index";
 import { buildStructuredAnswer } from "../structuredAnswer";
 
 interface ReviewTaskCardProps {

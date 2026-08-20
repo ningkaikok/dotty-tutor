@@ -106,9 +106,9 @@ set +a
 
 `.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
-> 图片或旧题看起来与刚生成的结果不一致时，先确认服务使用的是同一份环境和数据库：
-> `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录，
-> 于是页面会读取旧数据库中的题目 JSON，而当前工作区并没有对应图片资源。
+> 图片看起来与刚生成的结果不一致时，先确认服务使用的是同一份环境和全新测试数据库：
+> `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录；
+> 当前基线不读取旧数据库题目，需清空测试库并按当前导入流程重新生成。
 
 ### 独立切换陪练模型
 
@@ -178,7 +178,6 @@ npm run check:api
 | <http://localhost:5174/learn> | 学生学习空间，不显示教材上传和模型配置 |
 | `http://localhost:5174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
 | <http://localhost:5174/studio> | 教材导入、OCR、内容生成与互动预览 |
-| <http://localhost:5174/textbooks> | 兼容旧地址，自动跳转到 `/studio` |
 | <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
 | <http://localhost:5174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
 | `http://localhost:5174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
@@ -203,19 +202,10 @@ npm run check:api
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
-阶段三数据库表可显式创建：
-
-```bash
-psql "$DATABASE_URL" -f backend/migrations/003_stateful_tutoring.sql
-```
-
-试卷发布和学习记录同步使用 `006_publications_and_sync.sql`；学习会话字段修正使用
-`007_learning_session_publication.sql`，发布版本使用 `008_publication_revisions.sql`，运行与题目审计使用
-`009_run_snapshots_question_revisions.sql`。升级已有 PostgreSQL 时按编号顺序执行迁移。
-其中 009 会创建不可变的 `run_snapshots` 与 `question_revisions`；SQLite 测试由 SQLAlchemy 元数据自动建表。
-
-开发环境仍会通过 SQLAlchemy `create_all()` 幂等创建缺失表；显式 SQL 便于学习和部署审查，不能替代
-生产环境中的正式迁移版本管理。
+数据库只支持全新空库启动。首次访问各领域 Store 时会根据
+`backend/persistence/schema.py` 及领域 Store 中的当前 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema；
+项目不提供原地数据库升级，也不再维护编号 SQL 迁移链。已有本地测试库和 `data/` 资源应在切换当前基线前清空，
+生产环境需要通过备份后重建空库并重新导入当前数据。
 
 ## 常用环境变量
 
@@ -333,23 +323,6 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 - `data/mistakes/<mistakeId>/` 保存错题原图和 MinerU 提取的题图；元数据存于 `mistake_items`。
 - 完成合并后会删除上传分块，仅保留原 PDF。
 - 后端重启后可以从 PostgreSQL 恢复教材和已生成题目。
-- `backend/migrate_sqlite_to_postgres.py` 用于迁移旧 SQLite 数据。
-
-迁移命令：
-
-```bash
-.venv/bin/python backend/migrate_sqlite_to_postgres.py
-```
-
-已有 PostgreSQL 环境升级阶段二错题功能时，在备份后执行：
-
-```bash
-PGPASSWORD="$POSTGRES_PASSWORD" psql \
-  --host "$POSTGRES_HOST" --port "$POSTGRES_PORT" \
-  --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-  --file backend/migrations/002_mistake_capture.sql
-```
-
 ## 测试
 
 ```bash

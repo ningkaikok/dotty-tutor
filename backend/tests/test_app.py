@@ -6,35 +6,26 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app import (
-    HELP_SCHEMA,
-    LESSON_SCHEMA,
-    HelpRequest,
+from application.services.lesson_generation import attach_question_source, generate_lesson, generate_model_reply, lesson_store
+from domain.questions.contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
+from domain.questions.pipeline import (
     apply_question_quality_gate,
-    attach_question_source,
     build_question_content_blocks,
-    build_reply,
-    equation_conflict,
-    equivalent_linear_equations,
-    generate_lesson,
-    generate_model_reply,
-    lesson_store,
-    limited_question_sources,
     normalize_image_choice_question,
     normalize_model_math_text,
     normalize_stacked_equation_choices,
     normalize_text_choices_from_source,
-    runtime,
-    select_complete_question_source,
-    split_question_sources,
     validate_question_payload,
     write_model_prompt_artifact,
 )
+from domain.questions.source import limited_question_sources, select_complete_question_source, split_question_sources
+from domain.tutoring.checks import build_reply, equation_conflict, equivalent_linear_equations
+from infrastructure.runtime.model_runtime import runtime
 from infrastructure.runtime.model_runtime import ModelSelection
 from domain.questions.contracts import CANVAS_ACTIONS
 from domain.questions.pipeline import strip_choice_text_from_prompt
 from infrastructure.runtime.review_runtime import formula_anomaly_score, normalize_ocr_question
-from storage import TutorStore
+from persistence.app_store import AppStore
 
 
 STEPS = [
@@ -178,7 +169,7 @@ class LessonGenerationTests(unittest.TestCase):
         }
         payload = None
         try:
-            with patch("app.runtime.generate_json", return_value=(generated, {"provider": "codex", "model": "default", "fallback": False})):
+            with patch("application.services.lesson_generation.runtime.generate_json", return_value=(generated, {"provider": "codex", "model": "default", "fallback": False})):
                 payload, guide_cards, run = generate_lesson("解方程 2x + 3 = 11")
         finally:
             runtime.selection = original_selection
@@ -199,7 +190,7 @@ class LessonGenerationTests(unittest.TestCase):
 class PersistentStoreTests(unittest.TestCase):
     def test_completed_pdf_and_questions_survive_store_recreation(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
-            first_store = TutorStore()
+            first_store = AppStore()
             upload_directory = first_store.upload_root / "persisted-upload"
             upload_directory.mkdir()
             (upload_directory / "source.pdf").write_bytes(b"%PDF-1.4\n%%EOF")
@@ -236,7 +227,7 @@ class PersistentStoreTests(unittest.TestCase):
             guide_cards = [{"hint": "持久化提示"}]
             first_store.save_question("persisted-upload", "batch-001", payload, guide_cards)
 
-            restored = TutorStore().load_job("persisted-upload")
+            restored = AppStore().load_job("persisted-upload")
             self.assertIsNotNone(restored)
             self.assertEqual(restored["result"]["importId"], "pdf-persisted")
             self.assertEqual(restored["batchPayloads"]["batch-001"]["question"]["id"], "persisted-question")
@@ -244,7 +235,7 @@ class PersistentStoreTests(unittest.TestCase):
 
     def test_soft_deleted_import_drops_from_library_but_keeps_data(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
-            store = TutorStore()
+            store = AppStore()
             upload_directory = store.upload_root / "delete-upload"
             upload_directory.mkdir()
             payload = {"question": {"id": "delete-question"}, "lessonSteps": []}
@@ -281,7 +272,7 @@ class PersistentStoreTests(unittest.TestCase):
 
     def test_find_completed_import_matches_content_hash(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
-            store = TutorStore()
+            store = AppStore()
 
             def make_job(upload_id: str, status: str) -> dict:
                 updir = store.upload_root / upload_id
@@ -305,19 +296,9 @@ class PersistentStoreTests(unittest.TestCase):
             store.soft_delete_import("first-upload")
             self.assertIsNone(store.find_completed_import("pdf-deadbeef1234"))
 
-    def test_resolves_database_directory_after_project_move(self) -> None:
-        with TemporaryDirectory() as directory:
-            data_root = Path(directory) / "data"
-            with patch.dict(os.environ, {"DOTTY_DATA_DIR": str(data_root)}):
-                store = TutorStore()
-                current_upload = data_root / "uploads" / "moved-upload"
-                current_upload.mkdir(parents=True)
-                legacy_path = Path("/Users/example/legacy/tutor-demo/data/uploads/moved-upload")
-                self.assertEqual(store._resolve_directory(str(legacy_path)), current_upload.resolve())
-
     def test_saves_multiple_questions_in_one_batch_transaction(self) -> None:
         with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
-            store = TutorStore()
+            store = AppStore()
             upload_directory = store.upload_root / "atomic-upload"
             upload_directory.mkdir()
             job = {
@@ -530,7 +511,7 @@ class QuestionExtractionTests(unittest.TestCase):
                 "/api/uploads/u/assets/batch-001/a.jpg",
             ]
         }
-        attach_question_source(payload, batch, ocr_run)
+        attach_question_source(payload, batch, ocr_run, ["images/a.jpg", "images/b.jpg"])
         self.assertEqual(
             payload["question"]["imageUrls"],
             [
@@ -553,7 +534,7 @@ class QuestionExtractionTests(unittest.TestCase):
         payload = {"question": {"imageReferences": []}}
         batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
         ocr_run = {"imageUrls": ["/api/uploads/u/assets/batch-001/q1-a.jpg"]}
-        attach_question_source(payload, batch, ocr_run)
+        attach_question_source(payload, batch, ocr_run, [])
         self.assertEqual(payload["question"]["imageUrls"], [])
 
     def test_explicit_empty_source_images_override_model_references(self) -> None:
@@ -599,7 +580,7 @@ class QuestionExtractionTests(unittest.TestCase):
             "（3分）下列各数中比1大的数是（ ）",
         )
 
-    def test_normalizes_legacy_percent_and_temperature_latex(self) -> None:
+    def test_normalizes_model_percent_and_temperature_latex(self) -> None:
         self.assertEqual(
             normalize_model_math_text(r"$7\textbackslash\text{%}$"),
             r"$7\%$",
@@ -646,7 +627,7 @@ class QuestionExtractionTests(unittest.TestCase):
     def test_repairs_json_control_escape_inside_latex_command(self) -> None:
         self.assertEqual(normalize_model_math_text("$60^\text{°}$"), r"$60^\text{°}$")
 
-    def test_repairs_legacy_textcirc_temperature_formula(self) -> None:
+    def test_normalizes_model_textcirc_temperature_formula(self) -> None:
         self.assertEqual(
             normalize_model_math_text(r"$7\textbackslash \textcirc C$"),
             r"$7^{\circ}\mathrm{C}$",

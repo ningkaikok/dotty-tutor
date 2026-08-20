@@ -53,7 +53,7 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 
 - **语音三级回退**：Azure Speech → Qwen3-TTS → 浏览器 Web Speech，任一层不可用自动降级。
 - **持久化**：PostgreSQL JSONB 存储题目、审校结果与引导卡。
-- **路由兼容**：旧 `/textbooks` 地址跳转到 `/studio`，历史书签不失效。
+- **路由**：内容生产工作台使用 `/studio`，学生学习空间使用 `/learn`。
 
 ## 工作流程
 

@@ -1,6 +1,6 @@
 import { GeometryCanvas } from "../GeometryCanvas";
 import MathText from "../MathText";
-import type { LessonBlock } from "../types";
+import type { LessonBlock } from "../types/index";
 
 interface LessonRendererProps {
   block: LessonBlock;

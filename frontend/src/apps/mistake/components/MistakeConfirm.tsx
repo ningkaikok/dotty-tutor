@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { confirmMistake } from "../../../api";
+import { confirmMistake } from "../../../api/mistakes";
 import MathText from "../../../MathText";
-import type { MistakeConfirmation, MistakeErrorReason, MistakeItem } from "../../../types";
+import type { MistakeConfirmation, MistakeErrorReason, MistakeItem } from "../../../types/index";
 import { displayedPrompt, optionText } from "../../../questionPresentation";
 
 interface MistakeConfirmProps {

@@ -1,4 +1,4 @@
-import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types";
+import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types/index";
 import type { RuntimeLoadingState, UploadPhase } from "./useTextbookImport";
 
 interface RuntimeSettingsProps {

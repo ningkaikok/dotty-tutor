@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { QuestionInteraction } from "./types";
+import type { QuestionInteraction } from "./types/index";
 
 type Connection = [string, string];
 

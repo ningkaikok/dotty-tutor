@@ -35,23 +35,20 @@ dotty-tutor/
 │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
 │   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
-│   ├── library_routes.py       # 兼容导入门面；规范代码位于 api/routers/
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
 │   ├── domain/contracts/       # 跨业务域的稳定请求/响应契约
 │   ├── domain/questions/       # 题目来源、规范化、Schema 和质量纯函数
 │   ├── domain/tutoring/        # 判题、陪练策略和状态机纯函数
-│   ├── mistake_*.py            # 错题契约、路由、识别适配和存储
-│   ├── tutoring_*.py           # 多轮线程契约、路由和消息存储
+│   ├── mistake_recognition.py  # 复用教材流水线的错题识别适配
+│   ├── publication_revision.py # 不可变试卷新版编排
+│   ├── run_audit.py            # 运行快照与题目修订审计
 │   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器
 │   ├── infrastructure/files/   # 上传注册和文件边界
 │   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
 │   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
 │   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
 │   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
-│   │   └── schema.py           # SQLAlchemy 关系表声明
-│   ├── *_runtime.py            # 兼容导入门面；规范实现位于 infrastructure/runtime/
-│   ├── storage.py              # 兼容导出门面；不再承载 SQL 实现
-│   └── migrations/             # 可审查的 SQL 迁移
+│   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
 ├── frontend/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
@@ -65,16 +62,13 @@ dotty-tutor/
 │   ├── lesson/                 # 课程文档和内容块渲染器
 │   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
 │   ├── types/                  # 按领域拆分的稳定类型
-│   ├── api.ts                  # 兼容导出门面
-│   └── types.ts                # 兼容导出门面
 ├── frontend/e2e/               # Playwright 用户路径
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
 ```
 
-`api.ts` 和 `types.ts` 只负责统一导出。后端根目录中同名的旧 Python 文件也只是兼容导入门面，规范代码必须进入
-`api/routers`、`application/services`、`domain`、`infrastructure` 或 `persistence`。初学者可以继续从一个门面导入；需要理解某个业务域时，再进入
-`api/mistakes.ts`、`api/tutoring.ts` 或对应的 `types/` 文件，调用方不必同步迁移。
+API 和类型按领域分别位于 `api/` 与 `types/` 目录。规范代码必须进入
+`api/routers`、`application/services`、`domain`、`infrastructure` 或 `persistence`；跨领域组合只在明确的应用入口完成。
 
 ### P0～P3 后端分层边界
 
@@ -85,9 +79,9 @@ dotty-tutor/
 | P0 | `api/routers`、`application/services`、`domain/*`、`infrastructure/*`、`persistence/` 包边界 | `app.py` 只装配；规范新代码不依赖旧根路径 |
 | P1 | 路由与协议层 | 路由只做 HTTP 校验、依赖注入和响应映射，长流程委托 Service |
 | P2 | 应用服务与领域规则 | 题目、陪练、教材处理可脱离 FastAPI 复用和单元测试 |
-| P3 | Runtime、文件和 Store 基础设施 | 外部 Provider、文件系统和数据库边界可替换，旧导入仍可运行 |
+| P3 | Runtime、文件和 Store 基础设施 | 外部 Provider、文件系统和数据库边界可替换，当前入口清晰可测试 |
 
-根目录的旧模块保留为极薄 shim，只服务旧测试、脚本和第三方示例；新代码禁止继续向 shim 添加逻辑。
+后端根目录仅保留真实的 ASGI、Worker、OCR 编排和领域服务入口；模块导入必须使用规范包路径。
 
 如果希望按完整用户路径学习前端状态归属、可恢复上传、题型复用和 TTS 竞态处理，参见
 [前端架构学习指南](frontend-learning-guide.md)。
@@ -171,7 +165,7 @@ flowchart LR
   Router["App.tsx / React Router"] --> Page["apps/* 页面编排"]
   Page --> Hook["状态机 Hook"]
   Page --> UI["展示组件"]
-  Hook --> API["api.ts"]
+  Hook --> API["api/"]
   UI --> Shared["共享题型、公式和课程组件"]
   API --> Backend["/api"]
 ```
@@ -248,7 +242,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 增加一种题型
 
-1. 在 `domain/questions/contracts.py` 和前端 `types.ts` 扩展稳定契约。
+1. 在 `domain/questions/contracts.py` 和前端 `types/` 扩展稳定契约。
 2. 在 `domain/questions/pipeline.py` 添加模型输出规范化和质量检查。
 3. 在 `QuestionAnswer.tsx` 或独立题型组件增加输入。
 4. 在 `answer_evaluator.py` 添加确定性判题；无法确定性处理时再调用模型。
@@ -300,9 +294,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 - PDF 完成和批次处理已有独立应用服务，并由 PostgreSQL Job Store 与单 Worker 异步执行；HTTP 只返回
   `202 + jobId`。后续长任务应注册同类 handler，不复制任务领取、续租和重试循环。
-- `storage.py` 仅为旧调用方提供兼容门面；新代码应直接依赖 `TextbookStore` 或 `LearningStore`，并继续
-  保持错题、陪练仓储各自独立。
-- `frontend/src/api.ts` 和 `types.ts` 已变为兼容 barrel，领域实现位于对应目录。
+- `persistence/app_store.py` 只负责应用需要的教材/学习 Store 组合；错题、陪练和复习仓储继续独立。
 - 模型/OCR 的运行时选择是进程级全局状态，不适合多用户公网服务。
 - 文件资源仍保存在本地目录，横向扩容前需要对象存储。
 

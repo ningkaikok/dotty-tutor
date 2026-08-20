@@ -1,4 +1,4 @@
-import type { PdfUploadTask, TextbookImportResult } from "../../../types";
+import type { PdfUploadTask, TextbookImportResult } from "../../../types/index";
 import type { UploadPhase } from "./useTextbookImport";
 
 interface PipelinePanelProps {

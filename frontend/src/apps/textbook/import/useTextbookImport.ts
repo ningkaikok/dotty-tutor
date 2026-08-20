@@ -7,19 +7,21 @@ import {
   initPdfUpload,
   loadLibrary,
   loadLibraryItem,
+  loadPdfUploadStatus,
+  loadBackgroundJob,
+  retryBackgroundJob,
+  uploadPdfChunk,
+} from "../../../api/textbooks";
+import {
   loadModels,
   loadTutorModels,
   loadOcrProviders,
   loadReviewModels,
-  loadPdfUploadStatus,
-  loadBackgroundJob,
-  retryBackgroundJob,
   selectModel,
   selectTutorModel,
   selectOcrProvider,
   selectReviewModel,
-  uploadPdfChunk,
-} from "../../../api";
+} from "../../../api/runtime";
 import type {
   LibraryItem,
   ModelCatalog,
@@ -30,7 +32,7 @@ import type {
   ReviewModelCatalog,
   TextbookImportResult,
   BackgroundJob,
-} from "../../../types";
+} from "../../../types/index";
 import {
   IMAGE_MAX_SIZE,
   PDF_CHUNK_SIZE,

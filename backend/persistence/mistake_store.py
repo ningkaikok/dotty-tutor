@@ -1,7 +1,7 @@
 """Persistence for the mistake-coach domain.
 
 The repository owns its table metadata so mistake work does not continue to
-expand the general TutorStore. It shares the same SQLAlchemy engine and data
+expand the application store. It shares the same SQLAlchemy engine and data
 root with the rest of the application.
 """
 
@@ -17,6 +17,8 @@ from sqlalchemy import Column, Float, Index, JSON, MetaData, String, Table, Text
 from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
+
+from domain.questions.pipeline import replace_question_prompt
 
 
 mistake_metadata = MetaData()
@@ -218,15 +220,10 @@ class MistakeStore:
             return None
         timestamp = confirmed_at or time.time()
         payload = current["questionPayload"]
-        payload["question"] = {
-            **payload.get("question", {}),
-            "prompt": confirmation["prompt"],
-            "chapter": confirmation["chapter"],
-            "knowledgePoint": confirmation["knowledgePoint"],
-        }
-        # 学生修正后的题干成为权威值。旧 contentBlocks 可能仍包含修正前 OCR 文本，
-        # 因此清除它，强制后续渲染器根据新题干/选项重建或回退显示。
-        payload["question"].pop("contentBlocks", None)
+        question = payload["question"]
+        replace_question_prompt(question, confirmation["prompt"])
+        question["chapter"] = confirmation["chapter"]
+        question["knowledgePoint"] = confirmation["knowledgePoint"]
         with self.engine.begin() as connection:
             connection.execute(
                 mistake_items.update()
@@ -296,16 +293,7 @@ class MistakeStore:
             return None
         path = Path(stored_path).expanduser().resolve()
         expected_root = self.mistake_root.resolve()
-        if expected_root in path.parents and path.is_file():
-            return path
-
-        # 数据库可能从宿主机迁移到 Docker，旧记录里的绝对路径会失效；
-        # 文件仍在同一个数据卷时，按错题 ID 和原文件名重新定位，避免前端只看到破图。
-        filename = Path(stored_path).name
-        if not filename or filename in {".", ".."}:
-            return None
-        relocated = self.mistake_root / mistake_id / filename
-        return relocated if relocated.is_file() else None
+        return path if expected_root in path.parents and path.is_file() else None
 
     @staticmethod
     def _serialize(row: Any) -> dict[str, Any]:

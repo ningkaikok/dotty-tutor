@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMatch, useNavigate } from "react-router";
-import { archiveMistake, loadMistake, loadMistakes } from "../../api";
-import type { MistakeItem } from "../../types";
+import { archiveMistake, loadMistake, loadMistakes } from "../../api/mistakes";
+import type { MistakeItem } from "../../types/index";
 import { MistakeCapture } from "./components/MistakeCapture";
 import { MistakeConfirm } from "./components/MistakeConfirm";
 import { MistakeLibrary } from "./components/MistakeLibrary";

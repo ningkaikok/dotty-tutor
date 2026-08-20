@@ -1,4 +1,4 @@
-import type { LessonDocument, QuestionPayload } from "../types";
+import type { LessonDocument, QuestionPayload } from "../types/index";
 
 const GEOMETRY_MARKERS = ["几何", "三角形", "垂直", "平分线", "轨迹", "圆", "角平分", "中点", "全等"];
 
@@ -27,7 +27,7 @@ export function lessonDocumentFromPayload(payload: QuestionPayload, sourceUpload
         title: step.title,
         payload: {
           renderer: "geometry" as const,
-          // 兼容已经持久化的旧题目：非几何题不允许沿用历史三角形动作。
+          // 当前题目不是几何题时，不允许模型内容携带不匹配的几何动作。
           action: geometryQuestion ? step.action : "show-base",
           text: step.text,
           speechText: step.speechText,

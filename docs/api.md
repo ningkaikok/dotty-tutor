@@ -2,7 +2,7 @@
 
 开发环境默认地址为 <http://127.0.0.1:8010>，前端通过同源 `/api` 路径调用。
 
-`/`、`/learn`、`/studio`、`/mistakes` 是前端页面路径（旧 `/textbooks` 会跳转），不是 API。错题拍照确认使用独立的
+`/`、`/learn`、`/studio`、`/mistakes` 是前端页面路径，不是 API。错题拍照确认使用独立的
 `/api/mistakes` 命名空间。
 
 FastAPI 交互文档启动后可从以下地址查看：
@@ -94,8 +94,7 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
 会话查询响应中的 `attempts` 是按作答时间排序的答案快照，包含 `questionId`、`response`、判定和提示层级；
 学生端用它恢复已提交题目的选择、填空、数值或画线状态。模型讲解文本不作为恢复数据，避免旧反馈串题。
-v0.6.0 客户端提交的旧字段 `lessonId` 暂时仍可作为 `publicationId` 的兼容别名；新代码和响应只使用
-`publicationId`。
+学习会话请求使用 `publicationId` 指向已发布试卷；题目 `lessonId` 不作为会话输入。
 
 试卷新版不会覆盖原课程文档。接口为每道题创建新的 `lessonId`，将试卷 `version` 加一并记录
 `revisionOf`；新版本从 `in_review` 开始，仍须通过质量门禁后发布。若原 PDF、来源批次或 OCR 所需文件
@@ -150,7 +149,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 ## 错误与安全边界
 
 应用错误统一返回 Problem JSON 风格字段：`errorCode`、`message`、`requestId`、`retryable` 和可选
-`details`。兼容调用方仍可读取 `detail`，新调用方应优先使用稳定字段。未知异常不会向浏览器暴露堆栈、文件路径、
+`details`；FastAPI 校验错误可能同时携带框架生成的 `detail`。未知异常不会向浏览器暴露堆栈、文件路径、
 密钥或完整模型响应；详细证据只进入脱敏日志和任务的内部错误记录。
 
 - 不支持的文件类型返回 `415`。

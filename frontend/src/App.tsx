@@ -14,7 +14,7 @@ function PageTitle() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    document.title = pathname.startsWith("/studio") || pathname.startsWith("/textbooks")
+    document.title = pathname.startsWith("/studio")
       ? "内容生产工作台 · Dotty Tutor"
       : pathname.startsWith("/learn")
         ? "学生学习空间 · Dotty Tutor"
@@ -38,8 +38,6 @@ function AppRoutes() {
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio/*" element={<TextbookApp />} />
-          {/* 旧版本公开过 /textbooks 地址；保留重定向，避免用户收藏失效。 */}
-          <Route path="textbooks/*" element={<Navigate to="/studio" replace />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -147,7 +147,7 @@ class TutoringStore:
 
         错题本的归档仍是软删除：题目和学习证据保留，列表默认隐藏。但归档后
         再次进入不应恢复一段已经失效的对话，因此显式删除消息和线程；消息表先删
-        是为了兼容未开启外键级联的 SQLite 本地数据库。
+        先删消息再删线程，保证 PostgreSQL 与 SQLite 的行为一致。
         """
         self._ensure_initialized()
         with self.engine.begin() as connection:

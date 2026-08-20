@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { importMistake } from "../../../api";
-import type { MistakeItem } from "../../../types";
+import { importMistake } from "../../../api/mistakes";
+import type { MistakeItem } from "../../../types/index";
 import { cropImageFile, ImageCropper, type CropSelection } from "./ImageCropper";
 
 interface MistakeCaptureProps {

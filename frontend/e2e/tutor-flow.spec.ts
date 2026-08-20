@@ -39,10 +39,49 @@ function lessonSteps(topic: string) {
   }];
 }
 
+function withContentBlocks(question: Record<string, unknown>) {
+  if (question.contentBlocks) return question;
+  const id = String(question.id);
+  const blocks: Array<Record<string, unknown>> = [
+    { id: `${id}-prompt`, type: "text", text: String(question.prompt), sourceOrder: 0 },
+  ];
+  const imageUrls = Array.isArray(question.imageUrls) ? question.imageUrls : [];
+  imageUrls.forEach((url, index) => blocks.push({
+    id: `${id}-image-${index}`,
+    type: "image",
+    url,
+    assetId: url,
+    sourceReference: url,
+    role: "stem",
+    sourceOrder: index + 1,
+  }));
+  const options = Array.isArray(question.options) ? question.options : [];
+  if (options.length) {
+    const optionImages = Array.isArray(question.optionImageUrls) ? question.optionImageUrls : [];
+    blocks.push({
+      id: `${id}-options`,
+      type: "options",
+      sourceOrder: blocks.length,
+      items: options.map((option, index) => ({
+        label: `(${String.fromCharCode(65 + index)})`,
+        contentBlocks: [{
+          id: `${id}-option-${index}`,
+          type: "text",
+          text: String(option).replace(/^(?:\([A-D]\)|[A-D][.．:：、])\s*/, "").trim(),
+          sourceOrder: 0,
+        }],
+        ...(optionImages[index] ? { imageUrl: optionImages[index], assetId: optionImages[index] } : {}),
+      })),
+    });
+  }
+  return { ...question, contentBlocks: blocks };
+}
+
 function payload(question: Record<string, unknown>) {
-  const topic = String(question.knowledgePoint);
+  const currentQuestion = withContentBlocks(question);
+  const topic = String(currentQuestion.knowledgePoint);
   return {
-    question,
+    question: currentQuestion,
     lessonSteps: lessonSteps(topic),
     architecture: { source: "playwright-fixture" },
     modelRun,
@@ -165,19 +204,26 @@ const priorityImportResult = {
   questionPayloads: [multiSelectQuestion, fillBlankQuestion, numericQuestion],
 };
 
-// Regression fixture for the historical split-image bug: legacy prompt/options are still
-// accepted, but explicit image arrays and Markdown must enter the same renderer in source order.
+// Fixture for the current structured image and option rendering contract.
 const renderingQuestion = payload({
   id: "pw-rendering",
   questionType: "choice",
   chapter: "图文题",
   knowledgePoint: "公式与题图",
   questionNumber: "7",
-  prompt: "观察 ![题干图](/fixtures/stem.png)，计算 $\\frac{1}{2} + 1$。",
-  givens: ["条件图：![条件图](/fixtures/given.png)，且 $x > 0$"],
-  options: ["(A) ![选项图 A](/fixtures/a.png)", "(B) $x=2$"],
+  prompt: "观察题干图，计算 $\\frac{1}{2} + 1$。",
+  givens: ["条件为 $x > 0$"],
+  options: ["(A) 1.5", "(B) $x=2$"],
   imageUrls: ["/fixtures/stem.png"],
   optionImageUrls: ["/fixtures/a.png", ""],
+  contentBlocks: [
+    { id: "pw-rendering-prompt", type: "text", text: "观察题干图，计算 $\\frac{1}{2} + 1$。", sourceOrder: 0 },
+    { id: "pw-rendering-stem", type: "image", url: "/fixtures/stem.png", assetId: "/fixtures/stem.png", sourceReference: "stem.png", role: "stem", sourceOrder: 1 },
+    { id: "pw-rendering-options", type: "options", sourceOrder: 2, items: [
+      { label: "(A)", imageUrl: "/fixtures/a.png", assetId: "/fixtures/a.png", contentBlocks: [{ id: "pw-rendering-a", type: "text", text: "1.5", sourceOrder: 0 }] },
+      { label: "(B)", contentBlocks: [{ id: "pw-rendering-b", type: "math", latex: "x=2", display: false, sourceOrder: 0 }] },
+    ] },
+  ],
 });
 
 const renderingImportResult = {
@@ -308,6 +354,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
         givens: [],
         options: [],
         imageUrls: [],
+        contentBlocks: [{ id: "mistake-question-pw-1-prompt", type: "text", text: "解方程 $x + 1 = 3$", sourceOrder: 0 }],
       },
       lessonSteps: [],
       architecture: {},
@@ -338,7 +385,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
   let tutorStage = startVerify ? "verify" : "diagnose";
   let tutorMessages: Array<Record<string, unknown>> = richHistory ? [{
     messageId: "history-pw-1", threadId: "thread-pw-1", role: "assistant",
-    content: "历史题图 ![历史题图](/fixtures/history.png)，公式 $\\frac{1}{2}$。",
+    content: "复习公式 $\\frac{1}{2}$。",
     inputMode: "text", action: {}, modelRun, createdAt: 3.5,
   }] : [];
   let variations: Array<Record<string, unknown>> = [];
@@ -543,7 +590,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
 }
 
 test.describe("产品入口", () => {
-  test("学生端与内容生产端边界清晰并兼容旧教材地址", async ({ page }) => {
+  test("学生端与内容生产端边界清晰", async ({ page }) => {
     await mockApi(page);
     await mockMistakeApi(page);
     await page.goto("/");
@@ -565,9 +612,6 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await expect(page.getByText("内容生产工作台")).toBeVisible();
 
-    await page.goto("/textbooks");
-    await expect(page).toHaveURL(/\/studio$/);
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
   });
 
   test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
@@ -761,22 +805,19 @@ test.describe("产品入口", () => {
     await expect(page.getByText("需要修正")).toBeVisible();
   });
 
-  test("错题陪练历史消息统一渲染 Markdown 图片和公式", async ({ page }) => {
+  test("错题陪练历史消息按当前文本契约渲染公式", async ({ page }) => {
     await mockMistakeApi(page, true, false, true);
-    await mockFixtureImages(page);
     await page.goto("/mistakes/mistake-pw-1/tutor");
 
-    await expect(page.locator(".tutor-messages .inline-content-image")).toHaveCount(1);
+    await expect(page.getByText("复习公式")).toBeVisible();
     await expect(page.locator(".tutor-messages .katex")).toHaveCount(1);
-    await expectLoadedUniqueImages(page.locator(".tutor-messages img"));
   });
 
   test("陪练完成后可生成并提交错误原因自适应验证题", async ({ page }) => {
     await mockMistakeApi(page, true, true);
     await page.goto("/mistakes/mistake-pw-1/tutor");
 
-    // 进入 verify 后现在会自动生成第一道验证题；保留按钮分支兼容
-    // 尚未启用自动开始的旧线程或生成失败后的手动重试。
+    // 进入 verify 后现在会自动生成第一道验证题；按钮分支覆盖生成失败后的手动重试。
     await expect(page.getByRole("heading", { name: /用一道新题验证是否真正理解|基础验证/ })).toBeVisible();
     const firstVariationButton = page.getByRole("button", { name: "生成第一道验证题" });
     if (await firstVariationButton.isVisible().catch(() => false)) {
@@ -810,7 +851,7 @@ test.describe("产品入口", () => {
 });
 
 test.describe("教材辅导核心交互", () => {
-  test("内容生产端按来源顺序统一渲染公式、题干图、条件图和选项图", async ({ page }) => {
+  test("内容生产端按来源顺序统一渲染公式、题干图和选项图", async ({ page }) => {
     await mockApi(page, renderingImportResult);
     await page.goto("/studio");
     await page.locator('input[type="file"]').setInputFiles({
@@ -824,13 +865,13 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByRole("heading", { name: "公式与题图" })).toBeVisible();
     await expect(page.locator(".canonical-question-content .question-images img")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content .question-options img")).toHaveCount(1);
-    await expect(page.locator(".givens .inline-content-image")).toHaveCount(1);
+    await expect(page.locator(".givens .katex")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content")).not.toContainText("/fixtures/");
     await expect(page.locator(".canonical-question-content .katex")).toHaveCount(2);
-    await expectLoadedUniqueImages(page.locator(".canonical-question-content img, .givens img"));
+    await expectLoadedUniqueImages(page.locator(".canonical-question-content img"));
   });
 
-  test("学生入口复用同一套题图和公式渲染", async ({ page }) => {
+  test("学生入口复用同一套结构化题图和公式渲染", async ({ page }) => {
     await mockApi(page, renderingImportResult);
     const publication = {
       publicationId: "paper-rendering",
@@ -856,9 +897,9 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.getByRole("heading", { name: "公式与题图" })).toBeVisible();
     await expect(page.locator(".canonical-question-content .question-images img")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content .question-options img")).toHaveCount(1);
-    await expect(page.locator(".student-question-givens .inline-content-image")).toHaveCount(1);
+    await expect(page.locator(".student-question-givens .katex")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content")).not.toContainText("![");
-    await expectLoadedUniqueImages(page.locator(".canonical-question-content img, .student-question-givens img"));
+    await expectLoadedUniqueImages(page.locator(".canonical-question-content img"));
   });
 
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {

@@ -61,7 +61,7 @@ class RuntimeConfigSnapshot:
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any] | None, **defaults: Any) -> "RuntimeConfigSnapshot":
-        """从旧版 run 字典补齐契约，兼容历史缓存和测试替身。"""
+        """Build a snapshot from a provider result and optional runtime defaults."""
         source = dict(value or {})
         return cls(
             provider=str(source.get("provider") or defaults.get("provider") or "unknown"),
@@ -102,7 +102,7 @@ class RuntimeExecutionError(RuntimeError):
 
 
 def attach_runtime_config(run: dict[str, Any], snapshot: RuntimeConfigSnapshot) -> dict[str, Any]:
-    """在兼容旧字段的 run 上挂载标准配置；返回原对象以便调用方少改动。"""
+    """Attach the standard configuration snapshot to a provider result."""
     config = snapshot.to_dict()
     run["config"] = config
     run["runtimeConfig"] = config

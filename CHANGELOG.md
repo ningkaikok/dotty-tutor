@@ -7,6 +7,12 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.20.0] - 2026-08-20
+
+### Changed
+
+- 建立全新数据基线：切换当前版本前必须清空本地测试数据库和仓库内 `data/` 资源；各领域首次访问 Store 时自动创建当前 schema，项目不提供外部或原地数据库迁移。
+
 ## [0.19.0] - 2026-08-20
 
 ### Added
@@ -311,7 +317,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.19.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.16.0...v0.17.0

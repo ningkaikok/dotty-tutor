@@ -31,6 +31,9 @@ def fake_recognize(
             "givens": [],
             "options": [],
             "imageUrls": [],
+            "contentBlocks": [
+                {"id": "stem-1", "type": "text", "text": prompt, "sourceOrder": 0},
+            ],
         },
         "lessonSteps": [],
         "architecture": {},
@@ -86,7 +89,7 @@ class MistakeCaptureApiTests(unittest.TestCase):
         self.assertEqual(source.content, b"image-fixture")
 
         confirmation = {
-            "prompt": "解方程 x + 1 = 3",
+            "prompt": "解方程 $x + 1 = 3$",
             "originalAnswer": "x=1",
             "subject": "数学",
             "gradeBand": "初中",
@@ -104,6 +107,14 @@ class MistakeCaptureApiTests(unittest.TestCase):
         self.assertEqual(confirmed["status"], "unmastered")
         self.assertEqual(confirmed["errorReason"], "calculation")
         self.assertIsNotNone(confirmed["confirmedAt"])
+        self.assertEqual(confirmed["questionPayload"]["question"]["prompt"], "解方程 $x + 1 = 3$")
+        self.assertEqual(
+            confirmed["questionPayload"]["question"]["contentBlocks"],
+            [
+                {"id": "stem-1", "type": "text", "text": "解方程 ", "sourceOrder": 0},
+                {"id": "stem-2", "type": "math", "latex": "x + 1 = 3", "display": False, "sourceOrder": 1},
+            ],
+        )
 
         listed = self.client.get("/api/mistakes").json()["items"]
         self.assertEqual([item["mistakeId"] for item in listed], [imported["mistakeId"]])

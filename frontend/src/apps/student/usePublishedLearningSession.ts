@@ -5,8 +5,8 @@ import {
   loadLearningSession,
   recordExerciseAttempt,
   syncExerciseAttempts,
-} from "../../api";
-import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types";
+} from "../../api/learning";
+import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types/index";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
 const DEMO_LEARNER_ID = "local-demo";

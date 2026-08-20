@@ -127,7 +127,7 @@ export interface Question {
     sourceReference: string;
     url: string;
   }>;
-  contentBlocks?: QuestionContentBlock[];
+  contentBlocks: QuestionContentBlock[];
   publicationStatus?: "ready" | "needs_review";
   sourceEvidence?: {
     questionNumber: string;

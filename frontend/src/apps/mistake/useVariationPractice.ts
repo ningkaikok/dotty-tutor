@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { answerVariation, createVariation, listVariations } from "../../api";
-import type { VariationExercise } from "../../types";
-import type { TutorStage } from "../../types";
+import { answerVariation, createVariation, listVariations } from "../../api/practice";
+import type { VariationExercise } from "../../types/index";
+import type { TutorStage } from "../../types/index";
 import { buildStructuredAnswer } from "./structuredAnswer";
 
 /** 管理一次可计分的变式作答，不把掌握证据混入自由对话消息。 */

@@ -1,8 +1,8 @@
-"""Database URL and JSON compatibility helpers.
+"""Database URL and JSON value helpers.
 
 This module contains infrastructure rules rather than product data access.  A
-store can therefore reuse the same PostgreSQL/SQLite setup without importing the
-large legacy ``TutorStore`` facade.
+store can therefore reuse the same PostgreSQL/SQLite setup without importing
+application-specific persistence composition.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def build_postgres_url_from_env() -> str:
 
 
 def decode_json(value: Any) -> Any:
-    """Read both native PostgreSQL JSONB values and legacy SQLite JSON text."""
+    """Return a JSON value from either SQLAlchemy's native value or SQLite text."""
     if isinstance(value, str):
         return json.loads(value)
     return value

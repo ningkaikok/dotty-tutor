@@ -1,4 +1,4 @@
-import type { Question, StructuredAnswerInput } from "../../types";
+import type { Question, StructuredAnswerInput } from "../../types/index";
 
 /** 将不同可视化作答控件统一转换为后端共享的结构化答案契约。 */
 export function buildStructuredAnswer(

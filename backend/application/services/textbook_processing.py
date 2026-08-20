@@ -27,7 +27,7 @@ from domain.questions.source import (
     question_key,
     split_question_sources,
 )
-from run_audit import RunAudit, build_run_config, is_persistence_test_double
+from run_audit import RunAudit, build_run_config
 from textbook_ocr_pipeline import resolve_routed_ocr_source
 from application.job_worker import JobCancelled
 
@@ -87,10 +87,7 @@ class TextbookProcessingService:
                 source_upload_id=upload_id,
                 guide_cards=cards,
             ))
-        if (
-            run_id and hasattr(self.store, "append_revisions_and_save_questions")
-            and not is_persistence_test_double(self.store)
-        ):
+        if run_id:
             # 课程文档先按不可变 lessonId 保存；随后 revision 与当前题目视图在同一事务提交，
             # 因而批次失败不会部分替换学生可见题目。极端数据库失败最多留下尚未被引用的课程文档。
             revisions = self.store.append_revisions_and_save_questions(
@@ -181,8 +178,6 @@ class TextbookProcessingService:
         for batch in result.get("batches", []):
             batch_id = batch.get("id")
             keys = key_store.get(batch_id) or result.get("batchQuestionKeys", {}).get(batch_id, [])
-            if not keys and batch_id in payload_store:
-                keys = [batch_id]
             for key in keys:
                 payload = payload_store.get(key)
                 if payload is None or key in seen:
@@ -469,10 +464,6 @@ class TextbookProcessingService:
             )
             payload_store = job.setdefault("batchPayloads", {})
             existing = [payload_store.get(key) for key in keys]
-            # Older uploads stored one payload under the batch ID rather than the
-            # stable source-question key. Treat it as a cache hit and do not rerun it.
-            if not existing and batch_id in payload_store:
-                existing = [payload_store[batch_id]]
             existing = [item for item in existing if item]
             # 首批快速预览只生成 5 题，不能直接当成“整批已完成”。整卷任务首次经过
             # 一个批次时会复用 OCR 缓存扩展题量；Worker 重试则依靠该标记跳过成功批次。
@@ -594,11 +585,7 @@ class TextbookProcessingService:
             for key in batch_question_keys
             if key in job["batchPayloads"]
         ]
-        stored_payload = (
-            stored_payloads[0]
-            if stored_payloads
-            else job.setdefault("batchPayloads", {}).get(batch_id)
-        )
+        stored_payload = stored_payloads[0] if stored_payloads else None
         if stored_payload and not force:
             return {
                 "batch": batch,
@@ -664,9 +651,6 @@ class TextbookProcessingService:
                 for old_key in previous_keys:
                     job["batchPayloads"].pop(old_key, None)
                     job.setdefault("batchGuideCards", {}).pop(old_key, None)
-                # 兼容旧版以 batch ID 保存单题的结构，整批重生成后不再保留幽灵题目。
-                job["batchPayloads"].pop(batch_id, None)
-                job.setdefault("batchGuideCards", {}).pop(batch_id, None)
                 for key, item, cards in zip(question_keys, payloads, guide_cards_list):
                     job["batchPayloads"][key] = item
                     job.setdefault("batchGuideCards", {})[key] = cards

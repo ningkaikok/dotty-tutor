@@ -1,7 +1,7 @@
 import { useState } from "react";
 import MathText from "../MathText";
 import { QuestionAnswer } from "./QuestionAnswer";
-import type { QuestionPayload, TextbookImportResult, TutorReply } from "../types";
+import type { QuestionPayload, TextbookImportResult, TutorReply } from "../types/index";
 
 type PracticeWorkspaceProps = {
   payload: QuestionPayload;

@@ -17,19 +17,6 @@ from persistence.schema import batch_questions, question_revisions, run_snapshot
 class TextbookStore(DatabaseStore):
     """Store import jobs, question batches and recoverable library records."""
 
-    def _resolve_directory(self, stored_directory: str) -> Path:
-        """Resolve paths persisted before the standalone project was moved."""
-        candidate = Path(stored_directory).expanduser()
-        if candidate.exists():
-            return candidate
-        parts = candidate.parts
-        if "tutor-demo" in parts:
-            marker = max(index for index, part in enumerate(parts) if part == "tutor-demo")
-            migrated = self.root.parent.joinpath(*parts[marker + 1:])
-            if migrated.exists():
-                return migrated
-        return candidate
-
     def save_job(self, job: dict[str, Any]) -> None:
         self._ensure_initialized()
         result = job.get("result")
@@ -93,7 +80,7 @@ class TextbookStore(DatabaseStore):
             "chunkSize": row["chunk_size"],
             "totalChunks": row["total_chunks"],
             "sourceText": row["source_text"],
-            "directory": self._resolve_directory(row["directory"]),
+            "directory": Path(row["directory"]),
             "status": row["status"],
             "progress": row["progress"],
             "message": row["message"],

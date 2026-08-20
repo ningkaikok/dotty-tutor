@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import MathText from "./MathText";
-import type { CanvasAction } from "./types";
+import type { CanvasAction } from "./types/index";
 
 interface GeometryCanvasProps {
   action: CanvasAction;

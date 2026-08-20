@@ -346,8 +346,8 @@ class ModelRuntime:
         try:
             payload = send()
         except RuntimeError as error:
-            # 部分旧版 Ollama/llama.cpp 无法把复杂 JSON Schema 转成 grammar。
-            # 此时退到普通 JSON 模式，并把 Schema 写入系统提示；兼容性提高，但后续
+            # 部分 Ollama/llama.cpp 运行时无法把复杂 JSON Schema 转成 grammar。
+            # 此时退到普通 JSON 模式，并把 Schema 写入系统提示；可用性提高，但后续
             # 仍必须经过 Pydantic 和确定性质量门禁，不能把它当成可信结构。
             if "grammar" not in str(error).lower() and "sampler" not in str(error).lower():
                 raise

@@ -1,4 +1,4 @@
-import type { MasteryState } from "../../types";
+import type { MasteryState } from "../../types/index";
 
 interface PaperLearningProgressProps {
   knowledgePoint: string;

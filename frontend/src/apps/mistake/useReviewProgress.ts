@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { answerReview, loadLearningProgress, loadReviews, startReview } from "../../api";
-import type { LearningProgress, ReviewTask, StructuredAnswerInput } from "../../types";
+import { answerReview, loadLearningProgress, loadReviews, startReview } from "../../api/reviews";
+import type { LearningProgress, ReviewTask, StructuredAnswerInput } from "../../types/index";
 
 /** 将进度页远程数据和复习任务状态转换集中管理，展示组件只消费稳定快照。 */
 export function useReviewProgress() {

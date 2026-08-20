@@ -1,50 +1,27 @@
 """Dotty Tutor 的 ASGI 组合根。
 
 使用 ``uvicorn app:app`` 启动本模块。业务逻辑分别属于 route、service、runtime 和 store；
-此文件只创建对象、注入依赖并注册路由。底部保留少量导入符号是为了兼容旧测试和脚本，
-不表示新业务应该继续写入 ``app.py``。
+此文件只创建对象、注入依赖并注册路由。
 """
 
 from application import create_app
 from api.routers.learning_routes import build_learning_router
-from application.services.lesson_generation import (
-    attach_question_source,
-    generate_lesson,
-    generate_model_reply,
-    lesson_store,
-    question_payload,
-)
+from application.services.lesson_generation import generate_lesson, question_payload
 from mistake_recognition import build_mistake_recognizer
 from api.routers.mistake_routes import build_mistake_router
 from persistence.mistake_store import MistakeStore
-from infrastructure.runtime.model_runtime import ModelRuntime, runtime
+from infrastructure.runtime.model_runtime import ModelRuntime
 from api.routers.publication_routes import build_publication_router
 from publication_revision import PublicationRevisionService
 from api.routers.practice_routes import build_practice_router
-from domain.questions.contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
-from domain.questions.pipeline import (
-    apply_question_quality_gate,
-    build_question_content_blocks,
-    normalize_image_choice_question,
-    normalize_model_math_text,
-    normalize_stacked_equation_choices,
-    normalize_text_choices_from_source,
-    validate_question_payload,
-    write_model_prompt_artifact,
-)
-from domain.questions.source import (
-    limited_question_sources,
-    select_complete_question_source,
-    split_question_sources,
-)
+from domain.questions.pipeline import build_question_content_blocks
 from api.routers.review_routes import build_review_router
 from persistence.review_store import ReviewStore
 from api.routers.runtime_routes import build_runtime_router
-from storage import store
+from persistence.app_store import application_store as store
 from application.services.stateful_tutor import StatefulTutor
 from textbook_ocr import resolve_ocr_text
-from api.routers.textbook_routes import pdf_uploads, process_pdf_batch, processing_service, router as textbook_router
-from domain.tutoring.checks import build_reply, equation_conflict, equivalent_linear_equations
+from api.routers.textbook_routes import processing_service, router as textbook_router
 from api.routers.tutoring_routes import build_tutoring_router
 from persistence.tutoring_store import TutoringStore
 from variation_service import VariationService

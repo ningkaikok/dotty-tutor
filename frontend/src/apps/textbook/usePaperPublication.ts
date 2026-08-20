@@ -5,9 +5,9 @@ import {
   loadPublicationWorkspace,
   saveLesson,
   updatePublicationStatus,
-} from "../../api";
+} from "../../api/publications";
 import { lessonDocumentFromPayload } from "../../lesson/lessonDocument";
-import type { PublicationSummary, QuestionPayload, RunSummary, TextbookImportResult } from "../../types";
+import type { PublicationSummary, QuestionPayload, RunSummary, TextbookImportResult } from "../../types/index";
 
 /**
  * 协调明确的 draft → in_review → published 发布状态流。

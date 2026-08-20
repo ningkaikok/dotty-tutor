@@ -2,7 +2,7 @@
 
 Handlers deliberately delegate to :class:`TextbookProcessingService`; the worker
 owns scheduling and cancellation while OCR/model orchestration remains in the
-same application service used by legacy synchronous callers.
+same application service used by the HTTP workflow.
 """
 
 from __future__ import annotations

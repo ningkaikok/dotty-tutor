@@ -304,7 +304,7 @@ def attach_question_source(
     payload: dict[str, Any],
     batch: dict[str, Any],
     ocr_run: dict[str, Any],
-    source_image_references: list[str] | None = None,
+    source_image_references: list[str],
 ) -> None:
     """Attach source lineage without leaking images from adjacent questions."""
     question = payload["question"]
@@ -321,13 +321,9 @@ def attach_question_source(
     ]
     # ``[]`` 是一个有意义的结果：OCR 已明确判断本题没有图片。
     # 不能用 ``or`` 回退到模型返回的 imageReferences，否则模型可能把同一批次
-    # 其他题目的图片重新带进来，造成题干图/选项图串题。只有调用方没有提供
-    # 确定的 OCR 引用（None）时，才兼容读取历史模型字段。
-    if source_image_references is None:
-        references = question.pop("imageReferences", [])
-    else:
-        references = list(source_image_references)
-        question.pop("imageReferences", None)
+    # 其他题目的图片重新带进来，造成题干图/选项图串题。
+    references = list(source_image_references)
+    question.pop("imageReferences", None)
     available_by_name = {Path(url).name: url for url in available_images}
     question["imageUrls"] = [
         available_by_name[Path(reference).name]

@@ -38,11 +38,10 @@ flowchart LR
 /learn/papers/:id → PublishedPaperApp
 /studio/*      → TextbookApp
 /mistakes/*    → MistakeCoachApp
-/textbooks/*   → 兼容跳转到 /studio
 ```
 
 学生空间不包含教材上传、OCR 或模型设置，生产工作台才加载这些资源。路由级拆包使微信或普通浏览器打开
-学生入口时只下载对应 JavaScript。`Suspense` 负责模块下载期间的稳定占位，而 `Navigate` 处理兼容地址和
+学生入口时只下载对应 JavaScript。`Suspense` 负责模块下载期间的稳定占位，而 React Router 处理页面路由和
 未知路径。
 
 学习时先观察路由如何决定“加载哪个产品”，再进入产品内部，不要从 CSS 或最深层组件开始。
@@ -113,9 +112,8 @@ stateDiagram-v2
 串到新题，学生仍可显式点击“我需要提示”重新请求讲解。
 
 恢复到已有作答的题目会把主按钮改为“重新提交答案”（画线题为“重新提交作图”），明确这是一次新的
-判定，而不是重复创建页面状态。题目条件使用 `MathText` 渲染，历史数据里的 `$...$` 内联公式也不会再
-作为普通文字显示。`MathText` 是所有用户可见题目/讲解文本的公式边界：除了标准 `$...$`，还兼容历史
-裸 `\\frac` 等明确 LaTeX 命令，并只折叠已知的重复反斜杠。Canvas 只负责几何图形和固定标签；可含公式的
+判定，而不是重复创建页面状态。题目条件使用 `MathText` 渲染标准 `$...$`/`$$...$$` 公式边界，不会再
+作为普通文字显示。Canvas 只负责几何图形和固定标签；可含公式的
 讲解文字通过 HTML overlay 交给 `MathText` 渲染，避免 Canvas 的 `fillText` 把 `$...$` 当普通字符。
 
 内容生产端的作答只用于检查生成内容，不创建学习会话，也不累计掌握度。`usePaperPublication.ts` 将多题课程
@@ -177,9 +175,9 @@ short-answer           → 页面提供自由文本区
 `QuestionContent.tsx` 负责组合题干、公式、图片和结构化选项，`MathText.tsx` 只负责 KaTeX 渲染。短文本选项
 采用响应式网格，以接近纸质试卷的横向排列；图片或长文本选项继续使用单列，手机窄屏也会自动回到单列。
 
-历史课程可能已经保存了 `A.` 选项尾巴或 `\textbackslash\text{%}`、`\textdegree C` 等旧模型输出。
-前端只做有边界的显示兼容：隐藏已存在结构化选项的重复尾巴、在选项只剩 A-D 时恢复尾部原值，并修复已知
-单位命令；新生成内容的正确性仍由后端规范化和质量门禁保证，避免把业务校验分散到展示组件。
+题目展示只接受后端生成的 `contentBlocks` 当前结构；选项标签和题干空括号由
+`displayedPrompt`、`optionText` 等展示格式化函数规范化。公式语法由后端模型输出规范化和质量门禁保证，
+`MathText` 只负责渲染标准 `$...$`/`$$...$$` 边界，不从旧字段猜测题目结构。
 
 工作台的生成模型、统一审核模型和 OCR 是三个独立选择器。`useTextbookImport()` 负责加载与切换 Runtime，
 `RuntimeSettings.tsx` 只展示目录。试卷已经送审或发布后，`usePaperPublication()` 可以调用版本接口整套
@@ -187,7 +185,7 @@ short-answer           → 页面提供自由文本区
 
 ## 7. 类型目录为什么要按领域拆分
 
-根 `types.ts` 只有兼容导出。真实定义位于：
+类型按领域拆分，真实定义位于：
 
 - `types/question.ts`：题目、答案规范、画线和模型运行信息。
 - `types/lesson.ts`：课程文档与内容块判别联合。
