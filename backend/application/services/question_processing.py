@@ -24,7 +24,9 @@ from domain.questions.source import question_image_paths, question_key, safe_str
 
 
 ProgressUpdater = Callable[[dict[str, Any], str, int, str], None]
-QUALITY_REPAIR_ATTEMPTS = 2
+# A failed question gets one targeted repair. A third full generation/review pass has a
+# poor quality-to-cost ratio and can be retried explicitly from the workbench instead.
+QUALITY_REPAIR_ATTEMPTS = 1
 
 
 def _runtime_available(model_run: dict[str, Any], review_run: dict[str, Any]) -> bool:

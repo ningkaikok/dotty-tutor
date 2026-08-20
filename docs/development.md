@@ -291,9 +291,9 @@ macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正�
 服务，再增加对应 Runtime 适配器。
 
 整本 PDF 每 5 页规划一个批次，上传完成后默认由 Worker 自动生成整本教材；整本模式每批最多处理 20 题，服务端硬限制最多
-50 页、100 道题。已有仅生成首批预览的任务仍可以点击“生成整套试卷”补齐。可以用 `DOTTY_MAX_FULL_PAPER_PAGES` 和 `DOTTY_MAX_FULL_PAPER_QUESTIONS` 降低本机上限，
-但环境变量不能突破代码硬限制。相邻且路由相同的页面合并调用，
-减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。
+50 页、100 道题。自动整本任务会直接把首批生成到整批上限，避免先生成 5 道预览题后再次重复生成；已有仅生成首批预览的任务仍可以点击“生成整套试卷”补齐。可以用 `DOTTY_MAX_FULL_PAPER_PAGES` 和 `DOTTY_MAX_FULL_PAPER_QUESTIONS` 降低本机上限，
+但环境变量不能突破代码硬限制。题目质量失败只自动修复一次，过长 OCR/候选内容会在审校提示中裁剪并保留首尾；相邻且路由相同的页面合并调用，
+减少 MinerU 进程启动次数。模型运行记录会保存提示词字符数和输出上限，用于定位高消耗调用；当前 Codex 运行时不提供精确 token 用量，不能把字符数当作账单 token。结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。
 MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务的资源目录中。
 
 整卷任务通过 `GET /api/jobs/{jobId}` 轮询，批次汇总也可从

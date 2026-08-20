@@ -126,6 +126,41 @@ class TextbookProcessingTests(unittest.TestCase):
         self.assertEqual(result["summary"]["questionCount"], 1)
         self.assertTrue(result["summary"]["limitReached"])
 
+    def test_full_paper_reuses_an_already_complete_first_batch(self) -> None:
+        """Automatic whole-book uploads must not regenerate their full preview batch."""
+        payloads = [
+            {"question": {"id": f"q-{index}", "sourceQuestionKey": f"batch-001-q-{index}"}}
+            for index in range(1, 21)
+        ]
+        keys = [item["question"]["sourceQuestionKey"] for item in payloads]
+        job = {
+            "uploadId": "full-paper-reuse",
+            "status": "complete",
+            "result": {
+                "batches": [{"id": "batch-001", "status": "processed"}],
+                "batchQuestionKeys": {"batch-001": keys},
+                "questionPayloads": payloads,
+                "questionPayload": payloads[0],
+            },
+            "batchQuestionKeys": {"batch-001": keys},
+            "batchPayloads": dict(zip(keys, payloads)),
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current.update(status=status, progress=progress, message=message)
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+        with patch.object(service, "process_batch") as process_batch_mock:
+            result = service.generate_full_paper("full-paper-reuse", max_questions=100)
+
+        self.assertEqual(process_batch_mock.call_count, 0)
+        self.assertEqual(result["summary"]["skippedBatches"], 1)
+        self.assertEqual(result["summary"]["questionCount"], 20)
+
     def test_batch_payload_order_uses_source_order_not_lexical_key_order(self) -> None:
         payload_two = {"question": {"id": "q2"}}
         payload_ten = {"question": {"id": "q10"}}
@@ -138,6 +173,26 @@ class TextbookProcessingTests(unittest.TestCase):
         ordered = TextbookProcessingService._ordered_batch_payloads(job, result)
 
         self.assertEqual([item["question"]["id"] for item in ordered], ["q2", "q10"])
+
+    def test_reconciles_question_keys_missing_from_an_older_preview_snapshot(self) -> None:
+        payload_one = {"question": {"id": "q1", "sourceQuestionKey": "batch-001-q-1"}}
+        payload_two = {"question": {"id": "q2", "sourceQuestionKey": "batch-001-q-2"}}
+        job = {
+            "batchPayloads": {
+                "batch-001-q-1": payload_one,
+                "batch-001-q-2": payload_two,
+            },
+            "batchQuestionKeys": {"batch-001": ["batch-001-q-1"]},
+        }
+        result = {
+            "batches": [{"id": "batch-001"}],
+            "batchQuestionKeys": {"batch-001": ["batch-001-q-1"]},
+        }
+
+        TextbookProcessingService._reconcile_batch_question_keys(job, result)
+        ordered = TextbookProcessingService._ordered_batch_payloads(job, result)
+
+        self.assertEqual([item["question"]["id"] for item in ordered], ["q1", "q2"])
 
     def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
         """A later batch includes the previous page to recover split questions."""

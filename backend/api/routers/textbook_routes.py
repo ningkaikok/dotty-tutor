@@ -439,6 +439,24 @@ def process_pdf_batch(
 ) -> dict[str, Any]:
     """快速注册一个批次任务；原同步服务仍由 Worker 调用。"""
     upload_job(upload_id)
+    if not force:
+        whole_paper_job = next(
+            (
+                item for item in job_store.list_jobs(limit=200)
+                if (item.get("payload") or {}).get("uploadId") == upload_id
+                and (
+                    item.get("jobType") == "textbook.paper.generate"
+                    or (
+                        item.get("jobType") == "textbook.upload.complete"
+                        and (item.get("payload") or {}).get("generateFullPaper") is True
+                    )
+                )
+                and item.get("status") in {"queued", "running", "succeeded"}
+            ),
+            None,
+        )
+        if whole_paper_job:
+            raise HTTPException(status_code=409, detail="整本试卷任务已在处理或已完成，请等待其结果")
     key = idempotency_key if isinstance(idempotency_key, str) else None
     job = job_store.create_job(
         "textbook.batch.process",

@@ -12,6 +12,7 @@ from typing import Any, Callable
 from fastapi import HTTPException
 
 from application.job_worker import JobCancelled, RetryableJobError, TerminalJobError, TaskRegistry
+from domain.questions.source import MAX_FULL_PAPER_QUESTIONS_PER_BATCH, MAX_QUESTIONS_PER_BATCH
 
 
 def build_textbook_registry(processing_service: Any) -> TaskRegistry:
@@ -35,7 +36,12 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
     def complete(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> Any:
         result = _run(
             lambda: processing_service.complete_upload(
-                payload["uploadId"], cancellation_check=cancellation_check,
+                payload["uploadId"],
+                cancellation_check=cancellation_check,
+                question_limit=(
+                    MAX_FULL_PAPER_QUESTIONS_PER_BATCH
+                    if payload.get("generateFullPaper", False) else MAX_QUESTIONS_PER_BATCH
+                ),
             ),
             cancellation_check,
         )

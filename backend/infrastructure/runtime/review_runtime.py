@@ -105,6 +105,7 @@ VISION_REVIEW_SCHEMA = {
 
 FONT_COMMAND = re.compile(r"\\(?:mathsf|textsf|mathtt|tt|mathrm|textrm|mathfrak)\s*\{\s*([^{}]*)\s*\}")
 IMAGE_MARKDOWN = re.compile(r"!\[[^\]]*\]\([^\n)]+\)")
+REVIEW_CONTEXT_CHARS = 6_000
 FORMULA_ANOMALIES = (
     re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]"),
     re.compile(r"\\root\b", re.IGNORECASE),
@@ -155,6 +156,16 @@ def normalize_ocr_question(text: str) -> str:
     normalized = re.sub(r"[ \t]+([，。；：！？])", r"\1", normalized)
     normalized = re.sub(r"\n{3,}", "\n\n", normalized)
     return normalized.strip()
+
+
+def _compact_prompt_text(value: str, limit: int = REVIEW_CONTEXT_CHARS) -> str:
+    """Keep both ends of a long OCR block while bounding repeated review context."""
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    head = max(1, limit * 2 // 3)
+    tail = max(1, limit - head)
+    return f"{text[:head]}\n…（中间内容已裁剪）…\n{text[-tail:]}"
 
 
 def formula_anomaly_score(text: str) -> int:
@@ -237,16 +248,16 @@ class ReviewRuntime:
 
 OCR 原题：
 ---
-{ocr_question_block[:12000]}
+{_compact_prompt_text(ocr_question_block)}
 ---
 
 去除 OCR 字体包装与常见排版噪声后的候选原题（优先参考其公式写法，但仍须核对语义）：
 ---
-{normalized_source[:12000]}
+{_compact_prompt_text(normalized_source)}
 ---
 
 第一模型结果：
-{draft[:12000]}
+{_compact_prompt_text(draft)}
 """.strip()
         text_error = None
         try:
@@ -313,7 +324,7 @@ OCR 原题：
 如果题干是选择题且图片按 A、B、C、D 顺序出现，请根据图片内容填写 correctAnswer（例如“(A)”）；不是选择题则填写空字符串。不要猜测图片外的信息。
 
 题目与讲解：
-{json.dumps(corrected, ensure_ascii=False)[:12000]}
+{_compact_prompt_text(json.dumps(corrected, ensure_ascii=False))}
 """.strip()
             try:
                 vision_review, vision_run = runtime.generate_json_as(
@@ -399,10 +410,10 @@ OCR 原题：
 4. 只输出 JSON，不输出 Markdown。
 
 当前题目与讲解：
-{json.dumps(corrected, ensure_ascii=False)[:12000]}
+{_compact_prompt_text(json.dumps(corrected, ensure_ascii=False))}
 
 视觉审校结果：
-{json.dumps(vision_review, ensure_ascii=False)[:12000]}
+{_compact_prompt_text(json.dumps(vision_review, ensure_ascii=False))}
 
 视觉冲突与问题：
 {json.dumps(visual_conflicts + visual_issues, ensure_ascii=False)[:6000]}

@@ -187,7 +187,7 @@ export function TextbookApp() {
       activateQuestion(questionIndex + 1);
       return;
     }
-    if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= questionLimit) return;
+    if (!textbookImport?.uploadId || loadingQuestion || fullPaperRunning || questionBank.length >= questionLimit) return;
     // 兼容仍处于预览态的旧任务；新上传任务会由后台自动生成整本教材。
     const nextBatch = textbookImport.batches?.find((batch) => batch.status === "queued");
     if (!nextBatch) return;
