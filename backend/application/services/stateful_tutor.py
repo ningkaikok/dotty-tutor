@@ -14,7 +14,6 @@ from domain.tutoring.turn_plan import (
     infer_student_intent,
     normalize_misconception,
     select_teaching_action,
-    suggested_stage,
     teaching_strategy_context,
 )
 
@@ -188,15 +187,10 @@ class StatefulTutor:
             "action": action,
             "summary": summary,
             # Empty controls such as ``{"selectedOptions": []}`` are kept
-            # compatible at the HTTP boundary but must not be audited as an
+            # accepted at the HTTP boundary but must not be audited as an
             # actual structured answer.
             "inputMode": "structured" if _has_structured_answer(request.interactionResult) else "text",
         }
-
-    @staticmethod
-    def _next_stage(current: str, assessment: str, mode: str) -> str:
-        """兼容旧调用；真正的阶段裁决由 Tutor Turn Plan 统一维护。"""
-        return suggested_stage(current, assessment, mode, assessment_authority="deterministic")
 
     @staticmethod
     def _deduplicate_reply(

@@ -179,6 +179,9 @@ class TextbookProcessingTests(unittest.TestCase):
                     patch("api.routers.textbook_routes.store.save_questions"),
                     patch("api.routers.textbook_routes.store.save_lesson"),
                     patch("api.routers.textbook_routes.store.save_job"),
+                    patch("api.routers.textbook_routes.store.append_revisions_and_save_questions", return_value=[]),
+                    patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
+                    patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
                 ):
                     response = processing_service.process_batch("test-upload", "batch-002")
                 self.assertEqual(response["questionPayload"]["question"]["id"], "q2")
@@ -248,6 +251,8 @@ class TextbookProcessingTests(unittest.TestCase):
                     ),
                     patch("application.services.textbook_processing.TextbookProcessingService._persist_lessons"),
                     patch("api.routers.textbook_routes.store.save_job"),
+                    patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
+                    patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
                 ):
                     response = processing_service.regenerate_question(job["uploadId"], source_key)
                 self.assertEqual(response["questionPayload"]["question"]["id"], "new-2")

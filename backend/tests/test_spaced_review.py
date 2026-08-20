@@ -26,6 +26,9 @@ def fake_generator(source_text: str) -> tuple[dict, list[dict], dict]:
                 "chapter": "有理数",
                 "knowledgePoint": "基础运算",
                 "givens": [],
+                "contentBlocks": [
+                    {"id": "stem-1", "type": "text", "text": "计算 2 + 3。", "sourceOrder": 0},
+                ],
             },
             "lessonSteps": [],
             "architecture": {},

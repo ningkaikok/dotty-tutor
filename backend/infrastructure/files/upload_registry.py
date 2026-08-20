@@ -32,10 +32,10 @@ class UploadRegistry:
             job = self.store.load_job(upload_id)
             if job:
                 self.uploads[upload_id] = job
-                for batch_id, payload in job.get("batchPayloads", {}).items():
+                for source_question_key, payload in job.get("batchPayloads", {}).items():
                     self.lesson_store[payload["question"]["id"]] = {
                         "payload": payload,
-                        "guideCards": job.get("batchGuideCards", {}).get(batch_id) or self.default_guide_cards,
+                        "guideCards": job.get("batchGuideCards", {}).get(source_question_key) or self.default_guide_cards,
                     }
         if not job:
             raise HTTPException(status_code=404, detail="上传任务不存在")

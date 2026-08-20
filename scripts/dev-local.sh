@@ -96,8 +96,7 @@ frontend_pid=$!
 if [[ "${QWEN_TTS_ENABLED:-1}" == "1" && -x "$ROOT_DIR/.qwen3-tts-venv/bin/python" ]]; then
   (
     cd "$ROOT_DIR/backend"
-    # qwen_tts_service.py 是兼容导入壳，直接执行它不会进入 uvicorn 的
-    # `__main__` 分支；使用真实模块路径启动，确保 8020 端口确实监听。
+    # 使用真实模块入口启动 Qwen3-TTS，确保 8020 端口确实监听。
     exec "$ROOT_DIR/.qwen3-tts-venv/bin/python" -m infrastructure.runtime.qwen_tts_service
   ) &
   qwen_pid=$!

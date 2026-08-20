@@ -22,14 +22,6 @@ SCHEMA_VERSION = hashlib.sha256(
 ).hexdigest()[:16]
 
 
-def is_persistence_test_double(store: Any) -> bool:
-    for name in ("save_job", "save_questions", "save_lesson"):
-        method = getattr(store, name, None)
-        if method is not None and method.__class__.__module__.startswith("unittest.mock"):
-            return True
-    return False
-
-
 def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
     run = run or {}
     # Keep provider/model/version/fallback evidence, but never persist prompt text or secrets.
@@ -43,9 +35,6 @@ def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
     }
     if isinstance(run.get("config"), dict):
         identity["config"] = RuntimeConfigSnapshot.from_mapping(run["config"]).to_dict()
-    elif run:
-        # Legacy result dictionaries are upgraded when they enter a RunSnapshot.
-        identity["config"] = RuntimeConfigSnapshot.from_mapping(run).to_dict()
     return identity
 
 
@@ -160,11 +149,6 @@ def build_run_config(
 class RunAudit:
     def __init__(self, store: Any) -> None:
         self.store = store
-        self._fallback: dict[str, dict[str, Any]] = {}
-
-    def _is_legacy_test_double(self) -> bool:
-        """Keep old service tests isolated when their persistence writes are mocked."""
-        return is_persistence_test_double(self.store)
 
     def start(
         self,
@@ -188,31 +172,11 @@ class RunAudit:
             "config": config or build_run_config(),
             "startedAt": time.time(),
         }
-        if (
-            hasattr(self.store, "create_run_snapshot")
-            and not self._is_legacy_test_double()
-        ):
-            snapshot = self.store.create_run_snapshot(snapshot_data)
-        else:  # Narrow fake stores used by legacy unit tests.
-            snapshot = {**snapshot_data, "status": "running", "result": None, "error": None, "completedAt": None}
-            self._fallback[snapshot["runId"]] = snapshot
-        return snapshot
+        return self.store.create_run_snapshot(snapshot_data)
 
     def finish(self, run_id: str, *, result: dict[str, Any] | None = None) -> dict[str, Any]:
-        if run_id not in self._fallback and hasattr(self.store, "finish_run_snapshot"):
-            return self.store.finish_run_snapshot(run_id, status="succeeded", result=result)
-        snapshot = self._fallback[run_id]
-        if snapshot["status"] != "running":
-            raise ValueError("运行已经结束")
-        snapshot.update(status="succeeded", result=result, completedAt=time.time())
-        return snapshot
+        return self.store.finish_run_snapshot(run_id, status="succeeded", result=result)
 
     def fail(self, run_id: str, error: Exception | str, *, stage: str | None = None) -> dict[str, Any]:
         details = {"stage": stage, "type": type(error).__name__, "message": str(error)[:500]}
-        if run_id not in self._fallback and hasattr(self.store, "finish_run_snapshot"):
-            return self.store.finish_run_snapshot(run_id, status="failed", error=details)
-        snapshot = self._fallback[run_id]
-        if snapshot["status"] != "running":
-            raise ValueError("运行已经结束")
-        snapshot.update(status="failed", error=details, completedAt=time.time())
-        return snapshot
+        return self.store.finish_run_snapshot(run_id, status="failed", error=details)

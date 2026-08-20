@@ -18,7 +18,7 @@ from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 
 
 def _with_ocr_config(run: dict[str, Any], *, provider: str, prompt: str) -> dict[str, Any]:
-    """Keep legacy OCR metadata while adding the content-free runtime snapshot."""
+    """Attach a content-free runtime snapshot to an OCR result."""
     return attach_runtime_config(
         run,
         RuntimeConfigSnapshot(

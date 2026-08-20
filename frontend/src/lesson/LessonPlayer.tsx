@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { playSpeech, preloadSpeech, stopSpeech } from "../speech";
 import MathText from "../MathText";
-import type { CanvasAction, LessonBlock, QuestionPayload } from "../types";
+import type { CanvasAction, LessonBlock, QuestionPayload } from "../types/index";
 import { lessonDocumentFromPayload } from "./lessonDocument";
 import { renderLessonBlock } from "./rendererRegistry";
 

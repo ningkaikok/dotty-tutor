@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
   loadPublishedPublication,
-  requestHelp,
-} from "../../api";
+} from "../../api/publications";
+import { requestHelp } from "../../api/tutoring";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import type {
   ExerciseAttemptRecord,
   PublicationDetail,
   TutorReply,
-} from "../../types";
+} from "../../types/index";
 import { PaperLearningProgress } from "./PaperLearningProgress";
 import { StudentPaperCompleted } from "./StudentPaperCompleted";
 import { StudentQuestionWorkspace } from "./StudentQuestionWorkspace";

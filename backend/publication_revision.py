@@ -66,16 +66,15 @@ class PublicationRevisionService:
                 question = (lesson.get("questionPayload") or {}).get("question") or {}
                 batch_id = str(question.get("sourceBatchId") or "")
                 if not batch_id:
-                    raise ValueError("旧题缺少来源批次，请重新上传原 PDF 后生成")
+                    raise ValueError("题目缺少来源批次，请重新上传原 PDF 后生成")
                 if batch_id not in batch_ids:
                     batch_ids.append(batch_id)
         except Exception as error:
             self.audit.fail(run_id, error, stage="publication-source")
             raise
 
-        # sourceQuestionKey 是跨重新生成稳定的首选关联键；questionNumber 只作为旧数据兼容回退。
+        # sourceQuestionKey is the stable identity across OCR and regeneration.
         generated_by_key: dict[str, tuple[dict[str, Any], list[dict[str, Any]]]] = {}
-        generated_by_number: dict[tuple[str, str], tuple[dict[str, Any], list[dict[str, Any]]]] = {}
         try:
             for batch_id in batch_ids:
                 batch_kwargs = {"persist": False}
@@ -87,10 +86,8 @@ class PublicationRevisionService:
                 for payload, cards in zip(payloads, cards_list):
                     question = payload.get("question") or {}
                     source_key = str(question.get("sourceQuestionKey") or "")
-                    number = str(question.get("questionNumber") or "")
                     if source_key:
                         generated_by_key[source_key] = (payload, cards)
-                    generated_by_number[(batch_id, number)] = (payload, cards)
 
             version = int(publication.get("version") or 1) + 1
             token = uuid.uuid4().hex[:8]
@@ -101,11 +98,9 @@ class PublicationRevisionService:
                 old_payload = lesson.get("questionPayload") or {}
                 old_question = old_payload.get("question") or {}
                 source_key = str(old_question.get("sourceQuestionKey") or "")
-                batch_id = str(old_question.get("sourceBatchId") or "")
-                number = str(old_question.get("questionNumber") or "")
-                candidate = generated_by_key.get(source_key) or generated_by_number.get((batch_id, number))
+                candidate = generated_by_key.get(source_key) if source_key else None
                 if not candidate:
-                    raise ValueError(f"无法在新识别结果中定位原题 {number or lesson['lessonId']}")
+                    raise ValueError(f"无法在新识别结果中定位原题 {lesson['lessonId']}")
                 payload, guide_cards = copy.deepcopy(candidate)
                 question = payload["question"]
                 original_question_id = str(old_question.get("id") or lesson["lessonId"])

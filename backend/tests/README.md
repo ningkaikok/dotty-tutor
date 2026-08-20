@@ -17,6 +17,5 @@ cd backend
 ```
 
 生产代码现在按 `api/routers`、`application/services`、`domain`、`infrastructure` 和 `persistence` 分层。
-测试仍集中在本目录；本次迁移已将测试和运行审计等仓库内辅助脚本统一改为规范包路径。根目录旧模块只作为
-外部调用的兼容 shim，新增代码或测试不应再依赖旧路径。分层迁移保持行为不变，因此可以用同一套测试验证
-重构前后的结果。
+测试仍集中在本目录；测试和运行审计等辅助代码直接使用规范包路径。SQLite 由 SQLAlchemy 按当前 schema
+新建，PostgreSQL 使用同一份当前契约，不依赖历史导入路径或旧数据库列。

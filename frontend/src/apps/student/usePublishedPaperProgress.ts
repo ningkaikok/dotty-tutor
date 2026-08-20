@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ExerciseAttemptRecord, PublicationDetail } from "../../types";
+import type { ExerciseAttemptRecord, PublicationDetail } from "../../types/index";
 
 export interface PublishedPaperProgress {
   /** 每道题最近一次提交；历史记录仍完整保留在 attempts 中。 */

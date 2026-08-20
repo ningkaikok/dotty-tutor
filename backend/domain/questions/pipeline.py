@@ -76,7 +76,7 @@ def write_model_prompt_artifact(asset_dir: Path, question_sources: list[tuple[st
     sections = [
         "# OCR 后结构化模型提示词\n",
         "> MinerU 不使用自然语言提示词；下列内容是 OCR 完成后实际交给结构化模型的提示词。\n",
-        f"> 题目切分版本：`{QUESTION_SEGMENTATION_VERSION}`。旧版本提示词不会被视为本次切分结果。\n",
+        f"> 题目切分版本：`{QUESTION_SEGMENTATION_VERSION}`。不同版本提示词不会被视为本次切分结果。\n",
     ]
     for index, (number, block, _images) in enumerate(question_sources, start=1):
         sections.append(f"\n## 第 {number or index} 题\n\n```text\n{build_lesson_prompt(block)}\n```\n")
@@ -131,7 +131,7 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
 
     OCR 通常会输出“题干图 + A-D 四张选项图”五张图片；审核模型可能把文件名
     当作普通文字写回 JSON，因此这里不信任模型的图片字段，而是以 OCR 来源顺序
-    重新绑定。也兼容只有四张选项图的旧格式。
+    重新绑定；题干图缺失时也支持四张选项图的当前版式。
     """
     labels = _image_choice_labels(source_block, len(source_images))
     if labels[:4] != ["A", "B", "C", "D"] or len(source_images) not in {4, 5}:
@@ -310,6 +310,19 @@ def rich_text_blocks(text: str, id_prefix: str) -> list[dict[str, Any]]:
         elif fragment.strip():
             blocks.append({"id": f"{id_prefix}-{len(blocks) + 1}", "type": "text", "text": fragment})
     return blocks
+
+
+def replace_question_prompt(question: dict[str, Any], prompt: str) -> None:
+    """Replace editable prompt blocks without disturbing current image/options blocks."""
+    trailing_blocks = [
+        block
+        for block in question["contentBlocks"]
+        if block.get("type") not in {"text", "math"}
+    ]
+    question["prompt"] = prompt
+    question["contentBlocks"] = [*rich_text_blocks(prompt, "stem"), *trailing_blocks]
+    for source_order, block in enumerate(question["contentBlocks"]):
+        block["sourceOrder"] = source_order
 
 
 def build_question_content_blocks(payload: dict[str, Any], source_block: str, source_images: list[str]) -> list[dict[str, Any]]:

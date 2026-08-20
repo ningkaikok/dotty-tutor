@@ -198,7 +198,7 @@ def resolve_routed_ocr_source(
     content_hash: str,
     refresh: bool = False,
 ) -> tuple[str, dict[str, Any]]:
-    """按页解析 PDF，并返回向前兼容的 ``ocrRun`` 审计记录。
+    """按页解析 PDF，并返回当前契约的 ``ocrRun`` 审计记录。
 
     显式粘贴文本仍具有最高优先级。显式选择 pypdf 时不会擅自调用 MinerU；只有
     ``auto`` 模式会在质量门禁失败后局部升级。显式选择 MinerU 时按整个连续页段

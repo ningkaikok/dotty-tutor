@@ -107,7 +107,7 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 hint_level=request.hintLevel,
                 duration_ms=request.durationMs,
                 # 不接受客户端提供的未来时间；其余情况保留原始时间，使离线作答补传后顺序仍然真实。
-                created_at=min(request.createdAt, received_at) if request.createdAt is not None else received_at,
+                created_at=min(request.createdAt, received_at),
             )
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -148,7 +148,7 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                     assessment=attempt.assessment,
                     hint_level=attempt.hintLevel,
                     duration_ms=attempt.durationMs,
-                    created_at=min(attempt.createdAt, received_at) if attempt.createdAt is not None else received_at,
+                    created_at=min(attempt.createdAt, received_at),
                 )
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error

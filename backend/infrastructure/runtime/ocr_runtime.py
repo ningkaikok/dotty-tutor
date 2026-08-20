@@ -40,20 +40,15 @@ class OcrRuntime:
     def mineru_command(self) -> Path | None:
         """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。
 
-        ``ocr_runtime.py`` 位于 ``backend/infrastructure/runtime``，过去使用
-        ``parents[1]`` 查找虚拟环境，实际会落到 ``backend/infrastructure/.mineru-venv``。
-        本机安装脚本和文档约定的环境在仓库根目录 ``.mineru-venv``，所以安装成功却会被
-        UI 报告为“未安装”。这里同时兼容仓库根目录和 backend 目录，避免迁移目录时再次
-        产生静默回退；Docker 则必须显式挂载 Linux MinerU 或接入独立 OCR 服务。
+        本机安装脚本和文档约定的环境在仓库根目录 ``.mineru-venv``；Docker 必须显式
+        挂载 Linux MinerU 或接入独立 OCR 服务。
         """
         configured = os.getenv("MINERU_COMMAND", "").strip()
         module_path = Path(__file__).resolve()
         project_root = module_path.parents[3]
-        backend_root = module_path.parents[2]
         candidates = [
             Path(configured).expanduser() if configured else None,
             project_root / ".mineru-venv" / "bin" / "mineru",
-            backend_root / ".mineru-venv" / "bin" / "mineru",
             Path("/opt/mineru/bin/mineru"),
             Path(shutil.which("mineru")) if shutil.which("mineru") else None,
         ]

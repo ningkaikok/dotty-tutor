@@ -66,6 +66,23 @@ class StatefulTutoringTests(unittest.TestCase):
                     "chapter": "有理数",
                     "knowledgePoint": "数的比较",
                     "givens": [],
+                    "contentBlocks": [
+                        {"id": "stem-1", "type": "text", "text": "下列各数中比 1 大的是？", "sourceOrder": 0},
+                        {
+                            "id": "options",
+                            "type": "options",
+                            "sourceOrder": 1,
+                            "items": [
+                                {
+                                    "label": f"({label})",
+                                    "contentBlocks": [
+                                        {"id": f"option-{label}", "type": "text", "text": value, "sourceOrder": 0},
+                                    ],
+                                }
+                                for label, value in zip("ABCD", ["2", "0", "1", "-3"])
+                            ],
+                        },
+                    ],
                 },
                 "lessonSteps": [],
                 "modelRun": {"provider": "mock", "model": "demo", "fallback": False},

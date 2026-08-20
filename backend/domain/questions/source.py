@@ -28,7 +28,7 @@ MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
-# 旧版本产物不能静默当成新规则的结果，重新 OCR/生成时会写入新的版本证据。
+# 不同规则版本的产物不能静默混用，重新 OCR/生成时会写入新的版本证据。
 QUESTION_SEGMENTATION_VERSION = "question-segmentation-v2"
 
 ANSWER_SECTION_PATTERN = re.compile(

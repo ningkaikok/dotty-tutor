@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import BaseModel, Field
 
 from domain.tutoring.checks import safe_canvas_action
 
@@ -56,12 +56,8 @@ class PublicationStatusUpdate(BaseModel):
 
 class LearningSessionCreate(BaseModel):
     learnerId: str = Field(default="local-demo", min_length=1, max_length=128)
-    # 会话属于整份已发布试卷，而不是单道课程；保留旧 lessonId 请求别名，兼容 v0.6.0 客户端。
-    publicationId: str = Field(
-        min_length=1,
-        max_length=128,
-        validation_alias=AliasChoices("publicationId", "lessonId"),
-    )
+    # Sessions always target an immutable published paper, never an individual lesson.
+    publicationId: str = Field(min_length=1, max_length=128)
 
 
 class ExerciseAttemptCreate(BaseModel):
@@ -72,8 +68,8 @@ class ExerciseAttemptCreate(BaseModel):
     assessment: Literal["correct", "partial", "incorrect"]
     hintLevel: int = Field(default=0, ge=0, le=10)
     durationMs: int = Field(default=0, ge=0, le=3_600_000)
-    # 浏览器携带原始作答时间，避免离线补传把旧练习误记成刚完成；旧客户端仍可省略该字段。
-    createdAt: float | None = Field(default=None, ge=0)
+    # 浏览器携带原始作答时间，避免离线补传把旧练习误记成刚完成。
+    createdAt: float = Field(ge=0)
 
 
 class LearningSyncCreate(BaseModel):
@@ -99,8 +95,8 @@ def lesson_document_from_payload(
             "title": str(step.get("title") or f"步骤 {index + 1}"),
             "payload": {
                 "renderer": "geometry",
-                # 老版本快照可能携带几何动作；发布文档按当前题目重新约束，
-                # 避免普通题目在学生端显示三角形或垂直平分线。
+                # 当前模型内容仍需经过安全约束，避免普通题目在学生端显示
+                # 三角形或垂直平分线等不匹配的几何动作。
                 "action": safe_canvas_action(question, step.get("action", "show-base")),
                 "text": step.get("text", ""),
                 "speechText": step.get("speechText", ""),

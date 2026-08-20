@@ -26,7 +26,7 @@ from api.routers.library_routes import build_library_router
 from observability import log_event
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from domain.questions.contracts import GUIDE_CARDS, HelpRequest, PdfUploadInitRequest, TutorReply
-from storage import store
+from persistence.app_store import application_store as store
 from textbook_ocr import extract_pdf_text, resolve_ocr_text
 from application.services.textbook_processing import (
     MAX_FULL_PAPER_PAGES,
@@ -69,7 +69,8 @@ processing_service = TextbookProcessingService(
 job_store = JobStore(database_url=store.database_url, data_root=store.root)
 textbook_job_registry = build_textbook_registry(processing_service)
 
-# 兼容旧测试和 ASGI 组合根的导出；新流程应优先依赖 upload_registry 或 processing_service。
+# These names are the router's current upload boundary and are used by the ASGI setup
+# and focused route tests.
 pdf_uploads = upload_registry.uploads
 upload_job = upload_registry.get
 upload_status = upload_registry.status

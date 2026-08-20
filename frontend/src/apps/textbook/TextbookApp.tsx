@@ -7,9 +7,9 @@ import {
   loadFullPaperSummary,
   processPdfBatch,
   regenerateQuestion,
-  requestHelp,
   retryBackgroundJob,
-} from "../../api";
+} from "../../api/textbooks";
+import { requestHelp } from "../../api/tutoring";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
@@ -22,7 +22,7 @@ import type {
   QuestionPayload,
   TextbookImportResult,
   TutorReply,
-} from "../../types";
+} from "../../types/index";
 import { usePaperPublication } from "./usePaperPublication";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
@@ -51,7 +51,7 @@ export function TextbookApp() {
   const [loading, setLoading] = useState(false);
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
-  const [lastRun, setLastRun] = useState<import("../../types").RunSummary | null>(null);
+  const [lastRun, setLastRun] = useState<import("../../types/index").RunSummary | null>(null);
   const [fullPaperJob, setFullPaperJob] = useState<BackgroundJob<FullPaperResult> | null>(null);
   const [fullPaperSummary, setFullPaperSummary] = useState<FullPaperSummary | null>(null);
   const [fullPaperError, setFullPaperError] = useState("");

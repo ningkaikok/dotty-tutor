@@ -1,7 +1,6 @@
 import { DrawLineCanvas } from "../DrawLineCanvas";
 import { QuestionContent } from "../QuestionContent";
-import { questionContentBlocks } from "../questionPresentation";
-import type { Question } from "../types";
+import type { Question } from "../types/index";
 
 interface QuestionAnswerProps {
   question: Question;
@@ -37,7 +36,7 @@ export function QuestionAnswer({
 }: QuestionAnswerProps) {
   const questionType = question.questionType ?? "short-answer";
   const multiple = questionType === "multi-select" || question.selectionMode === "multiple";
-  const contentBlocks = questionContentBlocks(question);
+  const contentBlocks = question.contentBlocks;
   const promptNode = <QuestionContent blocks={contentBlocks} showOptions={false} />;
 
   // 画线题的连接关系是结构化坐标，而不是画布截图；这样后端才能稳定判题并回放答案。
@@ -123,8 +122,7 @@ export function QuestionAnswer({
   }
 
   if (questionType === "choice" || questionType === "multi-select" || question.options?.length) {
-    // Both current and legacy questions now enter the same renderer. The normalizer keeps
-    // old image arrays and option strings at this boundary, so this component only owns input.
+    // Structured content is normalized before it reaches this component, so it only owns input.
     return (
       <>
         <QuestionContent

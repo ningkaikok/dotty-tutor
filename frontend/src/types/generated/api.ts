@@ -1153,7 +1153,7 @@ export interface components {
             /** Attemptid */
             attemptId?: string | null;
             /** Createdat */
-            createdAt?: number | null;
+            createdAt: number;
             /**
              * Durationms
              * @default 0

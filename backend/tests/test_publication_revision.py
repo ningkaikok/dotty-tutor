@@ -33,6 +33,17 @@ class PublicationRevisionServiceTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.saved: list[dict] = []
                 self.created: dict | None = None
+                self.runs: dict[str, dict] = {}
+
+            def create_run_snapshot(self, snapshot: dict) -> dict:
+                value = {**snapshot, "result": None, "error": None, "completedAt": None}
+                self.runs[snapshot["runId"]] = value
+                return value
+
+            def finish_run_snapshot(self, run_id: str, *, status: str, result: dict | None = None, error: dict | None = None) -> dict:
+                value = self.runs[run_id]
+                value.update(status=status, result=result, error=error, completedAt=1.0)
+                return value
 
             def load_publication(self, publication_id: str) -> dict:
                 self.assert_publication_id = publication_id
@@ -98,6 +109,12 @@ class PublicationRevisionServiceTests(unittest.TestCase):
 
     def test_requires_source_batch_before_regeneration(self) -> None:
         class Store:
+            def create_run_snapshot(self, snapshot: dict) -> dict:
+                return {**snapshot, "result": None, "error": None, "completedAt": None}
+
+            def finish_run_snapshot(self, run_id: str, *, status: str, result: dict | None = None, error: dict | None = None) -> dict:
+                return {"runId": run_id, "status": status, "result": result, "error": error}
+
             def load_publication(self, _publication_id: str) -> dict:
                 payload = question_payload()
                 payload["question"].pop("sourceBatchId")

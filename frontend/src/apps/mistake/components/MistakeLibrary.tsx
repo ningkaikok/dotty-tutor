@@ -1,6 +1,6 @@
 import MathText from "../../../MathText";
 import { useState } from "react";
-import type { MistakeItem } from "../../../types";
+import type { MistakeItem } from "../../../types/index";
 import { displayedPrompt } from "../../../questionPresentation";
 
 interface MistakeLibraryProps {

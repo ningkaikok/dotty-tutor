@@ -92,12 +92,9 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - 数据库连接串和云服务密钥只放在服务器密钥文件或部署平台 Secrets 中。
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
-- 当前存储层首次启动会执行 `create_all()`；正式多版本发布前必须引入 Alembic。
-- 升级已有 PostgreSQL 时，按编号执行 `backend/migrations/001_programmable_learning.sql`、
-  `002_mistake_capture.sql`、`003_stateful_tutoring.sql`、`004_variation_practice.sql`、
-  `005_spaced_review.sql`、`006_publications_and_sync.sql`、
-  `007_learning_session_publication.sql`、`008_publication_revisions.sql` 和
-  `009_run_snapshots_question_revisions.sql`、`010_background_jobs.sql`；执行前先备份数据库。
+- 当前版本只支持全新空数据库；首次访问各领域 Store 时按当前 SQLAlchemy schema 创建 PostgreSQL 表。
+  不提供原地数据库升级。切换版本前请备份并重建空库，再按当前导入流程重新建立数据；本地测试还应清空仓库内
+  `data/` 资源。
 
 ## 启动前检查
 
@@ -279,7 +276,7 @@ docker compose ps
 ```
 
 打开 <http://localhost:8080>，通过 Nginx 同源访问前端和 `/api`。产品首页、学生空间、内容生产和错题陪练
-分别位于 `/`、`/learn`、`/studio`、`/mistakes`；旧 `/textbooks` 会跳转到 `/studio`。仓库的 Nginx
+分别位于 `/`、`/learn`、`/studio`、`/mistakes`。仓库的 Nginx
 配置已使用 `index.html` 作为 SPA 回退，
 反向代理或 CDN 也必须保留该规则，否则直接刷新子路径会返回 404。默认服务拓扑：
 
@@ -411,9 +408,8 @@ sudo systemctl restart dotty-tutor-api dotty-tutor-worker
 sudo systemctl reload nginx
 ```
 
-错题录入与多轮辅导表可以使用 `backend/migrations/002_mistake_capture.sql` 和
-`backend/migrations/003_stateful_tutoring.sql` 幂等创建。引入 Alembic 后，
-应在 API 重启前运行 `alembic upgrade head`，并为失败迁移准备回滚方案。
+各领域 Store 首次访问时会通过 SQLAlchemy metadata 创建当前所需的表。部署前必须准备空数据库；项目不提供
+原地升级脚本或历史 SQL 迁移链，已有数据需要在应用外完成备份、转换和重新导入。
 
 ## GitHub CI
 

@@ -295,9 +295,9 @@ def suggested_stage(
         }[current_stage]
         return next_stage
 
-    # Once practice starts, free text, guided model output, and even an
-    # incorrect legacy submission can only keep the learner in practice.  The
-    # old fallback returned explain for every mode=answer turn, which made a
+    # Once practice starts, free text, guided model output, and an
+    # incorrect submission can only keep the learner in practice. The
+    # previous fallback returned explain for every mode=answer turn, which made a
     # normal follow-up question undo a completed original answer.
     if current_stage in {"practice", "verify"}:
         return current_stage

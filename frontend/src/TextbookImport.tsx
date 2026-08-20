@@ -3,7 +3,7 @@ import { RuntimeSettings } from "./apps/textbook/import/RuntimeSettings";
 import { TextbookLibrary } from "./apps/textbook/import/TextbookLibrary";
 import { UploadPanel } from "./apps/textbook/import/UploadPanel";
 import { useTextbookImport } from "./apps/textbook/import/useTextbookImport";
-import type { TextbookImportResult } from "./types";
+import type { TextbookImportResult } from "./types/index";
 
 interface TextbookImportProps {
   onContinue: (result: TextbookImportResult) => void;

@@ -1,6 +1,7 @@
 """Focused persistence stores for the modular FastAPI application."""
 
 from persistence.base import DatabaseStore
+from persistence.app_store import AppStore
 from persistence.learning_store import LearningStore
 from persistence.job_store import JobStore
 from persistence.mistake_store import MistakeStore
@@ -11,6 +12,7 @@ from persistence.variation_store import VariationStore
 
 __all__ = [
     "DatabaseStore",
+    "AppStore",
     "LearningStore",
     "JobStore",
     "MistakeStore",

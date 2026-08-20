@@ -1,6 +1,6 @@
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import MathText from "../../../MathText";
-import type { TutorStage } from "../../../types";
+import type { TutorStage } from "../../../types/index";
 import { useVariationPractice } from "../useVariationPractice";
 
 const LEVEL_LABELS = {

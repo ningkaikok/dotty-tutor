@@ -30,7 +30,7 @@ flowchart LR
     Pipeline --> OCR["OCR Runtime"]
     Pipeline --> Model["Model Runtime"]
     Pipeline --> Review["Review Runtime"]
-    Pipeline --> Store["TutorStore"]
+    Pipeline --> Store["AppStore"]
     Processing --> OCR
     Processing --> Model
     Processing --> Review
@@ -64,7 +64,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 当前前端使用 React Router 的声明式浏览器路由，并按产品入口动态加载代码。路由匹配、动态参数、
 前进后退和未知路径回退不再由项目自行维护。Vite 开发服务器与生产 Nginx 都会把
-`/learn`、`/studio`、`/mistakes` 等直接访问回退到 `index.html`；旧 `/textbooks` 在前端跳转到 `/studio`。
+`/learn`、`/studio`、`/mistakes` 等直接访问回退到 `index.html`。
 
 ## 组件职责
 
@@ -88,7 +88,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | 内容预览工作区 | `frontend/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |
 | 题型作答 | `frontend/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
 | 题目展示 | `frontend/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
-| API 契约 | `frontend/src/api/`、`frontend/src/types/` | 按产品域组织请求和类型；根文件只做兼容导出 |
+| API 契约 | `frontend/src/api/`、`frontend/src/types/` | 按产品域组织请求和类型 |
 | 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `backend/app.py`、`backend/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
@@ -118,7 +118,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 | OCR 适配 | `backend/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `backend/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `backend/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
-| 教材与学习存储 | `backend/persistence/textbook_store.py`、`learning_store.py` | 教材导入/题目批次、课程/试卷、作答/掌握度；`storage.py` 仅兼容旧调用方 |
+| 教材与学习存储 | `backend/persistence/app_store.py`、各领域 Store | 应用组合 Store 共享引擎，领域 Store 分别保存教材、课程、作答和掌握度 |
 | 可观测性 | `backend/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `backend/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `backend/api/routers/mistake_routes.py`、`backend/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
@@ -143,7 +143,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
   → 选择错误原因并 PATCH 确认（待掌握）
 ```
 
-错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张通用 `TutorStore`。它与教材域
+错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张应用组合 `AppStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
 辅导线程。完成陪练后，独立的 `VariationStore` 保存唯一验证题和结构化作答，避免自由对话被误算为掌握证据。
 答错时允许更新同一道题的证据；答对一次时 `MistakeStore` 只负责执行明确的
@@ -411,9 +411,8 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 内容生产工作台的“修复本题”调用 `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，只重跑当前题的生成、审校和质量门禁，默认复用 OCR 缓存；同批其它题目和排序不变。
 - 当页面本身疑似识别错误时，内容生产者可使用“刷新 OCR 重生成”或在批次接口传 `refreshOcr=true`。这是显式的整批 OCR 刷新操作，不会让每次单题修复都重复运行 MinerU。
 - 图片绑定在审核后再次依据 OCR 原始引用顺序重建。对于“题干图 + A-D 四张选项图”，四张选项图会写入
-  `optionImageUrls` 和 options 内容块，模型误写的 `images/...` 文件名不会泄漏到学生页面；旧数据由前端按五图结构做只读兼容推断。
-- 学生端所有题目入口（互动试卷、错题列表、确认页、陪练页）都通过同一套展示清洗函数处理旧数据。
-  这只是向后兼容，不会回写数据库；新数据必须以 `contentBlocks`、`imageUrls` 和 `optionImageUrls` 为图片事实来源。
+  `optionImageUrls` 和 options 内容块，模型误写的 `images/...` 文件名不会泄漏到学生页面；当前数据必须以
+  `contentBlocks`、`imageUrls` 和 `optionImageUrls` 为图片事实来源。
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。

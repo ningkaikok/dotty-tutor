@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 import unittest
 from tempfile import TemporaryDirectory
 
@@ -9,12 +8,11 @@ from fastapi.testclient import TestClient
 
 from api.routers.learning_routes import build_learning_router
 from domain.contracts.lesson import (
-    LearningSessionCreate,
     LessonDocument,
     lesson_document_from_payload,
 )
 from persistence.mistake_store import MistakeStore
-from storage import TutorStore
+from persistence.app_store import AppStore
 
 
 class LessonContractTests(unittest.TestCase):
@@ -40,17 +38,10 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(validated.blocks[0].type, "diagram")
         self.assertEqual(validated.blocks[-1].type, "quiz")
 
-    def test_accepts_the_legacy_session_request_key(self) -> None:
-        current = LearningSessionCreate.model_validate({"publicationId": "paper-1"})
-        legacy = LearningSessionCreate.model_validate({"lessonId": "paper-1"})
-        self.assertEqual(current.publicationId, "paper-1")
-        self.assertEqual(legacy.publicationId, "paper-1")
-
-
 class LearningStoreTests(unittest.TestCase):
     def test_persists_lesson_attempt_and_mastery(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -95,7 +86,7 @@ class LearningStoreTests(unittest.TestCase):
 
     def test_publishes_a_lesson_collection_and_deduplicates_sync_retries(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -186,7 +177,7 @@ class LearningStoreTests(unittest.TestCase):
 
     def test_rejects_attempt_for_unknown_session(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -205,7 +196,7 @@ class LearningStoreTests(unittest.TestCase):
 
     def test_rejects_unsafe_publication_transitions_and_missing_quality(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -234,7 +225,7 @@ class LearningStoreTests(unittest.TestCase):
 
     def test_attempt_id_cannot_cross_learning_sessions(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -269,32 +260,10 @@ class LearningStoreTests(unittest.TestCase):
                     created_at=3.0,
                 )
 
-    def test_renames_legacy_sqlite_session_column_without_losing_data(self) -> None:
-        with TemporaryDirectory() as directory:
-            database_path = f"{directory}/learning.sqlite3"
-            with sqlite3.connect(database_path) as connection:
-                connection.execute(
-                    "CREATE TABLE learning_sessions ("
-                    "session_id TEXT PRIMARY KEY, learner_id TEXT NOT NULL, "
-                    "lesson_id TEXT NOT NULL, started_at REAL NOT NULL, updated_at REAL NOT NULL)"
-                )
-                connection.execute(
-                    "INSERT INTO learning_sessions VALUES (?, ?, ?, ?, ?)",
-                    ("legacy-session", "student-1", "paper-legacy", 1.0, 1.0),
-                )
-
-            store = TutorStore(
-                database_url=f"sqlite+pysqlite:///{database_path}",
-                data_root=directory,
-            )
-            session = store.get_learning_session("legacy-session")
-            self.assertEqual(session["publicationId"], "paper-legacy")
-
-
 class LearningRouteTests(unittest.TestCase):
-    def test_session_targets_a_published_paper_and_keeps_legacy_input_compatible(self) -> None:
+    def test_session_targets_a_published_paper_and_rejects_old_input(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -328,7 +297,7 @@ class LearningRouteTests(unittest.TestCase):
                 "/api/learning/sessions",
                 json={"learnerId": "student-1", "publicationId": "paper-1"},
             )
-            legacy = client.post(
+            old_input = client.post(
                 "/api/learning/sessions",
                 json={"learnerId": "student-1", "lessonId": "paper-1"},
             )
@@ -340,12 +309,12 @@ class LearningRouteTests(unittest.TestCase):
             self.assertEqual(current.status_code, 200)
             self.assertEqual(current.json()["publicationId"], "paper-1")
             self.assertNotIn("lessonId", current.json())
-            self.assertEqual(legacy.status_code, 200)
+            self.assertEqual(old_input.status_code, 422)
             self.assertEqual(missing.status_code, 404)
 
     def test_incorrect_published_attempt_is_idempotently_added_to_mistake_book(self) -> None:
         with TemporaryDirectory() as directory:
-            store = TutorStore(
+            store = AppStore(
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
@@ -392,6 +361,7 @@ class LearningRouteTests(unittest.TestCase):
                 "knowledgePoint": "有理数加法",
                 "response": {"text": "1"},
                 "assessment": "incorrect",
+                "createdAt": 1.0,
             }
 
             first = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)

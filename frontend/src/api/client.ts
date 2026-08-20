@@ -12,8 +12,8 @@ export type GeneratedSuccess<Operation extends keyof operations> =
  * Parse the shared JSON error envelope used by every frontend API module.
  *
  * Keeping response normalization here prevents individual product modules from
- * disagreeing about the current Problem Details envelope or legacy FastAPI
- * `detail` responses, and prevents silently accepting empty JSON.
+ * disagreeing about the current Problem Details envelope, and prevents silently
+ * accepting empty JSON.
  */
 export async function parse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null) as (T & {

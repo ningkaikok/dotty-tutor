@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { loadPublishedPublications } from "../../api";
-import type { PublicationSummary } from "../../types";
+import { loadPublishedPublications } from "../../api/publications";
+import type { PublicationSummary } from "../../types/index";
 import "./student.css";
 
 /**

@@ -110,12 +110,9 @@ TTS，语音只属于明确的“请求讲解”动作。
 - `exercise_attempts`：原始回答、判定、提示层级与耗时。
 - `mastery_states`：按学习者和知识点聚合的当前掌握度。
 
-开发环境仍会通过 SQLAlchemy `create_all()` 幂等初始化；受控部署可先执行
-`backend/migrations/001_programmable_learning.sql`；试卷发布与批量同步新增表/索引见
-`backend/migrations/006_publications_and_sync.sql`；`007_learning_session_publication.sql` 将 v0.6.0 中
-实际保存试卷 ID 的 `lesson_id` 无损重命名为 `publication_id`；`008_publication_revisions.sql` 增加试卷
-版本链。后续应引入 Alembic，迁移历史建立后
-停止把 `create_all()` 当作生产迁移工具。
+各领域 Store 首次访问时通过 SQLAlchemy `create_all()` 按当前 schema 初始化空数据库，SQLite 与 PostgreSQL 使用同一份
+领域契约。项目只支持全新数据库，不提供历史 SQL 迁移链或原地升级；已有学习数据需要在应用外备份、转换后，
+按当前导入流程重新建立。
 
 ## 当前边界
 

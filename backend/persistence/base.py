@@ -40,7 +40,7 @@ class DatabaseStore:
         self.upload_root.mkdir(parents=True, exist_ok=True)
 
         configured_url = database_url or os.getenv("DATABASE_URL")
-        # DOTTY_DATA_DIR 历史上代表隔离 SQLite；保留该行为供单元测试和旧数据迁移使用。
+        # DOTTY_DATA_DIR selects an isolated SQLite database for local tests.
         if not configured_url and os.getenv("DOTTY_DATA_DIR"):
             configured_url = f"sqlite+pysqlite:///{self.root / 'dotty.sqlite3'}"
         self.database_url = normalize_database_url(
@@ -92,80 +92,6 @@ class DatabaseStore:
             if self._initialized:
                 return
             metadata.create_all(self.engine)
-            if self.backend == "sqlite":
-                # SQLite 仅用于测试和旧本地数据，因此在启动时执行小型幂等兼容迁移；
-                # PostgreSQL 正式环境仍通过 backend/migrations 中可审查的 SQL 升级。
-                with self.engine.begin() as connection:
-                    columns = {
-                        row[1]
-                        for row in connection.exec_driver_sql(
-                            "PRAGMA table_info(batch_questions)"
-                        ).fetchall()
-                    }
-                    if "guide_cards_json" not in columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE batch_questions "
-                            "ADD COLUMN guide_cards_json TEXT NOT NULL DEFAULT '[]'"
-                        )
-                    lesson_columns = {
-                        row[1]
-                        for row in connection.exec_driver_sql(
-                            "PRAGMA table_info(lesson_documents)"
-                        ).fetchall()
-                    }
-                    if "question_json" not in lesson_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE lesson_documents "
-                            "ADD COLUMN question_json TEXT NOT NULL DEFAULT '{}'"
-                        )
-                    if "guide_cards_json" not in lesson_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE lesson_documents "
-                            "ADD COLUMN guide_cards_json TEXT NOT NULL DEFAULT '[]'"
-                        )
-                    session_columns = {
-                        row[1]
-                        for row in connection.exec_driver_sql(
-                            "PRAGMA table_info(learning_sessions)"
-                        ).fetchall()
-                    }
-                    if "lesson_id" in session_columns and "publication_id" not in session_columns:
-                        # v0.6.0 已把 publication ID 写进 lesson_id。重命名列可以保留本地历史，
-                        # 同时让数据库字段名与真实契约一致。
-                        connection.exec_driver_sql(
-                            "ALTER TABLE learning_sessions "
-                            "RENAME COLUMN lesson_id TO publication_id"
-                        )
-                    publication_columns = {
-                        row[1]
-                        for row in connection.exec_driver_sql(
-                            "PRAGMA table_info(lesson_publications)"
-                        ).fetchall()
-                    }
-                    if "version" not in publication_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE lesson_publications "
-                            "ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
-                        )
-                    if "revision_of" not in publication_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE lesson_publications "
-                            "ADD COLUMN revision_of VARCHAR(64)"
-                        )
-                    background_columns = {
-                        row[1]
-                        for row in connection.exec_driver_sql(
-                            "PRAGMA table_info(background_jobs)"
-                        ).fetchall()
-                    }
-                    if "progress" not in background_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE background_jobs ADD COLUMN progress INTEGER NOT NULL DEFAULT 0"
-                        )
-                    if "message" not in background_columns:
-                        connection.exec_driver_sql(
-                            "ALTER TABLE background_jobs ADD COLUMN message TEXT NOT NULL DEFAULT ''"
-                        )
             self._initialized = True
 
     def _upsert(

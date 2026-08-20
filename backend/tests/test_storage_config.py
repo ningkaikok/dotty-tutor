@@ -4,7 +4,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from storage import build_postgres_url_from_env
+from persistence.database import build_postgres_url_from_env
 
 
 class StorageConfigTests(unittest.TestCase):

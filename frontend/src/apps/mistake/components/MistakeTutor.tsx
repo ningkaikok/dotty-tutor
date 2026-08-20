@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import MathText from "../../../MathText";
-import type { MistakeItem, TutorStage } from "../../../types";
+import type { MistakeItem, TutorStage } from "../../../types/index";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { VariationPractice } from "./VariationPractice";
 
