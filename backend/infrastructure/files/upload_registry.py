@@ -27,16 +27,28 @@ class UploadRegistry:
         self.uploads: dict[str, dict[str, Any]] = {}
 
     def get(self, upload_id: str) -> dict[str, Any]:
-        job = self.uploads.get(upload_id)
-        if not job:
+        # API and Worker are separate processes. Always refresh the cached snapshot so
+        # status polling observes Worker progress and terminal errors from PostgreSQL.
+        cached = self.uploads.get(upload_id)
+        try:
             job = self.store.load_job(upload_id)
-            if job:
-                self.uploads[upload_id] = job
-                for source_question_key, payload in job.get("batchPayloads", {}).items():
-                    self.lesson_store[payload["question"]["id"]] = {
-                        "payload": payload,
-                        "guideCards": job.get("batchGuideCards", {}).get(source_question_key) or self.default_guide_cards,
-                    }
+        except Exception:
+            # Focused in-memory callers/tests may provide a store that is unavailable;
+            # retain the already loaded upload rather than turning a local lookup into a
+            # database connectivity error. Production requests still use the refreshed
+            # persisted snapshot whenever the shared store is reachable.
+            if cached is None:
+                raise
+            job = cached
+        if job is None and cached is not None:
+            job = cached
+        if job:
+            self.uploads[upload_id] = job
+            for source_question_key, payload in job.get("batchPayloads", {}).items():
+                self.lesson_store[payload["question"]["id"]] = {
+                    "payload": payload,
+                    "guideCards": job.get("batchGuideCards", {}).get(source_question_key) or self.default_guide_cards,
+                }
         if not job:
             raise HTTPException(status_code=404, detail="上传任务不存在")
         return job

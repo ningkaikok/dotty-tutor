@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -14,6 +15,25 @@ from application.services.textbook_processing import TextbookProcessingService
 
 
 class TextbookProcessingTests(unittest.TestCase):
+    def test_retry_reuses_merged_source_after_chunks_are_cleaned(self) -> None:
+        """Worker retries resume from source.pdf instead of requiring upload chunks again."""
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            content = b"%PDF-1.4\n1 0 obj\n%%EOF\n"
+            source_path = root / "source.pdf"
+            source_path.write_bytes(content)
+            job = {"uploadId": "retry-upload", "size": len(content), "directory": root}
+            service = TextbookProcessingService(
+                store=object(), upload_registry=object(), ocr_runtime=object(),
+            )
+
+            restored_path, fingerprint = service._ensure_source_pdf(
+                job, [root / "chunk-000000.part"],
+            )
+
+            self.assertEqual(restored_path, source_path)
+            self.assertEqual(fingerprint, hashlib.sha256(content).hexdigest())
+
     def test_full_paper_summary_is_bounded_and_resumes_processed_batches(self) -> None:
         """A retry skips persisted successes while recording later batch failures."""
         payload_one = {"question": {"id": "q1", "sourceQuestionKey": "batch-001-q-1"}}

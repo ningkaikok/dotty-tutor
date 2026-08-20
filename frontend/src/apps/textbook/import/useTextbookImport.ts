@@ -74,6 +74,23 @@ interface UseTextbookImportOptions {
 }
 
 const MAX_CONCURRENT_UPLOADS = 3;
+const TRANSIENT_REQUEST_RETRIES = 4;
+
+function isTransientRequestError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return error instanceof TypeError || /Failed to fetch|请求失败：[5]\d\d|网络|timeout/i.test(message);
+}
+
+async function withTransientRetry<T>(operation: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isTransientRequestError(error) || attempt >= TRANSIENT_REQUEST_RETRIES) throw error;
+      await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+}
 
 function uploadIdFor(file: File): string {
   // 同一个文件允许再次上传，因此时间戳只用于 UI 键，不参与后端幂等标识。
@@ -195,7 +212,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
           if (controller.uploaded.has(index)) continue;
           const start = index * task.chunkSize;
           const chunk = entry.file.slice(start, Math.min(start + task.chunkSize, entry.file.size));
-          await uploadPdfChunk(task.uploadId, index, chunk);
+          await withTransientRetry(() => uploadPdfChunk(task.uploadId, index, chunk));
           controller.uploaded.add(index);
           updateUpload(id, { progress: Math.round((controller.uploaded.size / task.totalChunks) * 100) });
         }
@@ -217,7 +234,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
         // 每轮同时读取上传阶段和后台任务，但只在这一条轮询链里合并一次状态。
         // 这样可以保留合并/校验/OCR 的细分进度，又不会让两套独立轮询互相覆盖。
         let lastProgress = 20;
-        let activeJob = await completePdfUpload(task.uploadId);
+        let activeJob = await withTransientRetry(() => completePdfUpload(task.uploadId));
         const updateJob = (job: BackgroundJob<TextbookImportResult>, uploadStatus?: PdfUploadTask) => {
           lastProgress = Math.max(lastProgress, uploadStatus?.progress ?? 0, job.progress);
           updateUpload(id, {
@@ -235,8 +252,8 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
         while (activeJob.status === "queued" || activeJob.status === "running") {
           await new Promise((resolve) => window.setTimeout(resolve, 800));
           const [uploadStatus, nextJob] = await Promise.all([
-            loadPdfUploadStatus(task.uploadId),
-            loadBackgroundJob<TextbookImportResult>(activeJob.jobId),
+            withTransientRetry(() => loadPdfUploadStatus(task.uploadId)),
+            withTransientRetry(() => loadBackgroundJob<TextbookImportResult>(activeJob.jobId)),
           ]);
           activeJob = nextJob;
           updateJob(activeJob, uploadStatus);
