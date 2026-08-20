@@ -303,12 +303,12 @@ def complete_pdf_upload(
     upload_id: str,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
-    """快速注册合并/OCR/首批生成任务；长流程由独立 Worker 执行。"""
+    """注册合并/OCR/整本生成任务；全部长流程由独立 Worker 执行。"""
     upload_job(upload_id)
     key = idempotency_key if isinstance(idempotency_key, str) else None
     job = job_store.create_job(
         "textbook.upload.complete",
-        {"uploadId": upload_id},
+        {"uploadId": upload_id, "generateFullPaper": True},
         idempotency_key=key or f"textbook-upload-complete:{upload_id}",
     )
     return _job_response(job)

@@ -290,9 +290,8 @@ macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正�
 悄悄回退到 PDF 文字层；需要 Docker 使用 MinerU 时，应提供 Linux MinerU 镜像或独立 OCR
 服务，再增加对应 Runtime 适配器。
 
-整本 PDF 每 5 页规划一个批次，首批优先生成 5 道预览题，其余批次按需处理。内容生产预览也可以点击
-“生成整套试卷”创建 `textbook.paper.generate` 后台任务；整卷模式每批最多处理 20 题，服务端硬限制最多
-50 页、100 道题。可以用 `DOTTY_MAX_FULL_PAPER_PAGES` 和 `DOTTY_MAX_FULL_PAPER_QUESTIONS` 降低本机上限，
+整本 PDF 每 5 页规划一个批次，上传完成后默认由 Worker 自动生成整本教材；整本模式每批最多处理 20 题，服务端硬限制最多
+50 页、100 道题。已有仅生成首批预览的任务仍可以点击“生成整套试卷”补齐。可以用 `DOTTY_MAX_FULL_PAPER_PAGES` 和 `DOTTY_MAX_FULL_PAPER_QUESTIONS` 降低本机上限，
 但环境变量不能突破代码硬限制。相邻且路由相同的页面合并调用，
 减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。
 MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务的资源目录中。

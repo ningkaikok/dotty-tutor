@@ -73,6 +73,26 @@ class TextbookJobRegistryTests(unittest.TestCase):
         with self.assertRaises(JobCancelled):
             registry.get("textbook.upload.complete")({"uploadId": "u1"}, lambda: True)
 
+    def test_upload_completion_can_run_full_paper_in_same_worker_task(self) -> None:
+        service = _Service()
+        def generate_full_paper(*args, **kwargs):
+            service.calls.append(("full-paper", args, kwargs))
+            return {
+                "summary": {"questionCount": 8},
+                "questionPayload": {"question": {"id": "q1"}},
+                "questionPayloads": [{"question": {"id": "q1"}}],
+                "batches": [],
+            }
+        service.generate_full_paper = generate_full_paper
+        registry = build_textbook_registry(service)
+
+        result = registry.get("textbook.upload.complete")(
+            {"uploadId": "u1", "generateFullPaper": True}, lambda: False,
+        )
+
+        self.assertEqual(result["fullPaper"], {"questionCount": 8})
+        self.assertEqual([call[0] for call in service.calls], ["complete", "full-paper"])
+
     def test_batch_route_enqueues_one_idempotent_job(self) -> None:
         """HTTP 请求只入队；重复点击必须返回同一个后台任务。"""
         with TemporaryDirectory() as directory:

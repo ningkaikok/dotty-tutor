@@ -44,7 +44,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/uploads/init` | 初始化最大 500 MB 的 PDF 分块任务 |
 | `PUT` | `/api/uploads/{uploadId}/chunks/{index}` | 幂等上传一个 5 MB 分块 |
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
-| `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 完成与首批处理任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
+| `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
 | `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
