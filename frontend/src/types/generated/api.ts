@@ -920,7 +920,7 @@ export interface paths {
         put?: never;
         /**
          * Complete Pdf Upload
-         * @description 快速注册合并/OCR/首批生成任务；长流程由独立 Worker 执行。
+         * @description 注册合并/OCR/整本生成任务；全部长流程由独立 Worker 执行。
          */
         post: operations["complete_pdf_upload_api_uploads__upload_id__complete_post"];
         delete?: never;

@@ -33,12 +33,29 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
 
     @registry.decorator("textbook.upload.complete")
     def complete(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> Any:
-        return _run(
+        result = _run(
             lambda: processing_service.complete_upload(
                 payload["uploadId"], cancellation_check=cancellation_check,
             ),
             cancellation_check,
         )
+        if not payload.get("generateFullPaper", False):
+            return result
+        full_paper = _run(
+            lambda: processing_service.generate_full_paper(
+                payload["uploadId"], cancellation_check=cancellation_check,
+            ),
+            cancellation_check,
+        )
+        if isinstance(result, dict) and isinstance(full_paper, dict):
+            return {
+                **result,
+                "questionPayload": full_paper.get("questionPayload") or result.get("questionPayload"),
+                "questionPayloads": full_paper.get("questionPayloads") or result.get("questionPayloads"),
+                "batches": full_paper.get("batches") or result.get("batches"),
+                "fullPaper": full_paper.get("summary"),
+            }
+        return result
 
     @registry.decorator("textbook.batch.process")
     def process_batch(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> Any:

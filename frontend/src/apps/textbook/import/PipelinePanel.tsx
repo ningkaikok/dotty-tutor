@@ -69,7 +69,7 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
           {pdfMode
             ? phase === "processing"
               ? (processingTask?.message ?? "正在读取后端处理进度…")
-              : "上传中断后点击继续，只会补传缺失分块；整本书先规划页码批次，只生成并识别首批 5 页。"
+              : "上传中断后点击继续，只会补传缺失分块；上传完成后由后台按页码批次持续识别整本教材。"
             : "图片会直接进入版面、公式和题目识别流程。"}
         </p>
       )}

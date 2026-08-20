@@ -188,7 +188,7 @@ export function TextbookApp() {
       return;
     }
     if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= questionLimit) return;
-    // 后续五页批次按需生成：首批完成后页面即可交互，只有继续翻题时才消耗 OCR/模型时间。
+    // 兼容仍处于预览态的旧任务；新上传任务会由后台自动生成整本教材。
     const nextBatch = textbookImport.batches?.find((batch) => batch.status === "queued");
     if (!nextBatch) return;
     setLoadingQuestion(true);
@@ -408,7 +408,7 @@ export function TextbookApp() {
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
         </span>
-        {textbookImport.uploadId && !publication && (
+        {textbookImport.uploadId && !textbookImport.fullPaper && !publication && (
           <button
             className="ghost compact"
             disabled={fullPaperRunning || fullPaperJob?.status === "succeeded"}
