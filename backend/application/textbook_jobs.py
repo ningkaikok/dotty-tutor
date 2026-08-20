@@ -49,5 +49,15 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
             cancellation_check,
         )
 
-    return registry
+    @registry.decorator("textbook.paper.generate")
+    def generate_full_paper(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> Any:
+        """Generate the bounded full paper while preserving per-batch failures."""
+        return _run(
+            lambda: processing_service.generate_full_paper(
+                payload["uploadId"],
+                cancellation_check=cancellation_check,
+            ),
+            cancellation_check,
+        )
 
+    return registry

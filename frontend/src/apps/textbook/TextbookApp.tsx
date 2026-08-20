@@ -1,15 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { processPdfBatch, regenerateQuestion, requestHelp } from "../../api";
+import {
+  cancelBackgroundJob,
+  generateFullPaper,
+  loadBackgroundJob,
+  loadFullPaperSummary,
+  processPdfBatch,
+  regenerateQuestion,
+  requestHelp,
+  retryBackgroundJob,
+} from "../../api";
 import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import { TextbookImport } from "../../TextbookImport";
-import type { CanvasAction, QuestionPayload, TextbookImportResult, TutorReply } from "../../types";
+import type {
+  BackgroundJob,
+  CanvasAction,
+  FullPaperResult,
+  FullPaperSummary,
+  QuestionPayload,
+  TextbookImportResult,
+  TutorReply,
+} from "../../types";
 import { usePaperPublication } from "./usePaperPublication";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
-const QUESTION_LIMIT = 5;
+const QUICK_QUESTION_LIMIT = 5;
+const FULL_PAPER_QUESTION_LIMIT = 100;
 
 export function TextbookApp() {
   // 本路由是内容生产工作台的编排边界。这里的答题只用于质量预览；真实学生学习记录只允许
@@ -19,6 +37,7 @@ export function TextbookApp() {
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
   const [questionBank, setQuestionBank] = useState<QuestionPayload[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionLimit, setQuestionLimit] = useState(QUICK_QUESTION_LIMIT);
   const [textbookImport, setTextbookImport] = useState<TextbookImportResult | null>(null);
   const [loadError, setLoadError] = useState("");
   const [canvasAction, setCanvasAction] = useState<CanvasAction>(INITIAL_ACTION);
@@ -33,6 +52,10 @@ export function TextbookApp() {
   const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [interactionError, setInteractionError] = useState("");
   const [lastRun, setLastRun] = useState<import("../../types").RunSummary | null>(null);
+  const [fullPaperJob, setFullPaperJob] = useState<BackgroundJob<FullPaperResult> | null>(null);
+  const [fullPaperSummary, setFullPaperSummary] = useState<FullPaperSummary | null>(null);
+  const [fullPaperError, setFullPaperError] = useState("");
+  const fullPaperRunning = fullPaperJob?.status === "queued" || fullPaperJob?.status === "running";
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
   const {
@@ -51,8 +74,9 @@ export function TextbookApp() {
   useEffect(() => {
     // 恢复的是某个试卷版本自己的课程快照，不是重新读取教材批次；这样刷新后仍能继续审核 v2。
     if (!restoredQuestionBank?.length) return;
-    const nextBank = restoredQuestionBank.slice(0, QUESTION_LIMIT);
+    const nextBank = restoredQuestionBank.slice(0, FULL_PAPER_QUESTION_LIMIT);
     setQuestionBank(nextBank);
+    setQuestionLimit(Math.max(QUICK_QUESTION_LIMIT, nextBank.length));
     setQuestionIndex(0);
     setPayload(nextBank[0]);
     setTextbookImport((current) => current ? {
@@ -82,6 +106,10 @@ export function TextbookApp() {
     resetLearningState();
     setPayload(null);
     setTextbookImport(null);
+    setQuestionLimit(QUICK_QUESTION_LIMIT);
+    setFullPaperJob(null);
+    setFullPaperSummary(null);
+    setFullPaperError("");
     resetPublication();
   };
 
@@ -159,7 +187,7 @@ export function TextbookApp() {
       activateQuestion(questionIndex + 1);
       return;
     }
-    if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= QUESTION_LIMIT) return;
+    if (!textbookImport?.uploadId || loadingQuestion || questionBank.length >= questionLimit) return;
     // 后续五页批次按需生成：首批完成后页面即可交互，只有继续翻题时才消耗 OCR/模型时间。
     const nextBatch = textbookImport.batches?.find((batch) => batch.status === "queued");
     if (!nextBatch) return;
@@ -171,7 +199,7 @@ export function TextbookApp() {
       const generatedQuestions = generated.questionPayloads?.length
         ? generated.questionPayloads
         : [generated.questionPayload];
-      const nextBank = [...questionBank, ...generatedQuestions].slice(0, QUESTION_LIMIT);
+      const nextBank = [...questionBank, ...generatedQuestions].slice(0, questionLimit);
       setQuestionBank(nextBank);
       setTextbookImport((current) => current ? {
         ...current,
@@ -183,6 +211,82 @@ export function TextbookApp() {
       setInteractionError(error instanceof Error ? error.message : "下一题生成失败");
     } finally {
       setLoadingQuestion(false);
+    }
+  };
+
+  const applyFullPaperResult = (fullPaper: FullPaperResult, fallbackSummary?: FullPaperSummary) => {
+    const merged = fullPaper.questionPayloads?.length
+      ? fullPaper.questionPayloads.slice(0, FULL_PAPER_QUESTION_LIMIT)
+      : fullPaper.questionPayload ? [fullPaper.questionPayload] : [];
+    if (!merged.length) {
+      setFullPaperError("整套试卷未生成可回看的题目");
+      return;
+    }
+    const summary = fullPaper.summary || fallbackSummary;
+    // 整卷任务在后台运行时，内容生产者仍可查看首批预览。任务完成后优先
+    // 回到同一个 sourceQuestionKey，避免突然跳回第 1 题造成“当前工作丢失”的错觉。
+    const activeSourceKey = payload?.question.sourceQuestionKey;
+    const activeIndex = activeSourceKey
+      ? merged.findIndex((item) => item.question.sourceQuestionKey === activeSourceKey)
+      : questionIndex;
+    const nextIndex = activeIndex >= 0 && activeIndex < merged.length ? activeIndex : 0;
+    setFullPaperSummary(summary || null);
+    setQuestionLimit(FULL_PAPER_QUESTION_LIMIT);
+    setQuestionBank(merged);
+    setQuestionIndex(nextIndex);
+    resetLearningState();
+    setPayload(merged[nextIndex]);
+    setTextbookImport((current) => current ? {
+      ...current,
+      questionPayload: merged[0],
+      questionPayloads: merged,
+      fullPaper: summary,
+      extraction: {
+        ...current.extraction,
+        questionCount: merged.length,
+        questionLimit: FULL_PAPER_QUESTION_LIMIT,
+      },
+      batches: fullPaper.batches || current.batches,
+    } : current);
+  };
+
+  const generateWholePaper = async () => {
+    if (!textbookImport?.uploadId || fullPaperRunning) return;
+    setFullPaperError("");
+    try {
+      let job = fullPaperJob?.status === "failed"
+        ? await retryBackgroundJob<FullPaperResult>(fullPaperJob.jobId)
+        : await generateFullPaper(textbookImport.uploadId);
+      setFullPaperJob(job);
+      while (job.status === "queued" || job.status === "running") {
+        try {
+          const report = await loadFullPaperSummary(textbookImport.uploadId);
+          setFullPaperSummary(report.summary);
+        } catch {
+          // The Worker may not have persisted its first progress snapshot yet.
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+        job = await loadBackgroundJob<FullPaperResult>(job.jobId);
+        setFullPaperJob(job);
+      }
+      if (job.status === "cancelled") return;
+      if (job.status !== "succeeded" || !job.result) {
+        throw new Error(job.lastError?.message || job.message || "整套试卷生成失败");
+      }
+      const report = await loadFullPaperSummary(textbookImport.uploadId).catch(() => null);
+      applyFullPaperResult(job.result, report?.summary);
+    } catch (error) {
+      setFullPaperError(error instanceof Error ? error.message : "整套试卷生成失败");
+    }
+  };
+
+  const cancelWholePaper = async () => {
+    if (!fullPaperJob || !fullPaperRunning) return;
+    setFullPaperError("");
+    try {
+      setFullPaperJob(await cancelBackgroundJob<FullPaperResult>(fullPaperJob.jobId));
+    } catch (error) {
+      setFullPaperError(error instanceof Error ? error.message : "取消整套生成失败");
     }
   };
 
@@ -222,7 +326,7 @@ export function TextbookApp() {
       const retained = questionBank.filter((item) => item.question.sourceBatchId !== batchId);
       const insertAt = firstIndex < 0 ? retained.length : firstIndex;
       retained.splice(insertAt, 0, ...generatedQuestions);
-      const nextBank = retained.slice(0, QUESTION_LIMIT);
+      const nextBank = retained.slice(0, questionLimit);
       setQuestionBank(nextBank);
       setTextbookImport((current) => current ? {
         ...current,
@@ -244,7 +348,7 @@ export function TextbookApp() {
     try {
       const revisedBank = await regenerateRevision();
       if (!revisedBank?.length) return;
-      const nextBank = revisedBank.slice(0, QUESTION_LIMIT);
+      const nextBank = revisedBank.slice(0, FULL_PAPER_QUESTION_LIMIT);
       setQuestionBank(nextBank);
       activateQuestion(0, nextBank);
     } finally {
@@ -258,12 +362,21 @@ export function TextbookApp() {
         onExit={onExit}
         onContinue={(result) => {
           resetLearningState();
+          const hasFullPaper = Boolean(result.fullPaper && (result.questionPayloads?.length || 0) > QUICK_QUESTION_LIMIT);
           const importedBank = (result.questionPayloads?.length ? result.questionPayloads : [result.questionPayload])
-            .slice(0, QUESTION_LIMIT);
+            .slice(0, hasFullPaper ? FULL_PAPER_QUESTION_LIMIT : QUICK_QUESTION_LIMIT);
           setTextbookImport({
             ...result,
-            extraction: { ...result.extraction, questionCount: importedBank.length, questionLimit: QUESTION_LIMIT },
+            extraction: {
+              ...result.extraction,
+              questionCount: importedBank.length,
+              questionLimit: hasFullPaper ? FULL_PAPER_QUESTION_LIMIT : QUICK_QUESTION_LIMIT,
+            },
           });
+          setQuestionLimit(hasFullPaper ? FULL_PAPER_QUESTION_LIMIT : QUICK_QUESTION_LIMIT);
+          setFullPaperJob(null);
+          setFullPaperSummary(result.fullPaper || null);
+          setFullPaperError("");
           setQuestionBank(importedBank);
           setQuestionIndex(0);
           setPayload(importedBank[0]);
@@ -295,8 +408,22 @@ export function TextbookApp() {
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
         </span>
+        {textbookImport.uploadId && !publication && (
+          <button
+            className="ghost compact"
+            disabled={fullPaperRunning || fullPaperJob?.status === "succeeded"}
+            onClick={() => void generateWholePaper()}
+          >
+            {fullPaperJob?.status === "succeeded" ? "整套试卷已生成" : fullPaperJob?.status === "failed" ? "重试生成整套试卷" : "生成整套试卷"}
+          </button>
+        )}
+        {fullPaperRunning && (
+          <button className="ghost compact" onClick={() => void cancelWholePaper()}>
+            {fullPaperJob?.cancelRequested ? "正在取消…" : "取消整套生成"}
+          </button>
+        )}
         {!publication && (
-          <button className="ghost compact" disabled={publicationBusy} onClick={() => void submitForReview()}>
+          <button className="ghost compact" disabled={publicationBusy || fullPaperRunning} onClick={() => void submitForReview()}>
             {publicationBusy ? "提交中…" : "提交试卷审核"}
           </button>
         )}
@@ -338,6 +465,23 @@ export function TextbookApp() {
         <span>识别完成</span><strong>{textbookImport.extraction.questionCount} 道题 · {textbookImport.extraction.guideCardCount} 张引导卡</strong>
       </section>
 
+      {(fullPaperJob || fullPaperSummary || fullPaperError) && (
+        <section className="publication-notice" aria-live="polite">
+          <strong>整套试卷</strong>
+          {fullPaperJob && <span> · {fullPaperJob.message}</span>}
+          {fullPaperSummary && (
+            <span>
+              · 已处理 {fullPaperSummary.processedBatches}/{fullPaperSummary.totalBatches} 批次，
+              成功 {fullPaperSummary.succeededBatches}，失败 {fullPaperSummary.failedBatches}，
+              跳过 {fullPaperSummary.skippedBatches}，隔离 {fullPaperSummary.quarantinedQuestions} 道题，
+              共 {fullPaperSummary.questionCount} 道题
+              {fullPaperSummary.limitReached ? `（已达到 ${fullPaperSummary.questionLimit || FULL_PAPER_QUESTION_LIMIT} 题安全上限）` : ""}
+            </span>
+          )}
+          {fullPaperError && <span className="import-error"> · {fullPaperError}</span>}
+        </section>
+      )}
+
       <LessonPlayer payload={payload} onActionChange={setCanvasAction} />
 
       <PracticeWorkspace
@@ -345,7 +489,7 @@ export function TextbookApp() {
         textbookImport={textbookImport}
         questionIndex={questionIndex}
         questionCount={questionBank.length}
-        questionLimit={QUESTION_LIMIT}
+        questionLimit={questionLimit}
         loadingQuestion={loadingQuestion}
         loading={loading}
         selectedOptions={selectedOptions}

@@ -28,7 +28,12 @@ from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from domain.questions.contracts import GUIDE_CARDS, HelpRequest, PdfUploadInitRequest, TutorReply
 from storage import store
 from textbook_ocr import extract_pdf_text, resolve_ocr_text
-from application.services.textbook_processing import PDF_BATCH_PAGES, TextbookProcessingService
+from application.services.textbook_processing import (
+    MAX_FULL_PAPER_PAGES,
+    MAX_FULL_PAPER_QUESTIONS,
+    PDF_BATCH_PAGES,
+    TextbookProcessingService,
+)
 from infrastructure.files.upload_registry import UploadRegistry
 from persistence.job_store import JobStore
 from application.textbook_jobs import build_textbook_registry
@@ -308,6 +313,55 @@ def complete_pdf_upload(
     return _job_response(job)
 
 
+@router.post(
+    "/api/uploads/{upload_id}/full-paper",
+    status_code=202,
+    response_model=BackgroundJobSummary,
+)
+def generate_full_paper(
+    upload_id: str,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    """Queue bounded whole-paper generation after the fast five-question preview."""
+    job = upload_job(upload_id)
+    if job.get("status") != "complete" or not job.get("result"):
+        raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+    key = idempotency_key if isinstance(idempotency_key, str) else None
+    queued = job_store.create_job(
+        "textbook.paper.generate",
+        {"uploadId": upload_id},
+        # One upload has one durable whole-paper operation. Keeping the default key
+        # stable across browser refreshes lets retries reuse already successful
+        # batches instead of enqueuing another complete run.
+        idempotency_key=key or f"textbook-full-paper:{upload_id}",
+    )
+    return _job_response(queued)
+
+
+@router.get("/api/uploads/{upload_id}/full-paper/summary")
+def get_full_paper_summary(upload_id: str) -> dict[str, Any]:
+    """Return the durable per-batch summary persisted by the running Worker."""
+    job = upload_job(upload_id)
+    result = job.get("result") or {}
+    summary = result.get("fullPaper")
+    if not summary:
+        raise HTTPException(status_code=404, detail="整卷任务尚未创建")
+    latest = next(
+        (
+            item for item in job_store.list_jobs(limit=200)
+            if item.get("jobType") == "textbook.paper.generate"
+            and (item.get("payload") or {}).get("uploadId") == upload_id
+        ),
+        None,
+    )
+    return {
+        "uploadId": upload_id,
+        "job": _job_response(latest) if latest else None,
+        "summary": summary,
+        "questionPayloads": (result.get("questionPayloads") or [])[:MAX_FULL_PAPER_QUESTIONS],
+    }
+
+
 @router.post("/api/help", response_model=TutorReply)
 def get_help(request: HelpRequest) -> TutorReply:
     """Generate one answer/help turn and emit assessment telemetry."""
@@ -446,8 +500,11 @@ router.include_router(build_library_router(
 
 
 __all__ = [
+    "MAX_FULL_PAPER_PAGES",
+    "MAX_FULL_PAPER_QUESTIONS",
     "PDF_BATCH_PAGES",
     "complete_pdf_upload",
+    "generate_full_paper",
     "pdf_uploads",
     "process_pdf_batch",
     "router",

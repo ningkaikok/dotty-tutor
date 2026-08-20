@@ -26,6 +26,10 @@ class _Service:
         self.calls.append(("batch", args, kwargs))
         return {"ok": True}
 
+    def generate_full_paper(self, *args, **kwargs):
+        self.calls.append(("full-paper", args, kwargs))
+        return {"summary": {"totalBatches": 0}}
+
 
 class TextbookJobRegistryTests(unittest.TestCase):
     def test_handlers_delegate_to_service_and_honor_cancellation(self) -> None:
@@ -44,6 +48,12 @@ class TextbookJobRegistryTests(unittest.TestCase):
         )
         self.assertEqual(service.calls[0][1], ("u1",))
         self.assertEqual(service.calls[1][1], ("u1", "b1", True))
+        self.assertEqual(
+            registry.get("textbook.paper.generate")({"uploadId": "u1"}, check),
+            {"summary": {"totalBatches": 0}},
+        )
+        self.assertEqual(service.calls[2][1], ("u1",))
+        self.assertNotIn("max_questions", service.calls[2][2])
         with self.assertRaises(JobCancelled):
             registry.get("textbook.upload.complete")({"uploadId": "u1"}, lambda: True)
 
@@ -67,5 +77,28 @@ class TextbookJobRegistryTests(unittest.TestCase):
                 self.assertEqual(first.json()["status"], "queued")
                 self.assertEqual(first.json()["attemptCount"], 0)
                 self.assertFalse(first.json()["cancelRequested"])
+            finally:
+                store.close()
+
+    def test_full_paper_route_uses_stable_upload_idempotency_key(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = JobStore(database_url=f"sqlite+pysqlite:///{directory}/jobs.sqlite3")
+            try:
+                with (
+                    patch("api.routers.textbook_routes.job_store", store),
+                    patch(
+                        "api.routers.textbook_routes.upload_job",
+                        return_value={"status": "complete", "result": {"batches": []}},
+                    ),
+                ):
+                    client = TestClient(app)
+                    first = client.post("/api/uploads/u1/full-paper")
+                    second = client.post("/api/uploads/u1/full-paper")
+
+                self.assertEqual(first.status_code, 202)
+                self.assertEqual(second.status_code, 202)
+                self.assertEqual(first.json()["jobId"], second.json()["jobId"])
+                queued = store.get_job(first.json()["jobId"])
+                self.assertEqual(queued["payload"], {"uploadId": "u1"})
             finally:
                 store.close()

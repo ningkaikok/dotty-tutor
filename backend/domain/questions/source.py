@@ -26,6 +26,7 @@ QUESTION_SECTION_PATTERN = re.compile(
 )
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 MAX_QUESTIONS_PER_BATCH = 5
+MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
 # 旧版本产物不能静默当成新规则的结果，重新 OCR/生成时会写入新的版本证据。
 QUESTION_SEGMENTATION_VERSION = "question-segmentation-v2"
@@ -192,9 +193,17 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
     return blocks
 
 
-def limited_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
-    """Bound per-request model cost while retaining a no-number fallback."""
-    blocks = split_question_sources(source)[:MAX_QUESTIONS_PER_BATCH]
+def limited_question_sources(
+    source: str,
+    limit: int = MAX_QUESTIONS_PER_BATCH,
+) -> list[tuple[str, str, list[str]]]:
+    """Bound one batch's model cost while retaining a no-number fallback.
+
+    快速预览保持 5 题；显式整卷任务可以提高到 20 题/批，但仍由代码上限约束，
+    避免错误 OCR 把页眉、说明等碎片无限送入模型。
+    """
+    safe_limit = max(1, min(int(limit), MAX_FULL_PAPER_QUESTIONS_PER_BATCH))
+    blocks = split_question_sources(source)[:safe_limit]
     return blocks or [("", source, MARKDOWN_IMAGE_PATTERN.findall(source))]
 
 

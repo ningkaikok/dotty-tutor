@@ -238,12 +238,19 @@ erDiagram
 8. 每个 Provider 页段按 PDF 内容哈希、起止页、Provider 和流水线版本生成缓存键，缓存 Markdown、图片 URL
    和运行元数据；重复处理默认命中缓存，只有“刷新 OCR 重生成”才跳过缓存。
 9. 将 Markdown 按题号切分，合并跨页续题，截断答案/解析章节，并把题号、页码和图片引用绑定到稳定的
-   `sourceQuestionKey`；每批最多处理 5 道完整题。
+   `sourceQuestionKey`。交互预览每批只取前 5 道完整题；显式整卷任务复用同一条流水线，每批最多扩展到
+   20 题，避免一次模型调用过大。
 10. 每道题进入独立生成循环：结构化生成 → 来源绑定 → 审核 → 确定性规范化 → 内容块重建 → 质量门禁。
     质量失败时只携带当前题的错误证据重试，最多额外重试 2 次；最终仍失败的题目保留给工作台诊断并隔离，
     不进入学生可见发布。
 11. 批次结果写入课程文档、题目当前视图和 revision 审计链；任务成功时保存结果，失败时保存结构化错误。
 12. 前端每 800 ms 查询 `/api/jobs/{jobId}` 与上传领域状态，分别展示多个文件的任务进度；后续批次也通过 `202` 任务执行。
+13. 首批完成后可调用 `POST /api/uploads/{uploadId}/full-paper` 排队整卷生成。服务端最多处理 50 页、100 道题，
+    运维可通过 `DOTTY_MAX_FULL_PAPER_PAGES`、`DOTTY_MAX_FULL_PAPER_QUESTIONS` 进一步降低上限，但不能突破硬限制。
+    每批复用 OCR 缓存和 `process_batch`，成功批次由稳定 `sourceQuestionKey` 持久化；Worker 重试跳过已成功批次，单批异常记录在
+    `summary.batches` 后继续。`totalBatches`、`processedBatches`、`succeededBatches`、`failedBatches`、
+    `quarantinedQuestions`、`skippedBatches`、`questionCount` 和 `limitReached` 组成可恢复结果汇总。整批重生成会替换
+    题目当前视图并清除不再存在的旧题，但保留不可变 revision 审计链。
 
 取消采用协作式边界：排队任务直接收敛为 `cancelled`，运行任务设置 `cancel_requested`，应用服务在合并、OCR
 和题目循环的安全点终止。Worker 必须持有有效租约才可提交成功或失败，避免进程暂停后由旧执行者覆盖新结果。

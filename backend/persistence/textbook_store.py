@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
@@ -109,6 +109,9 @@ class TextbookStore(DatabaseStore):
                 item["batch_id"]: decode_json(item["guide_cards_json"])
                 for item in question_rows
             },
+            # The mapping is part of the persisted result, so a Worker restarted between
+            # batches can still identify an already processed batch and skip it idempotently.
+            "batchQuestionKeys": (result or {}).get("batchQuestionKeys", {}),
             "processingBatches": set(),
         }
 
@@ -355,6 +358,7 @@ class TextbookStore(DatabaseStore):
         questions: list[tuple[str, dict[str, Any], list[dict[str, Any]]]],
         operation: str,
         run_id: str,
+        replace_keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Atomically append a whole batch and update its latest question views.
 
@@ -373,6 +377,15 @@ class TextbookStore(DatabaseStore):
             payload["question"]["id"]
         revisions: list[dict[str, Any]] = []
         with self.engine.begin() as connection:
+            if replace_keys:
+                # 整批重生成必须移除本批次不再出现的旧题；否则内存看似已替换，进程
+                # 重启后却会从 batch_questions 重新加载“幽灵题目”。revision 历史保留。
+                connection.execute(
+                    delete(batch_questions).where(
+                        batch_questions.c.upload_id == upload_id,
+                        batch_questions.c.batch_id.in_(replace_keys),
+                    )
+                )
             for source_question_key, payload, guide_cards in questions:
                 revision_id = uuid.uuid4().hex
                 created_at = time.time()

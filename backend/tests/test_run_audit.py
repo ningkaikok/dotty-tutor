@@ -127,6 +127,31 @@ class RunAuditStoreTests(unittest.TestCase):
         self.assertEqual(self.store.load_job("upload-audit")["batchPayloads"]["q-atomic"]["question"]["id"], "old-question")
         self.assertEqual(self.store.list_question_revisions("upload-audit", "q-atomic-2"), [])
 
+    def test_batch_replacement_removes_stale_current_questions_but_keeps_history(self) -> None:
+        run = RunAudit(self.store).start("batch_regenerate", "batch", upload_id="upload-audit")
+        self.store.append_revisions_and_save_questions(
+            upload_id="upload-audit",
+            questions=[
+                ("batch-001-q-1", {"question": {"id": "old-1"}}, []),
+                ("batch-001-q-2", {"question": {"id": "old-2"}}, []),
+            ],
+            operation="initial_batch",
+            run_id=run["runId"],
+        )
+
+        self.store.append_revisions_and_save_questions(
+            upload_id="upload-audit",
+            questions=[("batch-001-q-1", {"question": {"id": "new-1"}}, [])],
+            operation="batch_regenerate",
+            run_id=run["runId"],
+            replace_keys=["batch-001-q-1", "batch-001-q-2"],
+        )
+
+        payloads = self.store.load_job("upload-audit")["batchPayloads"]
+        self.assertEqual(set(payloads), {"batch-001-q-1"})
+        self.assertEqual(payloads["batch-001-q-1"]["question"]["id"], "new-1")
+        self.assertEqual(len(self.store.list_question_revisions("upload-audit", "batch-001-q-2")), 1)
+
     def test_all_audited_operations_keep_target_identity(self) -> None:
         audit = RunAudit(self.store)
         targets = (

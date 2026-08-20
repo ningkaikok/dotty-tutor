@@ -55,6 +55,9 @@ export interface TextbookImportResult {
     batchCount?: number;
     confidence: number;
     mode: string;
+    processablePageCount?: number;
+    pageLimit?: number;
+    truncated?: boolean;
   };
   batches?: Array<{
     id: string;
@@ -66,6 +69,35 @@ export interface TextbookImportResult {
   }>;
   questionPayload: QuestionPayload;
   questionPayloads?: QuestionPayload[];
+  fullPaper?: FullPaperSummary;
+}
+
+export interface FullPaperBatchSummary {
+  id: string;
+  status: "succeeded" | "failed" | "skipped";
+  questionCount: number;
+  quarantinedQuestions?: number;
+  error?: string;
+}
+
+export interface FullPaperSummary {
+  totalBatches: number;
+  processedBatches: number;
+  succeededBatches: number;
+  failedBatches: number;
+  quarantinedQuestions: number;
+  skippedBatches: number;
+  questionCount: number;
+  questionLimit?: number;
+  limitReached?: boolean;
+  batches: FullPaperBatchSummary[];
+}
+
+export interface FullPaperResult {
+  summary: FullPaperSummary;
+  questionPayload?: QuestionPayload | null;
+  questionPayloads: QuestionPayload[];
+  batches?: TextbookImportResult["batches"];
 }
 
 export interface LibraryItem {
