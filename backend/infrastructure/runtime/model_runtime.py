@@ -191,7 +191,14 @@ class ModelRuntime:
             runtime_name="generation",
         )
         started = time.perf_counter()
-        log_event("model.request.started", provider=selection.provider, model=selection.model)
+        prompt_chars = len(prompt)
+        log_event(
+            "model.request.started",
+            provider=selection.provider,
+            model=selection.model,
+            prompt_chars=prompt_chars,
+            max_output_tokens=max_tokens,
+        )
         try:
             if selection.provider == "ollama":
                 result = self._ollama_json(selection.model, prompt, schema, max_tokens)
@@ -223,6 +230,8 @@ class ModelRuntime:
             "provider": selection.provider,
             "model": selection.model,
             "fallback": False,
+            "promptChars": prompt_chars,
+            "maxOutputTokens": max_tokens,
         }
         attach_runtime_config(run, snapshot)
         return result, run
@@ -251,7 +260,15 @@ class ModelRuntime:
             runtime_name="review",
         )
         started = time.perf_counter()
-        log_event("model.review.started", provider=provider, model=model, image_count=len(images))
+        prompt_chars = len(prompt)
+        log_event(
+            "model.review.started",
+            provider=provider,
+            model=model,
+            image_count=len(images),
+            prompt_chars=prompt_chars,
+            max_output_tokens=max_tokens,
+        )
         try:
             if provider == "ollama":
                 result = self._ollama_json(model, prompt, schema, max_tokens, images)
@@ -285,6 +302,8 @@ class ModelRuntime:
             "provider": provider,
             "model": model,
             "fallback": False,
+            "promptChars": prompt_chars,
+            "maxOutputTokens": max_tokens,
         }
         attach_runtime_config(run, snapshot)
         return result, run

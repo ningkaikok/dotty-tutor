@@ -92,6 +92,7 @@ class TextbookJobRegistryTests(unittest.TestCase):
 
         self.assertEqual(result["fullPaper"], {"questionCount": 8})
         self.assertEqual([call[0] for call in service.calls], ["complete", "full-paper"])
+        self.assertEqual(service.calls[0][2]["question_limit"], 20)
 
     def test_batch_route_enqueues_one_idempotent_job(self) -> None:
         """HTTP 请求只入队；重复点击必须返回同一个后台任务。"""
@@ -113,6 +114,23 @@ class TextbookJobRegistryTests(unittest.TestCase):
                 self.assertEqual(first.json()["status"], "queued")
                 self.assertEqual(first.json()["attemptCount"], 0)
                 self.assertFalse(first.json()["cancelRequested"])
+            finally:
+                store.close()
+
+    def test_batch_route_does_not_duplicate_an_active_whole_paper_job(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = JobStore(database_url=f"sqlite+pysqlite:///{directory}/jobs.sqlite3")
+            try:
+                store.create_job("textbook.paper.generate", {"uploadId": "u1"})
+                with (
+                    patch("api.routers.textbook_routes.job_store", store),
+                    patch("api.routers.textbook_routes.upload_job", return_value={}),
+                ):
+                    client = TestClient(app)
+                    response = client.post("/api/uploads/u1/batches/b1/process")
+
+                self.assertEqual(response.status_code, 409)
+                self.assertIn("整本试卷任务", response.json()["message"])
             finally:
                 store.close()
 

@@ -209,6 +209,23 @@ class TextbookProcessingService:
         return lesson_source, ocr_run, asset_dir, question_sources
 
     @staticmethod
+    def _reconcile_batch_question_keys(job: dict[str, Any], result: dict[str, Any]) -> None:
+        """Recover question-key mappings when an older snapshot only persisted a preview."""
+        payload_store = job.setdefault("batchPayloads", {})
+        job_keys = job.setdefault("batchQuestionKeys", {})
+        result_keys = result.setdefault("batchQuestionKeys", {})
+        for key in payload_store:
+            if "-q-" not in key:
+                continue
+            batch_id = key.rsplit("-q-", 1)[0]
+            job_keys.setdefault(batch_id, [])
+            result_keys.setdefault(batch_id, [])
+            if key not in job_keys[batch_id]:
+                job_keys[batch_id].append(key)
+            if key not in result_keys[batch_id]:
+                result_keys[batch_id].append(key)
+
+    @staticmethod
     def _ordered_batch_payloads(
         job: dict[str, Any],
         result: dict[str, Any],
@@ -237,8 +254,21 @@ class TextbookProcessingService:
                     return ordered
         return ordered
 
-    def complete_upload(self, upload_id: str, *, cancellation_check: Any = None) -> dict[str, Any]:
-        """合并全部分块、验证 PDF，并处理首个页面批次。"""
+    def complete_upload(
+        self,
+        upload_id: str,
+        *,
+        cancellation_check: Any = None,
+        question_limit: int = MAX_QUESTIONS_PER_BATCH,
+    ) -> dict[str, Any]:
+        """合并全部分块、验证 PDF，并处理首个页面批次。
+
+        自动整本任务会把首批直接扩展到整批上限，后续整本阶段复用这些题目，避免先生成
+        5 道预览题、随后又把同一批次的题目全部重生成一次。
+        """
+        first_batch_question_limit = max(
+            1, min(int(question_limit), MAX_FULL_PAPER_QUESTIONS_PER_BATCH),
+        )
         job = self.upload_registry.get(upload_id)
         self._check_cancel(cancellation_check)
         log_event("upload.processing.started", upload_id=upload_id, filename=job.get("filename"))
@@ -364,7 +394,7 @@ class TextbookProcessingService:
             88,
             "首批内容已提取，正在按题号拆分并生成课程",
         )
-        question_sources = limited_question_sources(lesson_source)
+        question_sources = limited_question_sources(lesson_source, first_batch_question_limit)
         asset_dir = job["directory"] / "assets" / first_batch["id"]
         write_model_prompt_artifact(asset_dir, question_sources)
         ocr_run["sourceArtifactUrl"] = (
@@ -410,7 +440,7 @@ class TextbookProcessingService:
                 "chapter": payload["question"]["chapter"],
                 "knowledgePoint": payload["question"]["knowledgePoint"],
                 "questionCount": len(payloads),
-                "questionLimit": MAX_QUESTIONS_PER_BATCH,
+                "questionLimit": first_batch_question_limit,
                 "formulaCount": sum(block.count("$") // 2 for _, block, _ in question_sources),
                 "guideCardCount": sum(len(cards) for cards in guide_cards_list),
                 "pageCount": page_count,
@@ -464,6 +494,7 @@ class TextbookProcessingService:
         result = job.get("result")
         if job.get("status") != "complete" or not result:
             raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+        self._reconcile_batch_question_keys(job, result)
         try:
             requested_limit = int(max_questions or MAX_FULL_PAPER_QUESTIONS)
         except (TypeError, ValueError):
@@ -503,6 +534,32 @@ class TextbookProcessingService:
             payload_store = job.setdefault("batchPayloads", {})
             existing = [payload_store.get(key) for key in keys]
             existing = [item for item in existing if item]
+            batch_question_limit = min(MAX_FULL_PAPER_QUESTIONS_PER_BATCH, limit)
+            # 自动整本上传可能已经在 complete_upload 中生成了首批完整题目。只要这一批
+            # 已达到整批上限，就把它视为整本阶段的成功安全点，不再重复调用模型。
+            if (
+                batch.get("status") == "processed"
+                and existing
+                and len(existing) >= batch_question_limit
+            ):
+                summary["skippedBatches"] += 1
+                summary["processedBatches"] += 1
+                summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
+                batch["fullPaperProcessed"] = True
+                summary["batches"].append({
+                    "id": batch_id,
+                    "status": "skipped",
+                    "questionCount": len(existing),
+                    "quarantinedQuestions": sum(
+                        bool(item.get("qualityRecovery", {}).get("quarantined")) for item in existing
+                    ),
+                })
+                result["fullPaper"] = summary
+                self.upload_registry.update(
+                    job, "complete", round((index + 1) / max(1, len(batches)) * 100),
+                    f"整套试卷已处理 {index + 1}/{len(batches)} 个批次",
+                )
+                continue
             # 首批快速预览只生成 5 题，不能直接当成“整批已完成”。整卷任务首次经过
             # 一个批次时会复用 OCR 缓存扩展题量；Worker 重试则依靠该标记跳过成功批次。
             if batch.get("fullPaperProcessed") and existing:
@@ -609,6 +666,7 @@ class TextbookProcessingService:
         result = job.get("result")
         if job.get("status") != "complete" or not result:
             raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+        self._reconcile_batch_question_keys(job, result)
 
         batch = next(
             (item for item in result.get("batches", []) if item["id"] == batch_id),
