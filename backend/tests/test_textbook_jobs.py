@@ -138,3 +138,31 @@ class TextbookJobRegistryTests(unittest.TestCase):
                 self.assertEqual(queued["payload"], {"uploadId": "u1"})
             finally:
                 store.close()
+
+    def test_full_paper_summary_returns_initial_report_while_job_is_queued(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = JobStore(database_url=f"sqlite+pysqlite:///{directory}/jobs.sqlite3")
+            try:
+                preview = {
+                    "status": "complete",
+                    "result": {
+                        "batches": [{"id": "batch-1"}, {"id": "batch-2"}],
+                        "questionPayloads": [{"question": {"id": "preview-1"}}],
+                    },
+                }
+                with (
+                    patch("api.routers.textbook_routes.job_store", store),
+                    patch("api.routers.textbook_routes.upload_job", return_value=preview),
+                ):
+                    client = TestClient(app)
+                    queued = client.post("/api/uploads/u1/full-paper")
+                    report = client.get("/api/uploads/u1/full-paper/summary")
+
+                self.assertEqual(queued.status_code, 202)
+                self.assertEqual(report.status_code, 200)
+                self.assertEqual(report.json()["job"]["status"], "queued")
+                self.assertEqual(report.json()["summary"]["totalBatches"], 2)
+                self.assertEqual(report.json()["summary"]["processedBatches"], 0)
+                self.assertEqual(len(report.json()["questionPayloads"]), 1)
+            finally:
+                store.close()

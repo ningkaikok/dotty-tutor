@@ -341,12 +341,16 @@ def generate_full_paper(
 
 @router.get("/api/uploads/{upload_id}/full-paper/summary")
 def get_full_paper_summary(upload_id: str) -> dict[str, Any]:
-    """Return the durable per-batch summary persisted by the running Worker."""
+    """Return the durable per-batch summary persisted by the running Worker.
+
+    A queued job has not necessarily persisted ``result.fullPaper`` yet. Returning an
+    initial report for that state keeps polling idempotent and avoids treating normal
+    Worker startup latency as a missing resource. A 404 remains useful when the upload
+    has never had a whole-paper job queued.
+    """
     job = upload_job(upload_id)
     result = job.get("result") or {}
     summary = result.get("fullPaper")
-    if not summary:
-        raise HTTPException(status_code=404, detail="整卷任务尚未创建")
     latest = next(
         (
             item for item in job_store.list_jobs(limit=200)
@@ -355,6 +359,25 @@ def get_full_paper_summary(upload_id: str) -> dict[str, Any]:
         ),
         None,
     )
+    if not summary:
+        if not latest:
+            raise HTTPException(status_code=404, detail="整卷任务尚未创建")
+        # The Worker creates this same shape before processing the first batch. Exposing
+        # it from the API means a queued/running task has a stable 200 response even if
+        # the first durable progress snapshot has not reached PostgreSQL yet.
+        batches = result.get("batches") or []
+        summary = {
+            "totalBatches": len(batches),
+            "processedBatches": 0,
+            "succeededBatches": 0,
+            "failedBatches": 0,
+            "quarantinedQuestions": 0,
+            "skippedBatches": 0,
+            "questionCount": 0,
+            "questionLimit": MAX_FULL_PAPER_QUESTIONS,
+            "limitReached": False,
+            "batches": [],
+        }
     return {
         "uploadId": upload_id,
         "job": _job_response(latest) if latest else None,
