@@ -959,6 +959,11 @@ export interface paths {
         /**
          * Get Full Paper Summary
          * @description Return the durable per-batch summary persisted by the running Worker.
+         *
+         *     A queued job has not necessarily persisted ``result.fullPaper`` yet. Returning an
+         *     initial report for that state keeps polling idempotent and avoids treating normal
+         *     Worker startup latency as a missing resource. A 404 remains useful when the upload
+         *     has never had a whole-paper job queued.
          */
         get: operations["get_full_paper_summary_api_uploads__upload_id__full_paper_summary_get"];
         put?: never;

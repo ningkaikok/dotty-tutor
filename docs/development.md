@@ -298,6 +298,7 @@ MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务�
 
 整卷任务通过 `GET /api/jobs/{jobId}` 轮询，批次汇总也可从
 `GET /api/uploads/{uploadId}/full-paper/summary` 恢复。汇总中的成功批次不会因 Worker 重试重复生成；
+任务刚入队、Worker 尚未写入第一份持久化进度时，该汇总接口也会返回初始化汇总（HTTP 200）；只有从未创建整卷任务的旧上传才返回 404。
 单批 OCR 或模型异常会进入 `failedBatches` 和 `summary.batches`，其它批次继续处理。取消只在批次之间和
 OCR/题目循环安全点生效；长任务运行时仍可查看和编辑首批预览题。达到页数或题数上限时汇总返回
 `limitReached=true`，不会继续产生 OCR 或模型调用。
