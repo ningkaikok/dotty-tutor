@@ -249,7 +249,7 @@ Docker 部署包含：
 
 | 文件 | 作用 |
 | --- | --- |
-| `compose.yaml` | 编排 PostgreSQL、FastAPI、后台 Worker 和前端 Nginx |
+| `compose.yaml` | 编排 PostgreSQL、一次性数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
 | `Dockerfile.backend` | 构建 API/Worker 共用的非 root 后端镜像 |
 | `Dockerfile.frontend` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
 | `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
@@ -289,6 +289,8 @@ localhost:8080
        → api:8010（FastAPI）
             → db:5432（PostgreSQL）
         worker（同镜像，消费 background_jobs）
+
+data-init（一次性运行，准备共享教材卷后退出）
 ```
 
 API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会等待数据库和
@@ -322,6 +324,11 @@ docker compose up --build --detach
 
 - `postgres_data`：PostgreSQL 数据目录。
 - `dotty_data`：上传 PDF、Markdown、题图和其他教材资源。
+
+API 与后台 Worker 会同时挂载 `dotty_data`。Compose 已为该卷关闭镜像内容复制，并由一次性 `data-init`
+容器串行创建 `/data/uploads`、设置非 root 运行权限；初始化成功后 API 与 Worker 才会启动。不要删除
+`data-init` 或 `nocopy` 配置，否则全新环境可能出现 `file exists` 或 `permission denied`，而已有数据卷
+通常无法复现这些首次启动问题。
 
 查看实际卷名：
 

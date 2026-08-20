@@ -22,6 +22,27 @@ services:
     networks:
       - backend
 
+  data-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    user: root
+    command:
+      - sh
+      - -c
+      - mkdir -p /data/uploads && chown -R dotty:dotty /data
+    restart: "no"
+    volumes:
+      # A single initializer owns fresh-volume setup. API and worker can then
+      # start concurrently without Docker copy-up races or root-owned paths.
+      - type: volume
+        source: dotty_data
+        target: /data
+        volume:
+          nocopy: true
+    networks:
+      - backend
+
   api:
     build:
       context: .
@@ -46,12 +67,19 @@ services:
       AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-}
       AZURE_SPEECH_VOICE: ${AZURE_SPEECH_VOICE:-zh-CN-XiaoxiaoNeural}
     volumes:
-      - dotty_data:/data
+      # data-init prepares permissions before either long-running service starts.
+      - type: volume
+        source: dotty_data
+        target: /data
+        volume:
+          nocopy: true
     extra_hosts:
       - host.docker.internal:host-gateway
     depends_on:
       db:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
     healthcheck:
       test:
         - CMD
@@ -97,7 +125,11 @@ services:
       AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-}
       AZURE_SPEECH_VOICE: ${AZURE_SPEECH_VOICE:-zh-CN-XiaoxiaoNeural}
     volumes:
-      - dotty_data:/data
+      - type: volume
+        source: dotty_data
+        target: /data
+        volume:
+          nocopy: true
     extra_hosts:
       - host.docker.internal:host-gateway
     # The backend image carries an HTTP health check for the API.  A worker
@@ -109,6 +141,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      data-init:
+        condition: service_completed_successfully
     networks:
       - backend
 
