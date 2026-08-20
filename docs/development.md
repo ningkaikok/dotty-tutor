@@ -37,6 +37,26 @@ scripts/check-node-version.sh
 检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:5174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
+### 本机开发页与 Docker 页面
+
+项目同时提供本机开发入口和 Docker Compose 入口，但它们不是同一套运行时：
+
+| 项目 | 本机开发 | Docker Compose |
+| --- | --- | --- |
+| 页面 | `http://localhost:5174` | `http://localhost:8080` |
+| 前端 | Vite 开发服务器，支持热更新 | Nginx 提供生产构建后的静态文件 |
+| API | 本机 FastAPI `8010` | Docker API 容器 `api:8010` |
+| Worker | 本机 `background_jobs` Worker | Docker `worker` 容器 |
+| 数据文件 | 仓库内 `data/` | Docker 命名卷 |
+| 运行时 | 可复用本机 Codex 登录、MinerU 和模型缓存 | 默认使用 Compose 环境，默认模型为 Mock |
+
+日常开发、调试和本机 OCR/模型接入优先使用本机开发入口；Docker 入口用于 CI、发布前验证、
+部署演示和检查生产构建。不要让 `5174` 的前端连接 `8080` 的 API，也不要同时用两套入口操作
+同一批教材；两套环境的数据目录和 Worker 不共享，混用会出现数据库任务与文件不在同一运行环境的情况。
+
+如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
+`docker compose up --build --detach` 并打开 `http://localhost:8080`。
+
 本机 Codex、MinerU 和 Qwen3-TTS 的状态可以分别检查：
 
 ```bash
