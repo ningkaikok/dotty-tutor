@@ -6,10 +6,11 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app import app
-from application.job_worker import JobCancelled
+from application.job_worker import JobCancelled, RetryableJobError, TerminalJobError
 from application.textbook_jobs import build_textbook_registry
 from persistence.job_store import JobStore
 
@@ -32,6 +33,21 @@ class _Service:
 
 
 class TextbookJobRegistryTests(unittest.TestCase):
+    def test_transient_http_failures_are_retried_but_validation_failures_are_terminal(self) -> None:
+        service = _Service()
+        registry = build_textbook_registry(service)
+        service.complete_upload = lambda *args, **kwargs: (_ for _ in ()).throw(
+            HTTPException(status_code=503, detail="OCR provider unavailable")
+        )
+        with self.assertRaises(RetryableJobError):
+            registry.get("textbook.upload.complete")({"uploadId": "u1"}, lambda: False)
+
+        service.complete_upload = lambda *args, **kwargs: (_ for _ in ()).throw(
+            HTTPException(status_code=422, detail="invalid PDF")
+        )
+        with self.assertRaises(TerminalJobError):
+            registry.get("textbook.upload.complete")({"uploadId": "u1"}, lambda: False)
+
     def test_handlers_delegate_to_service_and_honor_cancellation(self) -> None:
         service = _Service()
         registry = build_textbook_registry(service)

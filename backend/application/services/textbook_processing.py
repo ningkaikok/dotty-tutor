@@ -106,6 +106,55 @@ class TextbookProcessingService:
         if cancellation_check and cancellation_check():
             raise JobCancelled()
 
+    def _ensure_source_pdf(
+        self,
+        job: dict[str, Any],
+        chunk_paths: list[Any],
+        *,
+        cancellation_check: Any = None,
+    ) -> tuple[Any, str]:
+        """Return a durable merged PDF and its fingerprint.
+
+        The upload chunks are disposable once the merge succeeds. A Worker retry must
+        therefore resume from ``source.pdf`` instead of treating the cleaned chunks as
+        a missing-upload error.
+        """
+        source_path = job["directory"] / "source.pdf"
+        digest = hashlib.sha256()
+        if source_path.is_file() and source_path.stat().st_size == job["size"]:
+            with source_path.open("rb") as source_file:
+                while block := source_file.read(1024 * 1024):
+                    self._check_cancel(cancellation_check)
+                    digest.update(block)
+            return source_path, digest.hexdigest()
+
+        missing = [index for index, path in enumerate(chunk_paths) if not path.exists()]
+        if missing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"仍缺少 {len(missing)} 个分块，且没有可恢复的已合并 PDF",
+            )
+
+        partial_path = source_path.with_suffix(".pdf.partial")
+        digest = hashlib.sha256()
+        written = 0
+        try:
+            with partial_path.open("wb") as merged:
+                for chunk_path in chunk_paths:
+                    self._check_cancel(cancellation_check)
+                    with chunk_path.open("rb") as chunk:
+                        while block := chunk.read(1024 * 1024):
+                            merged.write(block)
+                            digest.update(block)
+                            written += len(block)
+            if written != job["size"]:
+                raise HTTPException(status_code=400, detail="合并后的 PDF 大小校验失败")
+            os.replace(partial_path, source_path)
+        except Exception:
+            partial_path.unlink(missing_ok=True)
+            raise
+        return source_path, digest.hexdigest()
+
     def _load_batch_sources(
         self,
         *,
@@ -200,27 +249,16 @@ class TextbookProcessingService:
             job["directory"] / f"chunk-{index:06d}.part"
             for index in range(job["totalChunks"])
         ]
-        missing = [index for index, path in enumerate(chunk_paths) if not path.exists()]
-        if missing:
-            raise HTTPException(status_code=409, detail=f"仍缺少 {len(missing)} 个分块")
-
         self.upload_registry.update(job, "merging", 22, "正在合并分块并计算文件校验值")
-        source_path = job["directory"] / "source.pdf"
-        digest = hashlib.sha256()
-        written = 0
-        with source_path.open("wb") as merged:
-            for chunk_path in chunk_paths:
-                self._check_cancel(cancellation_check)
-                with chunk_path.open("rb") as chunk:
-                    while block := chunk.read(1024 * 1024):
-                        merged.write(block)
-                        digest.update(block)
-                        written += len(block)
-        if written != job["size"]:
-            self.upload_registry.update(job, "failed", 22, "合并后的 PDF 大小校验失败")
-            raise HTTPException(status_code=400, detail="合并后的 PDF 大小校验失败")
+        try:
+            source_path, source_fingerprint = self._ensure_source_pdf(
+                job, chunk_paths, cancellation_check=cancellation_check,
+            )
+        except HTTPException as error:
+            self.upload_registry.update(job, "failed", 22, str(error.detail))
+            raise
 
-        content_import_id = f"pdf-{digest.hexdigest()[:12]}"
+        content_import_id = f"pdf-{source_fingerprint[:12]}"
         existing = self.store.find_completed_import(
             content_import_id,
             exclude_upload_id=upload_id,
@@ -317,7 +355,7 @@ class TextbookProcessingService:
             asset_dir=job["directory"] / "assets" / first_batch["id"],
             asset_url_prefix=f"/api/uploads/{upload_id}/assets/{first_batch['id']}",
             cache_dir=job["directory"] / "ocr-cache",
-            content_hash=digest.hexdigest(),
+            content_hash=source_fingerprint,
         )
         self._check_cancel(cancellation_check)
         self.upload_registry.update(
@@ -350,7 +388,7 @@ class TextbookProcessingService:
         result = {
             "uploadId": upload_id,
             "importId": content_import_id,
-            "sourceFingerprint": digest.hexdigest(),
+            "sourceFingerprint": source_fingerprint,
             "filename": job["filename"],
             "contentType": "application/pdf",
             "size": job["size"],
