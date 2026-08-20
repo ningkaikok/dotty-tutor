@@ -2,6 +2,8 @@ import type { QuestionPayload } from "../types/question";
 import type {
   BatchProcessResult,
   BackgroundJob,
+  FullPaperResult,
+  FullPaperSummary,
   LibraryItem,
   PdfUploadTask,
   QuestionRegenerationResult,
@@ -85,6 +87,21 @@ export async function processPdfBatch(
     throw new Error(job.lastError?.message || job.message || "批次处理失败");
   }
   return job.result;
+}
+
+export async function generateFullPaper(uploadId: string): Promise<BackgroundJob<FullPaperResult>> {
+  return parse<BackgroundJob<FullPaperResult>>(
+    await fetch(`/api/uploads/${encodeURIComponent(uploadId)}/full-paper`, { method: "POST" }),
+  );
+}
+
+export async function loadFullPaperSummary(uploadId: string): Promise<{
+  uploadId: string;
+  job: BackgroundJob<FullPaperResult> | null;
+  summary: FullPaperSummary;
+  questionPayloads: QuestionPayload[];
+}> {
+  return parse(await fetch(`/api/uploads/${encodeURIComponent(uploadId)}/full-paper/summary`, { cache: "no-store" }));
 }
 
 export async function regenerateQuestion(

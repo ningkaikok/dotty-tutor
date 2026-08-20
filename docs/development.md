@@ -280,9 +280,18 @@ macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正�
 悄悄回退到 PDF 文字层；需要 Docker 使用 MinerU 时，应提供 Linux MinerU 镜像或独立 OCR
 服务，再增加对应 Runtime 适配器。
 
-整本 PDF 每 5 页规划一个批次，首批优先生成，其余批次按需处理。相邻且路由相同的页面合并调用，
+整本 PDF 每 5 页规划一个批次，首批优先生成 5 道预览题，其余批次按需处理。内容生产预览也可以点击
+“生成整套试卷”创建 `textbook.paper.generate` 后台任务；整卷模式每批最多处理 20 题，服务端硬限制最多
+50 页、100 道题。可以用 `DOTTY_MAX_FULL_PAPER_PAGES` 和 `DOTTY_MAX_FULL_PAPER_QUESTIONS` 降低本机上限，
+但环境变量不能突破代码硬限制。相邻且路由相同的页面合并调用，
 减少 MinerU 进程启动次数；结果以 PDF SHA-256、页范围、Provider 和流水线版本写入 `ocr-cache`。
 MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务的资源目录中。
+
+整卷任务通过 `GET /api/jobs/{jobId}` 轮询，批次汇总也可从
+`GET /api/uploads/{uploadId}/full-paper/summary` 恢复。汇总中的成功批次不会因 Worker 重试重复生成；
+单批 OCR 或模型异常会进入 `failedBatches` 和 `summary.batches`，其它批次继续处理。取消只在批次之间和
+OCR/题目循环安全点生效；长任务运行时仍可查看和编辑首批预览题。达到页数或题数上限时汇总返回
+`limitReached=true`，不会继续产生 OCR 或模型调用。
 
 ## Qwen3-TTS
 

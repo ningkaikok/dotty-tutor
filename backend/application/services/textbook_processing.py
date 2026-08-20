@@ -7,6 +7,7 @@ HTTP 路由只负责请求解析和文件响应；本服务拥有两个长流程
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import time
 from typing import Any
@@ -20,6 +21,7 @@ from domain.questions.pipeline import write_model_prompt_artifact
 from application.services.question_processing import _generate_validated_question, process_question_sources
 from domain.questions.source import (
     MARKDOWN_IMAGE_PATTERN,
+    MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
     MAX_QUESTIONS_PER_BATCH,
     limited_question_sources,
     question_key,
@@ -31,6 +33,25 @@ from application.job_worker import JobCancelled
 
 
 PDF_BATCH_PAGES = 5
+
+
+def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    """Read an operator limit without allowing a client or unsafe env to widen it."""
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(value, maximum))
+
+
+# These are deliberately bounded in code: env config can reduce limits for a local demo,
+# but it can never turn a single request into an unbounded OCR/model workload.
+MAX_FULL_PAPER_PAGES = _bounded_env_int(
+    "DOTTY_MAX_FULL_PAPER_PAGES", 50, minimum=1, maximum=50,
+)
+MAX_FULL_PAPER_QUESTIONS = _bounded_env_int(
+    "DOTTY_MAX_FULL_PAPER_QUESTIONS", 100, minimum=1, maximum=100,
+)
 
 
 class TextbookProcessingService:
@@ -50,6 +71,7 @@ class TextbookProcessingService:
         *,
         run_id: str | None = None,
         operation: str = "initial_batch",
+        replace_keys: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         """保存课程文档，并在一个事务中提交题目当前视图与 revision 证据。
 
@@ -76,6 +98,7 @@ class TextbookProcessingService:
                 questions=list(zip(question_keys, payloads, guide_cards_list)),
                 operation=operation,
                 run_id=run_id,
+                replace_keys=replace_keys,
             )
         else:
             self.store.save_questions(upload_id, list(zip(question_keys, payloads, guide_cards_list)))
@@ -94,6 +117,7 @@ class TextbookProcessingService:
         batch: dict[str, Any],
         result: dict[str, Any],
         refresh_ocr: bool = False,
+        question_limit: int = MAX_QUESTIONS_PER_BATCH,
     ) -> tuple[str, dict[str, Any], Any, list[tuple[str, str, list[str]]]]:
         """读取批次 OCR 来源，并切成稳定题块。
 
@@ -128,7 +152,7 @@ class TextbookProcessingService:
             f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
             f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
         )
-        question_sources = limited_question_sources(lesson_source)
+        question_sources = limited_question_sources(lesson_source, question_limit)
         if not split_question_sources(lesson_source):
             question_sources = [
                 ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
@@ -137,6 +161,37 @@ class TextbookProcessingService:
         ocr_run["sourceArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/source.md"
         ocr_run["promptArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/model-prompt.md"
         return lesson_source, ocr_run, asset_dir, question_sources
+
+    @staticmethod
+    def _ordered_batch_payloads(
+        job: dict[str, Any],
+        result: dict[str, Any],
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """按页面批次和 OCR 题目顺序组装题库，禁止用字符串键排序。
+
+        ``q-10`` 的字典序早于 ``q-2``。题库如果按 key 排序，会造成学生端题号跳跃，
+        因此顺序的唯一事实来源是 batches + batchQuestionKeys。
+        """
+        payload_store = job.get("batchPayloads", {})
+        key_store = job.get("batchQuestionKeys", {})
+        ordered: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for batch in result.get("batches", []):
+            batch_id = batch.get("id")
+            keys = key_store.get(batch_id) or result.get("batchQuestionKeys", {}).get(batch_id, [])
+            if not keys and batch_id in payload_store:
+                keys = [batch_id]
+            for key in keys:
+                payload = payload_store.get(key)
+                if payload is None or key in seen:
+                    continue
+                seen.add(key)
+                ordered.append(payload)
+                if limit is not None and len(ordered) >= limit:
+                    return ordered
+        return ordered
 
     def complete_upload(self, upload_id: str, *, cancellation_check: Any = None) -> dict[str, Any]:
         """合并全部分块、验证 PDF，并处理首个页面批次。"""
@@ -227,9 +282,10 @@ class TextbookProcessingService:
             f"校验完成，共 {page_count} 页；正在规划处理批次",
         )
         self._check_cancel(cancellation_check)
+        processable_page_count = min(page_count, MAX_FULL_PAPER_PAGES)
         batches = []
-        for start in range(0, page_count, PDF_BATCH_PAGES):
-            end = min(start + PDF_BATCH_PAGES, page_count)
+        for start in range(0, processable_page_count, PDF_BATCH_PAGES):
+            end = min(start + PDF_BATCH_PAGES, processable_page_count)
             batch_id = len(batches) + 1
             batches.append({
                 "id": f"batch-{batch_id:03d}",
@@ -325,6 +381,9 @@ class TextbookProcessingService:
                 "formulaCount": sum(block.count("$") // 2 for _, block, _ in question_sources),
                 "guideCardCount": sum(len(cards) for cards in guide_cards_list),
                 "pageCount": page_count,
+                "processablePageCount": processable_page_count,
+                "pageLimit": MAX_FULL_PAPER_PAGES,
+                "truncated": page_count > processable_page_count,
                 "batchCount": len(batches),
                 "confidence": 0.96,
                 "mode": f"model-from-{ocr_run['provider']}" if lesson_source else "demo-seed-no-ocr",
@@ -356,6 +415,148 @@ class TextbookProcessingService:
         )
         return result
 
+    def generate_full_paper(
+        self,
+        upload_id: str,
+        *,
+        cancellation_check: Any = None,
+        max_questions: int | None = None,
+    ) -> dict[str, Any]:
+        """Process every planned batch after the five-question preview.
+
+        Each batch is an independent safe point. A failed batch is recorded and skipped so
+        one bad OCR page cannot hide the questions produced by the remaining pages.
+        """
+        job = self.upload_registry.get(upload_id)
+        result = job.get("result")
+        if job.get("status") != "complete" or not result:
+            raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+        try:
+            requested_limit = int(max_questions or MAX_FULL_PAPER_QUESTIONS)
+        except (TypeError, ValueError):
+            requested_limit = MAX_FULL_PAPER_QUESTIONS
+        limit = max(1, min(requested_limit, MAX_FULL_PAPER_QUESTIONS))
+        max_batches = (MAX_FULL_PAPER_PAGES + PDF_BATCH_PAGES - 1) // PDF_BATCH_PAGES
+        batches = result.get("batches", [])[:max_batches]
+        # A worker retry starts with a fresh report, but it reuses every successfully
+        # persisted batch below. This makes a crash between two batches safe to resume
+        # without hiding the partial report from the UI.
+        summary = {
+            "totalBatches": len(batches),
+            "processedBatches": 0,
+            "succeededBatches": 0,
+            "failedBatches": 0,
+            "quarantinedQuestions": 0,
+            "skippedBatches": 0,
+            "questionCount": 0,
+            "questionLimit": limit,
+            "limitReached": False,
+            "batches": [],
+        }
+        # Persist intermediate summary so the UI can show progress while the worker runs.
+        result["fullPaper"] = summary
+        self.upload_registry.update(job, "complete", 100, "整套试卷任务已开始，正在逐批处理")
+        for index, batch in enumerate(batches):
+            self._check_cancel(cancellation_check)
+            current_payloads = self._ordered_batch_payloads(job, result, limit=limit)
+            if len(current_payloads) >= limit:
+                summary["limitReached"] = True
+                break
+            batch_id = batch["id"]
+            keys = (
+                job.setdefault("batchQuestionKeys", {}).get(batch_id)
+                or result.setdefault("batchQuestionKeys", {}).get(batch_id, [])
+            )
+            payload_store = job.setdefault("batchPayloads", {})
+            existing = [payload_store.get(key) for key in keys]
+            # Older uploads stored one payload under the batch ID rather than the
+            # stable source-question key. Treat it as a cache hit and do not rerun it.
+            if not existing and batch_id in payload_store:
+                existing = [payload_store[batch_id]]
+            existing = [item for item in existing if item]
+            # 首批快速预览只生成 5 题，不能直接当成“整批已完成”。整卷任务首次经过
+            # 一个批次时会复用 OCR 缓存扩展题量；Worker 重试则依靠该标记跳过成功批次。
+            if batch.get("fullPaperProcessed") and existing:
+                summary["skippedBatches"] += 1
+                summary["processedBatches"] += 1
+                quarantined = sum(
+                    bool(item.get("qualityRecovery", {}).get("quarantined")) for item in existing
+                )
+                summary["quarantinedQuestions"] += quarantined
+                summary["batches"].append({
+                    "id": batch_id, "status": "skipped", "questionCount": len(existing),
+                    "quarantinedQuestions": quarantined,
+                })
+                summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
+                result["fullPaper"] = summary
+                self.upload_registry.update(
+                    job, "complete", round((index + 1) / max(1, len(batches)) * 100),
+                    f"整套试卷已处理 {index + 1}/{len(batches)} 个批次",
+                )
+                continue
+            try:
+                remaining = limit - len(current_payloads)
+                generated = self.process_batch(
+                    upload_id,
+                    batch_id,
+                    force=True,
+                    persist=True,
+                    cancellation_check=cancellation_check,
+                    question_limit=min(MAX_FULL_PAPER_QUESTIONS_PER_BATCH, remaining),
+                )
+                count = len(generated.get("questionPayloads") or [])
+                generated_payloads = generated.get("questionPayloads") or []
+                quarantined = sum(
+                    bool(item.get("qualityRecovery", {}).get("quarantined"))
+                    for item in generated_payloads
+                )
+                summary["succeededBatches"] += 1
+                summary["processedBatches"] += 1
+                summary["quarantinedQuestions"] += quarantined
+                batch["fullPaperProcessed"] = True
+                summary["batches"].append({
+                    "id": batch_id,
+                    "status": "succeeded",
+                    "questionCount": count,
+                    "quarantinedQuestions": quarantined,
+                })
+            except JobCancelled:
+                raise
+            except HTTPException as error:
+                summary["failedBatches"] += 1
+                summary["processedBatches"] += 1
+                summary["batches"].append({
+                    "id": batch_id, "status": "failed", "error": str(error.detail),
+                    "questionCount": 0, "quarantinedQuestions": 0,
+                })
+            except Exception as error:
+                summary["failedBatches"] += 1
+                summary["processedBatches"] += 1
+                summary["batches"].append({
+                    "id": batch_id, "status": "failed", "error": str(error)[:500],
+                    "questionCount": 0, "quarantinedQuestions": 0,
+                })
+            summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
+            result["fullPaper"] = summary
+            self.upload_registry.update(
+                job, "complete", round((index + 1) / max(1, len(batches)) * 100),
+                f"整套试卷已处理 {index + 1}/{len(batches)} 个批次",
+            )
+        payloads = self._ordered_batch_payloads(job, result, limit=limit)
+        if payloads:
+            result["questionPayload"] = payloads[0]
+            result["questionPayloads"] = payloads
+            result.setdefault("extraction", {})["questionCount"] = len(payloads)
+        summary["questionCount"] = len(payloads)
+        result["fullPaper"] = summary
+        self.upload_registry.update(job, "complete", 100, f"整套试卷完成，共 {len(payloads)} 道题")
+        return {
+            "summary": summary,
+            "questionPayload": result.get("questionPayload"),
+            "questionPayloads": payloads,
+            "batches": result.get("batches", []),
+        }
+
     def process_batch(
         self,
         upload_id: str,
@@ -366,6 +567,7 @@ class TextbookProcessingService:
         refresh_ocr: bool = False,
         run_id: str | None = None,
         cancellation_check: Any = None,
+        question_limit: int = MAX_QUESTIONS_PER_BATCH,
     ) -> dict[str, Any]:
         """OCR 一个页范围，并可选择是否立即保存生成练习。
 
@@ -432,6 +634,7 @@ class TextbookProcessingService:
                 batch=batch,
                 result=result,
                 refresh_ocr=refresh_ocr,
+                question_limit=question_limit,
             )
             self._check_cancel(cancellation_check)
             payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
@@ -455,17 +658,21 @@ class TextbookProcessingService:
                     upload_id, payloads, guide_cards_list,
                     run_id=active_run_id,
                     operation=operation,
+                    replace_keys=batch_question_keys,
                 )
+                previous_keys = list(job.setdefault("batchQuestionKeys", {}).get(batch_id, []))
+                for old_key in previous_keys:
+                    job["batchPayloads"].pop(old_key, None)
+                    job.setdefault("batchGuideCards", {}).pop(old_key, None)
+                # 兼容旧版以 batch ID 保存单题的结构，整批重生成后不再保留幽灵题目。
+                job["batchPayloads"].pop(batch_id, None)
+                job.setdefault("batchGuideCards", {}).pop(batch_id, None)
                 for key, item, cards in zip(question_keys, payloads, guide_cards_list):
                     job["batchPayloads"][key] = item
                     job.setdefault("batchGuideCards", {})[key] = cards
                 job.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
                 result.setdefault("batchQuestionKeys", {})[batch_id] = question_keys
-                result["questionPayloads"] = [
-                    item
-                    for key in sorted(job["batchPayloads"])
-                    for item in [job["batchPayloads"][key]]
-                ]
+                result["questionPayloads"] = self._ordered_batch_payloads(job, result)
                 result["questionPayload"] = result["questionPayloads"][0]
                 result["extraction"]["questionCount"] = len(result["questionPayloads"])
                 result["extraction"]["guideCardCount"] = sum(

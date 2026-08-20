@@ -7,10 +7,118 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from api.routers.textbook_routes import pdf_uploads, processing_service
+from application.services.textbook_processing import TextbookProcessingService
 
 
 class TextbookProcessingTests(unittest.TestCase):
+    def test_full_paper_summary_is_bounded_and_resumes_processed_batches(self) -> None:
+        """A retry skips persisted successes while recording later batch failures."""
+        payload_one = {"question": {"id": "q1", "sourceQuestionKey": "batch-001-q-1"}}
+        payload_two = {"question": {"id": "q2", "sourceQuestionKey": "batch-002-q-1"}}
+        job = {
+            "uploadId": "full-paper-upload",
+            "status": "complete",
+            "result": {
+                "batches": [
+                    {"id": "batch-001", "status": "processed", "fullPaperProcessed": True},
+                    {"id": "batch-002", "status": "queued"},
+                    {"id": "batch-003", "status": "queued"},
+                ],
+                "batchQuestionKeys": {"batch-001": ["batch-001-q-1"]},
+                "questionPayloads": [payload_one],
+                "questionPayload": payload_one,
+            },
+            "batchQuestionKeys": {"batch-001": ["batch-001-q-1"]},
+            "batchPayloads": {"batch-001-q-1": payload_one},
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current["status"] = status
+                current["progress"] = progress
+                current["message"] = message
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+        def process_batch(_upload_id, batch_id, **_kwargs):
+            if batch_id == "batch-002":
+                job["batchPayloads"]["batch-002-q-1"] = payload_two
+                job["batchQuestionKeys"]["batch-002"] = ["batch-002-q-1"]
+                return {"questionPayloads": [payload_two]}
+            raise HTTPException(status_code=422, detail="OCR 失败")
+
+        with patch.object(service, "process_batch", side_effect=process_batch) as process_batch_mock:
+            result = service.generate_full_paper("full-paper-upload", max_questions=100)
+
+        summary = result["summary"]
+        self.assertEqual(summary["totalBatches"], 3)
+        self.assertEqual(summary["processedBatches"], 3)
+        self.assertEqual(summary["succeededBatches"], 1)
+        self.assertEqual(summary["failedBatches"], 1)
+        self.assertEqual(summary["skippedBatches"], 1)
+        self.assertEqual(summary["quarantinedQuestions"], 0)
+        self.assertEqual(summary["questionCount"], 2)
+        self.assertEqual([item["status"] for item in summary["batches"]], ["skipped", "succeeded", "failed"])
+        self.assertEqual(process_batch_mock.call_count, 2)
+
+    def test_full_paper_stops_model_work_at_question_limit(self) -> None:
+        """The question cap must stop later model calls, not merely trim the response."""
+        job = {
+            "status": "complete",
+            "result": {
+                "batches": [
+                    {"id": "batch-001", "status": "queued"},
+                    {"id": "batch-002", "status": "queued"},
+                ],
+                "batchQuestionKeys": {},
+                "questionPayloads": [],
+            },
+            "batchQuestionKeys": {},
+            "batchPayloads": {},
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current.update(status=status, progress=progress, message=message)
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+
+        def process_batch(_upload_id, batch_id, **kwargs):
+            self.assertEqual(kwargs["question_limit"], 1)
+            key = f"{batch_id}-q-1"
+            generated = {"question": {"id": "q1", "sourceQuestionKey": key}}
+            job["batchPayloads"][key] = generated
+            job["batchQuestionKeys"][batch_id] = [key]
+            return {"questionPayloads": [generated]}
+
+        with patch.object(service, "process_batch", side_effect=process_batch) as process_batch_mock:
+            result = service.generate_full_paper("u1", max_questions=1)
+
+        self.assertEqual(process_batch_mock.call_count, 1)
+        self.assertEqual(result["summary"]["questionCount"], 1)
+        self.assertTrue(result["summary"]["limitReached"])
+
+    def test_batch_payload_order_uses_source_order_not_lexical_key_order(self) -> None:
+        payload_two = {"question": {"id": "q2"}}
+        payload_ten = {"question": {"id": "q10"}}
+        job = {
+            "batchPayloads": {"batch-001-q-10": payload_ten, "batch-001-q-2": payload_two},
+            "batchQuestionKeys": {"batch-001": ["batch-001-q-2", "batch-001-q-10"]},
+        }
+        result = {"batches": [{"id": "batch-001"}], "batchQuestionKeys": {}}
+
+        ordered = TextbookProcessingService._ordered_batch_payloads(job, result)
+
+        self.assertEqual([item["question"]["id"] for item in ordered], ["q2", "q10"])
+
     def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
         """A later batch includes the previous page to recover split questions."""
         with TemporaryDirectory() as directory:

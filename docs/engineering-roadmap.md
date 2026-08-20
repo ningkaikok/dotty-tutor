@@ -18,7 +18,7 @@
 
 1. **T1 / `test/offline-ai-evaluation`**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练。
 2. **T1 / `feature/badcase-replay-loop`**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
-3. **T2 / `feat/job-summary`**：为现有后台任务增加成功/失败/隔离汇总，补齐多 PDF 与整套审核的可操作反馈。
+3. **T2 / `feat/job-summary`**（本轮完成）：为整卷后台任务增加成功/失败/隔离/跳过汇总，补齐 PDF 批次的可操作反馈。
 4. **T2 / `feat/ocr-preflight-report`**：增加页面预检和脏页报告，复用现有页面级 OCR 路由、质量门禁和局部重试。
 5. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
 6. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、Alembic、备份恢复、限流和资源生命周期；只有准备公网
@@ -83,7 +83,7 @@
 
 - [x] 使用 PostgreSQL `background_jobs` 和单 Worker，支持任务 ID、独立进度、快速 `202` 响应和有限并发。
 - [x] 增加取消、有限自动重试、人工重试、租约恢复和幂等键；失去租约的旧 Worker 不得提交结果。
-- [ ] 为多 PDF、批量 OCR、批量生成和整套重新审核提供成功/失败/隔离汇总。
+- [x] 为整卷生成提供成功/失败/隔离/跳过汇总；服务端限制最多 50 页、100 道题，重试会跳过已成功批次。
 - [ ] 只有吞吐基准证明单 Worker 不足时，才评估 Redis 或其他队列。
 
 ## T3：技术实验

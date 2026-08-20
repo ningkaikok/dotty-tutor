@@ -929,6 +929,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{upload_id}/full-paper": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Full Paper
+         * @description Queue bounded whole-paper generation after the fast five-question preview.
+         */
+        post: operations["generate_full_paper_api_uploads__upload_id__full_paper_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/full-paper/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Full Paper Summary
+         * @description Return the durable per-batch summary persisted by the running Worker.
+         */
+        get: operations["get_full_paper_summary_api_uploads__upload_id__full_paper_summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads/{upload_id}/questions/{question_source_key}/regenerate": {
         parameters: {
             query?: never;
@@ -3299,6 +3339,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_full_paper_api_uploads__upload_id__full_paper_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_full_paper_summary_api_uploads__upload_id__full_paper_summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
