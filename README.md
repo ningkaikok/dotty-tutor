@@ -108,6 +108,11 @@ docker compose up --build --detach
 打开 <http://localhost:8080>。默认 Compose 使用 Mock 模型，不会下载模型权重；PostgreSQL
 和教材文件分别保存在命名卷中。
 
+本机开发页和 Docker 页面是两套不同的运行环境，不要同时混用同一批教材：本机开发页
+`5174` 使用本机 FastAPI `8010`、本机 Worker 和仓库内的 `data/`；Docker 页面 `8080`
+使用容器内 API、Worker 和 Docker 命名卷。日常开发优先使用 `5174`，Docker 页面用于
+CI、发布验证和部署演示。
+
 ```bash
 docker compose ps
 docker compose logs --follow api

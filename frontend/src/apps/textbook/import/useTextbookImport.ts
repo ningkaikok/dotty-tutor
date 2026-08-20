@@ -7,7 +7,6 @@ import {
   initPdfUpload,
   loadLibrary,
   loadLibraryItem,
-  loadPdfUploadStatus,
   loadBackgroundJob,
   retryBackgroundJob,
   uploadPdfChunk,
@@ -214,71 +213,35 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
             elapsedSeconds: 0,
           },
         });
-        let keepPolling = true;
-        const activeJobState = { current: null as BackgroundJob<TextbookImportResult> | null };
-        const polling = (async () => {
-          while (keepPolling) {
-            try {
-              const uploadStatus = await loadPdfUploadStatus(task!.uploadId);
-              if (activeJobState.current) {
-                const job = activeJobState.current;
-                updateUpload(id, {
-                  processingTask: {
-                    ...uploadStatus,
-                    jobId: job.jobId,
-                    jobStatus: job.status,
-                    attemptCount: job.attemptCount,
-                    progress: Math.max(uploadStatus.progress, job.progress),
-                    message: job.message || uploadStatus.message,
-                  },
-                });
-              } else {
-                updateUpload(id, { processingTask: uploadStatus });
-              }
-            } catch {
-              // 创建任务或 Worker 执行期间，单次状态查询失败不应误报整个上传失败。
-            }
-            if (activeJobState.current && ["succeeded", "failed", "cancelled"].includes(activeJobState.current.status)) break;
-            await new Promise((resolve) => window.setTimeout(resolve, 800));
-          }
-        })();
-        try {
-          activeJobState.current = await completePdfUpload(task.uploadId);
-          let activeJob = activeJobState.current;
+        // 上传完成后只轮询后台任务。此前同时轮询 upload status 和 job status，
+        // 两个响应会交替覆盖同一个 processingTask；旧响应到达时会把进度回写成
+        // 0/10/20，多个文件一起处理时看起来像进度相互干扰。
+        let lastProgress = 20;
+        let activeJob = await completePdfUpload(task.uploadId);
+        const updateJob = (job: BackgroundJob<TextbookImportResult>) => {
+          lastProgress = Math.max(lastProgress, job.progress);
           updateUpload(id, {
             processingTask: {
               ...task,
-              jobId: activeJob.jobId,
-              jobStatus: activeJob.status,
-              attemptCount: activeJob.attemptCount,
-              progress: activeJob.progress,
-              message: activeJob.message,
+              jobId: job.jobId,
+              jobStatus: job.status,
+              attemptCount: job.attemptCount,
+              progress: lastProgress,
+              message: job.message,
             },
           });
-          while (activeJob.status === "queued" || activeJob.status === "running") {
-            await new Promise((resolve) => window.setTimeout(resolve, 800));
-            activeJob = await loadBackgroundJob<TextbookImportResult>(activeJob.jobId);
-            activeJobState.current = activeJob;
-            updateUpload(id, {
-              processingTask: {
-                ...task,
-                jobId: activeJob.jobId,
-                jobStatus: activeJob.status,
-                attemptCount: activeJob.attemptCount,
-                progress: activeJob.progress,
-                message: activeJob.message,
-              },
-            });
-          }
-          if (activeJob.status !== "succeeded" || !activeJob.result) {
-            throw new Error(activeJob.lastError?.message || activeJob.message || "教材识别失败");
-          }
-          updateUpload(id, { result: activeJob.result, progress: 100, phase: "done" });
-          loadLibrary().then(setLibrary).catch(() => undefined);
-        } finally {
-          keepPolling = false;
-          await polling;
+        };
+        updateJob(activeJob);
+        while (activeJob.status === "queued" || activeJob.status === "running") {
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          activeJob = await loadBackgroundJob<TextbookImportResult>(activeJob.jobId);
+          updateJob(activeJob);
         }
+        if (activeJob.status !== "succeeded" || !activeJob.result) {
+          throw new Error(activeJob.lastError?.message || activeJob.message || "教材识别失败");
+        }
+        updateUpload(id, { result: activeJob.result, progress: 100, phase: "done" });
+        loadLibrary().then(setLibrary).catch(() => undefined);
       } else {
         if (entry.file.size > IMAGE_MAX_SIZE) throw new Error("单张教材图片不能超过 10 MB");
         updateUpload(id, { phase: "processing", progress: 25 });
