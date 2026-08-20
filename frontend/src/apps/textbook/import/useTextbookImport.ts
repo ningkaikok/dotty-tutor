@@ -7,6 +7,7 @@ import {
   initPdfUpload,
   loadLibrary,
   loadLibraryItem,
+  loadPdfUploadStatus,
   loadBackgroundJob,
   retryBackgroundJob,
   uploadPdfChunk,
@@ -213,29 +214,32 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
             elapsedSeconds: 0,
           },
         });
-        // 上传完成后只轮询后台任务。此前同时轮询 upload status 和 job status，
-        // 两个响应会交替覆盖同一个 processingTask；旧响应到达时会把进度回写成
-        // 0/10/20，多个文件一起处理时看起来像进度相互干扰。
+        // 每轮同时读取上传阶段和后台任务，但只在这一条轮询链里合并一次状态。
+        // 这样可以保留合并/校验/OCR 的细分进度，又不会让两套独立轮询互相覆盖。
         let lastProgress = 20;
         let activeJob = await completePdfUpload(task.uploadId);
-        const updateJob = (job: BackgroundJob<TextbookImportResult>) => {
-          lastProgress = Math.max(lastProgress, job.progress);
+        const updateJob = (job: BackgroundJob<TextbookImportResult>, uploadStatus?: PdfUploadTask) => {
+          lastProgress = Math.max(lastProgress, uploadStatus?.progress ?? 0, job.progress);
           updateUpload(id, {
             processingTask: {
-              ...task,
+              ...(uploadStatus ?? task),
               jobId: job.jobId,
               jobStatus: job.status,
               attemptCount: job.attemptCount,
               progress: lastProgress,
-              message: job.message,
+              message: job.status === "queued" ? job.message : uploadStatus?.message || job.message,
             },
           });
         };
         updateJob(activeJob);
         while (activeJob.status === "queued" || activeJob.status === "running") {
           await new Promise((resolve) => window.setTimeout(resolve, 800));
-          activeJob = await loadBackgroundJob<TextbookImportResult>(activeJob.jobId);
-          updateJob(activeJob);
+          const [uploadStatus, nextJob] = await Promise.all([
+            loadPdfUploadStatus(task.uploadId),
+            loadBackgroundJob<TextbookImportResult>(activeJob.jobId),
+          ]);
+          activeJob = nextJob;
+          updateJob(activeJob, uploadStatus);
         }
         if (activeJob.status !== "succeeded" || !activeJob.result) {
           throw new Error(activeJob.lastError?.message || activeJob.message || "教材识别失败");
