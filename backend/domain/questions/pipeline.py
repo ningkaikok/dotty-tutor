@@ -35,6 +35,16 @@ IMAGE_REFERENCE_PATTERN = re.compile(
     r"|[\[【][^\[\]【】]*(?:images/|/api/uploads/)[^\[\]【】]*[\]】]"
     r"|(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)\]<>]+"
 )
+# 只有这些题型会进入 answer_evaluator 的确定性判题分支；其余题型的 answerSpec
+# 永远读不到，属于会误导后续改动的死数据。
+DETERMINISTIC_ANSWER_TYPES = frozenset({"choice", "multi-select", "true-false", "fill-blank", "numeric"})
+# 成行出现的小问编号，例如 ``（1）`` 或 ``(2)``。
+SUB_QUESTION_PATTERN = re.compile(r"[（(]\s*([1-9])\s*[）)]")
+# 只匹配“独占一行的选项”，形如 ``A. 点A的左边``；正文中顺带出现的字母不会成行，
+# 因此不会被误当成选项。
+PROMPT_OPTION_LINE_PATTERN = re.compile(
+    r"(?m)^\s*(?:\(([A-H])\)|([A-H]))[.．:：、]\s*(\S.*?)\s*$"
+)
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -613,8 +623,22 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         match.group(1) or match.group(2)
         for match in CHOICE_MARKER_PATTERN.finditer(str(question.get("prompt", "")))
     ]
-    if options and prompt_choice_labels[:4] == ["A", "B", "C", "D"]:
-        errors.append("题干中重复包含结构化选项")
+    # 比对“题干里成行列出的选项正文”与结构化选项，而不是比对标签序列。
+    # 标签序列不可靠：题干正文里的 “点A、B分别表示…” 也会被 CHOICE_MARKER_PATTERN
+    # 匹配成一个 A，于是三选项题的标签序列变成 ["A","A","B","C"]，旧的
+    # `[:4] == ["A","B","C","D"]` 比对永远落空，题干和选项按钮会重复显示同样内容。
+    # 要求逐项全部命中，宁可漏报也不误伤正常题目。
+    if len(options) >= 2:
+        prompt_option_lines = {
+            (match.group(1) or match.group(2)): match.group(3).strip()
+            for match in PROMPT_OPTION_LINE_PATTERN.finditer(prompt)
+        }
+        duplicated = all(
+            prompt_option_lines.get(chr(65 + index), "") == _option_body(option, index)
+            for index, option in enumerate(options)
+        )
+        if duplicated:
+            errors.append("题干中重复包含结构化选项")
     content_blocks = question.get("contentBlocks", [])
     if not content_blocks:
         errors.append("缺少 contentBlocks")
@@ -677,6 +701,21 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             errors.append(f"第 {index} 个公式环境不完整：begin={begins}，end={ends}，{evidence}")
     if not prompt.strip():
         errors.append("题干为空")
+    # 多小问题目当前没有结构化表示：questionType、correctAnswer 和 answerSpec 都是
+    # 单答案模型。实测的坏样本是一道 short-answer 证明题带着 `answerType: numeric`、
+    # `expected: "5/2"`——那其实只是第 (2) 问的答案。今天 short-answer 不走确定性
+    # 判题，这条错配数据读不到所以无害；一旦有人把题型改成 numeric，答对第 (1) 问
+    # 的学生就会被判错。在 subQuestions 结构落地前（见 docs/engineering-roadmap.md），
+    # 先把这种沉默的错配变成显式错误。
+    question_type = str(question.get("questionType", ""))
+    answer_spec = question.get("answerSpec")
+    if question_type not in DETERMINISTIC_ANSWER_TYPES and isinstance(answer_spec, dict) and answer_spec.get("expected"):
+        errors.append(
+            f"题型 {question_type} 不参与确定性判题，却携带 answerSpec："
+            f"{str(answer_spec.get('expected'))[:40]}"
+        )
+    if SUB_QUESTION_PATTERN.search(prompt) and len(SUB_QUESTION_PATTERN.findall(prompt)) >= 2:
+        warnings.append("题干包含多个小问，当前数据模型只保存一个答案；发布前请人工确认判题范围")
     prompt_has_percent = bool(re.search(r"(?:%|\\%)", prompt))
     temperature_options = options and all(
         "℃" in option or bool(re.search(r"\\circ\}?\\mathrm\{C\}", option))
