@@ -411,6 +411,23 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     content_blocks = question.get("contentBlocks", [])
     if not content_blocks:
         errors.append("缺少 contentBlocks")
+    # 安全网：正常化之后不应再有未结构化的图片引用残留在任何文本片段里。这条检查
+    # 本身不修复问题，只是让清理逻辑的漏洞（例如新出现的题型没有覆盖到）在发布前
+    # 就变成一个确定性错误，而不是被学生在页面上看到源码字符。
+    text_fragments = [prompt, *options]
+    for block in content_blocks:
+        if block.get("type") == "text":
+            text_fragments.append(str(block.get("text", "")))
+        elif block.get("type") == "options":
+            for item in block.get("items", []):
+                for inner in item.get("contentBlocks", []):
+                    if inner.get("type") == "text":
+                        text_fragments.append(str(inner.get("text", "")))
+    for fragment in text_fragments:
+        residue = MARKDOWN_IMAGE_PATTERN.search(fragment) or BARE_IMAGE_REFERENCE_PATTERN.search(fragment)
+        if residue:
+            evidence = residue.group(0)[:80]
+            errors.append(f"题干残留未结构化的图片引用：{evidence}")
     block_images = [Path(str(block.get("url", ""))).name for block in content_blocks if block.get("type") == "image"]
     block_option_images = [Path(str(item.get("imageUrl", ""))).name for block in content_blocks if block.get("type") == "options" for item in block.get("items", []) if item.get("imageUrl")]
     if block_images + block_option_images != actual_images:
@@ -442,12 +459,17 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v4", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v5", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:
     """重建内容块、附加来源指纹，并把质量状态写回题目。"""
     question = payload["question"]
+    # 模型偶尔会把图片文件名原样写回 prompt（`![](images/xxx.jpg)` 或裸路径）。
+    # 之前这条清理只发生在 A-D 图片选择题分支里，普通题目不受影响，脏文本会
+    # 一路流进 contentBlocks 并原样展示给学生。这里提升到每道题都会经过的
+    # 通用路径，且必须在 build_question_content_blocks() 之前执行。
+    question["prompt"] = strip_image_references(str(question.get("prompt", "")))
     # 模型偶尔会把题目说明或下一题的选项也当成 E 项。对于 OCR 已明确是
     # A-D 的题，先做一个可逆的展示修复：只保留来源支持的四项，同时记录门禁错误，
     # 这样内容工作台不会继续展示一个可作答的假选项，发布边界也不会被误放行。
