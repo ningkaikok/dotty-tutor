@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -320,6 +321,182 @@ class CaptionBasedImageAttributionTests(unittest.TestCase):
             images_by_number["6"],
             ["images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg"],
         )
+
+
+# 真实 MinerU content_list.json 片段（同一本教材 4ce09635dafb42ada0343477f6424441，
+# 用本机 .mineru-venv 对 source.pdf 第 1-5 页实际解析后摘取，未编造）。只保留
+# image/chart 类型的块，字段名和取值都是原样保留：image_caption/chart_caption
+# 是列表，"第5题图""第6题图""第9题图""第10题图""第11题图""第16题图"
+# 是 MinerU 自己识别出的图注文字，img_path 和 _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT
+# 里的 Markdown 图片路径一一对应。
+_REAL_CONTENT_LIST_JSON_EXCERPT = [
+    {
+        "type": "image",
+        "img_path": "images/670f763f0fb5a03a28245aedfdc8aeef8e34c69ec368fa5966ae12461453facd.jpg",
+        "image_caption": [],
+        "image_footnote": [],
+        "bbox": [144, 310, 276, 336],
+        "page_idx": 0,
+    },
+    {
+        "type": "chart",
+        "img_path": "images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg",
+        "content": "",
+        "chart_caption": ["第5题图"],
+        "chart_footnote": [],
+        "bbox": [148, 623, 355, 691],
+        "page_idx": 0,
+    },
+    {
+        "type": "image",
+        "img_path": "images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg",
+        "image_caption": ["第6题图"],
+        "image_footnote": [],
+        "bbox": [476, 642, 666, 691],
+        "page_idx": 0,
+    },
+    {
+        "type": "image",
+        "img_path": "images/a7ef059df3190d7016965d2ac0a69c365703839563753a4e86c225319dcb5d36.jpg",
+        "image_caption": ["第9题图"],
+        "image_footnote": [],
+        "bbox": [149, 314, 265, 397],
+        "page_idx": 1,
+    },
+    {
+        "type": "image",
+        "img_path": "images/cec687dd5cf3306d9206444693a62eb3b5ca431a588d93c301f28eacc02eeb57.jpg",
+        "image_caption": ["第10题图"],
+        "image_footnote": [],
+        "bbox": [322, 313, 453, 395],
+        "page_idx": 1,
+    },
+    {
+        "type": "image",
+        "img_path": "images/7a8d6eb93bdb7c0ffe43f4d3fe5d58e0969fbe854259664aef6d64dbb386af81.jpg",
+        "image_caption": ["第11题图"],
+        "image_footnote": [],
+        "bbox": [147, 660, 220, 735],
+        "page_idx": 1,
+    },
+    {
+        "type": "image",
+        "img_path": "images/765e1ec9e5d47ebc51c073517fd8207820821b959527457f6eac454c91ed991c.jpg",
+        "image_caption": ["第16题图"],
+        "image_footnote": [],
+        "bbox": [317, 671, 535, 734],
+        "page_idx": 1,
+    },
+]
+
+
+class StructuredCaptionAttributionTests(unittest.TestCase):
+    """PR B：优先用 content_list.json 的结构化图注字段做归属，而不是纯正则猜。"""
+
+    def _write_content_list(self, directory: Path, payload) -> None:
+        (directory / "source.content_list.json").write_text(
+            json.dumps(payload, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    def test_structured_content_list_matches_regex_result_for_known_bad_samples(self) -> None:
+        """结构化路径对本文档已验证过的真实坏样本得到和纯正则一致的结果。
+
+        9、10 题号本身因为题号粘连没有被切分成独立块（这是 PR C 要修的问题，不是
+        本 PR 的范围），所以即使结构化数据里写明了"第9题图""第10题图"，这两张图
+        依然没有安全的落点，只能被移除——这和纯正则路径的行为完全一致。
+        """
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, _REAL_CONTENT_LIST_JSON_EXCERPT)
+            blocks = split_question_sources(
+                _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT, asset_dir=asset_dir
+            )
+        images_by_number = {number: images for number, _block, images in blocks}
+        self.assertEqual(
+            images_by_number["5"],
+            ["images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg"],
+        )
+        self.assertEqual(
+            images_by_number["6"],
+            ["images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg"],
+        )
+        self.assertEqual(images_by_number["8"], [])
+        self.assertNotIn("9", images_by_number)
+        self.assertNotIn("10", images_by_number)
+        self.assertEqual(
+            images_by_number["11"],
+            ["images/7a8d6eb93bdb7c0ffe43f4d3fe5d58e0969fbe854259664aef6d64dbb386af81.jpg"],
+        )
+        self.assertEqual(
+            images_by_number["16"],
+            ["images/765e1ec9e5d47ebc51c073517fd8207820821b959527457f6eac454c91ed991c.jpg"],
+        )
+
+    def test_structured_caption_rescues_attribution_when_flat_text_has_no_caption_at_all(self) -> None:
+        """结构化字段能修正纯文本位置逻辑完全无法感知的错误归属。
+
+        这里构造的场景是：图片在扁平文本里紧跟第 1 题（按文本位置会被分给第 1 题），
+        但扁平化过程中图注文字本身丢失了（现实中常见：图注被 OCR 识别成独立的页面
+        元素，没有跟随图片一起进入扁平 Markdown）。纯正则完全看不到"这张图其实是
+        第2题的"这个信号——content_list.json 仍然保留着这个字段，只有结构化路径
+        才能纠正。
+        """
+        source = "1. 第一题干。\n\n![](images/pic-a.jpg)\n\n2. 第二题干。\n"
+        content_list = [
+            {
+                "type": "image",
+                "img_path": "images/pic-a.jpg",
+                "image_caption": ["第2题图"],
+                "image_footnote": [],
+                "bbox": [0, 0, 1, 1],
+                "page_idx": 0,
+            }
+        ]
+        without_structured = split_question_sources(source)
+        images_without = {number: images for number, _block, images in without_structured}
+        # 没有结构化数据时，纯文本位置逻辑把图片留在第 1 题——这正是要被纠正的错误。
+        self.assertEqual(images_without["1"], ["images/pic-a.jpg"])
+        self.assertEqual(images_without["2"], [])
+
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            with_structured = split_question_sources(source, asset_dir=asset_dir)
+        images_with = {number: images for number, _block, images in with_structured}
+        self.assertEqual(images_with["1"], [])
+        self.assertEqual(images_with["2"], ["images/pic-a.jpg"])
+
+    def test_missing_content_list_json_falls_back_to_regex_behavior(self) -> None:
+        """asset_dir 下没有 content_list.json 时，行为和不传 asset_dir 完全一致。"""
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)  # 目录存在，但没有写入 source.content_list.json
+            with_missing_file = split_question_sources(
+                _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT, asset_dir=asset_dir
+            )
+        without_asset_dir = split_question_sources(_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT)
+        self.assertEqual(with_missing_file, without_asset_dir)
+
+    def test_empty_content_list_json_falls_back_to_regex_behavior(self) -> None:
+        """content_list.json 存在但是空列表时，同样完全回退到纯正则逻辑。"""
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, [])
+            with_empty_file = split_question_sources(
+                _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT, asset_dir=asset_dir
+            )
+        without_asset_dir = split_question_sources(_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT)
+        self.assertEqual(with_empty_file, without_asset_dir)
+
+    def test_no_asset_dir_argument_still_defaults_to_regex_only_behavior(self) -> None:
+        """完全不传 asset_dir（现有调用方尚未升级时）行为不变，是最基本的兼容性保证。"""
+        blocks = split_question_sources(_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT)
+        images_by_number = {number: images for number, _block, images in blocks}
+        self.assertEqual(
+            images_by_number["5"],
+            ["images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg"],
+        )
+        self.assertEqual(images_by_number["8"], [])
 
 
 if __name__ == "__main__":
