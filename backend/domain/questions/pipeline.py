@@ -34,6 +34,11 @@ BRACKETED_IMAGE_ANNOTATION_PATTERN = re.compile(
 DETERMINISTIC_ANSWER_TYPES = frozenset({"choice", "multi-select", "true-false", "fill-blank", "numeric"})
 # 成行出现的小问编号，例如 ``（1）`` 或 ``(2)``。
 SUB_QUESTION_PATTERN = re.compile(r"[（(]\s*([1-9])\s*[）)]")
+# 只匹配“独占一行的选项”，形如 ``A. 点A的左边``；正文中顺带出现的字母不会成行，
+# 因此不会被误当成选项。
+PROMPT_OPTION_LINE_PATTERN = re.compile(
+    r"(?m)^\s*(?:\(([A-H])\)|([A-H]))[.．:：、]\s*(\S.*?)\s*$"
+)
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -321,6 +326,11 @@ def normalize_stacked_equation_choices(payload: dict[str, Any], source_block: st
     question["prompt"] = stem.strip()
 
 
+def _option_body(option: str, index: int) -> str:
+    """去掉选项自带的 ``(A)``/``A.`` 前缀，只保留正文，便于与题干成行选项比对。"""
+    return re.sub(rf"^(?:\({chr(65 + index)}\)|{chr(65 + index)}[.．:：、])\s*", "", str(option)).strip()
+
+
 def rich_text_blocks(text: str, id_prefix: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for fragment in MATH_FRAGMENT_PATTERN.split(text):
@@ -516,8 +526,22 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         match.group(1) or match.group(2)
         for match in CHOICE_MARKER_PATTERN.finditer(str(question.get("prompt", "")))
     ]
-    if options and prompt_choice_labels[:4] == ["A", "B", "C", "D"]:
-        errors.append("题干中重复包含结构化选项")
+    # 比对“题干里成行列出的选项正文”与结构化选项，而不是比对标签序列。
+    # 标签序列不可靠：题干正文里的 “点A、B分别表示…” 也会被 CHOICE_MARKER_PATTERN
+    # 匹配成一个 A，于是三选项题的标签序列变成 ["A","A","B","C"]，旧的
+    # `[:4] == ["A","B","C","D"]` 比对永远落空，题干和选项按钮会重复显示同样内容。
+    # 要求逐项全部命中，宁可漏报也不误伤正常题目。
+    if len(options) >= 2:
+        prompt_option_lines = {
+            (match.group(1) or match.group(2)): match.group(3).strip()
+            for match in PROMPT_OPTION_LINE_PATTERN.finditer(prompt)
+        }
+        duplicated = all(
+            prompt_option_lines.get(chr(65 + index), "") == _option_body(option, index)
+            for index, option in enumerate(options)
+        )
+        if duplicated:
+            errors.append("题干中重复包含结构化选项")
     content_blocks = question.get("contentBlocks", [])
     if not content_blocks:
         errors.append("缺少 contentBlocks")

@@ -107,6 +107,72 @@ class QuestionContentResidueTests(unittest.TestCase):
         self.assertIn("俯视图", cleaned)
         self.assertEqual(quality["status"], "ready", quality["errors"])
 
+    def test_duplicate_options_are_flagged_for_three_choice_questions(self) -> None:
+        """真实坏样本：三选项题的题干与结构化选项重复，门禁必须拦下。
+
+        取自「2018南京中考数学试卷」第 18 题。原检查写成 `prompt_choice_labels[:4]
+        == ["A","B","C","D"]`，只认恰好四项，三选项题永远比不中，题干和选项按钮
+        会把同样的内容显示两遍。
+        """
+        prompt = (
+            "18.（7分）如图，在数轴上，点A、B分别表示数1、−2x+3。\n\n"
+            "（1）求x的取值范围。\n\n"
+            "（2）数轴上表示数−x+2的点应落在（▲）。\n"
+            "A. 点A的左边\nB. 线段AB上\nC. 点B的右边"
+        )
+        payload = {
+            "question": {
+                "questionNumber": "18",
+                "prompt": prompt,
+                "options": ["点A的左边", "线段AB上", "点B的右边"],
+                "imageUrls": [],
+                "contentBlocks": [{"id": "stem-1", "type": "text", "text": prompt}],
+            },
+        }
+        quality = validate_question_payload(payload, prompt, [])
+
+        self.assertEqual(quality["status"], "needs_review")
+        self.assertTrue(
+            any("题干中重复包含结构化选项" in error for error in quality["errors"]),
+            quality["errors"],
+        )
+
+    def test_four_option_duplicate_check_still_applies(self) -> None:
+        """放宽到按实际选项数比对后，原有的四选项场景不能失效。"""
+        prompt = "1. 选出正确的一项（ ）\nA. 甲\nB. 乙\nC. 丙\nD. 丁"
+        payload = {
+            "question": {
+                "questionNumber": "1",
+                "prompt": prompt,
+                "options": ["甲", "乙", "丙", "丁"],
+                "imageUrls": [],
+                "contentBlocks": [{"id": "stem-1", "type": "text", "text": prompt}],
+            },
+        }
+        quality = validate_question_payload(payload, prompt, [])
+        self.assertTrue(
+            any("题干中重复包含结构化选项" in error for error in quality["errors"]),
+            quality["errors"],
+        )
+
+    def test_prompt_without_duplicated_options_stays_ready(self) -> None:
+        """题干没有重复列选项时不能误报。"""
+        prompt = "1. 选出正确的一项（ ）"
+        payload = {
+            "question": {
+                "questionNumber": "1",
+                "prompt": prompt,
+                "options": ["甲", "乙", "丙"],
+                "imageUrls": [],
+                "contentBlocks": [{"id": "stem-1", "type": "text", "text": prompt}],
+            },
+        }
+        quality = validate_question_payload(payload, prompt, [])
+        self.assertFalse(
+            any("题干中重复包含结构化选项" in error for error in quality["errors"]),
+            quality["errors"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
