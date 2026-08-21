@@ -76,7 +76,9 @@ export function PracticeWorkspace({
       <section className="workspace panel">
         <div className="question-block">
           <div className="question-toolbar">
-            <span className="eyebrow">课后练习 · 题目 {questionIndex + 1}/{questionCount}</span>
+            <span className="eyebrow" title="本次会话已生成的题目序号，非教材原始题号；部分题目会因质量校验被隔离，因此可能与“原题”编号不连续">
+              课后练习 · 已生成 {questionIndex + 1}/{questionCount} 题
+            </span>
             <div className="question-navigation">
               {textbookImport.uploadId && (
                 <>
@@ -102,7 +104,11 @@ export function PracticeWorkspace({
             </div>
           </div>
           <div className="question-source-meta">
-            {payload.question.questionNumber && <b>原题 {payload.question.questionNumber}</b>}
+            {payload.question.questionNumber && (
+              <b title="教材原始题号，仅供核对来源；与上方“已生成”序号是两套独立编号">
+                教材原题第 {payload.question.questionNumber} 题
+              </b>
+            )}
             {payload.question.sourcePages && <span>来源第 {payload.question.sourcePages.start}-{payload.question.sourcePages.end} 页</span>}
             {payload.review && (
               <b className={payload.review.needsHumanReview ? "review-warning" : "review-passed"}>
