@@ -275,6 +275,9 @@ h2 { letter-spacing: -0.025em; }
 .question-options.image-options li { align-items: flex-start; min-height: 210px; }
 .question-options.image-options li img { width: calc(100% - 46px); height: 190px; }
 .selected-option { margin: -8px 0 16px; color: #1b8062; font-size: 13px; font-weight: 600; }
+.question-table-wrapper { overflow-x: auto; margin: 4px 0 20px; border: 1px solid #d9ddd7; border-radius: 12px; }
+.question-table { width: 100%; border-collapse: collapse; font-size: 15px; color: #24372f; background: #fff; }
+.question-table td { padding: 8px 14px; border: 1px solid #e1e2dd; white-space: nowrap; }
 .question-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 4px 0 20px; }
 .question-images a { display: grid; place-items: center; min-height: 150px; overflow: hidden; border: 1px solid #d9ddd7; border-radius: 12px; background: white; }
 .question-images img { display: block; width: 100%; max-height: 320px; object-fit: contain; }

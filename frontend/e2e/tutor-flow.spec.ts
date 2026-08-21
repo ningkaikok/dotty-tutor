@@ -223,6 +223,17 @@ const renderingQuestion = payload({
       { label: "(A)", imageUrl: "/fixtures/a.png", assetId: "/fixtures/a.png", contentBlocks: [{ id: "pw-rendering-a", type: "text", text: "1.5", sourceOrder: 0 }] },
       { label: "(B)", contentBlocks: [{ id: "pw-rendering-b", type: "math", latex: "x=2", display: false, sourceOrder: 0 }] },
     ] },
+    // 统计表必须渲染成 <table> 结构，不能退化成原始 HTML 源码文字。
+    { id: "pw-rendering-table", type: "table", sourceOrder: 3, rows: [
+      { cells: [
+        { contentBlocks: [{ id: "pw-rendering-table-h1", type: "text", text: "阅读量/本", sourceOrder: 0 }] },
+        { contentBlocks: [{ id: "pw-rendering-table-h2", type: "text", text: "人数", sourceOrder: 0 }] },
+      ] },
+      { cells: [
+        { contentBlocks: [{ id: "pw-rendering-table-c1", type: "text", text: "0", sourceOrder: 0 }] },
+        { contentBlocks: [{ id: "pw-rendering-table-c2", type: "text", text: "2", sourceOrder: 0 }] },
+      ] },
+    ] },
   ],
 });
 
@@ -868,6 +879,10 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.locator(".givens .katex")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content")).not.toContainText("/fixtures/");
     await expect(page.locator(".canonical-question-content .katex")).toHaveCount(2);
+    // 统计表要渲染成真实的 <table> 元素，不能作为原始 HTML 源码文字显示。
+    await expect(page.locator(".canonical-question-content table")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content table")).toContainText("阅读量/本");
+    await expect(page.locator(".canonical-question-content")).not.toContainText("<table");
     await expectLoadedUniqueImages(page.locator(".canonical-question-content img"));
   });
 
@@ -899,6 +914,8 @@ test.describe("教材辅导核心交互", () => {
     await expect(page.locator(".canonical-question-content .question-options img")).toHaveCount(1);
     await expect(page.locator(".student-question-givens .katex")).toHaveCount(1);
     await expect(page.locator(".canonical-question-content")).not.toContainText("![");
+    await expect(page.locator(".canonical-question-content table")).toHaveCount(1);
+    await expect(page.locator(".canonical-question-content")).not.toContainText("<table");
     await expectLoadedUniqueImages(page.locator(".canonical-question-content img"));
   });
 
