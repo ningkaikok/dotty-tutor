@@ -151,6 +151,39 @@ def _generate_validated_question(
     return final
 
 
+def _quarantine_duplicate_question_number(
+    payload: dict[str, Any],
+    batch: dict[str, Any],
+    number: str,
+    index: int,
+) -> None:
+    """为批次内重复题号生成独立 key，防止静默覆盖同批次里另一道题。
+
+    ``split_question_sources`` 里"相邻同号合并"已经处理了合法的跨页续题情况；一个重复
+    题号能走到这里，说明两个块并不相邻，通常是 OCR 把题干中间的段落断点（或粘连在上一题
+    选项末尾、没有换行的题号）误判成了新题号。这类块很可能包含真实但边界不完整的内容，
+    不能被当垃圾丢弃，也不能沿用原始 ``number`` 走 ``question_key()`` 的常规路径——两个块
+    共享同一个 key 正是导致同批次内一道题在持久化时静默覆盖另一道题的根因。这里改用
+    ``question_key(batch_id, "", index)`` 触发已有的 ``index-{NNN}`` 回退命名，
+    ``index`` 是该题在本批次里的位置，批次内必然唯一。
+    """
+    question = payload["question"]
+    unique_key = question_key(batch["id"], "", index)
+    if question.get("sourceQuestionKey") == unique_key:
+        return
+    question["sourceQuestionKey"] = unique_key
+    quality = payload.setdefault("quality", {})
+    quality.setdefault("errors", []).append(
+        f"题号 {number} 与批次内另一道题重复，可能是相邻题目文本被误判为新题号，已隔离为独立候选待人工核对"
+    )
+    quality["status"] = "needs_review"
+    question["publicationStatus"] = "needs_review"
+    review = payload.get("review")
+    if isinstance(review, dict):
+        review["status"] = "needs_review"
+        review["needsHumanReview"] = True
+
+
 def process_question_sources(
     question_sources: list[tuple[str, str, list[str]]],
     batch: dict[str, Any],
@@ -170,6 +203,7 @@ def process_question_sources(
     model_runs: list[dict[str, Any]] = []
     review_runs: list[dict[str, Any]] = []
     total = max(1, len(question_sources))
+    seen_numbers: set[str] = set()
     log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"), run_id=run_id)
     for index, (number, block, images) in enumerate(question_sources):
         log_event("question.started", batch_id=batch.get("id"), question_number=number or index + 1, image_count=len(images), run_id=run_id)
@@ -183,6 +217,13 @@ def process_question_sources(
             asset_dir=asset_dir,
             run_id=run_id,
         )
+        if number:
+            if number in seen_numbers:
+                # 同一批次内已经出现过这个题号：split_question_sources 的相邻合并没有
+                # 生效，说明这是一个可疑的独立块，必须隔离 key，不能让它覆盖前一道题。
+                _quarantine_duplicate_question_number(payload, batch, number, index)
+            else:
+                seen_numbers.add(number)
         payloads.append(payload)
         guide_cards_list.append(guide_cards)
         model_runs.append(model_run)
