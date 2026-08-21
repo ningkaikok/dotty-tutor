@@ -856,12 +856,17 @@ class TextbookProcessingService:
         )
         run_id = run["runId"]
         try:
+            # 必须按整卷上限重新切题源。批次可能是整卷生成产生的（最多
+            # MAX_FULL_PAPER_QUESTIONS_PER_BATCH 题），而 _load_batch_sources 默认只切
+            # 前 MAX_QUESTIONS_PER_BATCH 题；沿用默认值会让批次里第 6 题之后的题目
+            # 永远匹配不到来源，"修复本题" 直接报 "OCR 结果中已找不到这道题"。
             _lesson_source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
                 upload_id=upload_id,
                 job=job,
                 batch=batch,
                 result=result,
                 refresh_ocr=refresh_ocr,
+                question_limit=MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
             )
             target_index = -1
             target_number = ""
