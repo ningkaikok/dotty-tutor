@@ -431,6 +431,35 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertEqual(payload["question"]["optionImageUrls"], urls)
         self.assertEqual(payload["question"]["options"], ["(A)", "(B)", "(C)", "(D)"])
 
+    def test_does_not_strip_geometry_stem_lines_that_start_with_a_bare_letter(self) -> None:
+        # 上一版修复把分隔符设成可选（`[A-D][.．:：、]?`），结果任何以裸字母 A-D 开头
+        # 的正常内容都会被连同后半行一起删掉——几何题干里 "AB是弦" "ABCD是正方形"
+        # 这类写法极其常见。分隔符必须继续要求真实存在（含全/半角左括号），不能省略。
+        urls = [f"/assets/{letter}.jpg" for letter in "abcd"]
+        payload = {
+            "question": {
+                "prompt": (
+                    "如图，圆O中，弦AB垂直于半径OC，垂足为D，则下列结论正确的是\n"
+                    "AB是弦，OC是半径\n"
+                    "A（数轴图）\nB（数轴图）\nC（数轴图）\nD（数轴图）"
+                ),
+                "options": ["(A)", "(B)", "(C)", "(D)"],
+                "imageUrls": urls,
+            }
+        }
+        source = "\n".join(
+            f"![](images/{letter}.jpg)\n({letter.upper()})" for letter in "abcd"
+        )
+        normalize_image_choice_question(
+            payload,
+            source,
+            [f"images/{letter}.jpg" for letter in "abcd"],
+        )
+        prompt = payload["question"]["prompt"]
+        self.assertIn("AB是弦，OC是半径", prompt)
+        self.assertIn("弦AB垂直于半径OC", prompt)
+        self.assertNotIn("数轴图", prompt)
+
     def test_binds_four_source_images_to_abcd_options(self) -> None:
         payload = {
             "question": {
