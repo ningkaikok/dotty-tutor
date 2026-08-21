@@ -109,12 +109,9 @@ jobs:
     name: Notify Feishu
     runs-on: ubuntu-latest
     needs: [backend, frontend, e2e, docker]
-    # Do not expose the webhook secret to pull requests from forks. The action
-    # also exits successfully when the repository secrets are not configured.
-    if: >-
-      ${{ always() &&
-      (github.event_name == 'push' ||
-      github.event.pull_request.head.repo.full_name == github.repository) }}
+    # 只在推送到 main（通常是合并后）时通知。PR 分支自身触发的运行结果已经在 GitHub
+    # PR 页面可见，且合并后 main 上会用同一份代码重新跑一次；两者都发通知会重复。
+    if: ${{ always() && github.event_name == 'push' }}
     steps:
       - name: Send CI result to Feishu
         uses: ningkaikok/feishu-notify-action@v1
