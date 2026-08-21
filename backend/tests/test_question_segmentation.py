@@ -498,6 +498,105 @@ class StructuredCaptionAttributionTests(unittest.TestCase):
         )
         self.assertEqual(images_by_number["8"], [])
 
+# 真实 MinerU content_list.json / middle.json 片段（同一本教材
+# 4ce09635dafb42ada0343477f6424441，第 1-5 页，本机 .mineru-venv 实际解析后摘取，
+# 未编造）。只保留第 5-10 题这一个被 MinerU 自己的段落识别合并成一块的真实样本：
+# content_list_item_text 是这个块在 content_list.json 里的原始 text 字段（和
+# source.md 里的扁平文本逐字节一致，"D. 一、三象限" 和 "9. 如图" 之间确实一个
+# 字符的换行都没有），middle_lines 是 middle.json 对应块的逐行 spans。
+_REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD = json.loads(r"""{"content_list": [{"type": "text", "page_idx": 0, "text": "5. 某校举行“汉字听写比赛”，5个班级代表队的正确答题数如图．这 5个正确  \n答题数所组成的一组数据的中位数和众数分别是( ）  \nA. 10, 15 B. 13, 15 C. 13, 20 D. 15, 15  \n6. 如图，在？ABCD中，连接 $A G \\angle A B G = \\angle C A D = 4 5 ^ { \\circ }$ $A B = 2$ ，则 BC的长是  \n（）  \nA. $\\sqrt { 2 }$ B. 2 C. $2 \\sqrt { 2 }$ D. 4  \n7. 若△ ABQ的每条边长增加各自的 10%得 $\\triangle \\sf { A } ^ { \\prime } \\sf { B } ^ { \\prime } \\ c ^ { \\prime }$ ，则 $\\angle \\mathsf { B } ^ { \\prime }$ 的度数与其对应  \n角∠B的度数相比(  \nA. 增加了 10% B. 减少了 10%  \nC. 增加了 $( 1 + 1 0 \\% )$ D. 没有改变  \n8. 如果点 A( x1，y1)和点 B( $\\mathsf { X } _ { 2 9 } \\mathrm { ~ \\ } \\mathsf { y } _ { 2 } )$ 是直线 $\\mathsf { y } = \\mathsf { k } \\mathsf { x } - \\mathsf { b }$ 上的两点，且当 $\\mathsf { X } _ { 1 } < \\mathsf { X } _ { 2 }$ 时，  \n$\\mathsf { y } _ { 1 } < \\mathsf { y } _ { 2 }$ ，那么函数 $\\ y = \\frac { k } { x }$ 的图象位于( ）  \nA. 一、四象限 B. 二、四象限  \nC. 三、四象限 D. 一、三象限9. 如图，在 $\\mathsf { R t \\triangle A B C P }$ $\\angle A C B = 9 0 ^ { \\circ }$ $\\angle A = 5 6 ^ { \\circ }$ . 以 BC为直径的 O交 AB于点D.E是⊙O上一点，且 $C E = C D$ 连接 OE过点 E作 EF⊥OE 交 AC的延长线于点F，则∠F的度数为(）  \nA. 92° B. 108° C. 112° D. $1 2 4 ^ { \\circ }$ 10. 如图，抛物线 $y _ { 1 } = \\frac { 1 } { 2 } ( x + 1 ) ^ { 2 } + 1$ 与 $y _ { 2 } = a ( x - 4 ) ^ { 2 } - 3$ 交于点 A(1，3)，过点A作×轴的平行线，分别交两条抛物线于B、C两点，且D、E分别为顶点．则下列结论：① $\\mathsf { a } = \\frac { 2 } { 3 } ;$ ② $\\mathsf { A C } \\equiv \\mathsf { A E }$ ③△ ABD是等腰直角三角形；④当 x >1 时， $y _ { 1 } > y _ { 2 }$ 其中正确结论的个数是( ）  \nA. 1 个 B. 2 个 C. 3 个 D. 4 个"}], "middle": {"pdf_info": [{"page_idx": 0, "para_blocks": [{"type": "text", "lines": [{"spans": [{"type": "text", "content": "5. 某校举行“汉字听写比赛”，5个班级代表队的正确答题数如图．这 5个正确"}]}, {"spans": [{"type": "text", "content": "答题数所组成的一组数据的中位数和众数分别是("}, {"type": "text", "content": "）"}]}, {"spans": [{"type": "text", "content": "A. 10, 15 B. 13, 15 C. 13, 20 D. 15, 15"}]}, {"spans": [{"type": "text", "content": "6. 如图，在？ABCD中，连接"}, {"type": "inline_equation", "content": "A G \\angle A B G = \\angle C A D = 4 5 ^ { \\circ }"}, {"type": "inline_equation", "content": "A B = 2"}, {"type": "text", "content": "，则 BC的长是"}]}, {"spans": [{"type": "text", "content": "（）"}]}, {"spans": [{"type": "text", "content": "A."}, {"type": "inline_equation", "content": "\\sqrt { 2 }"}, {"type": "text", "content": "B. 2 C."}, {"type": "inline_equation", "content": "2 \\sqrt { 2 }"}, {"type": "text", "content": "D. 4"}]}, {"spans": [{"type": "text", "content": "7. 若△ ABQ的每条边长增加各自的 10%得"}, {"type": "inline_equation", "content": "\\triangle \\sf { A } ^ { \\prime } \\sf { B } ^ { \\prime } \\ c ^ { \\prime }"}, {"type": "text", "content": "，则"}, {"type": "inline_equation", "content": "\\angle \\mathsf { B } ^ { \\prime }"}, {"type": "text", "content": "的度数与其对应"}]}, {"spans": [{"type": "text", "content": "角∠B的度数相比("}]}, {"spans": [{"type": "text", "content": "A. 增加了 10% B. 减少了 10%"}]}, {"spans": [{"type": "text", "content": "C. 增加了"}, {"type": "inline_equation", "content": "( 1 + 1 0 \\% )"}, {"type": "text", "content": "D. 没有改变"}]}, {"spans": [{"type": "text", "content": "8. 如果点 A( x1，y1)和点 B("}, {"type": "inline_equation", "content": "\\mathsf { X } _ { 2 9 } \\mathrm { ~ \\ } \\mathsf { y } _ { 2 } )"}, {"type": "text", "content": "是直线"}, {"type": "inline_equation", "content": "\\mathsf { y } = \\mathsf { k } \\mathsf { x } - \\mathsf { b }"}, {"type": "text", "content": "上的两点，且当"}, {"type": "inline_equation", "content": "\\mathsf { X } _ { 1 } < \\mathsf { X } _ { 2 }"}, {"type": "text", "content": "时，"}]}, {"spans": [{"type": "inline_equation", "content": "\\mathsf { y } _ { 1 } < \\mathsf { y } _ { 2 }"}, {"type": "text", "content": "，那么函数"}, {"type": "inline_equation", "content": "\\ y = \\frac { k } { x }"}, {"type": "text", "content": "的图象位于("}, {"type": "text", "content": "）"}]}, {"spans": [{"type": "text", "content": "A. 一、四象限 B. 二、四象限"}]}, {"spans": [{"type": "text", "content": "C. 三、四象限 D. 一、三象限"}]}, {"spans": [{"type": "text", "content": "9. 如图，在"}, {"type": "inline_equation", "content": "\\mathsf { R t \\triangle A B C P }"}, {"type": "inline_equation", "content": "\\angle A C B = 9 0 ^ { \\circ }"}, {"type": "inline_equation", "content": "\\angle A = 5 6 ^ { \\circ }"}, {"type": "text", "content": ". 以 BC为直径的 O交 AB于"}]}, {"spans": [{"type": "text", "content": "点D.E是⊙O上一点，且"}, {"type": "inline_equation", "content": "C E = C D"}, {"type": "text", "content": "连接 OE过点 E作 EF⊥OE 交 AC的延长线于"}]}, {"spans": [{"type": "text", "content": "点F，则∠F的度数为(）"}]}, {"spans": [{"type": "text", "content": "A. 92° B. 108° C. 112°"}, {"type": "text", "content": "D."}, {"type": "inline_equation", "content": "1 2 4 ^ { \\circ }"}]}, {"spans": [{"type": "text", "content": "10. 如图，抛物线"}, {"type": "inline_equation", "content": "y _ { 1 } = \\frac { 1 } { 2 } ( x + 1 ) ^ { 2 } + 1"}, {"type": "text", "content": "与"}, {"type": "inline_equation", "content": "y _ { 2 } = a ( x - 4 ) ^ { 2 } - 3"}, {"type": "text", "content": "交于点 A(1，3)，过点A"}]}, {"spans": [{"type": "text", "content": "作×轴的平行线，分别交两条抛物线于B、C两点，且D、E分别为顶点．则下列"}]}, {"spans": [{"type": "text", "content": "结论：①"}, {"type": "inline_equation", "content": "\\mathsf { a } = \\frac { 2 } { 3 } ;"}, {"type": "text", "content": "②"}, {"type": "inline_equation", "content": "\\mathsf { A C } \\equiv \\mathsf { A E }"}, {"type": "text", "content": "③△ ABD是等腰直角三角形；④当 x >1 时，"}, {"type": "inline_equation", "content": "y _ { 1 } > y _ { 2 }"}]}, {"spans": [{"type": "text", "content": "其中正确结论的个数是("}, {"type": "text", "content": "）"}]}, {"spans": [{"type": "text", "content": "A. 1 个 B. 2 个 C. 3 个 D. 4 个"}]}]}]}]}}""")
+
+# 真实 MinerU content_list.json / middle.json 片段（湖北中考教材
+# 56503d0642c54d728a7672e9cb77dd57，第 1-6 页，同样是本机实际解析摘取）。
+# roadmap 子问题 A（续举例编号被误判为新题号）在 content_list.json / middle.json
+# 里已经是两个独立的段落块，不是本 PR 处理的"同一块内部丢换行"（子问题 B）。
+_REAL_SUBPROBLEM_A_PAYLOAD = json.loads(r"""{"content_list": [{"type": "text", "page_idx": 0, "text": "3、4. 随机抽取一张卡片，然后放回，再随机抽取一张卡片，则两次抽取的卡片上数字之积为偶数的概率是（）  \nA. $\\textstyle { \\frac { 1 } { 4 } }$ B. $\\textstyle { \\frac { 1 } { 2 } }$ C. $\\frac { 3 } { 4 }$ D. $\\frac { 5 } { 6 }$"}], "middle": {"pdf_info": [{"page_idx": 0, "para_blocks": [{"type": "text", "lines": [{"spans": [{"type": "text", "content": "3、4. 随机抽取一张卡片，然后放回，再随机抽取一张卡片，则两次抽取的卡片"}]}, {"spans": [{"type": "text", "content": "上数字之积为偶数的概率是（）"}]}, {"spans": [{"type": "text", "content": "A."}, {"type": "inline_equation", "content": "\\textstyle { \\frac { 1 } { 4 } }"}, {"type": "text", "content": "B."}, {"type": "inline_equation", "content": "\\textstyle { \\frac { 1 } { 2 } }"}, {"type": "text", "content": "C."}, {"type": "inline_equation", "content": "\\frac { 3 } { 4 }"}, {"type": "text", "content": "D."}, {"type": "inline_equation", "content": "\\frac { 5 } { 6 }"}]}]}]}]}}""")
+
+
+def _write_structured_files(directory: Path, payload) -> None:
+    (directory / "source.content_list.json").write_text(
+        json.dumps(payload["content_list"], ensure_ascii=False), encoding="utf-8"
+    )
+    (directory / "source.middle.json").write_text(
+        json.dumps(payload["middle"], ensure_ascii=False), encoding="utf-8"
+    )
+
+
+class LineBreakReconstructionTests(unittest.TestCase):
+    """PR C：用 middle.json 的行级坐标重建被扁平化吃掉的换行。"""
+
+    def test_reconstructs_missing_line_break_and_recovers_questions_9_and_10(self) -> None:
+        """真实坏样本：题号 9、10 紧跟上一题末尾，没有任何换行，导致它们完全没有
+        被切分成独立题块（连题号本身都消失了，不只是图片归属出错）。用 middle.json
+        重建换行后，QUESTION_START_PATTERN 应该能直接、正确地识别出 9、10——不需要
+        改动这个正则本身。
+        """
+        source = _REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD["content_list"][0]["text"]
+        without_structured = split_question_sources(source)
+        numbers_without = [number for number, _block, _images in without_structured]
+        # 修复前：9、10 被吞进第 8 题的区块，完全不作为独立题号出现。
+        self.assertNotIn("9", numbers_without)
+        self.assertNotIn("10", numbers_without)
+        self.assertIn("8", numbers_without)
+
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            _write_structured_files(asset_dir, _REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD)
+            with_structured = split_question_sources(source, asset_dir=asset_dir)
+        numbers_with = [number for number, _block, _images in with_structured]
+        self.assertIn("9", numbers_with)
+        self.assertIn("10", numbers_with)
+        blocks_by_number = {number: block for number, block, _images in with_structured}
+        self.assertTrue(blocks_by_number["9"].startswith("9."))
+        self.assertTrue(blocks_by_number["10"].startswith("10."))
+        # 第 8 题本身的文字内容不应该被牵连改写——只插入了换行，其余字符必须原样保留。
+        self.assertIn("如果点 A( x1，y1)", blocks_by_number["8"])
+
+    def test_does_not_touch_documents_without_structured_middle_json(self) -> None:
+        """没有 middle.json 时完全回退到现有的扁平文本路径，行为不变。"""
+        source = _REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD["content_list"][0]["text"]
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            # 只写 content_list.json，不写 middle.json：图注归属（PR B）仍然可用，
+            # 但换行重建（PR C）必须完全不生效。
+            (asset_dir / "source.content_list.json").write_text(
+                json.dumps(_REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD["content_list"], ensure_ascii=False),
+                encoding="utf-8",
+            )
+            with_only_content_list = split_question_sources(source, asset_dir=asset_dir)
+        without_asset_dir = split_question_sources(source)
+        self.assertEqual(with_only_content_list, without_asset_dir)
+        numbers = [number for number, _block, _images in with_only_content_list]
+        self.assertNotIn("9", numbers)
+        self.assertNotIn("10", numbers)
+
+    def test_subproblem_a_continued_enumeration_is_unaffected(self) -> None:
+        """验证 roadmap 子问题 A（续举例编号被误判为新题）不受本次改动影响。
+
+        "3、4." 在 content_list.json / middle.json 里已经是独立的段落块，扁平文本里
+        它和上一段之间本来就有空行分隔——这是段落级边界，不是本 PR 处理的"同一段落
+        内部丢换行"。重建前后，QUESTION_START_PATTERN 对它的误判结果必须完全一样：
+        既不能被本次改动修复（超出范围），也不能被改坏（这是硬性回归要求）。
+        """
+        source = (
+            "8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、"
+            "\n\n"
+            + _REAL_SUBPROBLEM_A_PAYLOAD["content_list"][0]["text"]
+            + "\nA. 1/4 B. 1/2 C. 3/4 D. 5/6\n\n9. （3分）下一道真正的第9题。"
+        )
+        without_structured = split_question_sources(source)
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            _write_structured_files(asset_dir, _REAL_SUBPROBLEM_A_PAYLOAD)
+            with_structured = split_question_sources(source, asset_dir=asset_dir)
+        # 两种情况下结果完全一致：子问题 A 造出的"3"号伪题块依然存在，也没有被
+        # 额外合并或拆分——本次改动对它没有任何影响，如实记录而不是顺手修复。
+        self.assertEqual(without_structured, with_structured)
+        numbers = [number for number, _block, _images in without_structured]
+        self.assertIn("3", numbers)
+        self.assertIn("8", numbers)
+        self.assertIn("9", numbers)
+
 
 if __name__ == "__main__":
     unittest.main()
