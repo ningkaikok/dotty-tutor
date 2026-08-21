@@ -47,11 +47,28 @@ export interface OptionsContentBlock {
   sourceOrder: number;
 }
 
+export interface TableCell {
+  contentBlocks: Array<TextContentBlock | MathContentBlock>;
+}
+
+export interface TableRow {
+  cells: TableCell[];
+}
+
+/** 题干中的统计表；由后端解析原始 `<table>` HTML 生成，保留原始位置。 */
+export interface TableContentBlock {
+  id: string;
+  type: "table";
+  rows: TableRow[];
+  sourceOrder: number;
+}
+
 export type QuestionContentBlock =
   | TextContentBlock
   | MathContentBlock
   | ImageContentBlock
-  | OptionsContentBlock;
+  | OptionsContentBlock
+  | TableContentBlock;
 
 export interface QualityReport {
   status: "ready" | "needs_review";

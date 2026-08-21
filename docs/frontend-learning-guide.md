@@ -179,6 +179,11 @@ short-answer           → 页面提供自由文本区
 `displayedPrompt`、`optionText` 等展示格式化函数规范化。公式语法由后端模型输出规范化和质量门禁保证，
 `MathText` 只负责渲染标准 `$...$`/`$$...$$` 边界，不从旧字段猜测题目结构。
 
+前端不做 Markdown 或 HTML 解析，项目也没有引入相关依赖。统计表由后端解析成 `table` 内容块后
+交给 `QuestionContent.tsx` 渲染成真实 `<table>` 元素；图片由 `image` 块和 `optionImageUrls` 提供。
+如果页面上看到 `<table>` 或 `![](images/...)` 这类源码字符，说明后端结构化环节有遗漏，
+应当在后端质量门禁修复，而不是在前端补一层解析——前端补解析会让两侧规则再次分叉。
+
 工作台的生成模型、统一审核模型和 OCR 是三个独立选择器。`useTextbookImport()` 负责加载与切换 Runtime，
 `RuntimeSettings.tsx` 只展示目录。试卷已经送审或发布后，`usePaperPublication()` 可以调用版本接口整套
 重生成；成功后页面切到新题库和 `in_review` 版本，旧版本不会从学生历史中消失。

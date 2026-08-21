@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,11 @@ CHOICE_MARKER_PATTERN = re.compile(
 # images, so ordinary prose containing the letter A is not treated as an option.
 STANDALONE_CHOICE_MARKER_PATTERN = re.compile(r"(?im)^\s*(?:\(([A-D])\)|([A-D]))\s*$")
 ANSWER_LEAK_PATTERN = re.compile(r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解析)\s*(?:】\s*)?")
+# MinerU 把统计表输出成原始 HTML，属性经常不带引号（``<td rowspan=1 colspan=1>``），
+# 这里只用正则定位 <table>...</table> 片段的边界，内部结构交给 html.parser 解析，
+# 不用正则猜测标签和属性。
+TABLE_BLOCK_PATTERN = re.compile(r"(<table\b[^>]*>.*?</table>)", re.IGNORECASE | re.DOTALL)
+TABLE_TAG_PATTERN = re.compile(r"</?table\b|</?t[dr]\b", re.IGNORECASE)
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -312,22 +318,108 @@ def rich_text_blocks(text: str, id_prefix: str) -> list[dict[str, Any]]:
     return blocks
 
 
+class _TableHTMLParser(HTMLParser):
+    """收集 ``<table>`` 的行、列文本，不还原 rowspan/colspan 合并后的视觉网格。
+
+    MinerU 表格通常只是简单的 tr/td 网格；发布内容只需要按来源行列展示数据，
+    不需要重建合并单元格的渲染语义，所以这里保持解析逻辑简单。
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.rows: list[list[str]] = []
+        self._current_row: list[str] | None = None
+        self._current_cell: list[str] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._current_row = []
+        elif tag in ("td", "th"):
+            self._current_cell = []
+        elif tag == "br" and self._current_cell is not None:
+            self._current_cell.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "tr" and self._current_row is not None:
+            self.rows.append(self._current_row)
+            self._current_row = None
+        elif tag in ("td", "th") and self._current_cell is not None:
+            if self._current_row is not None:
+                self._current_row.append("".join(self._current_cell).strip())
+            self._current_cell = None
+
+    def handle_data(self, data: str) -> None:
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+
+def _parse_table_block(html_fragment: str, block_id: str) -> dict[str, Any] | None:
+    """Parse one ``<table>...</table>`` fragment into a structured table block."""
+    parser = _TableHTMLParser()
+    try:
+        parser.feed(html_fragment)
+        parser.close()
+    except Exception:
+        return None
+    if not parser.rows:
+        return None
+    rows = [
+        {
+            "cells": [
+                {"contentBlocks": rich_text_blocks(cell_text, f"{block_id}-r{row_index + 1}-c{cell_index + 1}")}
+                for cell_index, cell_text in enumerate(row)
+            ]
+        }
+        for row_index, row in enumerate(parser.rows)
+    ]
+    return {"id": block_id, "type": "table", "rows": rows}
+
+
+def _prompt_content_blocks(text: str, id_prefix: str) -> list[dict[str, Any]]:
+    """把 prompt 拆成有序的文字/公式/表格内容块，表格保留在原始位置而不是贴到末尾。"""
+    blocks: list[dict[str, Any]] = []
+    text_count = 0
+    table_count = 0
+    for fragment in TABLE_BLOCK_PATTERN.split(text):
+        if not fragment:
+            continue
+        if TABLE_BLOCK_PATTERN.fullmatch(fragment):
+            table_count += 1
+            table_block = _parse_table_block(fragment, f"{id_prefix}-table-{table_count}")
+            if table_block is not None:
+                blocks.append(table_block)
+                continue
+            # 解析失败（异常畸形标签）：退回文字块，让下面的残留检查能捕捉到它，
+            # 而不是静默丢弃这段内容。
+        for block in rich_text_blocks(fragment, id_prefix):
+            text_count += 1
+            block["id"] = f"{id_prefix}-{text_count}"
+            blocks.append(block)
+    return blocks
+
+
 def replace_question_prompt(question: dict[str, Any], prompt: str) -> None:
-    """Replace editable prompt blocks without disturbing current image/options blocks."""
+    """Replace editable prompt blocks without disturbing current image/options blocks.
+
+    表格块和文字、公式一样由 prompt 文本派生，因此必须随新 prompt 一起重建；
+    图片和选项来自 imageUrls/options 字段，与 prompt 无关，保留为 trailing 块。
+    这里必须和 build_question_content_blocks() 使用同一个解析入口：两条路径各用
+    一套解析规则，正是表格和图片残留反复复发的原因。
+    """
     trailing_blocks = [
         block
         for block in question["contentBlocks"]
-        if block.get("type") not in {"text", "math"}
+        if block.get("type") not in {"text", "math", "table"}
     ]
     question["prompt"] = prompt
-    question["contentBlocks"] = [*rich_text_blocks(prompt, "stem"), *trailing_blocks]
+    question["contentBlocks"] = [*_prompt_content_blocks(prompt, "stem"), *trailing_blocks]
     for source_order, block in enumerate(question["contentBlocks"]):
         block["sourceOrder"] = source_order
 
 
 def build_question_content_blocks(payload: dict[str, Any], source_block: str, source_images: list[str]) -> list[dict[str, Any]]:
     question = payload["question"]
-    blocks = rich_text_blocks(str(question.get("prompt", "")), "stem")
+    blocks = _prompt_content_blocks(str(question.get("prompt", "")), "stem")
     image_urls = [str(url) for url in question.get("imageUrls", [])]
     option_image_urls = [str(url) for url in question.get("optionImageUrls", [])]
     options = [str(option) for option in question.get("options", [])]
@@ -415,6 +507,26 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     block_option_images = [Path(str(item.get("imageUrl", ""))).name for block in content_blocks if block.get("type") == "options" for item in block.get("items", []) if item.get("imageUrl")]
     if block_images + block_option_images != actual_images:
         errors.append("contentBlocks 中的图片顺序与题目图片不一致")
+    # 安全网：表格必须已被解析成结构化 table 块。`prompt` 字段本身仍保留原始 OCR
+    # 文本（供模型上下文和来源审计使用），不会被渲染给学生，所以这里只检查真正
+    # 渲染给学生的 contentBlocks text 片段；任何原始 <table>/<tr>/<td> 标签残留在
+    # 里面，说明表格解析逻辑存在遗漏，此时应显式进入人工复核，而不是把 HTML 标签
+    # 当文字展示给学生。
+    table_residue_fragments: list[str] = []
+    for block in content_blocks:
+        if block.get("type") == "text":
+            table_residue_fragments.append(str(block.get("text", "")))
+        elif block.get("type") == "options":
+            for item in block.get("items", []):
+                for inner in item.get("contentBlocks", []):
+                    if inner.get("type") == "text":
+                        table_residue_fragments.append(str(inner.get("text", "")))
+    for fragment in table_residue_fragments:
+        residue = TABLE_TAG_PATTERN.search(fragment)
+        if residue:
+            start = max(0, residue.start() - 10)
+            evidence = fragment[start:residue.start() + 40].replace("\n", " ")
+            errors.append(f"题干残留未结构化的表格标记：{evidence}")
     math_blocks = [str(block.get("latex", "")) for block in content_blocks if block.get("type") == "math"] + [str(inner.get("latex", "")) for block in content_blocks if block.get("type") == "options" for item in block.get("items", []) for inner in item.get("contentBlocks", []) if inner.get("type") == "math"]
     for index, latex in enumerate(math_blocks, start=1):
         evidence = latex[:80].replace("\n", " ")
@@ -442,7 +554,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v4", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v5", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:

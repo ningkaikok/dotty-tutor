@@ -413,6 +413,13 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 图片绑定在审核后再次依据 OCR 原始引用顺序重建。对于“题干图 + A-D 四张选项图”，四张选项图会写入
   `optionImageUrls` 和 options 内容块，模型误写的 `images/...` 文件名不会泄漏到学生页面；当前数据必须以
   `contentBlocks`、`imageUrls` 和 `optionImageUrls` 为图片事实来源。
+- 题干里的图片引用清理对**每一道题**生效，而不只是 A-D 图片选择题。清理发生在
+  `apply_question_quality_gate()` 内、构建 `contentBlocks` 之前；`build_question_content_blocks()`
+  和 `replace_question_prompt()`（错题确认改写题干）必须使用同一个解析入口 `_prompt_content_blocks()`。
+  两条路径各自实现一套解析规则，正是图片路径和表格标签反复以文字形式泄漏到学生页面的原因。
+- MinerU 会把统计表输出成原始 `<table>` HTML。这类内容由后端用标准库 `html.parser` 解析成结构化
+  `table` 内容块，并保留在题干中的原始位置；前端只渲染结构化块，不做 HTML 解析。
+  `prompt` 字段仍保留原始 OCR 文本作为来源审计事实，只有 `contentBlocks` 会渲染给学生。
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。

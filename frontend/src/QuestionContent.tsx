@@ -57,6 +57,26 @@ export function QuestionContent({
       );
       return;
     }
+    if (block.type === "table") {
+      nodes.push(
+        <div className="question-table-wrapper" key={block.id}>
+          <table className="question-table">
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {row.cells.map((cell, cellIndex) => (
+                    <td key={cellIndex}>
+                      <InlineContent blocks={cell.contentBlocks} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      );
+      return;
+    }
     if (!showOptions) return;
     const hasImageOptions = block.items.some((item) => item.imageUrl);
     const compactOptions = !hasImageOptions && block.items.every((item) => (

@@ -147,7 +147,7 @@ class QuestionSegmentationTests(unittest.TestCase):
         )
         self.assertEqual(quality["status"], "needs_review")
         self.assertTrue(any("考试说明" in error for error in quality["errors"]))
-        self.assertEqual(quality["validatorVersion"], "p0-v4")
+        self.assertEqual(quality["validatorVersion"], "p0-v5")
 
     def test_real_exam_notice_never_enters_prompt_artifact(self) -> None:
         """回放真实 OCR 形态，防止修复只停留在切分函数而再次污染模型提示词。"""
