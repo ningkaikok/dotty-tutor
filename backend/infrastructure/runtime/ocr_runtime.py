@@ -154,6 +154,29 @@ class OcrRuntime:
             raise RuntimeError(f"PDFium 读取页数失败：{detail[-500:]}")
         return int(completed.stdout.strip())
 
+    @staticmethod
+    def _persist_structured_output(output_dir: str, asset_dir: Path) -> None:
+        """把 MinerU 同时产出、目前完全被丢弃的结构化 JSON 落盘保存。
+
+        ``*_content_list.json``（块级结构：type/bbox/page_idx/caption）和
+        ``*_middle.json``（行级结构：逐行 bbox、spans）不是每个 MinerU 版本/参数
+        组合都一定产出；找不到就跳过，不能因为这两个可选文件而让整个 OCR 失败。
+        下游暂时不读取这两个文件，这一步只是把数据留下来，供后续图注归属和换行
+        重建复用，本身不改变任何可观察行为。
+        """
+        for pattern, target_name in (
+            ("*_content_list.json", "source.content_list.json"),
+            ("*_middle.json", "source.middle.json"),
+        ):
+            candidates = sorted(
+                Path(output_dir).rglob(pattern),
+                key=lambda path: path.stat().st_size,
+                reverse=True,
+            )
+            if not candidates:
+                continue
+            shutil.copy2(candidates[0], asset_dir / target_name)
+
     def parse(
         self,
         source_path: Path,
@@ -218,6 +241,7 @@ class OcrRuntime:
                     copied.add(source_image.name)
                     image_urls.append(f"{asset_url_prefix}/{source_image.name}")
                 (asset_dir / "source.md").write_text(markdown, encoding="utf-8")
+                self._persist_structured_output(output_dir, asset_dir)
             run = {
                 "requestedProvider": self.selection.provider,
                 "provider": "mineru",
