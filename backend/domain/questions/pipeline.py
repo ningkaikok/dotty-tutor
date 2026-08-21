@@ -184,7 +184,13 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
         for index in range(len(image_urls))
     ]
     prompt = strip_image_references(str(question.get("prompt", "")))
-    prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、])\s*$", "", prompt)
+    # 只删"整行只有标记本身"的行删不掉模型偶尔写出的"A（数轴图）"这类占位文字行——
+    # 标记后面跟了实际内容时，`$` 锚定行尾会让正则失配，占位文字和下面真正的图片
+    # 选择题结构重复展示给学生。这里只在已确认来源是 4/5 张图、且 OCR 原文里能找到
+    # A-D 标记的前提下才会执行（见本函数开头的 `labels[:4] != ["A", "B", "C", "D"]`
+    # 判断），因此任何整行以 A-D 标记开头的内容都是选项占位文字，不是题目正文，
+    # 整行删除是安全的。
+    prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、]?)\s*.*$", "", prompt)
     question["prompt"] = re.sub(r"\n{3,}", "\n\n", prompt).strip()
 
 
