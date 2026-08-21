@@ -25,6 +25,11 @@ QUESTION_SECTION_PATTERN = re.compile(
     r"单\s*项\s*选\s*择\s*题|多\s*项\s*选\s*择\s*题|非\s*选\s*择\s*题)"
 )
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+# 只匹配"图片引用后紧跟第N题图/第N题"这种明确格式，中间只允许空白，不允许跨越其他
+# 内容——这是比文本位置更可靠的归属信号，但格式必须足够窄才不会误伤正常题干。
+IMAGE_CAPTION_PATTERN = re.compile(
+    r"!\[[^\]]*\]\((?P<path>[^)]+)\)\s*第\s*(?P<number>\d{1,3})\s*题(?:图)?"
+)
 MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
@@ -190,7 +195,48 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
             blocks[-1] = (previous_number, f"{previous_block}\n{block}", merged_images)
         else:
             blocks.append((number, block, images))
-    return blocks
+    return _apply_caption_image_attribution(blocks, question_area)
+
+
+def _apply_caption_image_attribution(
+    blocks: list[tuple[str, str, list[str]]],
+    question_area: str,
+) -> list[tuple[str, str, list[str]]]:
+    """让图片后紧跟的"第N题图/第N题"标注优先于纯文本位置归属。
+
+    普通归属逻辑按图片在 OCR 文本里的位置分配给"当前正在切分的题块"，题号识别失败
+    （题号粘连在上一题末尾、没有换行）时会把明显不相关的图片一起分给错误的题目——
+    例如一道题顶着四张分别标注"第5题图""第6题图""第9题图""第10题图"的图片。
+    显式图注是比文本位置更可靠的信号，这里只处理"图片引用后紧跟第N题图/第N题"这种
+    高置信度、格式收紧的命中；没有命中这个格式的图片，行为完全不变。
+
+    目标题号在 blocks 里不存在时（比如本身因为同样的题号识别失败而完全没被识别成
+    独立块），不尝试推断它到底该属于哪个现有题——那是题号识别失败的根因，本函数
+    不修；这里只做"移除"，让错误的题目不再顶着一张明确写着不属于自己的图，即使
+    暂时没有更好的归位方案。
+    """
+    captions: dict[str, str] = {}
+    for match in IMAGE_CAPTION_PATTERN.finditer(question_area):
+        captions[match.group("path")] = match.group("number")
+    if not captions:
+        return blocks
+    block_index_by_number: dict[str, int] = {}
+    for index, (number, _block, _images) in enumerate(blocks):
+        block_index_by_number.setdefault(number, index)
+    mutable_images = [list(images) for _number, _block, images in blocks]
+    for path, declared_number in captions.items():
+        for images in mutable_images:
+            if path in images:
+                images.remove(path)
+        target_index = block_index_by_number.get(declared_number)
+        if target_index is None:
+            continue
+        if path not in mutable_images[target_index]:
+            mutable_images[target_index].append(path)
+    return [
+        (number, block, mutable_images[index])
+        for index, (number, block, _images) in enumerate(blocks)
+    ]
 
 
 def limited_question_sources(
