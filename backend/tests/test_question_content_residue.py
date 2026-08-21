@@ -173,6 +173,43 @@ class QuestionContentResidueTests(unittest.TestCase):
             quality["errors"],
         )
 
+    def test_image_choice_questions_are_not_flagged_as_duplicate(self) -> None:
+        """真实坏样本：图片选择题的裸标签选项不能被误判成"题干重复包含结构化选项"。
+
+        图片选择题清理干净后，题干里一行选项文字都没有（`prompt_option_lines` 是空
+        字典），而结构化选项 `"(A)"` 剥掉标记后正文也是空字符串。两边都拿到默认值 ""
+        时会凑巧相等，导致这条检查对**所有**图片选择题恒为真——这个 bug 在选项文字还
+        残留在题干里时（修复 #128 之前）被意外掩盖了，残留文字一清理干净就暴露出来。
+        """
+        prompt = "不等式 4-2x>0 的解集在数轴上表示为（ ）"
+        payload = {
+            "question": {
+                "questionNumber": "2",
+                "prompt": prompt,
+                "options": ["(A)", "(B)", "(C)", "(D)"],
+                "optionImageUrls": ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg"],
+                "imageUrls": ["/a.jpg", "/b.jpg", "/c.jpg", "/d.jpg"],
+                "contentBlocks": [
+                    {"id": "stem-1", "type": "text", "text": prompt},
+                    {
+                        "id": "options",
+                        "type": "options",
+                        "items": [
+                            {"label": "(A)", "imageUrl": "/a.jpg"},
+                            {"label": "(B)", "imageUrl": "/b.jpg"},
+                            {"label": "(C)", "imageUrl": "/c.jpg"},
+                            {"label": "(D)", "imageUrl": "/d.jpg"},
+                        ],
+                    },
+                ],
+            },
+        }
+        quality = validate_question_payload(payload, "2. " + prompt, ["a.jpg", "b.jpg", "c.jpg", "d.jpg"])
+        self.assertFalse(
+            any("题干中重复包含结构化选项" in error for error in quality["errors"]),
+            quality["errors"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

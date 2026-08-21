@@ -45,6 +45,9 @@ SUB_QUESTION_PATTERN = re.compile(r"[（(]\s*([1-9])\s*[）)]")
 PROMPT_OPTION_LINE_PATTERN = re.compile(
     r"(?m)^\s*(?:\(([A-H])\)|([A-H]))[.．:：、]\s*(\S.*?)\s*$"
 )
+# 图片选择题的结构化选项本身是裸标签，正文剥掉标记后是空字符串；缺失的标签必须比对成
+# 这个哨兵值，不能落到 dict.get 的默认值上，否则会撞上同样是空字符串的选项正文。
+_MISSING_PROMPT_OPTION = object()
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -640,8 +643,12 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             (match.group(1) or match.group(2)): match.group(3).strip()
             for match in PROMPT_OPTION_LINE_PATTERN.finditer(prompt)
         }
-        duplicated = all(
-            prompt_option_lines.get(chr(65 + index), "") == _option_body(option, index)
+        # 题干里一行选项都没有时，`prompt_option_lines` 是空字典；图片选择题的结构化
+        # 选项本身就是裸标签（`_option_body("(A)", 0)` == ""），`.get(label, "")` 两边
+        # 都会得到空字符串，永远判定“重复”。缺失的标签必须比对成“肯定不相等”，而不是
+        # 让默认值凑巧撞上空字符串。
+        duplicated = bool(prompt_option_lines) and all(
+            prompt_option_lines.get(chr(65 + index), _MISSING_PROMPT_OPTION) == _option_body(option, index)
             for index, option in enumerate(options)
         )
         if duplicated:
