@@ -400,6 +400,37 @@ class QuestionExtractionTests(unittest.TestCase):
         self.assertIn("1.测试题。", content)
         self.assertIn("imageReferences", content)
 
+    def test_strips_residual_option_placeholder_text_from_image_choice_prompt(self) -> None:
+        # 证据 D（教材 4ce09635dafb42ada0343477f6424441 第 2 题）：来源确认是标准的
+        # 4 张选项图，但模型把每个选项写成了 "A（数轴图）" 这种带内容的占位行，而不是
+        # 裸标记 "A"。旧正则的 `$` 锚定只删"整行只有标记本身"的行，删不掉这种，占位
+        # 文字和下面真正的图片选择题结构重复展示给学生。
+        urls = [f"/assets/{letter}.jpg" for letter in "abcd"]
+        payload = {
+            "question": {
+                "prompt": (
+                    "不等式 4-2x>0 的解集在数轴上表示为\n"
+                    "A（数轴图）\nB（数轴图）\nC（数轴图）\nD（数轴图）"
+                ),
+                "options": ["(A)", "(B)", "(C)", "(D)"],
+                "imageUrls": urls,
+            }
+        }
+        source = "\n".join(
+            f"![](images/{letter}.jpg)\n({letter.upper()})" for letter in "abcd"
+        )
+        normalize_image_choice_question(
+            payload,
+            source,
+            [f"images/{letter}.jpg" for letter in "abcd"],
+        )
+        prompt = payload["question"]["prompt"]
+        self.assertNotIn("数轴图", prompt)
+        self.assertNotRegex(prompt, r"(?im)^\s*[A-D]\s*$")
+        # 这次改动只清理占位文字，不应影响已经正确绑定的图片选择题结构。
+        self.assertEqual(payload["question"]["optionImageUrls"], urls)
+        self.assertEqual(payload["question"]["options"], ["(A)", "(B)", "(C)", "(D)"])
+
     def test_binds_four_source_images_to_abcd_options(self) -> None:
         payload = {
             "question": {
