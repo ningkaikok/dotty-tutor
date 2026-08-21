@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from api.routers.textbook_routes import pdf_uploads, processing_service
 from application.services.textbook_processing import TextbookProcessingService
+from domain.questions.source import MAX_QUESTIONS_PER_BATCH
 
 
 class TextbookProcessingTests(unittest.TestCase):
@@ -335,6 +336,70 @@ class TextbookProcessingTests(unittest.TestCase):
                 self.assertIs(job["batchPayloads"]["batch-001-q-1"], first)
                 self.assertEqual(job["batchQuestionKeys"]["batch-001"], ["batch-001-q-1", source_key])
                 self.assertEqual(job["result"]["questionPayloads"], [first, new_payload])
+            finally:
+                pdf_uploads.pop(job["uploadId"], None)
+
+    def test_question_regeneration_reaches_questions_beyond_the_preview_limit(self) -> None:
+        """整卷批次里第 6 题之后的题目也必须能单独修复。
+
+        _load_batch_sources 默认只切前 MAX_QUESTIONS_PER_BATCH（5）题，而整卷生成
+        一个批次最多有 MAX_FULL_PAPER_QUESTIONS_PER_BATCH（20）题。沿用默认值会让
+        "修复本题" 对第 6 题之后的题目一律返回 "OCR 结果中已找不到这道题"。
+        """
+        with TemporaryDirectory() as directory:
+            source_key = "batch-001-q-7"
+            old_target = {
+                "question": {
+                    "id": "old-7",
+                    "sourceBatchId": "batch-001",
+                    "sourceQuestionKey": source_key,
+                },
+                "modelRun": {"provider": "mock", "model": "test"},
+            }
+            job = {
+                "uploadId": "beyond-limit-upload",
+                "status": "complete",
+                "filename": "source.pdf",
+                "directory": Path(directory),
+                "batchPayloads": {source_key: old_target},
+                "batchGuideCards": {source_key: []},
+                "batchQuestionKeys": {"batch-001": [source_key]},
+                "result": {
+                    "sourceFingerprint": "0" * 64,
+                    "batches": [{"id": "batch-001", "startPage": 1, "endPage": 5, "status": "processed"}],
+                    "questionPayloads": [old_target],
+                    "questionPayload": old_target,
+                },
+            }
+            pdf_uploads[job["uploadId"]] = job
+            new_payload = {
+                "question": {
+                    "id": "new-7",
+                    "sourceBatchId": "batch-001",
+                    "sourceQuestionKey": source_key,
+                },
+                "modelRun": {"provider": "test", "model": "test"},
+            }
+            # 模拟真实的截断行为：只返回 question_limit 指定条数的题源。
+            all_sources = [(str(number), f"{number}、题目", []) for number in range(1, 20)]
+
+            def load_sources(*, question_limit=MAX_QUESTIONS_PER_BATCH, **_kwargs):
+                return ("源文本", {"provider": "mineru"}, Path(directory), all_sources[:question_limit])
+
+            try:
+                with (
+                    patch.object(processing_service, "_load_batch_sources", side_effect=load_sources),
+                    patch(
+                        "application.services.textbook_processing._generate_validated_question",
+                        return_value=(new_payload, [], new_payload["modelRun"], {"provider": "test"}),
+                    ),
+                    patch("application.services.textbook_processing.TextbookProcessingService._persist_lessons"),
+                    patch("api.routers.textbook_routes.store.save_job"),
+                    patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
+                    patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
+                ):
+                    response = processing_service.regenerate_question(job["uploadId"], source_key)
+                self.assertEqual(response["questionPayload"]["question"]["id"], "new-7")
             finally:
                 pdf_uploads.pop(job["uploadId"], None)
 
