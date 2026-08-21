@@ -22,7 +22,7 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Dotty Tutor", version="0.20.0")
+    app = FastAPI(title="Dotty Tutor", version="0.21.0")
 
     def current_request_id(request: Request) -> str:
         """Prefer the middleware context, with a safe fallback for direct handlers."""
