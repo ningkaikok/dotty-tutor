@@ -29,6 +29,12 @@ BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/u
 BRACKETED_IMAGE_ANNOTATION_PATTERN = re.compile(
     r"[\[【][^\[\]【】]*(?:images/|/api/uploads/)[^\[\]【】]*[\]】]"
 )
+# 三种图片引用形态的统一入口，用于同时删除引用并记录它在题干中的位置。
+IMAGE_REFERENCE_PATTERN = re.compile(
+    r"!\[[^\]]*\]\((?P<markdown_path>[^)]+)\)"
+    r"|[\[【][^\[\]【】]*(?:images/|/api/uploads/)[^\[\]【】]*[\]】]"
+    r"|(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)\]<>]+"
+)
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -74,6 +80,7 @@ def build_lesson_prompt(source: str, repair_errors: list[str] | None = None) -> 
 9. draw-line 题必须生成 interaction：type 为 draw-line，points 中给出需要显示的点及 0 到 1 的归一化坐标，requiredConnections 给出必须连接的点对；其他题型 interaction.type 为 none。
 10. 选择题的文字选项逐项放入 options。若 A/B/C/D 是四张图片，则 options 保留四个标签，并把四个图片文件名按 A、B、C、D 顺序放入 imageReferences。
 11. givens 只拆出题目明确给出的条件，不要用整段教材或图片 Markdown 代替。
+11.1 题干中图片出现的位置必须原样保留教材文字里的 `![](images/xxx.jpg)` 引用，不要删除、移动或改写成“[主视图图片：...]”这类文字描述。图注文字（如“主视图”“图1”）照常保留。系统据此把图片放回题干中的正确位置。
 12. 不依赖图片则 imageReferences 返回空数组。
 
 教材文字：
@@ -179,6 +186,36 @@ def _image_choice_labels(source_block: str, image_count: int) -> list[str]:
     if image_count not in {4, 5}:
         return labels
     return [match.group(1) or match.group(2) for match in STANDALONE_CHOICE_MARKER_PATTERN.finditer(source_block)]
+
+
+def extract_image_placements(text: str) -> tuple[str, list[tuple[int, str]]]:
+    """删除题干中的图片引用，同时记录每张图在清理后文本中的位置。
+
+    模型改写题干时会把图片写成 Markdown 或带说明的方括号注释，位置本身就是题意的
+    一部分（“主视图”“俯视图”“图1/图2”各自对应哪张图）。此前清理只删不记，位置信息
+    被丢弃，前端只能把所有题干图整批贴在文字之后，图注和图片对不上。
+    """
+    placements: list[tuple[int, str]] = []
+    pieces: list[str] = []
+    length = 0
+    cursor = 0
+    for match in IMAGE_REFERENCE_PATTERN.finditer(text):
+        segment = text[cursor:match.start()]
+        pieces.append(segment)
+        length += len(segment)
+        reference = match.group("markdown_path") or ""
+        if not reference:
+            bare = BARE_IMAGE_REFERENCE_PATTERN.search(match.group(0))
+            reference = bare.group(0) if bare else ""
+        if reference:
+            placements.append((length, reference))
+        cursor = match.end()
+    pieces.append(text[cursor:])
+    cleaned = re.sub(r"[ \t]{2,}", " ", "".join(pieces))
+    # 压缩空白会改变偏移，只有在没有压缩发生时才信任记录下来的位置。
+    if cleaned != "".join(pieces):
+        return cleaned, []
+    return cleaned, placements
 
 
 def strip_image_references(text: str) -> str:
@@ -388,26 +425,52 @@ def _parse_table_block(html_fragment: str, block_id: str) -> dict[str, Any] | No
     return {"id": block_id, "type": "table", "rows": rows}
 
 
-def _prompt_content_blocks(text: str, id_prefix: str) -> list[dict[str, Any]]:
-    """把 prompt 拆成有序的文字/公式/表格内容块，表格保留在原始位置而不是贴到末尾。"""
+def _text_and_table_blocks(text: str, id_prefix: str, counters: dict[str, int]) -> list[dict[str, Any]]:
+    """把一段文字拆成文字/公式/表格块，表格保留在原始位置而不是贴到末尾。"""
     blocks: list[dict[str, Any]] = []
-    text_count = 0
-    table_count = 0
     for fragment in TABLE_BLOCK_PATTERN.split(text):
         if not fragment:
             continue
         if TABLE_BLOCK_PATTERN.fullmatch(fragment):
-            table_count += 1
-            table_block = _parse_table_block(fragment, f"{id_prefix}-table-{table_count}")
+            counters["table"] += 1
+            table_block = _parse_table_block(fragment, f"{id_prefix}-table-{counters['table']}")
             if table_block is not None:
                 blocks.append(table_block)
                 continue
             # 解析失败（异常畸形标签）：退回文字块，让下面的残留检查能捕捉到它，
             # 而不是静默丢弃这段内容。
         for block in rich_text_blocks(fragment, id_prefix):
-            text_count += 1
-            block["id"] = f"{id_prefix}-{text_count}"
+            counters["text"] += 1
+            block["id"] = f"{id_prefix}-{counters['text']}"
             blocks.append(block)
+    return blocks
+
+
+def _prompt_content_blocks(
+    text: str,
+    id_prefix: str,
+    image_placements: list[tuple[int, str]] | None = None,
+    image_by_name: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
+    """把 prompt 拆成有序内容块；有位置记录时，题干图就地插入而不是整批贴到末尾。"""
+    counters = {"text": 0, "table": 0, "image": 0}
+    placements = sorted(image_placements or [])
+    if not placements:
+        return _text_and_table_blocks(text, id_prefix, counters)
+    blocks: list[dict[str, Any]] = []
+    cursor = 0
+    for offset, reference in placements:
+        blocks.extend(_text_and_table_blocks(text[cursor:offset], id_prefix, counters))
+        cursor = max(cursor, offset)
+        url = (image_by_name or {}).get(Path(reference).name)
+        if not url:
+            continue
+        counters["image"] += 1
+        blocks.append({
+            "id": f"{id_prefix}-image-{counters['image']}", "type": "image", "url": url,
+            "assetId": Path(url).stem, "sourceReference": reference, "role": "stem",
+        })
+    blocks.extend(_text_and_table_blocks(text[cursor:], id_prefix, counters))
     return blocks
 
 
@@ -430,13 +493,60 @@ def replace_question_prompt(question: dict[str, Any], prompt: str) -> None:
         block["sourceOrder"] = source_order
 
 
+def _option_body(option: str, index: int) -> str:
+    """去掉选项自带的 ``(A)``/``A.`` 前缀，只保留正文。"""
+    return re.sub(rf"^(?:\({chr(65 + index)}\)|{chr(65 + index)}[.．:：、])\s*", "", str(option)).strip()
+
+
+def _option_items(options: list[str], option_image_urls: list[str]) -> list[dict[str, Any]]:
+    """构建结构化选项项；两条内容块路径共用，避免选项渲染规则出现两份实现。"""
+    items: list[dict[str, Any]] = []
+    for index, option in enumerate(options):
+        item: dict[str, Any] = {
+            "label": f"({chr(65 + index)})",
+            "contentBlocks": rich_text_blocks(_option_body(option, index), f"option-{index + 1}"),
+        }
+        if index < len(option_image_urls):
+            item["imageUrl"] = option_image_urls[index]
+            item["assetId"] = Path(option_image_urls[index]).stem
+        items.append(item)
+    return items
+
+
 def build_question_content_blocks(payload: dict[str, Any], source_block: str, source_images: list[str]) -> list[dict[str, Any]]:
     question = payload["question"]
-    blocks = _prompt_content_blocks(str(question.get("prompt", "")), "stem")
     image_urls = [str(url) for url in question.get("imageUrls", [])]
     option_image_urls = [str(url) for url in question.get("optionImageUrls", [])]
     options = [str(option) for option in question.get("options", [])]
     by_name = {Path(url).name: url for url in image_urls}
+    # 题干图就地放置：只有当记录到的位置能覆盖全部题干图、且顺序与 OCR 来源一致时才启用。
+    # 任何不一致都回退到既有的“整批追加”行为——宁可版式不理想，也不要把图放到错误的
+    # 位置或让下面的图片顺序门禁误报。
+    stem_references = [
+        reference for reference in source_images
+        if by_name.get(Path(reference).name) and by_name[Path(reference).name] not in option_image_urls
+    ]
+    placements = [
+        (offset, reference)
+        for offset, reference in (question.get("stemImagePlacements") or [])
+        if by_name.get(Path(reference).name)
+    ]
+    inline_placement = (
+        bool(stem_references)
+        and [Path(reference).name for _offset, reference in placements] == [Path(reference).name for reference in stem_references]
+    )
+    blocks = _prompt_content_blocks(
+        str(question.get("prompt", "")), "stem",
+        placements if inline_placement else None,
+        by_name if inline_placement else None,
+    )
+    if inline_placement:
+        option_items = _option_items(options, option_image_urls)
+        if option_items:
+            blocks.append({"id": "options", "type": "options", "items": option_items})
+        for source_order, block in enumerate(blocks):
+            block["sourceOrder"] = source_order
+        return blocks
     image_blocks: list[tuple[int, dict[str, Any]]] = []
     for index, reference in enumerate(source_images):
         url = by_name.get(Path(reference).name)
@@ -446,15 +556,7 @@ def build_question_content_blocks(payload: dict[str, Any], source_block: str, so
             "id": f"stem-image-{index + 1}", "type": "image", "url": url,
             "assetId": Path(url).stem, "sourceReference": reference, "role": "stem",
         }))
-    option_items: list[dict[str, Any]] = []
-    for index, option in enumerate(options):
-        label = f"({chr(65 + index)})"
-        clean_option = re.sub(rf"^(?:\({chr(65 + index)}\)|{chr(65 + index)}[.:：、])\s*", "", option).strip()
-        item: dict[str, Any] = {"label": label, "contentBlocks": rich_text_blocks(clean_option, f"option-{index + 1}")}
-        if index < len(option_image_urls):
-            item["imageUrl"] = option_image_urls[index]
-            item["assetId"] = Path(option_image_urls[index]).stem
-        option_items.append(item)
+    option_items = _option_items(options, option_image_urls)
     options_block = {"id": "options", "type": "options", "items": option_items} if option_items else None
     source_choice_matches = list(CHOICE_MARKER_PATTERN.finditer(source_block))
     if not source_choice_matches and len(source_images) in {4, 5}:
@@ -594,7 +696,10 @@ def apply_question_quality_gate(payload: dict[str, Any], source_block: str, sour
     # 之前这条清理只发生在 A-D 图片选择题分支里，普通题目不受影响，脏文本会
     # 一路流进 contentBlocks 并原样展示给学生。这里提升到每道题都会经过的
     # 通用路径，且必须在 build_question_content_blocks() 之前执行。
-    question["prompt"] = strip_image_references(str(question.get("prompt", "")))
+    cleaned_prompt, stem_image_placements = extract_image_placements(str(question.get("prompt", "")))
+    question["prompt"] = cleaned_prompt
+    # 位置只用于本次内容块构建，不进入对外契约，避免下游把它当成稳定字段。
+    question["stemImagePlacements"] = stem_image_placements
     # 模型偶尔会把题目说明或下一题的选项也当成 E 项。对于 OCR 已明确是
     # A-D 的题，先做一个可逆的展示修复：只保留来源支持的四项，同时记录门禁错误，
     # 这样内容工作台不会继续展示一个可作答的假选项，发布边界也不会被误放行。
@@ -613,6 +718,7 @@ def apply_question_quality_gate(payload: dict[str, Any], source_block: str, sour
             "来源仅支持 A-D，已暂时隐藏结构化结果中的多余选项；请重新生成或人工确认。",
         ]
     question["contentBlocks"] = build_question_content_blocks(payload, source_block, source_images)
+    question.pop("stemImagePlacements", None)
     question["sourceEvidence"] = {"questionNumber": question.get("questionNumber", ""), "sourceHash": hashlib.sha256(source_block.encode("utf-8")).hexdigest(), "imageReferences": list(source_images)}
     quality = validate_question_payload(payload, source_block, source_images)
     if question.get("qualityRepairNotes"):

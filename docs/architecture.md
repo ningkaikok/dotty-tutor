@@ -417,6 +417,10 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
   `apply_question_quality_gate()` 内、构建 `contentBlocks` 之前；`build_question_content_blocks()`
   和 `replace_question_prompt()`（错题确认改写题干）必须使用同一个解析入口 `_prompt_content_blocks()`。
   两条路径各自实现一套解析规则，正是图片路径和表格标签反复以文字形式泄漏到学生页面的原因。
+- 题干图按其在题干中出现的位置就地渲染，而不是整批贴在文字之后。清理图片引用时会同时记录
+  每张图在清理后文本中的偏移（`extract_image_placements`），内容块据此在原位插入 `image` 块。
+  只有当记录到的位置覆盖全部题干图、且顺序与 OCR 来源一致时才启用；任何不一致都回退到整批追加，
+  宁可版式不理想也不要把图放到错误位置。生成提示词要求模型原样保留 `![](images/xxx.jpg)` 引用。
 - MinerU 会把统计表输出成原始 `<table>` HTML。这类内容由后端用标准库 `html.parser` 解析成结构化
   `table` 内容块，并保留在题干中的原始位置；前端只渲染结构化块，不做 HTML 解析。
   `prompt` 字段仍保留原始 OCR 文本作为来源审计事实，只有 `contentBlocks` 会渲染给学生。
