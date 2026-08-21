@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,13 @@ MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 IMAGE_CAPTION_PATTERN = re.compile(
     r"!\[[^\]]*\]\((?P<path>[^)]+)\)\s*第\s*(?P<number>\d{1,3})\s*题(?:图)?"
 )
+# 用于从 content_list.json 的 image_caption/chart_caption/table_caption 字段（纯文本，
+# 不含 Markdown 图片语法）里提取题号，格式和 IMAGE_CAPTION_PATTERN 里"第N题图/第N题"
+# 的题号部分一致，只是不需要再匹配前面的 ``![]()``。
+STRUCTURED_CAPTION_NUMBER_PATTERN = re.compile(r"第\s*(?P<number>\d{1,3})\s*题")
+# MinerU 结构化 JSON 文件名，落盘方式见 infrastructure/runtime/ocr_runtime.py 的
+# ``_persist_structured_output``；两个文件都是可选的，不存在时完全回退到纯正则逻辑。
+STRUCTURED_CONTENT_LIST_FILENAME = "source.content_list.json"
 MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
@@ -151,11 +159,64 @@ def safe_string_list(value: Any, fallback: list[str], limit: int = 8) -> list[st
     return items[:limit] or fallback
 
 
-def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
+def _load_structured_content_list(asset_dir: Path | None) -> list[Any] | None:
+    """读取 PR A 落盘的 ``source.content_list.json``。
+
+    文件不存在、不是这次 OCR 产出（比如 pypdf 回退、手动粘贴文本）或解析失败时返回
+    ``None``；调用方据此完全回退到现有的纯正则逻辑，不当作错误处理。
+    """
+    if asset_dir is None:
+        return None
+    path = Path(asset_dir) / STRUCTURED_CONTENT_LIST_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, list) else None
+
+
+def _structured_caption_attributions(asset_dir: Path | None) -> dict[str, str]:
+    """从 content_list.json 的 image/chart/table 块直接读取"第N题图/第N题"归属。
+
+    这是比在扁平文本里用正则找"图片后紧跟第N题图"更可靠的信号：MinerU 已经把这类
+    标注解析进 ``image_caption``/``chart_caption``/``table_caption`` 字段，不需要
+    再从可能已经丢失换行、粘连的扁平文本里重新猜。没有对应结构化数据时返回空字典，
+    调用方会完全回退到现有的正则逻辑。
+    """
+    content_list = _load_structured_content_list(asset_dir)
+    if not content_list:
+        return {}
+    attributions: dict[str, str] = {}
+    for item in content_list:
+        if not isinstance(item, dict) or item.get("type") not in ("image", "chart", "table"):
+            continue
+        img_path = item.get("img_path")
+        if not isinstance(img_path, str) or not img_path:
+            continue
+        captions = (
+            item.get("image_caption") or item.get("chart_caption") or item.get("table_caption") or []
+        )
+        if not isinstance(captions, list) or not captions or not isinstance(captions[0], str):
+            continue
+        match = STRUCTURED_CAPTION_NUMBER_PATTERN.search(captions[0])
+        if match:
+            attributions[img_path] = match.group("number")
+    return attributions
+
+
+def split_question_sources(
+    source: str,
+    asset_dir: Path | None = None,
+) -> list[tuple[str, str, list[str]]]:
     """Split OCR Markdown into bounded questions without answer-key leakage.
 
     OCR 页之间可能重复打印同一个题号；相邻的同号块按续题合并，既能保住跨页小问，也不把
     下一题吸进来。图片始终随其所在题块保留，顺序与 OCR Markdown 一致。
+
+    ``asset_dir`` 是这次 OCR 的资源目录（含 PR A 落盘的 ``source.content_list.json``），
+    可选；传入时会优先用其中的结构化图注字段做图片归属，没有时行为和之前完全一致。
     """
     question_area = _question_area(source)
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
@@ -195,12 +256,16 @@ def split_question_sources(source: str) -> list[tuple[str, str, list[str]]]:
             blocks[-1] = (previous_number, f"{previous_block}\n{block}", merged_images)
         else:
             blocks.append((number, block, images))
-    return _apply_caption_image_attribution(blocks, question_area)
+    return _apply_caption_image_attribution(
+        blocks, question_area, structured_captions=_structured_caption_attributions(asset_dir)
+    )
 
 
 def _apply_caption_image_attribution(
     blocks: list[tuple[str, str, list[str]]],
     question_area: str,
+    *,
+    structured_captions: dict[str, str] | None = None,
 ) -> list[tuple[str, str, list[str]]]:
     """让图片后紧跟的"第N题图/第N题"标注优先于纯文本位置归属。
 
@@ -210,21 +275,42 @@ def _apply_caption_image_attribution(
     显式图注是比文本位置更可靠的信号，这里只处理"图片引用后紧跟第N题图/第N题"这种
     高置信度、格式收紧的命中；没有命中这个格式的图片，行为完全不变。
 
+    ``structured_captions`` 来自 content_list.json 的 image/chart/table 块（见
+    ``_structured_caption_attributions``），键是 MinerU 记录的 ``img_path``。这份数据
+    不依赖扁平文本里题号是否粘连，比正则更可靠，命中时优先生效；和正则命中冲突时以
+    结构化数据为准，互不冲突时结果不变。两者的路径字符串格式可能不完全一致（比如
+    页面路由把图片重新拼接过），按文件名（``Path(...).name``）对齐，不假设完全相同。
+
     目标题号在 blocks 里不存在时（比如本身因为同样的题号识别失败而完全没被识别成
     独立块），不尝试推断它到底该属于哪个现有题——那是题号识别失败的根因，本函数
     不修；这里只做"移除"，让错误的题目不再顶着一张明确写着不属于自己的图，即使
     暂时没有更好的归位方案。
     """
-    captions: dict[str, str] = {}
+    captions_by_basename: dict[str, str] = {}
     for match in IMAGE_CAPTION_PATTERN.finditer(question_area):
-        captions[match.group("path")] = match.group("number")
-    if not captions:
+        captions_by_basename[Path(match.group("path")).name] = match.group("number")
+    if structured_captions:
+        for img_path, number in structured_captions.items():
+            # 结构化命中优先生效，可能覆盖同一图片的正则判断；两者不冲突时结果不变。
+            captions_by_basename[Path(img_path).name] = number
+    if not captions_by_basename:
         return blocks
     block_index_by_number: dict[str, int] = {}
     for index, (number, _block, _images) in enumerate(blocks):
         block_index_by_number.setdefault(number, index)
     mutable_images = [list(images) for _number, _block, images in blocks]
-    for path, declared_number in captions.items():
+    # 按文件名索引题块里实际出现过的图片路径，用来把 content_list.json 的 img_path
+    # 对齐到当前文本里真正使用的那个路径字符串；找不到对应文件名时说明这张图从未
+    # 出现在任何题块里（比如表格快照从未被内嵌成 Markdown 图片引用），没有安全的
+    # 落点，直接跳过，不凭空塞进一个题块从未引用过的图片。
+    basename_to_path: dict[str, str] = {}
+    for images in mutable_images:
+        for path in images:
+            basename_to_path.setdefault(Path(path).name, path)
+    for basename, declared_number in captions_by_basename.items():
+        path = basename_to_path.get(basename)
+        if path is None:
+            continue
         for images in mutable_images:
             if path in images:
                 images.remove(path)
@@ -242,6 +328,7 @@ def _apply_caption_image_attribution(
 def limited_question_sources(
     source: str,
     limit: int = MAX_QUESTIONS_PER_BATCH,
+    asset_dir: Path | None = None,
 ) -> list[tuple[str, str, list[str]]]:
     """Bound one batch's model cost while retaining a no-number fallback.
 
@@ -249,13 +336,16 @@ def limited_question_sources(
     避免错误 OCR 把页眉、说明等碎片无限送入模型。
     """
     safe_limit = max(1, min(int(limit), MAX_FULL_PAPER_QUESTIONS_PER_BATCH))
-    blocks = split_question_sources(source)[:safe_limit]
+    blocks = split_question_sources(source, asset_dir)[:safe_limit]
     return blocks or [("", source, MARKDOWN_IMAGE_PATTERN.findall(source))]
 
 
-def select_complete_question_source(source: str) -> tuple[str, str, list[str]]:
+def select_complete_question_source(
+    source: str,
+    asset_dir: Path | None = None,
+) -> tuple[str, str, list[str]]:
     """Select one intact question, preferring an illustrated example."""
-    blocks = split_question_sources(source)
+    blocks = split_question_sources(source, asset_dir)
     if not blocks:
         return "", source.strip(), MARKDOWN_IMAGE_PATTERN.findall(source)
     return next((block for block in blocks if block[2]), blocks[0])

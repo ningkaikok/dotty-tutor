@@ -198,8 +198,8 @@ class TextbookProcessingService:
             f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
             f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
         )
-        question_sources = limited_question_sources(lesson_source, question_limit)
-        if not split_question_sources(lesson_source):
+        question_sources = limited_question_sources(lesson_source, question_limit, asset_dir=asset_dir)
+        if not split_question_sources(lesson_source, asset_dir=asset_dir):
             question_sources = [
                 ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
             ]
@@ -394,8 +394,10 @@ class TextbookProcessingService:
             88,
             "首批内容已提取，正在按题号拆分并生成课程",
         )
-        question_sources = limited_question_sources(lesson_source, first_batch_question_limit)
         asset_dir = job["directory"] / "assets" / first_batch["id"]
+        question_sources = limited_question_sources(
+            lesson_source, first_batch_question_limit, asset_dir=asset_dir
+        )
         write_model_prompt_artifact(asset_dir, question_sources)
         ocr_run["sourceArtifactUrl"] = (
             f"/api/uploads/{upload_id}/artifacts/{first_batch['id']}/source.md"

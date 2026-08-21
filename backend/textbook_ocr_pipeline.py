@@ -348,7 +348,7 @@ def resolve_routed_ocr_source(
             provider=provider,
             expected_images=images,
         )
-        for number, block, images in split_question_sources(lesson_source)
+        for number, block, images in split_question_sources(lesson_source, asset_dir=asset_dir)
     ]
     return lesson_source, _with_ocr_config({
         "requestedProvider": requested,
