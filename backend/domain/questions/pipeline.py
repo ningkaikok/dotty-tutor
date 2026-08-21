@@ -29,6 +29,11 @@ BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/u
 BRACKETED_IMAGE_ANNOTATION_PATTERN = re.compile(
     r"[\[【][^\[\]【】]*(?:images/|/api/uploads/)[^\[\]【】]*[\]】]"
 )
+# 只有这些题型会进入 answer_evaluator 的确定性判题分支；其余题型的 answerSpec
+# 永远读不到，属于会误导后续改动的死数据。
+DETERMINISTIC_ANSWER_TYPES = frozenset({"choice", "multi-select", "true-false", "fill-blank", "numeric"})
+# 成行出现的小问编号，例如 ``（1）`` 或 ``(2)``。
+SUB_QUESTION_PATTERN = re.compile(r"[（(]\s*([1-9])\s*[）)]")
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -575,6 +580,21 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             errors.append(f"第 {index} 个公式环境不完整：begin={begins}，end={ends}，{evidence}")
     if not prompt.strip():
         errors.append("题干为空")
+    # 多小问题目当前没有结构化表示：questionType、correctAnswer 和 answerSpec 都是
+    # 单答案模型。实测的坏样本是一道 short-answer 证明题带着 `answerType: numeric`、
+    # `expected: "5/2"`——那其实只是第 (2) 问的答案。今天 short-answer 不走确定性
+    # 判题，这条错配数据读不到所以无害；一旦有人把题型改成 numeric，答对第 (1) 问
+    # 的学生就会被判错。在 subQuestions 结构落地前（见 docs/engineering-roadmap.md），
+    # 先把这种沉默的错配变成显式错误。
+    question_type = str(question.get("questionType", ""))
+    answer_spec = question.get("answerSpec")
+    if question_type not in DETERMINISTIC_ANSWER_TYPES and isinstance(answer_spec, dict) and answer_spec.get("expected"):
+        errors.append(
+            f"题型 {question_type} 不参与确定性判题，却携带 answerSpec："
+            f"{str(answer_spec.get('expected'))[:40]}"
+        )
+    if SUB_QUESTION_PATTERN.search(prompt) and len(SUB_QUESTION_PATTERN.findall(prompt)) >= 2:
+        warnings.append("题干包含多个小问，当前数据模型只保存一个答案；发布前请人工确认判题范围")
     prompt_has_percent = bool(re.search(r"(?:%|\\%)", prompt))
     temperature_options = options and all(
         "℃" in option or bool(re.search(r"\\circ\}?\\mathrm\{C\}", option))
