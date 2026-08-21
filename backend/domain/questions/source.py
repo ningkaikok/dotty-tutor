@@ -38,6 +38,11 @@ STRUCTURED_CAPTION_NUMBER_PATTERN = re.compile(r"第\s*(?P<number>\d{1,3})\s*题
 # MinerU 结构化 JSON 文件名，落盘方式见 infrastructure/runtime/ocr_runtime.py 的
 # ``_persist_structured_output``；两个文件都是可选的，不存在时完全回退到纯正则逻辑。
 STRUCTURED_CONTENT_LIST_FILENAME = "source.content_list.json"
+STRUCTURED_MIDDLE_FILENAME = "source.middle.json"
+# content_list.json 里这些类型是页眉/页脚/页码，middle.json 的 para_blocks 不包含
+# 它们（被分到 discarded_blocks），按页对应块顺序时必须先排除，否则两份文件同一页
+# 的块数量会对不上。已用本机真实解析的多本教材验证过这个对应关系。
+STRUCTURED_DISCARDED_CONTENT_TYPES = frozenset({"page_number", "header", "footer"})
 MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
@@ -206,6 +211,121 @@ def _structured_caption_attributions(asset_dir: Path | None) -> dict[str, str]:
     return attributions
 
 
+def _load_structured_middle_document(asset_dir: Path | None) -> dict[str, Any] | None:
+    """读取 PR A 落盘的 ``source.middle.json``。语义和 ``_load_structured_content_list``
+    一致：文件不存在或解析失败都返回 ``None``，调用方回退到现有的扁平文本路径。
+    """
+    if asset_dir is None:
+        return None
+    path = Path(asset_dir) / STRUCTURED_MIDDLE_FILENAME
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _rebuild_text_block_line_breaks(original_text: str, lines: list[Any]) -> str:
+    """只在确认丢失的行界处插入换行，不改写任何已有字符。
+
+    根因（已用真实 MinerU 输出核对过）：生成扁平文本时，个别行与行之间的换行会被
+    吃掉——最典型的是题号紧跟在上一行末尾，中间没有任何分隔符，导致
+    ``QUESTION_START_PATTERN`` 永远匹配不到行首的题号。``middle.json`` 的
+    ``lines[]`` 保留了完整的行级顺序，可以用来定位这些丢失的边界。
+
+    但真实数据显示，"这一行和上一行之间当前有没有分隔符"并不能单独作为"要不要插入
+    换行"的判据：教材里大量普通换行只是 PDF 排版换行导致的词内/句中断行（例如把
+    "两数"从中间断成"两"/"数"两行），本身在扁平文本里就没有分隔符，也不应该有——
+    插入换行会把这类正常续行错误地打断。真正需要修的场景，签名很窄：这一行的开头
+    看起来像一个新题号（能匹配现有的 ``QUESTION_START_PATTERN``），但却直接贴着
+    上一行的结尾，没有任何换行。只在这个窄条件下插入换行，凡是行首不像题号的，
+    一律不碰，保持原文本字符不变。
+
+    只处理某一行的首个 span 是纯文本（``type == "text"``）的情况——公式片段
+    （``inline_equation``）不会是题号，也没有必要处理；找不到该行文本在剩余原文本
+    里的位置时（理论上不应发生，除非行内容本身在原文本里被截断过）跳过这一行，
+    不强行插入。
+    """
+    cursor = 0
+    is_first_line = True
+    for line in lines:
+        spans = line.get("spans") if isinstance(line, dict) else None
+        if not isinstance(spans, list) or not spans:
+            continue
+        first_span = spans[0]
+        if not isinstance(first_span, dict) or first_span.get("type") != "text":
+            continue
+        signature = str(first_span.get("content", "")).strip()
+        if len(signature) < 2:
+            continue
+        idx = original_text.find(signature, cursor)
+        if idx == -1:
+            continue
+        if (
+            not is_first_line
+            and idx > 0
+            and original_text[idx - 1] != "\n"
+            and QUESTION_START_PATTERN.match(signature)
+        ):
+            original_text = original_text[:idx] + "\n" + original_text[idx:]
+            idx += 1
+        cursor = idx + len(signature)
+        is_first_line = False
+    return original_text
+
+
+def _reconstruct_question_line_breaks(source: str, asset_dir: Path | None) -> str:
+    """用 middle.json 的行级坐标重建被扁平 Markdown 吃掉的换行。
+
+    只在 content_list.json 和 middle.json 都存在、且能按页把两者的块一一对应时才
+    生效；任何不确定的情况（文件缺失、解析失败、某一页块数量对不上）都让那一页
+    （或整份文档）原样返回，完全回退到现有的扁平文本路径，不做任何猜测性替换。
+    只处理 ``type == "text"`` 的块，图片/图表/表格块不受影响。
+    """
+    content_list = _load_structured_content_list(asset_dir)
+    middle = _load_structured_middle_document(asset_dir)
+    if not content_list or not middle:
+        return source
+    pdf_info = middle.get("pdf_info")
+    if not isinstance(pdf_info, list):
+        return source
+
+    rebuilt_source = source
+    for page_idx, page in enumerate(pdf_info):
+        para_blocks = page.get("para_blocks") if isinstance(page, dict) else None
+        if not isinstance(para_blocks, list):
+            continue
+        page_items = [
+            item
+            for item in content_list
+            if isinstance(item, dict)
+            and item.get("page_idx") == page_idx
+            and item.get("type") not in STRUCTURED_DISCARDED_CONTENT_TYPES
+        ]
+        if len(page_items) != len(para_blocks):
+            # 块数量对不上说明这一页的对应关系不可信（比如两份文件来自不同的 OCR
+            # 运行），整页跳过，不做任何猜测替换。
+            continue
+        for content_item, para_block in zip(page_items, para_blocks):
+            if content_item.get("type") != "text":
+                continue
+            original_text = content_item.get("text")
+            if not isinstance(original_text, str) or not original_text.strip():
+                continue
+            lines = para_block.get("lines") if isinstance(para_block, dict) else None
+            if not isinstance(lines, list) or len(lines) < 2:
+                continue
+            if rebuilt_source.count(original_text) != 1:
+                # 这段文本在当前来源里找不到、或出现了不止一次（有歧义），不做替换。
+                continue
+            new_text = _rebuild_text_block_line_breaks(original_text, lines)
+            if new_text != original_text:
+                rebuilt_source = rebuilt_source.replace(original_text, new_text, 1)
+    return rebuilt_source
+
+
 def split_question_sources(
     source: str,
     asset_dir: Path | None = None,
@@ -215,9 +335,12 @@ def split_question_sources(
     OCR 页之间可能重复打印同一个题号；相邻的同号块按续题合并，既能保住跨页小问，也不把
     下一题吸进来。图片始终随其所在题块保留，顺序与 OCR Markdown 一致。
 
-    ``asset_dir`` 是这次 OCR 的资源目录（含 PR A 落盘的 ``source.content_list.json``），
-    可选；传入时会优先用其中的结构化图注字段做图片归属，没有时行为和之前完全一致。
+    ``asset_dir`` 是这次 OCR 的资源目录（含 PR A 落盘的 ``source.content_list.json``/
+    ``source.middle.json``），可选；传入时会优先用其中的结构化图注字段做图片归属，
+    并用行级坐标重建被扁平化吃掉的换行（题号紧跟上一题末尾、没有换行导致题号识别
+    失败），没有结构化数据时行为和之前完全一致。
     """
+    source = _reconstruct_question_line_breaks(source, asset_dir)
     question_area = _question_area(source)
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
     page_markers = list(PAGE_MARKER.finditer(question_area))
