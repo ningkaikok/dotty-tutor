@@ -170,5 +170,157 @@ class QuestionSegmentationTests(unittest.TestCase):
             self.assertNotIn("请认真核对监考教师", prompt)
 
 
+# 真实 OCR 原文摘录（教材 4ce09635dafb42ada0343477f6424441，batch-001，第 1-17 题）。
+# 第 8 题最后一个选项末尾没有换行就直接粘着"9."，同样的事对"10."又发生了一次，
+# 8/9/10 被合并成一个巨大区块；随后紧跟的四张图分别标注"第5题图""第6题图"
+# "第9题图""第10题图"，其实分属另外几道题，却被当成了合并区块（题号"8"）的图片。
+# 第 11、16 题之间隔着"## 二、填空题"分节标题，两张图分别标注"第11题图""第16题图"，
+# 却都被按文本位置分给了第 11 题。
+_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT = r"""## 一、选择题（每小题 3分，共30分)
+
+1. 《九章算术》中注有“今两算得失相反，要令正负以名之”，意思是：今有两数若其意义相反，则分别叫作正数与负数．若气温为零上 10℃记作+ $1 0 \%$ ，则-3℃表示气温为( ）
+A. 零上 3℃ B. 零下 3℃ C. 零上 7℃ D. 零下 7℃
+
+2. 不等式 4-2x>0 的解集在数轴上表示为( ）
+
+![](images/670f763f0fb5a03a28245aedfdc8aeef8e34c69ec368fa5966ae12461453facd.jpg)
+
+A
+
+![](images/68fa95e493b5363bd7d3ca5fc0171124ee52f2130ac46142dc0e098d6b901e14.jpg)
+
+B
+
+![](images/cfc3e7f481db6b5810376482ab9ab0b5a12c8d1f4177b092e3618e5c60f592e2.jpg)
+
+C
+
+![](images/a69c7062ea6804a43a450c41caf21f7a7731b3403b3f2c637593aa56c1ec6a3f.jpg)
+D
+
+3. 下列运算正确的是 A. 3 m−2m= 1 B. $\begin{array} { l } { { \tt \overrightarrow { E } ^ { \alpha } ( \alpha ) ~ } } \\ { { ( \alpha ^ { 3 } ) ~ ^ { 2 } = \alpha ^ { 6 } } } \end{array}$
+C. $( - 2 \mathsf { m } ) ^ { 3 } = - 2 \mathsf { m } ^ { 3 }$ D. ${ \mathfrak { m } } ^ { 2 } + { \mathfrak { m } } ^ { 2 } = { \mathfrak { m } }$
+
+4. 如图所示的几何体的俯视图为( )
+
+![](images/da7b9ae38ec3b597cd376d76a450f4c32146c5646547a0a7afe22f49310bbda9.jpg)
+主视方向
+
+![](images/82085fe29ee250085ac28f6ac89c5e972138c262b2701915dcabbe9c7d70dea9.jpg)
+
+A
+
+![](images/f73ce0b05b5d4eaad1fd1d9a60c009804104acc4dcefe69646618b65dbfc9577.jpg)
+
+B
+
+![](images/805e585018f5f9595bc3f2bb1c11271bf1b4942a22f4a9408619b762fdfc3bf9.jpg)
+
+C
+
+![](images/a92e2cb8c97fa90e2859dd42514ca45670a6d12a41591ceb00de5bbba80cefa7.jpg)
+
+D
+
+5. 某校举行“汉字听写比赛”，5个班级代表队的正确答题数如图．这 5个正确
+答题数所组成的一组数据的中位数和众数分别是( ）
+A. 10, 15 B. 13, 15 C. 13, 20 D. 15, 15
+6. 如图，在？ABCD中，连接 $A G \angle A B G = \angle C A D = 4 5 ^ { \circ }$ $A B = 2$ ，则 BC的长是
+（）
+A. $\sqrt { 2 }$ B. 2 C. $2 \sqrt { 2 }$ D. 4
+7. 若△ ABQ的每条边长增加各自的 10%得 $\triangle \sf { A } ^ { \prime } \sf { B } ^ { \prime } \ c ^ { \prime }$ ，则 $\angle \mathsf { B } ^ { \prime }$ 的度数与其对应
+角∠B的度数相比(
+A. 增加了 10% B. 减少了 10%
+C. 增加了 $( 1 + 1 0 \% )$ D. 没有改变
+8. 如果点 A( x1，y1)和点 B( $\mathsf { X } _ { 2 9 } \mathrm { ~ \ } \mathsf { y } _ { 2 } )$ 是直线 $\mathsf { y } = \mathsf { k } \mathsf { x } - \mathsf { b }$ 上的两点，且当 $\mathsf { X } _ { 1 } < \mathsf { X } _ { 2 }$ 时，
+$\mathsf { y } _ { 1 } < \mathsf { y } _ { 2 }$ ，那么函数 $\ y = \frac { k } { x }$ 的图象位于( ）
+A. 一、四象限 B. 二、四象限
+C. 三、四象限 D. 一、三象限9. 如图，在 $\mathsf { R t \triangle A B C P }$ $\angle A C B = 9 0 ^ { \circ }$ $\angle A = 5 6 ^ { \circ }$ . 以 BC为直径的 O交 AB于点D.E是⊙O上一点，且 $C E = C D$ 连接 OE过点 E作 EF⊥OE 交 AC的延长线于点F，则∠F的度数为(）
+A. 92° B. 108° C. 112° D. $1 2 4 ^ { \circ }$ 10. 如图，抛物线 $y _ { 1 } = \frac { 1 } { 2 } ( x + 1 ) ^ { 2 } + 1$ 与 $y _ { 2 } = a ( x - 4 ) ^ { 2 } - 3$ 交于点 A(1，3)，过点A作×轴的平行线，分别交两条抛物线于B、C两点，且D、E分别为顶点．则下列结论：① $\mathsf { a } = \frac { 2 } { 3 } ;$ ② $\mathsf { A C } \equiv \mathsf { A E }$ ③△ ABD是等腰直角三角形；④当 x >1 时， $y _ { 1 } > y _ { 2 }$ 其中正确结论的个数是( ）
+A. 1 个 B. 2 个 C. 3 个 D. 4 个
+
+![](images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg)
+第5题图
+
+![](images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg)
+第6题图
+
+![](images/a7ef059df3190d7016965d2ac0a69c365703839563753a4e86c225319dcb5d36.jpg)
+第9题图
+
+![](images/cec687dd5cf3306d9206444693a62eb3b5ca431a588d93c301f28eacc02eeb57.jpg)
+第10题图
+
+## 二、填空题（每小题3分，共24分)
+
+11. 如图所示，在 Rt△ABO中，∠ B=
+
+![](images/7a8d6eb93bdb7c0ffe43f4d3fe5d58e0969fbe854259664aef6d64dbb386af81.jpg)
+第11题图
+
+![](images/765e1ec9e5d47ebc51c073517fd8207820821b959527457f6eac454c91ed991c.jpg)
+第16题图
+
+12.《“一带一路”贸易合作大数据报告(2017)》以“一带一路”贸易合作现状分析和趋势预测为核心，采集调用了8000多个种类，总计1.2亿条全球进出口贸易基础数据…，1.2 亿用科学记数法表示为
+
+13. 化简： $\frac { x } { ( x - 3 } + \frac { 2 } { 3 - x } ) \cdot \frac { x - 3 } { x - 2 } =$
+
+14. 当x= 时，二次函数 $y = x ^ { 2 } - 2 x + 6$ 有最小值
+
+15. 方程 $3 \mathsf { x } ( \mathsf { x } - 1 ) = 2 ( \mathsf { x } - 1 )$ 的解为
+
+16. 如图，B 在 AC上，D在 CE上， $A D = B D = B G \angle A C E = 2 5 ^ { \circ }$ ，则 $\angle A D E =$
+
+17. 从 − 1，2， 3， - 6 这四个数中任选两数，分别记作 m n，那么点( m n) 在函数 $\mathsf { y } = \frac { 6 } { \mathsf { x } }$ 图象上的概率是
+"""
+
+
+class CaptionBasedImageAttributionTests(unittest.TestCase):
+    """回归证据 C（也顺带验证证据 B 里的错误图片绑定得到缓解）。"""
+
+    def test_explicit_caption_wins_over_text_position_for_adjacent_questions(self) -> None:
+        blocks = split_question_sources(_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT)
+        images_by_number = {number: images for number, _block, images in blocks}
+        # 第 11 题只保留自己的图（7a8d6eb9...），不再包含"第16题图"那张（765e1ec9...）；
+        # 纯文本位置逻辑会把两张图都分给第 11 题，因为第 16 题的正文出现在它们之后。
+        self.assertEqual(
+            images_by_number["11"],
+            ["images/7a8d6eb93bdb7c0ffe43f4d3fe5d58e0969fbe854259664aef6d64dbb386af81.jpg"],
+        )
+        # 第 16 题拿到明确标注属于自己的那张图。
+        self.assertEqual(
+            images_by_number["16"],
+            ["images/765e1ec9e5d47ebc51c073517fd8207820821b959527457f6eac454c91ed991c.jpg"],
+        )
+
+    def test_removes_captioned_images_that_belong_to_a_question_never_split_out(self) -> None:
+        blocks = split_question_sources(_REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT)
+        images_by_number = {number: images for number, _block, images in blocks}
+        # 第 8 题末尾没有换行就直接粘着"9."，同样的事对"10."又发生了一次；OCR 切分
+        # 没有把 9、10 识别成独立块，所以它们不在 images_by_number 里。
+        self.assertNotIn("9", images_by_number)
+        self.assertNotIn("10", images_by_number)
+        # 修复前，紧跟在合并区块后面的四张图（标注第5/6/9/10题图）全部被分给了第 8 题。
+        # 第 5、6 题号本身是独立块，图注命中后会被正确移动过去；9、10 题号没有对应的
+        # 独立块，没有安全的落点，只做移除，不猜测归属。
+        self.assertNotIn(
+            "images/a7ef059df3190d7016965d2ac0a69c365703839563753a4e86c225319dcb5d36.jpg",
+            images_by_number["8"],
+        )
+        self.assertNotIn(
+            "images/cec687dd5cf3306d9206444693a62eb3b5ca431a588d93c301f28eacc02eeb57.jpg",
+            images_by_number["8"],
+        )
+        self.assertEqual(images_by_number["8"], [])
+        self.assertEqual(
+            images_by_number["5"],
+            ["images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg"],
+        )
+        self.assertEqual(
+            images_by_number["6"],
+            ["images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
