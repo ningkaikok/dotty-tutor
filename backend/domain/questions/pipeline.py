@@ -21,7 +21,14 @@ from infrastructure.runtime.review_runtime import formula_anomaly_score, normali
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
-BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)<>]+")
+# 右方括号不计入路径：模型会把图片写成 ``[主视图图片：images/x.jpg]``，若把 ``]`` 当作
+# 路径的一部分吃掉，剩下的左方括号就会变成无法配对的残缺文本。
+BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)\]<>]+")
+# 整段删除“带说明的方括号图片注释”。中英文方括号都覆盖，内部不允许再嵌套方括号，
+# 避免把一大段正常题干误删。
+BRACKETED_IMAGE_ANNOTATION_PATTERN = re.compile(
+    r"[\[【][^\[\]【】]*(?:images/|/api/uploads/)[^\[\]【】]*[\]】]"
+)
 MATH_FRAGMENT_PATTERN = re.compile(r"(\$\$[\s\S]+?\$\$|\$[^$]+?\$)")
 CHOICE_MARKER_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:\(([A-D])\)|([A-D])[.．:：、])\s*"
@@ -175,8 +182,14 @@ def _image_choice_labels(source_block: str, image_count: int) -> list[str]:
 
 
 def strip_image_references(text: str) -> str:
-    """删除模型误写入题干的 Markdown 或裸图片路径，保留题意文字。"""
+    """删除模型误写入题干的 Markdown 或裸图片路径，保留题意文字。
+
+    模型有时不用 Markdown，而是写成带说明的方括号注释（``[主视图图片：images/x.jpg]``）。
+    必须整段删除：只删路径会留下 ``[主视图图片：`` 这样的残缺前缀，比原文更难读。
+    这一步要在裸路径清理之前执行，否则裸路径规则会先吃掉右方括号，破坏括号配对。
+    """
     text = MARKDOWN_IMAGE_PATTERN.sub("", text)
+    text = BRACKETED_IMAGE_ANNOTATION_PATTERN.sub("", text)
     text = BARE_IMAGE_REFERENCE_PATTERN.sub("", text)
     return re.sub(r"[ \t]{2,}", " ", text)
 

@@ -72,6 +72,41 @@ class QuestionContentResidueTests(unittest.TestCase):
             quality["errors"],
         )
 
+    def test_strips_bracketed_image_annotation_as_a_whole(self) -> None:
+        """真实坏样本：模型把图片写成带说明的方括号注释，必须整段删除。
+
+        取自「初中数学湖北中考」第 7 题。只删路径会留下 `[主视图图片：` 这样的
+        残缺前缀——右方括号会被裸路径规则一起吃掉，读起来比原文更糟。
+        """
+        prompt = (
+            "7.（3分）一个几何体由若干个相同的正方体组成，其主视图和俯视图如图所示，"
+            "则这个几何体中正方体的个数最多是（ ）\n\n"
+            "[主视图图片：images/206a06049decfb0cc63fdedbae40b8122ee534991823b76ce915ef1f36d3778a.jpg]\n"
+            "主视图\n\n"
+            "[俯视图图片：images/e00fb9b69c89d76e11eb9b4c3be33c0ee5f33785a5bc134d41c454fc4dbccf7c.jpg]\n"
+            "俯视图"
+        )
+        payload = {
+            "question": {
+                "questionNumber": "7",
+                "prompt": prompt,
+                "options": [],
+                "givens": [],
+                "imageUrls": [],
+            },
+        }
+        quality = apply_question_quality_gate(payload, prompt, [])
+
+        cleaned = payload["question"]["prompt"]
+        self.assertNotIn("images/", cleaned)
+        # 关键：不能留下无法配对的残缺方括号前缀。
+        self.assertNotIn("[主视图图片", cleaned)
+        self.assertNotIn("[俯视图图片", cleaned)
+        # 图注文字属于题意，必须保留。
+        self.assertIn("主视图", cleaned)
+        self.assertIn("俯视图", cleaned)
+        self.assertEqual(quality["status"], "ready", quality["errors"])
+
 
 if __name__ == "__main__":
     unittest.main()
