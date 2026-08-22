@@ -25,7 +25,7 @@ services:
   data-init:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: apps/api/Dockerfile
     user: root
     command:
       - sh
@@ -46,7 +46,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     init: true
     environment:
@@ -100,7 +100,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.backend
+      dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     init: true
     command:
@@ -149,7 +149,7 @@ services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile.frontend
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     init: true
     ports:

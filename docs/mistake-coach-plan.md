@@ -79,20 +79,20 @@ diagnose → explain → practice → verify → mastered
 
 ### 直接复用
 
-- OCR 与题图提取：`backend/infrastructure/runtime/ocr_runtime.py`。
-- 结构化生成：`backend/infrastructure/runtime/model_runtime.py`、`backend/domain/questions/pipeline.py`。
-- 题型与答案契约：`backend/domain/questions/contracts.py`。
-- 确定性判题：`backend/answer_evaluator.py`。
-- 审校与质量门禁：`backend/infrastructure/runtime/review_runtime.py`。
+- OCR 与题图提取：`apps/api/infrastructure/runtime/ocr_runtime.py`。
+- 结构化生成：`apps/api/infrastructure/runtime/model_runtime.py`、`apps/api/domain/questions/pipeline.py`。
+- 题型与答案契约：`apps/api/domain/questions/contracts.py`。
+- 确定性判题：`apps/api/answer_evaluator.py`。
+- 审校与质量门禁：`apps/api/infrastructure/runtime/review_runtime.py`。
 - 应用、日志、PostgreSQL、Docker 与 Playwright 基础设施。
 - 前端公式、题图和结构化作答组件。
 
 ### 适配后复用
 
-- `backend/application/services/tutor_engine.py`：从单次 Help 扩展为带线程状态的策略引擎。
-- `backend/persistence/`：按错题、消息和复习任务拆分 Store，不继续堆积单文件职责。
-- `frontend/src/components/PracticeWorkspace.tsx`：抽出可在错题陪练中复用的题目与答案区域。
-- `backend/api/routers/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
+- `apps/api/application/services/tutor_engine.py`：从单次 Help 扩展为带线程状态的策略引擎。
+- `apps/api/persistence/`：按错题、消息和复习任务拆分 Store，不继续堆积单文件职责。
+- `apps/web/src/components/PracticeWorkspace.tsx`：抽出可在错题陪练中复用的题目与答案区域。
+- `apps/api/api/routers/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
 
 ### 学生入口不直接复用
 
@@ -105,7 +105,7 @@ diagnose → explain → practice → verify → mastered
 前端已按产品域拆分，同时把真正通用的题目组件放入共享层：
 
 ```text
-frontend/src/
+apps/web/src/
   apps/
     home/                 # 角色入口
     textbook/             # 内容生产与互动预览
@@ -117,10 +117,10 @@ frontend/src/
   api/ types/             # 按领域拆分的请求与类型入口
 ```
 
-后端保持模块化单体，业务域使用明确文件边界，避免把新接口写入 `backend/app.py`：
+后端保持模块化单体，业务域使用明确文件边界，避免把新接口写入 `apps/api/app.py`：
 
 ```text
-backend/
+apps/api/
   mistake_*.py            # 错题录入、归类和仓储
   tutoring_*.py           # 线程契约、路由和消息仓储
   application/services/stateful_tutor.py # 状态机与有限上下文

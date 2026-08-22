@@ -1,0 +1,3 @@
+# 单包起步：packages/* 目录在出现第二个消费者时再创建（见 roadmap 触发条件）。
+packages:
+  - apps/web

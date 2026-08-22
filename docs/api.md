@@ -11,7 +11,7 @@ FastAPI 交互文档启动后可从以下地址查看：
 - OpenAPI JSON：<http://127.0.0.1:8010/openapi.json>
 
 前端 API 类型由应用自身的 OpenAPI 文档生成，不要手工修改
-`frontend/src/types/generated/api.ts`。接口响应模型变更后，在 `frontend` 目录执行：
+`apps/web/src/types/generated/api.ts`。接口响应模型变更后，在 `frontend` 目录执行：
 
 ```bash
 npm run generate:api  # 重新生成

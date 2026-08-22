@@ -265,7 +265,7 @@ markdown | formula | diagram | animation | annotation | quiz | hint
 当前主路径主要由 TypeScript 构建和 Playwright 保护：
 
 ```bash
-cd frontend
+cd apps/web
 npm ci
 npm run build
 npm run test:e2e

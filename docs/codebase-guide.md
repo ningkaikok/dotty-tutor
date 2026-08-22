@@ -21,7 +21,7 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 
 ```text
 dotty-tutor/
-├── backend/                    # FastAPI、领域编排、适配器和测试
+├── apps/api/                    # FastAPI、领域编排、适配器和测试
 │   ├── app.py                  # ASGI 组合根；只装配，不写业务逻辑
 │   ├── app_factory.py          # 中间件、安全头、CORS、请求日志
 │   ├── api/routers/             # HTTP 协议边界；按产品域拆分 APIRouter
@@ -54,7 +54,7 @@ dotty-tutor/
 │   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
 │   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
 │   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
-├── frontend/src/
+├── apps/web/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
 │   ├── apps/student/           # 学生学习空间，不包含生产配置
@@ -67,7 +67,7 @@ dotty-tutor/
 │   ├── lesson/                 # 课程文档和内容块渲染器
 │   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
 │   ├── types/                  # 按领域拆分的稳定类型
-├── frontend/e2e/               # Playwright 用户路径
+├── apps/web/e2e/               # Playwright 用户路径
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
 ```
@@ -281,7 +281,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ## 30 分钟代码阅读路线
 
-先用 3 分钟阅读 `backend/app.py` 和 `frontend/src/App.tsx`，认识组合根、角色入口与懒加载边界。剩余时间只选
+先用 3 分钟阅读 `apps/api/app.py` 和 `apps/web/src/App.tsx`，认识组合根、角色入口与懒加载边界。剩余时间只选
 下面一条路径跟踪，避免同时展开所有 import：
 
 | 学习目标 | 建议阅读顺序 | 重点观察 |

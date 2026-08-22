@@ -32,7 +32,7 @@ flowchart LR
 
 ## 2. 从组合根开始读
 
-`backend/app.py` 是组合根。它创建共享对象并注册路由，不负责业务实现。建议第一次阅读只确认三件事：
+`apps/api/app.py` 是组合根。它创建共享对象并注册路由，不负责业务实现。建议第一次阅读只确认三件事：
 
 1. FastAPI 应用从哪里创建。
 2. 哪些路由被注册。
@@ -93,7 +93,7 @@ Route 只负责创建 `background_jobs` 并快速返回 `202`；Worker 调用
 
 ## 4. 为什么 Store 要按领域拆分
 
-`backend/persistence/base.py` 只管理共享基础设施：
+`apps/api/persistence/base.py` 只管理共享基础设施：
 
 - 创建 SQLAlchemy Engine。
 - 初始化 Schema。
@@ -165,7 +165,7 @@ Provider 和流水线版本组成缓存键，因此重新生成题目不会重�
 ### 为什么 CI 之前没有发现考试说明误切
 
 旧测试只覆盖“章节标题完整、空格规范、说明和题目在同一页”的理想 OCR 文本，没有覆盖标题拆行、标题缺失、
-说明与真实题目重复使用同一个题号等生产坏例。现在 `backend/tests/test_question_segmentation.py` 把这些反例作为
+说明与真实题目重复使用同一个题号等生产坏例。现在 `apps/api/tests/test_question_segmentation.py` 把这些反例作为
 固定回归样本；后续线上发现新坏例时，应脱敏后加入该回归集，而不是只放宽提示词。
 
 互动试卷发布采用不可变版本。`publication_revision.py` 从原 PDF 创建完整新版本并送回审核，旧发布版本、学习
@@ -216,9 +216,9 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 
 ```bash
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
-  cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+  cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
 
-cd frontend
+cd apps/web
 npm ci
 npm run build
 npm run test:e2e

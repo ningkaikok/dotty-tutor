@@ -36,7 +36,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 - PDF、Markdown 和题图仍保存在本地文件系统。
 - 生成阶段会对结构失败的单题自动修复一次；仍失败的题在发布时自动隔离，整套无合格题时安全阻断。
 - 单页快速导入没有进入完整审校和持久化流水线。
-- 选择、多选、填空和数值题已由确定性答案引擎判定（`backend/answer_evaluator.py`）；简答题和证明类
+- 选择、多选、填空和数值题已由确定性答案引擎判定（`apps/api/answer_evaluator.py`）；简答题和证明类
   内容仍无统一判题，多小问结构（`subQuestions`)尚未支持。
 - 快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题。
 - 数据库表由 `create_all()` 初始化，尚无 Alembic 迁移历史。
@@ -77,7 +77,7 @@ Canvas/SVG 和错题掌握闭环。新增能力必须先复用这些边界，不
 
 ### 第一阶段：稳定内容模型和互动渲染边界
 
-- [ ] 在 `frontend/src/types/lesson.ts` 和 `backend/domain/contracts/lesson.py` 明确 `markdown`、`formula`、`diagram`、
+- [ ] 在 `apps/web/src/types/lesson.ts` 和 `apps/api/domain/contracts/lesson.py` 明确 `markdown`、`formula`、`diagram`、
   `interactive-math`、`quiz`、`animation` 内容块的版本化契约。
 - [ ] 新增 `InteractiveMathCanvas` 渲染边界；页面只组合它，不直接依赖具体绘图库。
 - [ ] 为每种内容块补充 MathText、图片、键盘输入、画布动作和错误回退的 Playwright 回归案例。
@@ -166,7 +166,7 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 
 `Tutor Turn Plan` 已落地：结构化教学计划、八类学生意图识别、带证据和置信度的误区假设、
 单一教学动作约束、重复提示的确定性升级回退，均有单元测试覆盖。验收记录见 git 历史与
-`backend/tests/test_tutor_turn_plan.py`。
+`apps/api/tests/test_tutor_turn_plan.py`。
 
 ### 阶段 B：统一多模态输入
 

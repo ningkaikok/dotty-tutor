@@ -15,8 +15,11 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-if [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
-  echo "未找到 .venv，请先安装 backend/requirements.txt。" >&2
+if command -v uv >/dev/null 2>&1; then
+  # 精确锁定路径：uv 可用时同步到仓库根 .venv（锁文件在 apps/api/uv.lock）。
+  (cd "$ROOT_DIR/apps/api" && UV_PROJECT_ENVIRONMENT="$ROOT_DIR/.venv" uv sync --frozen)
+elif [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
+  echo "未找到 .venv。请安装 apps/api/requirements.txt，或安装 uv 后重跑（将自动 uv sync）。" >&2
   exit 1
 fi
 
@@ -26,7 +29,7 @@ source "$ENV_FILE"
 set +a
 
 # 本机 MinerU 与主后端使用不同虚拟环境；显式传绝对路径，避免后端从
-# backend/infrastructure/runtime 的相对目录误判为“未安装”。Docker 后端不会执行这段逻辑。
+# apps/api/infrastructure/runtime 的相对目录误判为“未安装”。Docker 后端不会执行这段逻辑。
 if [[ -z "${MINERU_COMMAND:-}" && -x "$ROOT_DIR/.mineru-venv/bin/mineru" ]]; then
   export MINERU_COMMAND="$ROOT_DIR/.mineru-venv/bin/mineru"
 fi
@@ -73,20 +76,20 @@ echo "MinerU:     ${MINERU_COMMAND:-auto}"
 echo "Qwen TTS:   ${QWEN_TTS_URL:-http://127.0.0.1:8020}"
 
 (
-  cd "$ROOT_DIR/backend"
+  cd "$ROOT_DIR/apps/api"
   exec "$ROOT_DIR/.venv/bin/python" -m uvicorn app:app --reload --port 8010
 ) &
 api_pid=$!
 
 (
-  cd "$ROOT_DIR/backend"
+  cd "$ROOT_DIR/apps/api"
   exec "$ROOT_DIR/.venv/bin/python" -m worker \
     --registry api.routers.textbook_routes:textbook_job_registry
 ) &
 worker_pid=$!
 
 (
-  cd "$ROOT_DIR/frontend"
+  cd "$ROOT_DIR/apps/web"
   # 显式绑定 IPv4，避免部分 macOS 网络配置下 localhost 优先解析到
   # 未监听的 127.0.0.1/::1 而导致浏览器看起来像“前端挂了”。
   exec npm run dev -- --host 127.0.0.1
@@ -95,7 +98,7 @@ frontend_pid=$!
 
 if [[ "${QWEN_TTS_ENABLED:-1}" == "1" && -x "$ROOT_DIR/.qwen3-tts-venv/bin/python" ]]; then
   (
-    cd "$ROOT_DIR/backend"
+    cd "$ROOT_DIR/apps/api"
     # 使用真实模块入口启动 Qwen3-TTS，确保 8020 端口确实监听。
     exec "$ROOT_DIR/.qwen3-tts-venv/bin/python" -m infrastructure.runtime.qwen_tts_service
   ) &

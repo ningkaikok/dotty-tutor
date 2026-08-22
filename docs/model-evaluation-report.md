@@ -74,7 +74,7 @@ PDF 分块上传
 执行命令：
 
 ```bash
-cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
 结果：**29/29 通过**，PostgreSQL 迁移后独立环境回归执行通过。
@@ -93,7 +93,7 @@ cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -
 执行命令：
 
 ```bash
-cd frontend
+cd apps/web
 npm run build
 ```
 
