@@ -19,41 +19,24 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 
 ### 内容生产工作台（`/studio`）
 
-把一本 PDF 教材变成可作答、可审校、带来源的结构化题库。
-
-- **大文件摄取**：大 PDF 分块上传、暂停续传、按页范围批处理和历史教材恢复。
-- **版面解析**：MinerU OCR 与 PDF 文字层双路解析，提取公式与题图。
-- **多路生成**：Ollama、Codex CLI 和 Mock 三种题目生成路径可切换。
-- **质量门禁**：统一审核模型同时执行文字与题图审校，叠加一层确定性的结构质量校验，不合格不放行。
-- **送审发布**：多道已生成题目可送审并发布为互动试卷，学生端只看到已发布内容。
-- **运行审计**：单题修复、刷新 OCR、批次重生成和整套重新审核均保留 `run_id`、revision、实际模型/审核/OCR
-  与 validator 版本；旧题目版本可追溯且不会被覆盖。
-- **可恢复处理**：PDF 完成和批次识别由 PostgreSQL Job Store 与独立 Worker 执行，支持进度查询、取消、
-  有限重试和进程重启后的租约恢复。
+把 PDF 教材变成可作答、可审校、带来源的结构化题库：大 PDF 分块上传与批次处理、MinerU/pypdf 双路 OCR、
+多模型生成路径、统一审校与质量门禁、送审发布和不可变运行审计。细节见
+[系统架构](docs/architecture.md)。
 
 ### 学生学习空间（`/learn`）
 
-只暴露学习本身，不暴露 OCR、模型和上传配置。
-
-- **七种题型交互**：选择、多选、判断、填空、数值/公式、简答、画线；填空支持多空、数值支持容差、多选按完整选项集合判定。
-- **分层 Help**：基于学生当前答案给提示，只在请求提示或答错后才展开分步讲解。
-- **离线容错**：作答、判定、耗时和提示层级写入学习会话；网络失败时本地排队并自动批量补传。
-- **课程播放**：可编程课程内容块、可扩展渲染器与分步播放器；学习会话、作答记录与知识点掌握度反馈。
+只暴露学习本身，不暴露 OCR、模型和上传配置：七种题型交互、分层 Help、可编程课程播放器，
+以及断网可恢复的学习会话与掌握度记录。
 
 ### AI 错题陪练（`/mistakes`）
 
-互动试卷的错答自动进入错题本，纸质作业拍照补录，两条来源汇入同一个陪练与复习闭环。
-
-- **录题**：手机拍照或相册图片、识别范围裁切、OCR 结构化解析与原答案补充。
-- **归因**：学生可修正题干、章节、知识点，并确认概念、审题、计算等六类错误原因。
-- **陪练**：每道已确认错题拥有独立多轮线程，支持恢复上下文、结构化作答、分层提示与可解释的阶段推进。
-- **闭环**：错题原图、题目快照、识别记录与确认状态持久化；变式验证掌握度，并进入 1/3/7 天复习计划。
+拍照录题、错误原因归因、单题多轮陪练线程、变式掌握验证和 1/3/7 天复习计划，形成完整闭环。
+产品设计见 [AI 错题陪练产品规划](docs/mistake-coach-plan.md)。
 
 ### 平台
 
-- **语音三级回退**：Azure Speech → Qwen3-TTS → 浏览器 Web Speech，任一层不可用自动降级。
-- **持久化**：PostgreSQL JSONB 存储题目、审校结果与引导卡。
-- **路由**：内容生产工作台使用 `/studio`，学生学习空间使用 `/learn`。
+- **语音三级回退**：Azure Speech → Qwen3-TTS → 浏览器 Web Speech。
+- **持久化**：PostgreSQL JSONB 存储题目、审校结果与学习证据；Job Store + 独立 Worker 执行长任务。
 
 ## 工作流程
 
@@ -64,8 +47,7 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
   └─ 内容生产工作台：PDF / 扫描教材 → OCR → 结构化出题 → 审校 → 互动预览
 ```
 
-错题陪练当前已完成拍照录题、人工确认、有状态单题陪练、变式掌握验证和 1/3/7 天复习闭环；登录鉴权、
-微信内体验和更完整的数学判题仍按[产品规划](docs/mistake-coach-plan.md)逐步完善。
+登录鉴权、微信内体验和更完整的数学判题按[产品规划](docs/mistake-coach-plan.md)逐步完善。
 
 ## 技术栈
 
@@ -80,8 +62,8 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 
 ## 快速开始
 
-本地开发推荐使用“本机服务 + Docker PostgreSQL”：这样可以直接复用本机的 Codex 登录、MinerU
-环境和 Qwen3-TTS 模型缓存。
+本地开发推荐"本机服务 + Docker PostgreSQL"，可直接复用本机的 Codex 登录、MinerU 环境和
+Qwen3-TTS 缓存：
 
 ```bash
 cp .env.docker.example .env
@@ -90,11 +72,8 @@ cp .env.local.example .env.local
 scripts/dev-local.sh
 ```
 
-打开 <http://localhost:5174>，从首页选择入口；学生端可直接访问
-<http://localhost:5174/learn>，内容生产端为 <http://localhost:5174/studio>。完整 Docker Compose
-仍适合 CI、演示和发布验证：
-
-最简单的体验方式是使用 Docker Desktop 或 Docker Engine + Compose：
+打开 <http://localhost:5174>，从首页选择入口。最简单的体验方式是 Docker Compose（默认使用 Mock 模型，
+不下载模型权重）：
 
 ```bash
 git clone https://github.com/ningkaikok/dotty-tutor.git
@@ -105,51 +84,11 @@ cp .env.docker.example .env
 docker compose up --build --detach
 ```
 
-打开 <http://localhost:8080>。默认 Compose 使用 Mock 模型，不会下载模型权重；PostgreSQL
-和教材文件分别保存在命名卷中。
+打开 <http://localhost:8080>；PostgreSQL 和教材文件保存在命名卷中。
 
-本机开发页和 Docker 页面是两套不同的运行环境，不要同时混用同一批教材：本机开发页
-`5174` 使用本机 FastAPI `8010`、本机 Worker 和仓库内的 `data/`；Docker 页面 `8080`
-使用容器内 API、Worker 和 Docker 命名卷。日常开发优先使用 `5174`，Docker 页面用于
-CI、发布验证和部署演示。
-
-```bash
-docker compose ps
-docker compose logs --follow api
-docker compose logs --follow worker
-docker compose down
-```
-
-`docker compose down` 会保留数据卷。完整 Docker 配置、外部模型连接和生产部署说明见
-[部署与运维](docs/deployment.md)。
-
-不使用 Docker 时，需要 Python 3.12、Node.js 20.19+（20.x）或 22.12+ 和 PostgreSQL：
-
-```bash
-python3.12 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt
-
-createuser --pwprompt dotty_app
-createdb -O dotty_app dotty_tutor
-
-cp .env.example .env
-# 编辑 .env，填写 POSTGRES_PASSWORD 后导出到当前 shell
-set -a; source .env; set +a
-cd backend
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
-  ../.venv/bin/python -m uvicorn app:app --reload --port 8010
-```
-
-另开终端启动前端：
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-本地开发地址是 <http://localhost:5174>。完整环境变量、模型和 OCR 配置见
-[本地开发指南](docs/development.md)。
+本机开发页（`5174`，走本机 FastAPI `8010` 和仓库内 `data/`）与 Docker 页面（`8080`，走容器内服务
+和命名卷）是两套独立环境，不要混用同一批教材。完整环境变量、模型与 OCR 配置、手动安装步骤见
+[本地开发指南](docs/development.md)；Docker 运维见[部署文档](docs/deployment.md)。
 
 ## 文档
 
@@ -182,16 +121,6 @@ cd frontend && npm run build
 
 GitHub Actions 会在每次推送和 Pull Request 中运行后端测试、前端构建，以及完整 Docker
 Compose 构建和健康检查。
-
-## 项目状态
-
-当前版本已完成教材导入、结构化出题、审校、互动练习、分层提示、TTS 和 PostgreSQL
-持久化闭环，并完成互动试卷发布、学生消费、学习记录同步、双产品入口、错题拍照裁切、错误原因确认、
-错题本存储和有状态多轮陪练。
-错题陪练已覆盖录入、多轮辅导、变式掌握验证和 1/3/7 天复习闭环。PDF 后台任务已使用 PostgreSQL Job Store
-与单 Worker；公网生产部署仍需要用户鉴权、对象存储、Alembic、
-限流、监控和自动备份；详情见[路线图](docs/roadmap.md)。其中运行快照、PostgreSQL Job Store、单 Worker
-和离线评测的实施顺序见[AI 运行治理计划](docs/runtime-governance-plan.md)。
 
 ## 参与开发
 

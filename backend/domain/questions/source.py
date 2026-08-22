@@ -1,4 +1,12 @@
-"""Pure helpers for turning OCR Markdown into bounded question sources."""
+"""把 OCR Markdown 有界切分为题目源的纯函数模块。
+
+"有界切分"是本模块的核心约束：只有能被证明是新题号的数字才允许开启新题。
+小问 ``(1)`` 属于当前题、章节编号 ``1.1`` 不是可独立出题的题号、句子中间
+意外断行产生的行首数字更不是——宽泛的数字正则会把一道题切成三道。
+
+切分规则版本（``QUESTION_SEGMENTATION_VERSION``）参与运行审计：规则一旦变更，
+历史生成结果仍可通过版本号追溯是用哪套规则切出来的，不会被静默覆盖。
+"""
 
 from __future__ import annotations
 

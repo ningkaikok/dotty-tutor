@@ -1,4 +1,12 @@
-"""Immutable run and question revision orchestration."""
+"""不可变运行记录与题目修订编排。
+
+三个版本常量各司其职：``PROMPT_VERSION`` 标识提示词结构（变更意味着模型输入
+契约变化）、``VALIDATOR_VERSION`` 标识质量门禁规则、Schema 版本通过对契约做
+SHA256 得到——三者共同保证任何一次历史生成都能回答"当时用的是哪套规则"。
+题目修订只追加不覆盖：修复、重新 OCR、整套重审都产生新 revision，学习记录
+因此永远指向生成时的那道题。隐私约束：审计记录保存 Prompt 的哈希/摘要，
+不持久化 Prompt 原文。
+"""
 
 from __future__ import annotations
 

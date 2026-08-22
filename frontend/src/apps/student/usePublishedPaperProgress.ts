@@ -1,3 +1,7 @@
+/**
+ * 试卷进度的派生 Hook。进度刻意不落库：`exercise_attempts` 是唯一的提交事实来源，
+ * "当前题号、完成态、下一题"全部由最近一次 attempt 推导，避免两处状态互相矛盾。
+ */
 import { useMemo } from "react";
 import type { ExerciseAttemptRecord, PublicationDetail } from "../../types/index";
 

@@ -1,4 +1,13 @@
-"""Tutor response orchestration separated from the HTTP application."""
+"""单轮陪练回复编排，从 HTTP 应用中分离出来。
+
+一次 reply 的流水线：拼接提示词（题目上下文 + 教学计划 + Schema）→ 模型调用
+→ 领域规则校验与覆盖 → 结构化回复。两条关键权限约束：
+
+1. 普通生成结果永远没有客观判题权限——模型的讲解只能包装确定性判定，
+   不能改写 assessment；
+2. 生成、审核、陪练三种模型调用使用相互独立的 Runtime 选择，陪练换模型
+   不影响出题和审核；每次调用的实际 Provider 记入运行快照以便复盘。
+"""
 
 from __future__ import annotations
 

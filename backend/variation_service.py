@@ -1,4 +1,12 @@
-"""Generate a focused practice variation from a confirmed mistake."""
+"""从已确认的错题生成聚焦式变式练习。
+
+两段式设计：先按错误原因查 ``ERROR_STRATEGIES`` 选定教学策略（概念混淆练辨析、
+计算失误练运算），再把策略和约束写进提示词委托结构化生成。策略先行是为了让
+变式题服务诊断结论，而不是让模型自由发挥出新的一道无关题。
+
+硬门禁在 generate 入口：变式题必须落在可确定性判题的题型内（choice/fill-blank/
+numeric 等），否则直接拒绝——验证题要靠确定性判题推进掌握状态，模型不能既出题又判题。
+"""
 
 from __future__ import annotations
 

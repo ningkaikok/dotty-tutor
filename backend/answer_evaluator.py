@@ -1,8 +1,17 @@
-"""Deterministic checks for structured question answers.
+"""结构化题型的确定性判题器。
 
-Model feedback remains the fallback for open-ended reasoning. These checks are
-deliberately small and explainable so common answer formats do not depend on a
-second model call.
+为什么刻意不引入第二次模型调用来判题：
+
+1. 可解释——每个判定都能追溯到"归一化后是否相等/容差内"，出错可以定位到具体规则；
+2. 可回归——规则是纯函数，坏样本可以直接变成单测，模型行为漂移不会污染学习记录；
+3. 成本与延迟——判题发生在学生每次提交时，走模型会把交互拖慢数秒。
+
+边界约束：本模块只回答"对/不对"，绝不输出"错在哪类"的诊断。仅凭最终答案无法区分
+符号错误、概念错误还是计算错误，误区诊断由 Tutor Turn Plan 基于证据假设完成。
+没有 answerSpec/blanks 的开放题返回 None，交回给模型和分层引导卡兜底。
+
+归一化函数处理教材常见的答案格式：全角括号/标点、`\\frac{a}{b}` LaTeX 分数、
+`(a)/(b)` 括号分数、百分号和单位后缀（°、% 等）、千分位逗号。
 """
 
 from __future__ import annotations
@@ -13,17 +22,23 @@ from typing import Any
 
 
 def normalize_label(value: Any) -> str:
+    """选项标签归一化：去掉空白和全角/半角括号并大写，使 (B)、b、B 等价。"""
     return re.sub(r"[\s（）()]", "", str(value or "")).upper()
 
 
 def normalize_text(value: Any) -> str:
+    """填空文本归一化：忽略空白大小写差异，统一教材常见的全角标点。"""
     text = str(value or "").strip().lower()
     text = re.sub(r"\s+", "", text)
     return text.replace("，", ",").replace("。", "").replace("；", ";")
 
 
 def parse_number(value: Any) -> float | None:
-    """Parse common textbook numeric answers, including simple fractions."""
+    """解析教材常见数字答案，包括简单分数；解析失败返回 None 而不是抛错。
+
+    依次处理：千分位逗号 → `\\frac{a}{b}` LaTeX 分数 → `(a)/(b)` 括号分数
+    → 单位/百分号后缀；`a/b` 形式用精确分数运算避免浮点误差。
+    """
     text = str(value or "").strip()
     text = text.replace(",", "").replace("，", "")
     text = re.sub(r"\\frac\s*\{\s*([^{}]+)\}\s*\{\s*([^{}]+)\}", r"(\1)/(\2)", text)
@@ -74,12 +89,18 @@ def evaluate_structured_answer(
     student_input: str,
     interaction_result: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Return a deterministic feedback payload when the question has a spec."""
+    """Return a deterministic feedback payload when the question has a spec.
+
+    按题型分发的确定性判定入口。返回 None 表示该题没有可确定性判定的答案规格，
+    调用方必须回退到模型反馈，而不是把 None 当作"答错"。
+    """
     interaction = interaction_result or {}
     question_type = question.get("questionType")
 
     if question_type in {"choice", "multi-select"}:
+        # 多选按完整选项集合比较：多选、少选、错选都判 incorrect，不做部分给分。
         expected_values = question.get("correctAnswers") or []
+        # 兼容旧数据：correctAnswer 是 "AB"/"(A)(C)" 之类的字符串时提取选项标签。
         if not expected_values and question.get("correctAnswer"):
             expected_values = re.findall(r"\(?[A-H]\)?", str(question["correctAnswer"]))
         expected = {normalize_label(item) for item in expected_values if normalize_label(item)}
