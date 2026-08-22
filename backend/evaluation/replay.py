@@ -23,7 +23,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from domain.questions.pipeline import (
+    apply_question_quality_gate,
+    normalize_model_math_text,
+)
 from domain.questions.source import split_question_sources
+from domain.tutoring.turn_plan import infer_student_intent
 from evaluation.corpus import CORPUS, CORPUS_VERSION
 
 STRUCTURED_FILENAMES = {
@@ -40,8 +45,87 @@ def _write_structured_payload(directory: Path, payload: dict[str, Any]) -> None:
             )
 
 
+def _evaluate_formula_entry(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """公式规范化维度：逐用例核对输出，并验证规范化是幂等的。"""
+    checks: list[dict[str, Any]] = []
+    for index, case in enumerate(entry.get("cases", [])):
+        raw, expected = case["raw"], case["expected"]
+        actual = normalize_model_math_text(raw)
+        twice = normalize_model_math_text(actual)
+        checks.append({
+            "name": f"case[{index}]",
+            "passed": actual == expected and twice == actual,
+            "detail": f"expected {expected!r}, got {actual!r}" if actual != expected
+            else ("not idempotent" if twice != actual else "ok"),
+        })
+    return checks
+
+
+def _evaluate_quality_gate_entry(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """审核门禁维度：payload + 来源块 → 状态与错误摘要必须匹配期望。"""
+    expect = entry.get("expect", {})
+    quality = apply_question_quality_gate(
+        entry["payload"], entry["sourceBlock"], entry.get("images") or []
+    )
+    checks = [{
+        "name": "status",
+        "passed": quality.get("status") == expect.get("status"),
+        "detail": f"expected {expect.get('status')}, got {quality.get('status')}",
+    }]
+    for fragment in expect.get("errorContains", []):
+        checks.append({
+            "name": f"errorContains:{fragment[:20]}",
+            "passed": any(fragment in error for error in quality.get("errors", [])),
+            "detail": f"errors={quality.get('errors')}",
+        })
+    return checks
+
+
+def _evaluate_turn_plan_intent_entry(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """陪练意图维度：中文短语/结构化作答 → 意图 ID 必须稳定，且置信度为正。"""
+    checks: list[dict[str, Any]] = []
+    for index, case in enumerate(entry.get("cases", [])):
+        intent = infer_student_intent(
+            mode=case["mode"],
+            content=case["content"],
+            interaction_result=case.get("interactionResult"),
+        )
+        ok = intent.get("id") == case["intentId"] and intent.get("confidence", 0) > 0
+        checks.append({
+            "name": f"case[{index}]:{case['content'][:12]}",
+            "passed": ok,
+            "detail": f"expected {case['intentId']}, got {intent.get('id')}",
+        })
+    return checks
+
+
+_ENTRY_EVALUATORS = {
+    "segmentation": None,  # 主路径，见 _evaluate_segmentation_entry
+    "formula-normalize": _evaluate_formula_entry,
+    "quality-gate": _evaluate_quality_gate_entry,
+    "turn-plan-intent": _evaluate_turn_plan_intent_entry,
+}
+
+
 def _evaluate_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """跑单个条目并逐项核对期望。checks 里每一项都是可解释的对/错加证据。"""
+    kind = entry.get("kind", "segmentation")
+    if kind != "segmentation":
+        evaluator = _ENTRY_EVALUATORS[kind]
+        checks = evaluator(entry)
+        passed = all(check["passed"] for check in checks)
+        return {
+            "id": entry["id"],
+            "description": entry["description"],
+            "tags": entry.get("tags", []),
+            "documenting_bug": entry.get("documenting_bug"),
+            "passed": passed,
+            "checks": checks,
+        }
+    return _evaluate_segmentation_entry(entry)
+
+
+def _evaluate_segmentation_entry(entry: dict[str, Any]) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
 
     def add_check(name: str, passed: bool, detail: str = "") -> None:

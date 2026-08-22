@@ -140,4 +140,78 @@ CORPUS: list[dict] = [
             "stable_across_structured_replay": True,
         },
     },
+    {
+        "id": "formula-normalize-latex-escapes",
+        "description": (
+            "公式规范化回归集：模型常见 LaTeX 转义损坏（textbackslash 百分号、"
+            "degree 温度、textcirc、控制字符 frac/begin/end）的确定性修复，"
+            "以及已正确输入必须原样保留（不进行开放式数学改写）。"
+        ),
+        "tags": ["formula-damage"],
+        "kind": "formula-normalize",
+        "cases": [
+            {"raw": r"$7\textbackslash\text{%}$", "expected": r"$7\%$"},
+            {"raw": r"$-3 \textdegree C$", "expected": r"$-3 ^{\circ}\mathrm{C}$"},
+            {"raw": r"$7\textbackslash \textcirc C$", "expected": r"$7^{\circ}\mathrm{C}$"},
+            {"raw": "$60^\\text{°}$", "expected": "$60^\\text{°}$"},
+            {"raw": r"$60^\text{°}$", "expected": r"$60^\text{°}$"},
+        ],
+    },
+    {
+        "id": "quality-gate-unit-conflict",
+        "description": (
+            "审核维度：题干使用百分比但选项均为温度值——单位语义冲突必须被"
+            "确定性门禁拦截为 needs_review，而不是静默发布。"
+        ),
+        "tags": ["answer-wrong"],
+        "kind": "quality-gate",
+        "payload": {
+            "question": {
+                "prompt": r"温度由 -4℃ 上升 $7\%$ 是（ ）",
+                "options": ["3℃", "-3℃", "11℃", "-11℃"],
+                "imageUrls": [],
+            }
+        },
+        "sourceBlock": r"1. 温度由 -4℃ 上升 $7\%$ 是（ ）A. 3℃ B. -3℃ C. 11℃ D. -11℃",
+        "expect": {"status": "needs_review", "errorContains": "单位语义冲突"},
+    },
+    {
+        "id": "quality-gate-clean-choice-ready",
+        "description": (
+            "审核维度对照样本：题干与选项一致的健康选择题必须通过门禁（ready），"
+            "防止误判修复把门禁变成全面拦截。"
+        ),
+        "tags": [],
+        "kind": "quality-gate",
+        "payload": {
+            "question": {
+                "prompt": "（3分）计算 $3 x^{2} - x^{2}$ 的结果是（ ）",
+                "options": ["2", "$2x^{2}$", "2x", "$4x^{2}$"],
+                "imageUrls": [],
+            }
+        },
+        "sourceBlock": r"3. （3分）计算 $3 x ^ { 2 } - x ^ { 2 }$ 的结果是（ )A. 2 B. $2 { \\tt x } ^ { 2 }$ C. 2x D. $4 \\mathsf { x } ^ { 2 }$",
+        "expect": {"status": "ready"},
+    },
+    {
+        "id": "tutor-intent-taxonomy-stable",
+        "description": (
+            "陪练维度：八类学生意图 + 结构化作答优先级的意图识别回归。这些中文短语是"
+            "陪练界面的实际按钮与高频口语，识别漂移会直接改变教学动作选择。"
+        ),
+        "tags": ["stage-overreach"],
+        "kind": "turn-plan-intent",
+        "cases": [
+            {"mode": "answer", "content": "我选 A", "interactionResult": {}, "intentId": "submit-answer"},
+            {"mode": "answer", "content": "准备好了", "interactionResult": {}, "intentId": "confirm-ready"},
+            {"mode": "help", "content": "给我一点提示", "interactionResult": {}, "intentId": "request-hint"},
+            {"mode": "help", "content": "为什么要这样做", "interactionResult": {}, "intentId": "request-explanation"},
+            {"mode": "answer", "content": "帮我检查这一步", "interactionResult": {}, "intentId": "check-step"},
+            {"mode": "help", "content": "我不认同标准答案", "interactionResult": {}, "intentId": "challenge-answer"},
+            {"mode": "help", "content": "能举个例子吗", "interactionResult": {}, "intentId": "request-example"},
+            {"mode": "help", "content": "我完全看不懂", "interactionResult": {}, "intentId": "express-confusion"},
+            {"mode": "help", "content": "今天天气怎么样", "interactionResult": {}, "intentId": "off-topic"},
+            {"mode": "help", "content": "标准答案是不是错了", "interactionResult": {"selectedOptions": ["B"]}, "intentId": "submit-answer"},
+        ],
+    },
 ]
