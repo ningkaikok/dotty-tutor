@@ -43,7 +43,7 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 ```
 
 多个 `LessonDocument` 通过 `lesson_publications` 组成一份互动试卷。试卷先进入 `in_review`，
-发布时再次检查每道题的质量门禁。生成阶段最多局部修复失败题两次；仍不合格的题会自动从本次发布中
+发布时再次检查每道题的质量门禁。生成阶段对结构失败的单题自动修复一次；仍不合格的题会自动从本次发布中
 隔离，合格题继续发布。若没有任何题目合格，发布会安全失败并保留诊断信息。学生端只读取
 `published` 试卷，不接触草稿、审校记录、隔离题或模型配置。
 
@@ -62,6 +62,62 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 `backend/domain/contracts/lesson.py` 负责 Schema 校验和旧 `QuestionPayload` 适配，
 `frontend/src/lesson/rendererRegistry.tsx` 负责把块类型映射到组件。增加新表达形式时，应新增块契约和
 独立渲染器，避免继续扩张 `App.tsx`。
+
+## 渲染与交互边界
+
+题目内容和交互是两个正交维度；一道题通常同时包含多种内容形式：
+
+```text
+Question Schema
+├── contentBlocks（结构化内容，按块类型渲染）
+│   ├── text    → 文本内容块
+│   ├── math    → KaTeX / MathText
+│   ├── image   → 图片渲染器
+│   ├── options → 选项渲染器
+│   └── table   → 表格渲染器
+└── interactionSpec（未来：交互数学实验）
+      └── InteractiveMathCanvas
+            └── Renderer Adapter
+                  ├── Mafs（实验）
+                  └── JSXGraph（实验）
+                        ↓
+                  评测后只保留一个
+```
+
+- Schema 描述教学内容和交互意图，不描述具体前端库；`interactionSpec` 中禁止出现绘图库或 React 组件名称。
+- `InteractiveMathCanvas` 统一管理交互状态、结构化作答和事件；Adapter 把统一交互协议翻译为具体库配置。
+- 只有交互数学运行时可以产生参与判题的结构化作答。
+- `interactionSpec` 产生的作答复用现有 `answerSpec` 判题契约，不新建第二套评分机制。
+
+## 动画与学习状态分层
+
+动画系统区分三个问题——播放什么、何时播放、如何表现——并保持单向依赖：
+
+```text
+LessonDocument.blocks（animation 块）      Learning Result
+        │ 播放什么                            │ 何时触发
+        │                                    ↓
+        │                        Presentation Policy（纯函数）
+        │                                    │ 如何表现
+        ↓                          ──────────┴──────────
+Animation Asset                             ↓
+        │                              UI Feedback
+        ↓                           （当前仅 CSS transition）
+HTML <video> + 字幕 + 暂停点
+```
+
+| 能力 | 主要用途 | 参与判题 |
+| --- | --- | --- |
+| CSS transition（当前唯一实现） | 按钮、卡片、进度反馈 | 否 |
+| Lottie（未引入） | 完成、提示和掌握升级动效 | 否 |
+| Manim（未引入） | 预生成数学推导或证明视频 | 否 |
+| Motion Canvas（未引入） | 参数化时间轴和步骤动画 | 否 |
+
+不变量：
+
+- 学习状态中不出现 `playLottie: true` 等表现字段；表现策略是纯函数映射，不持久化。
+- 动画层只读消费状态或内容，不回写掌握度；动画播放完成不作为作答正确或掌握的证据。
+- 内容块决定播放什么，Learning Result 决定何时考虑触发，Presentation Policy 决定具体效果。
 
 ## 学习数据闭环
 
