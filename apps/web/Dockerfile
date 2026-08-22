@@ -6,7 +6,9 @@ WORKDIR /app/frontend
 # monorepo：先拷工作区清单再装依赖，利用层缓存
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
-RUN corepack enable && pnpm install --frozen-lockfile
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate \
+    && pnpm install --frozen-lockfile
 
 COPY apps/web/ ./
 RUN pnpm run build
