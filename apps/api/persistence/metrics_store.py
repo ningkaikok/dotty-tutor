@@ -55,9 +55,15 @@ _ALLOWED_KEYS = {
 
 
 class MetricsStore:
+    """惰性建表：与其他 Store 一致，构造时不触碰数据库。
+
+    这一点至关重要——组合根在 import 阶段就会创建本 Store（供 OpenAPI 导出等
+    无数据库场景复用）；若在 ``__init__`` 里建表，CI 的类型检查步骤会因为
+    尝试连接 PostgreSQL 而失败。
+    """
+
     def __init__(self, *, engine: Engine) -> None:
         self.engine = engine
-        self._ensure_initialized()
 
     def _ensure_initialized(self) -> None:
         metadata.create_all(self.engine)

@@ -102,6 +102,17 @@ class RuntimeHookTests(unittest.TestCase):
         self.assertEqual(rows[0]["calls"], 1)
         self.assertEqual(rows[0]["failures"], 1)
 
+    def test_constructor_does_not_touch_engine(self) -> None:
+        """惰性建表约定：组合根在无数据库环境 import 时也必须安全。"""
+
+        class ExplodingEngine:
+            def connect(self):
+                raise AssertionError("constructor must not connect")
+            def begin(self):
+                raise AssertionError("constructor must not connect")
+
+        MetricsStore(engine=ExplodingEngine())  # 不应抛出
+
     def test_missing_store_is_noop(self) -> None:
         runtime = ModelRuntime()
         runtime.selection = ModelSelection("ollama", "qwen2.5:7b")
