@@ -124,7 +124,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=_csv_env(
             "CORS_ORIGINS",
-            "http://localhost:5174,http://127.0.0.1:5174",
+            "http://localhost:59174,http://127.0.0.1:59174",
         ),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "Authorization", "X-Request-ID", "Idempotency-Key"],

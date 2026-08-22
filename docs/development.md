@@ -35,7 +35,7 @@ scripts/check-node-version.sh
 ```
 
 检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
-<http://localhost:5174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
+<http://localhost:59174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
 ### 本机开发页与 Docker 页面
 
@@ -43,7 +43,7 @@ scripts/check-node-version.sh
 
 | 项目 | 本机开发 | Docker Compose |
 | --- | --- | --- |
-| 页面 | `http://localhost:5174` | `http://localhost:8080` |
+| 页面 | `http://localhost:59174` | `http://localhost:8080` |
 | 前端 | Vite 开发服务器，支持热更新 | Nginx 提供生产构建后的静态文件 |
 | API | 本机 FastAPI `8010` | Docker API 容器 `api:8010` |
 | Worker | 本机 `background_jobs` Worker | Docker `worker` 容器 |
@@ -51,7 +51,7 @@ scripts/check-node-version.sh
 | 运行时 | 可复用本机 Codex 登录、MinerU 和模型缓存 | 默认使用 Compose 环境，默认模型为 Mock |
 
 日常开发、调试和本机 OCR/模型接入优先使用本机开发入口；Docker 入口用于 CI、发布前验证、
-部署演示和检查生产构建。不要让 `5174` 的前端连接 `8080` 的 API，也不要同时用两套入口操作
+部署演示和检查生产构建。不要让 `59174` 的前端连接 `8080` 的 API，也不要同时用两套入口操作
 同一批教材；两套环境的数据目录和 Worker 不共享，混用会出现数据库任务与文件不在同一运行环境的情况。
 
 如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
@@ -68,7 +68,7 @@ curl -fsS http://127.0.0.1:8010/api/health
 
 ### Codex 连接慢或反复重连
 
-先确认页面访问的是本机开发入口 `http://localhost:5174`。`http://localhost:8080` 是 Docker
+先确认页面访问的是本机开发入口 `http://localhost:59174`。`http://localhost:8080` 是 Docker
 Compose 入口，默认使用 `.env` 中的运行时配置，通常不会继承本机 Codex 登录态。
 
 ```bash
@@ -188,20 +188,20 @@ npm run check:api
 `frontend/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
 收到可操作的切换提示。
 
-打开 <http://localhost:5174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
+打开 <http://localhost:59174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
 
 前端入口：
 
 | 地址 | 用途 |
 | --- | --- |
-| <http://localhost:5174/> | 产品选择首页 |
-| <http://localhost:5174/learn> | 学生学习空间，不显示教材上传和模型配置 |
-| `http://localhost:5174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
-| <http://localhost:5174/studio> | 教材导入、OCR、内容生成与互动预览 |
-| <http://localhost:5174/mistakes> | AI 错题本、图片录入和确认 |
-| <http://localhost:5174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
-| `http://localhost:5174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
-| `http://localhost:5174/mistakes/{id}/tutor` | 恢复该错题的有状态多轮陪练 |
+| <http://localhost:59174/> | 产品选择首页 |
+| <http://localhost:59174/learn> | 学生学习空间，不显示教材上传和模型配置 |
+| `http://localhost:59174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
+| <http://localhost:59174/studio> | 教材导入、OCR、内容生成与互动预览 |
+| <http://localhost:59174/mistakes> | AI 错题本、图片录入和确认 |
+| <http://localhost:59174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
+| `http://localhost:59174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
+| `http://localhost:59174/mistakes/{id}/tutor` | 恢复该错题的有状态多轮陪练 |
 
 入口使用 React Router；Vite 和 `docker/nginx.conf` 均已配置 SPA 回退，因此可直接打开子路径。
 
