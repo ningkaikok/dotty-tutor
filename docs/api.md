@@ -29,6 +29,8 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
+| `GET` | `/api/tutor-models` | 返回错题陪练独立使用的模型目录 |
+| `POST` | `/api/tutor-models/select` | 切换后续陪练轮次使用的模型，不影响生成/审核/OCR 选择 |
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
@@ -46,6 +48,8 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
+| `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题），返回 `202 + jobId`；支持 `Idempotency-Key` |
+| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总和题目载荷 |
 | `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
 | `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
@@ -145,6 +149,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `GET` | `/api/uploads/{uploadId}/artifacts/{batchId}/{filename}` | 读取 OCR Markdown 或模型提示词 |
 | `GET` | `/api/library` | 列出已持久化教材 |
 | `GET` | `/api/library/{uploadId}` | 恢复教材和已生成题目 |
+| `DELETE` | `/api/library/{uploadId}` | 软删除教材（保留源文件和数据库记录，可恢复） |
 
 ## 错误与安全边界
 

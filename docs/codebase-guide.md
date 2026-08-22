@@ -40,8 +40,11 @@ dotty-tutor/
 │   ├── domain/questions/       # 题目来源、规范化、Schema 和质量纯函数
 │   ├── domain/tutoring/        # 判题、陪练策略和状态机纯函数
 │   ├── mistake_recognition.py  # 复用教材流水线的错题识别适配
+│   ├── variation_service.py    # 错题变式验证题生成与确定性题型门禁
+│   ├── answer_evaluator.py     # 选择/多选/填空/数值的确定性答案判定
 │   ├── publication_revision.py # 不可变试卷新版编排
 │   ├── run_audit.py            # 运行快照与题目修订审计
+│   ├── worker.py               # 独立后台 Worker 入口（PostgreSQL Job Store）
 │   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器
 │   ├── infrastructure/files/   # 上传注册和文件边界
 │   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
