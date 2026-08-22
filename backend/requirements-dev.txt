@@ -1,2 +1,3 @@
 # 开发/CI 专用工具；运行时依赖见 requirements.txt
+# 精确版本的事实来源是 pyproject.toml [dependency-groups]，此处为 pip 路径镜像。
 ruff==0.16.4

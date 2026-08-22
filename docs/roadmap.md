@@ -213,8 +213,8 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 
 ## P1：协作与质量（部分完成）
 
-静态检查门禁见 engineering-roadmap T1；剩余：main 分支 Ruleset、真实 PostgreSQL 集成测试、
-依赖审查（CodeQL、Actions SHA 固定）、Python 可复现依赖锁定、API 错误脱敏。
+静态检查门禁见 engineering-roadmap T1；main 分支 Ruleset 与 Python 可复现依赖锁定（uv.lock）
+已完成；剩余：真实 PostgreSQL 集成测试、依赖审查（CodeQL、Actions SHA 固定）、API 错误脱敏。
 
 ## P2：产品能力（按需）
 
