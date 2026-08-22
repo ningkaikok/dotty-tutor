@@ -72,7 +72,7 @@ cp .env.local.example .env.local
 scripts/dev-local.sh
 ```
 
-打开 <http://localhost:5174>，从首页选择入口。最简单的体验方式是 Docker Compose（默认使用 Mock 模型，
+打开 <http://localhost:59174>，从首页选择入口。最简单的体验方式是 Docker Compose（默认使用 Mock 模型，
 不下载模型权重）：
 
 ```bash
@@ -86,7 +86,7 @@ docker compose up --build --detach
 
 打开 <http://localhost:8080>；PostgreSQL 和教材文件保存在命名卷中。
 
-本机开发页（`5174`，走本机 FastAPI `8010` 和仓库内 `data/`）与 Docker 页面（`8080`，走容器内服务
+本机开发页（`59174`，走本机 FastAPI `8010` 和仓库内 `data/`）与 Docker 页面（`8080`，走容器内服务
 和命名卷）是两套独立环境，不要混用同一批教材。完整环境变量、模型与 OCR 配置、手动安装步骤见
 [本地开发指南](docs/development.md)；Docker 运维见[部署文档](docs/deployment.md)。
 

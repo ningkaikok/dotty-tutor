@@ -66,7 +66,7 @@ trap cleanup EXIT INT TERM
 
 echo "PostgreSQL: http://127.0.0.1:${POSTGRES_PORT:-15432}"
 echo "FastAPI:    http://127.0.0.1:8010"
-echo "Frontend:   http://localhost:5174"
+echo "Frontend:   http://localhost:59174"
 echo "Worker:     PostgreSQL background_jobs"
 echo "Codex:      ${MODEL_PROVIDER:-mock}"
 echo "MinerU:     ${MINERU_COMMAND:-auto}"
