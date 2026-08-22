@@ -68,7 +68,7 @@ class ModelRuntime:
     期间用户切换下拉框而让日志中的 provider/model 与真实调用不一致。
     """
 
-    def __init__(self, *, env_prefix: str = "") -> None:
+    def __init__(self, *, env_prefix: str = "", metrics_store: Any = None) -> None:
         """Create a runtime with an independent environment/config namespace.
 
         ``MODEL_*`` controls content generation. The tutor passes ``TUTOR_*`` so
@@ -81,6 +81,9 @@ class ModelRuntime:
             provider=os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
             model=os.getenv(model_name, "default"),
         )
+        # 调用边界指标（roadmap T2）：只追加写入；存储缺失时为 no-op。
+        self.metrics_store = metrics_store
+        self.runtime_name = "tutoring" if env_prefix else "generation"
 
     def ollama_models(self) -> tuple[list[str], str | None]:
         try:
@@ -184,6 +187,40 @@ class ModelRuntime:
             timeout=timeout,
         )
 
+    def _record_metric(
+        self,
+        *,
+        task: str,
+        provider: str,
+        model: str,
+        started: float,
+        status: str,
+        error_type: str | None = None,
+        usage: dict[str, Any] | None = None,
+        prompt_chars: int | None = None,
+        max_tokens: int | None = None,
+    ) -> None:
+        """把一次调用写入边界指标；存储异常绝不影响主流程。"""
+        if self.metrics_store is None:
+            return
+        entry = {
+            "runtime": self.runtime_name,
+            "task": task,
+            "provider": provider,
+            "model": model,
+            "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+            "prompt_chars": int(prompt_chars or 0),
+            "max_output_tokens": max_tokens,
+            "prompt_tokens": usage.get("prompt_tokens") if usage else None,
+            "output_tokens": usage.get("output_tokens") if usage else None,
+            "status": status,
+            "error_type": error_type,
+        }
+        try:
+            self.metrics_store.record(entry)
+        except Exception as record_error:  # noqa: BLE001
+            log_event("model.metrics.record_failed", level=30, error=str(record_error)[:200])
+
     def generate_json(
         self,
         prompt: str,
@@ -212,15 +249,25 @@ class ModelRuntime:
         )
         try:
             if selection.provider == "ollama":
-                result = self._ollama_json(selection.model, prompt, schema, max_tokens)
+                result, usage = self._ollama_json(selection.model, prompt, schema, max_tokens)
             else:
-                result = self._codex_json(selection.model, prompt, schema)
+                result, usage = self._codex_json(selection.model, prompt, schema)
         except Exception as error:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型调用失败：{error}", snapshot=snapshot, cause=error
             )
             HEALTH_BOOK.mark_failure(
                 selection.provider, selection.model, str(execution_error)
+            )
+            self._record_metric(
+                task="generation",
+                provider=selection.provider,
+                model=selection.model,
+                started=started,
+                status="failed",
+                error_type=type(execution_error).__name__,
+                prompt_chars=prompt_chars,
+                max_tokens=max_tokens,
             )
             log_event(
                 "model.request.failed",
@@ -234,6 +281,16 @@ class ModelRuntime:
             )
             raise execution_error from error
         HEALTH_BOOK.mark_success(selection.provider, selection.model)
+        self._record_metric(
+            task="generation",
+            provider=selection.provider,
+            model=selection.model,
+            started=started,
+            status="succeeded",
+            usage=usage,
+            prompt_chars=prompt_chars,
+            max_tokens=max_tokens,
+        )
         log_event(
             "model.request.completed",
             provider=selection.provider,
@@ -286,14 +343,24 @@ class ModelRuntime:
         )
         try:
             if provider == "ollama":
-                result = self._ollama_json(model, prompt, schema, max_tokens, images)
+                result, usage = self._ollama_json(model, prompt, schema, max_tokens, images)
             else:
-                result = self._codex_json(model, prompt, schema, images)
+                result, usage = self._codex_json(model, prompt, schema, images)
         except Exception as error:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
             )
             HEALTH_BOOK.mark_failure(provider, model, str(execution_error))
+            self._record_metric(
+                task="review",
+                provider=provider,
+                model=model,
+                started=started,
+                status="failed",
+                error_type=type(execution_error).__name__,
+                prompt_chars=prompt_chars,
+                max_tokens=max_tokens,
+            )
             log_event(
                 "model.review.failed",
                 level=30,
@@ -307,6 +374,16 @@ class ModelRuntime:
             )
             raise execution_error from error
         HEALTH_BOOK.mark_success(provider, model)
+        self._record_metric(
+            task="review",
+            provider=provider,
+            model=model,
+            started=started,
+            status="succeeded",
+            usage=usage,
+            prompt_chars=prompt_chars,
+            max_tokens=max_tokens,
+        )
         log_event(
             "model.review.completed",
             provider=provider,
@@ -394,8 +471,13 @@ class ModelRuntime:
                 + schema_text
             )
             payload = send()
+        # Ollama 原生透出 token 计数；Codex 路径暂无对应字段，由调用方记 None。
+        usage = {
+            "prompt_tokens": payload.get("prompt_eval_count"),
+            "output_tokens": payload.get("eval_count"),
+        }
         content = payload.get("message", {}).get("content", "")
-        return parse_json_object(content)
+        return parse_json_object(content), usage
 
     def _codex_json(
         self,
@@ -448,7 +530,8 @@ class ModelRuntime:
                 raise RuntimeError(f"Codex 返回错误：{detail[-800:]}")
             if not output_path.exists():
                 raise RuntimeError("Codex 没有生成结构化输出")
-            return parse_json_object(output_path.read_text(encoding="utf-8"))
+            # Codex CLI 不透出 token 计数；记 None 而不是用字符数冒充。
+            return parse_json_object(output_path.read_text(encoding="utf-8")), None
 
 
 def parse_json_object(content: str) -> dict[str, Any]:
