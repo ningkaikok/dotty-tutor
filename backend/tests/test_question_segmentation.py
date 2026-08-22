@@ -570,13 +570,12 @@ class LineBreakReconstructionTests(unittest.TestCase):
         self.assertNotIn("9", numbers)
         self.assertNotIn("10", numbers)
 
-    def test_subproblem_a_continued_enumeration_is_unaffected(self) -> None:
-        """验证 roadmap 子问题 A（续举例编号被误判为新题）不受本次改动影响。
+    def test_subproblem_a_continued_enumeration_is_merged_into_previous_question(self) -> None:
+        """子问题 A 已修复（question-segmentation-v3）：续举例编号不再是新题边界。
 
-        "3、4." 在 content_list.json / middle.json 里已经是独立的段落块，扁平文本里
-        它和上一段之间本来就有空行分隔——这是段落级边界，不是本 PR 处理的"同一段落
-        内部丢换行"。重建前后，QUESTION_START_PATTERN 对它的误判结果必须完全一样：
-        既不能被本次改动修复（超出范围），也不能被改坏（这是硬性回归要求）。
+        "3、4." 在 content_list.json / middle.json 里是独立段落块，扁平文本里与上一段
+        之间有空行分隔。v3 规则下，"、"分隔且前文未以句末标点收尾的候选并入上一题
+        续行；重建前后结果必须完全一致（行级重建不改变本规则的判定输入）。
         """
         source = (
             "8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、"
@@ -589,13 +588,15 @@ class LineBreakReconstructionTests(unittest.TestCase):
             asset_dir = Path(directory)
             _write_structured_files(asset_dir, _REAL_SUBPROBLEM_A_PAYLOAD)
             with_structured = split_question_sources(source, asset_dir=asset_dir)
-        # 两种情况下结果完全一致：子问题 A 造出的"3"号伪题块依然存在，也没有被
-        # 额外合并或拆分——本次改动对它没有任何影响，如实记录而不是顺手修复。
+        # 两种情况下结果完全一致，且伪题号 "3" 不再出现。
         self.assertEqual(without_structured, with_structured)
         numbers = [number for number, _block, _images in without_structured]
-        self.assertIn("3", numbers)
+        self.assertNotIn("3", numbers)
         self.assertIn("8", numbers)
         self.assertIn("9", numbers)
+        blocks_by_number = {number: block for number, block, _images in without_structured}
+        # "3、4. 随机抽取…" 的文本必须保留在第 8 题内，而不是消失或成为独立题。
+        self.assertIn("随机抽取一张卡片", blocks_by_number["8"])
 
 
 if __name__ == "__main__":
