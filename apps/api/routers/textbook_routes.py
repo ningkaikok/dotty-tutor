@@ -19,7 +19,6 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Request, Uploa
 from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
-from api.routers.library_routes import build_library_router
 from application.errors import AppError
 from application.services.lesson_generation import (
     generate_lesson,
@@ -50,6 +49,7 @@ from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from observability import log_event
 from persistence.app_store import application_store as store
 from persistence.job_store import JobStore
+from routers.library_routes import build_library_router
 from textbook_ocr import extract_pdf_text, resolve_ocr_text
 
 router = APIRouter()

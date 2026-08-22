@@ -10,9 +10,9 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from api.routers.textbook_routes import pdf_uploads, processing_service
 from application.services.textbook_processing import TextbookProcessingService
 from domain.questions.source import MAX_QUESTIONS_PER_BATCH
+from routers.textbook_routes import pdf_uploads, processing_service
 
 
 class TextbookProcessingTests(unittest.TestCase):
@@ -220,7 +220,7 @@ class TextbookProcessingTests(unittest.TestCase):
             }
             try:
                 with (
-                    patch("api.routers.textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
+                    patch("routers.textbook_routes.ocr_runtime.should_use_mineru", return_value=True),
                     # Patch where the service resolves the dependency, not at
                     # the HTTP facade that merely delegates the call.
                     patch(
@@ -252,10 +252,10 @@ class TextbookProcessingTests(unittest.TestCase):
                             or item["quality"]
                         ),
                     ),
-                    patch("api.routers.textbook_routes.store.save_questions"),
-                    patch("api.routers.textbook_routes.store.save_lesson"),
-                    patch("api.routers.textbook_routes.store.save_job"),
-                    patch("api.routers.textbook_routes.store.append_revisions_and_save_questions", return_value=[]),
+                    patch("routers.textbook_routes.store.save_questions"),
+                    patch("routers.textbook_routes.store.save_lesson"),
+                    patch("routers.textbook_routes.store.save_job"),
+                    patch("routers.textbook_routes.store.append_revisions_and_save_questions", return_value=[]),
                     patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
                     patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
                 ):
@@ -326,7 +326,7 @@ class TextbookProcessingTests(unittest.TestCase):
                         return_value=(new_payload, [], new_payload["modelRun"], {"provider": "test"}),
                     ),
                     patch("application.services.textbook_processing.TextbookProcessingService._persist_lessons"),
-                    patch("api.routers.textbook_routes.store.save_job"),
+                    patch("routers.textbook_routes.store.save_job"),
                     patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
                     patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
                 ):
@@ -394,7 +394,7 @@ class TextbookProcessingTests(unittest.TestCase):
                         return_value=(new_payload, [], new_payload["modelRun"], {"provider": "test"}),
                     ),
                     patch("application.services.textbook_processing.TextbookProcessingService._persist_lessons"),
-                    patch("api.routers.textbook_routes.store.save_job"),
+                    patch("routers.textbook_routes.store.save_job"),
                     patch.object(processing_service.audit, "start", return_value={"runId": "test-run"}),
                     patch.object(processing_service.audit, "finish", return_value={"runId": "test-run", "status": "succeeded"}),
                 ):

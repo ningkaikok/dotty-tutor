@@ -54,7 +54,7 @@ sudo -u postgres createdb -O dotty_app dotty_tutor
 sudo -u dotty python3.12 -m venv /opt/dotty-tutor/.venv
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install --upgrade pip
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  -r /opt/dotty-tutor/apps/api/requirements.txt
+  cd apps/api && uv sync --frozen --no-dev
 
 sudo install -d -o dotty -g dotty /etc/dotty-tutor
 sudo touch /etc/dotty-tutor/api.env
@@ -401,7 +401,7 @@ tar -czf /srv/backup/dotty-data-$(date +%F).tar.gz \
 ```bash
 sudo -u dotty git -C /opt/dotty-tutor pull --ff-only
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  -r /opt/dotty-tutor/apps/api/requirements.txt
+  cd apps/api && uv sync --frozen --no-dev
 sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && npm ci && npm run build'
 sudo rsync -a --delete /opt/dotty-tutor/apps/web/dist/ /var/www/dotty-tutor/
 sudo systemctl restart dotty-tutor-api dotty-tutor-worker

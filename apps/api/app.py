@@ -4,15 +4,6 @@
 此文件只创建对象、注入依赖并注册路由。
 """
 
-from api.routers.learning_routes import build_learning_router
-from api.routers.mistake_routes import build_mistake_router
-from api.routers.practice_routes import build_practice_router
-from api.routers.publication_routes import build_publication_router
-from api.routers.review_routes import build_review_router
-from api.routers.runtime_routes import build_runtime_router
-from api.routers.textbook_routes import processing_service
-from api.routers.textbook_routes import router as textbook_router
-from api.routers.tutoring_routes import build_tutoring_router
 from application import create_app
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.stateful_tutor import StatefulTutor
@@ -27,6 +18,15 @@ from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from publication_revision import PublicationRevisionService
+from routers.learning_routes import build_learning_router
+from routers.mistake_routes import build_mistake_router
+from routers.practice_routes import build_practice_router
+from routers.publication_routes import build_publication_router
+from routers.review_routes import build_review_router
+from routers.runtime_routes import build_runtime_router
+from routers.textbook_routes import processing_service
+from routers.textbook_routes import router as textbook_router
+from routers.tutoring_routes import build_tutoring_router
 from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
 

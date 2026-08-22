@@ -44,7 +44,6 @@ scripts/check-node-version.sh
 **可选**：已安装 [uv](https://docs.astral.sh/uv/) 时可用精确锁跳过手动装依赖——
 在仓库根目录执行 `uv sync --frozen`（创建根目录 `.venv`，与脚本预期一致），
 之后命令改用 `uv run` 前缀即可。`uv.lock` 是唯一锁文件事实来源；
-`apps/api/requirements*.txt` 是给 Docker/pip 路径的范围声明导出，二者并存。
 
 ### 本机开发页与 Docker 页面
 
@@ -110,7 +109,7 @@ cd dotty-tutor
 
 python3.12 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r apps/api/requirements.txt
+uv sync --frozen
 ```
 
 创建本地数据库：

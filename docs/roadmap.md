@@ -223,14 +223,17 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 
 ## 架构演进方向
 
+当前布局：pnpm monorepo（`apps/web` + `apps/api`），单实例 FastAPI + PostgreSQL Job Store +
+独立 Worker；以下为按指标升级的演进路径，不是现状。
+
 ```text
-React / CDN
-  → API Gateway / FastAPI
+浏览器（React SPA）
+  → apps/api（FastAPI）
        ├─ PostgreSQL（关系数据 + Job Store）
-       ├─ 对象存储
-       └─ 单个后台 Worker（第一阶段）
+       ├─ 对象存储（暂缓）
+       └─ 独立后台 Worker（已落地）
               ├─ OCR / 题目生成与审校
-              └─ 按指标升级 Redis / 多 Worker / TTS 预生成
+              └─ 按指标升级 Redis / 多 Worker / TTS 预生成（暂缓）
 ```
 
 在进程内状态外部化之前，不应简单增加 Uvicorn worker 数量；否则不同进程看到的模型选择、

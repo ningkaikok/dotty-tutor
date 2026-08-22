@@ -9,11 +9,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from api.routers.practice_routes import build_practice_router
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from routers.practice_routes import build_practice_router
 from variation_service import VariationService
 
 

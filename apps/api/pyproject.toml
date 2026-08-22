@@ -37,7 +37,7 @@ select = ["E4", "E7", "E9", "F", "I"]
 # first-party 需要显式声明，否则会被当成第三方排序。
 known-first-party = [
     "answer_evaluator",
-    "api",
+    "routers",
     "application",
     "domain",
     "evaluation",

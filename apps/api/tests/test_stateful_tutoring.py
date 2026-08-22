@@ -10,10 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from api.routers.tutoring_routes import build_tutoring_router
 from application.services.stateful_tutor import StatefulTutor
 from persistence.mistake_store import MistakeStore
 from persistence.tutoring_store import TutoringStore
+from routers.tutoring_routes import build_tutoring_router
 
 GUIDE_CARD = {
     "level": 0,

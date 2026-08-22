@@ -131,8 +131,8 @@ docs(deploy): clarify Docker setup
 提交 PR 前至少运行：
 
 ```bash
-.venv/bin/python -m unittest discover -s backend -p 'test_*.py'
-cd frontend && npm ci && npm run build
+cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
 ```
 
 Docker 相关改动还应运行：
