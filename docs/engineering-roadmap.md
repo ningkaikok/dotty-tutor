@@ -234,11 +234,19 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
   （运行时无法转换 grammar 时降级为普通 JSON 模式并把 Schema 写入系统提示），Codex 路径使用
   `--output-schema`。语义质量门禁（答案正确性、题图归属、数学语义）是独立于结构化输出的一层，
   不因约束解码的存在而弱化，两者不可互相替代。
-- 超长文件需要审查排期入口：`application/services/textbook_processing.py`（约 985 行）、
-  `domain/questions/pipeline.py`（约 786 行）已明显超过 AGENTS.md 的 ~500 行审查线，
-  `frontend/src/apps/textbook/TextbookApp.tsx`（约 528 行）超过前端 ~250 行线。行数是审查信号而非
-  机械拆分指标，但这些信号目前从未进入任何排期；应在 Badcase 语料建成后的重构窗口中评估拆分边界，
-  避免继续膨胀侵蚀"模块化单体"的前提。
+- **超长文件审查已完成**（Badcase 语料建成后的重构窗口已开启），拆分边界评估如下；
+  每个拆分都是独立 PR、可单独回滚，在对应文件下次需要行为改动时顺路执行，不做纯搬家式重构：
+  - `application/services/textbook_processing.py`（987 行）：四个公开工作流各自成模块——
+    `complete_upload`（226 行）/`generate_full_paper`（165 行）/`process_batch`（169 行）/
+    `regenerate_question`（143 行）；共享的批次源加载（`_load/_ordered/_reconcile`）和课程持久化
+    （`_persist_lessons`）提取为协作对象，Service 保留薄门面供 HTTP/Worker 注册表使用。
+  - `domain/questions/pipeline.py`（786 行）：按职责三分为 prompt 构建（~60 行）、模型输出规范化
+    （normalize_* 系列，~250 行）、内容块构建与校验（rich_text/table/blocks/validate，~400 行）；
+    `build_question_content_blocks` 作为公共 API 从原路径 re-export，调用方无感。
+  - `frontend/src/apps/textbook/TextbookApp.tsx`（530 行）：预览作答状态机（input/options/blanks/
+    numeric/draw/hint/reply 及提交处理）提取为 `usePreviewAnswering`，整卷任务轮询与汇总提取为
+    `useFullPaperJob`；组件保留组合与布局，延续既有 useTextbookImport/usePaperPublication 的模式。
+  - 触发条件：任一文件需要行为改动且改动落在上述边界内时，先拆后改；纯行数下降不作为目标。
 
 ## 推荐 PR 顺序
 
