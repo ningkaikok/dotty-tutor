@@ -59,6 +59,8 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 | OCR | MinerU、pypdf |
 | 模型 | Ollama、Codex CLI、Mock 回退 |
 | TTS | Azure Speech、Qwen3-TTS、Web Speech API |
+| 工程结构 | pnpm workspace monorepo（apps/web + apps/api）、uv 精确锁定 |
+| 测试与门禁 | Vitest、unittest、Playwright E2E、Ruff、ESLint、Pyright（basic）、OpenAPI 类型漂移检查 |
 
 ## 快速开始
 

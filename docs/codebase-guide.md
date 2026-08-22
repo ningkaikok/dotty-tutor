@@ -21,7 +21,15 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 
 ```text
 dotty-tutor/
-├── apps/api/                    # FastAPI、领域编排、适配器和测试
+├── package.json                # pnpm 工作区根清单（packageManager 固定 pnpm 版本）
+├── pnpm-workspace.yaml         # 工作区声明：当前仅 apps/web
+├── pnpm-lock.yaml              # JS 依赖精确锁
+├── pyrightconfig.json          # Python 静态类型基线配置（basic，未接门禁）
+├── apps/
+│   ├── api/                    # FastAPI、领域编排、适配器和测试
+│   │   ├── pyproject.toml      # 依赖唯一来源与工具配置（ruff/pyright）
+│   │   ├── uv.lock             # Python 依赖精确锁（uv sync --frozen）
+│   │   ├── Dockerfile          # API/Worker 镜像
 │   ├── app.py                  # ASGI 组合根；只装配，不写业务逻辑
 │   ├── app_factory.py          # 中间件、安全头、CORS、请求日志
 │   ├── api/routers/             # HTTP 协议边界；按产品域拆分 APIRouter
@@ -31,7 +39,8 @@ dotty-tutor/
 │   ├── application/services/   # 可由 HTTP 或 Worker 调用的业务编排
 │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
 │   │   ├── question_processing.py  # 批次生成、审校和质量门禁
-│   │   └── stateful_tutor.py      # 有状态陪练编排
+│   │   ├── stateful_tutor.py      # 有状态陪练编排
+│   │   ├── learning_funnel.py     # 学习效果漏斗聚合（GET /api/funnel）
 │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
 │   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
@@ -67,6 +76,7 @@ dotty-tutor/
 │   ├── lesson/                 # 课程文档和内容块渲染器
 │   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
 │   ├── types/                  # 按领域拆分的稳定类型
+├── apps/web/Dockerfile         # Web 构建镜像（corepack 固定 pnpm 版本）
 ├── apps/web/e2e/               # Playwright 用户路径
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境

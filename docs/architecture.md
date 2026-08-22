@@ -16,7 +16,7 @@ flowchart LR
   Home --> Studio["内容生产工作台 /studio"]
   Student --> Mistakes["AI 错题陪练 /mistakes"]
   Student --> Papers["已发布互动试卷"]
-  Studio --> Web["React + Vite :5174"]
+  Studio --> Web["React + Vite :59174"]
   Student --> Web
   Mistakes --> Web
   Web -->|"/api/*"| API["FastAPI :8010"]
@@ -59,12 +59,52 @@ flowchart LR
   Web -. "音频失败" .-> BrowserTTS["浏览器 speechSynthesis"]
 ```
 
-Vite 开发服务器在 `5174` 端口运行，并把 `/api` 代理到 FastAPI 的 `8010` 端口。
+Vite 开发服务器在 `59174` 端口运行，并把 `/api` 代理到 FastAPI 的 `8010` 端口。
 Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选外部服务。
 
 当前前端使用 React Router 的声明式浏览器路由，并按产品入口动态加载代码。路由匹配、动态参数、
 前进后退和未知路径回退不再由项目自行维护。Vite 开发服务器与生产 Nginx 都会把
 `/learn`、`/studio`、`/mistakes` 等直接访问回退到 `index.html`。
+
+
+## 技术栈与工程化总览
+
+仓库为 pnpm workspace 单仓双应用布局；质量门禁在 CI 中强制执行，
+本地可通过 pre-commit 获得秒级反馈。
+
+```mermaid
+flowchart TB
+  subgraph Layout["仓库布局（pnpm workspace）"]
+    direction LR
+    Root["根清单：package.json / pnpm-workspace.yaml / pyrightconfig.json"]
+    WebApp["apps/web：React 19 + TS + Vite"]
+    ApiApp["apps/api：FastAPI + Python 3.12+<br/>pyproject.toml / uv.lock"]
+  end
+
+  subgraph WebToolchain["前端工具链"]
+    direction LR
+    ESLintW["ESLint（react-hooks）"] --- VitestW["Vitest 单测"] --- PWE2E["Playwright E2E"]
+  end
+  subgraph ApiToolchain["后端工具链"]
+    direction LR
+    RuffC["Ruff check"] --- PyrB["Pyright basic 基线"] --- UT["unittest 全量"]
+  end
+  subgraph Gate["CI 质量门禁（PR 必过）"]
+    direction LR
+    G1["ruff"] --> G2["eslint"] --> G3["vitest"] --> G4["tsc --noEmit"] --> G5["check:api 类型漂移"] --> G6["unittest"] --> G7["docker 构建+健康检查"]
+  end
+
+  Root --- WebApp
+  Root --- ApiApp
+  WebApp -.->|开发与测试| WebToolchain
+  ApiApp -.->|开发与测试| ApiToolchain
+  WebToolchain --> Gate
+  ApiToolchain --> Gate
+```
+
+包管理约定：JS 侧 pnpm（锁文件 `pnpm-lock.yaml`），Python 侧 uv
+（锁文件 `apps/api/uv.lock`）；`backend`/`frontend` 时代的范围声明文件保留给
+Docker/pip 路径使用。本地提交前检查见 [development](development.md) 的 pre-commit 说明。
 
 ## 组件职责
 
