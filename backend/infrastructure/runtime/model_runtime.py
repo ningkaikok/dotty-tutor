@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from observability import log_event
+from infrastructure.runtime.capabilities import HEALTH_BOOK
 from infrastructure.runtime.contracts import (
     RuntimeConfigSnapshot,
     RuntimeExecutionError,
@@ -93,11 +94,17 @@ class ModelRuntime:
             return [], str(error)
 
     def providers(self) -> list[dict[str, Any]]:
-        """探测可用后端，但不修改当前生成模型选择。"""
+        """探测可用后端，但不修改当前生成模型选择。
+
+        ``models`` 保持字符串列表（既有契约）；能力与健康元数据放在平行的
+        ``modelDetails`` 里，界面和调用方按需取用，互不干扰。
+        """
+        from infrastructure.runtime.capabilities import annotate_model_entry
+
         local_models, ollama_error = self.ollama_models()
         codex_binary = codex_command()
         codex_available = bool(shutil.which(codex_binary) or Path(codex_binary).is_file())
-        return [
+        provider_specs = [
             {
                 "id": "ollama",
                 "label": "Ollama 本地模型",
@@ -124,6 +131,11 @@ class ModelRuntime:
                 "detail": "不调用模型，用于离线回退和界面对照",
             },
         ]
+        for spec in provider_specs:
+            spec["modelDetails"] = [
+                annotate_model_entry(spec["id"], model) for model in spec["models"]
+            ]
+        return provider_specs
 
     def catalog(self) -> dict[str, Any]:
         providers = self.providers()
@@ -208,6 +220,9 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型调用失败：{error}", snapshot=snapshot, cause=error
             )
+            HEALTH_BOOK.mark_failure(
+                selection.provider, selection.model, str(execution_error)
+            )
             log_event(
                 "model.request.failed",
                 level=40,
@@ -219,6 +234,7 @@ class ModelRuntime:
                 exc_info=True,
             )
             raise execution_error from error
+        HEALTH_BOOK.mark_success(selection.provider, selection.model)
         log_event(
             "model.request.completed",
             provider=selection.provider,
@@ -278,6 +294,7 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
             )
+            HEALTH_BOOK.mark_failure(provider, model, str(execution_error))
             log_event(
                 "model.review.failed",
                 level=30,
@@ -290,6 +307,7 @@ class ModelRuntime:
                 exc_info=True,
             )
             raise execution_error from error
+        HEALTH_BOOK.mark_success(provider, model)
         log_event(
             "model.review.completed",
             provider=provider,

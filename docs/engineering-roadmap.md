@@ -34,6 +34,8 @@
    **已完成**（`backend/ocr_preflight.py` + `ocrRun.preflight`）：预检只参与路由（空白页跳过 MinerU
    升级）和报告，不删除页面；扫描页安全边界有专项测试。
 4. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
+   **已完成**（`infrastructure/runtime/capabilities.py` + `providers()` 的 `modelDetails` +
+   调用路径健康挂钩）；剩余的"切换前后评测集比较"随 T1 模型维度解锁。
 5. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、Alembic、备份恢复、限流和资源生命周期；只有准备公网
    测试时才进入开发。
 
@@ -153,9 +155,16 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 
 ### 模型能力目录
 
-- [ ] 注册 provider、model、角色（生成/审核/陪练/视觉）、能力标签、上下文上限、延迟、成本和回退模型。
-- [ ] 增加健康状态和失败原因，但不能覆盖已开始运行的 `RunSnapshot`。
-- [ ] 按任务能力筛选模型；模型切换前后必须通过固定评测集比较效果和成本。
+- [x] 注册 provider、model、显示名称、角色（生成/审核/陪练/视觉）、能力标签
+  （json-schema/vision/math/long-context）、上下文上限、延迟与成本级别和回退模型
+  （`infrastructure/runtime/capabilities.py`，Ollama 动态 tag 用前缀通配匹配，
+  未登记模型走保守默认值——不编造能力和规格）。
+- [x] 进程内轻量健康记录：连续失败计数 + 最近一次失败原因（阈值 3 次）；只影响
+  `eligible_for_role` 候选筛选，绝不覆盖已开始运行的 `RunSnapshot`，任何成功调用即复位。
+  已挂接 generate_json / generate_json_as 两条路径（覆盖生成、审核文字+视觉+修复、陪练）。
+- [ ] 按任务能力筛选模型：服务端筛选函数已就绪，学生端只暴露产品允许的陪练选项的
+  界面裁剪待接；**模型切换前后的固定评测集比较依赖评测集的模型维度**（见 T1 第 1 条
+  进行中事项），语料补齐后自动解锁。
 
 ### 模型调用边界指标
 
