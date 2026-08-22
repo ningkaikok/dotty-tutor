@@ -166,7 +166,9 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 1. [ ] 建立脱敏金标准集，覆盖 OCR、公式、题图、七类题型和陪练。验收时同步收敛版本化 Prompt 模板：
    模板进入普通 Python 模块或小目录，运行快照记录 `templateId`/`templateVersion`/`templateHash`/
    `schemaVersion`，动态输入只保存题目修订、OCR 产物和线程摘要 ID 的引用；不保存渲染后的完整
-   Prompt（含教材原文和学生输入），也不建设 Prompt 管理平台或巨型常量表。
+   Prompt（含教材原文和学生输入），也不建设 Prompt 管理平台或巨型常量表。快照同时记录采样参数
+   （temperature 等 options）；回放目标是结构化重放与指标比较，不是逐字节复现——本地 LLM 输出
+   本身非确定，同模板同参数也可能因运行时版本产生差异。
 2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
