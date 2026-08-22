@@ -22,6 +22,7 @@ from ocr_pipeline import (
     probe_page,
     has_visual_hint,
 )
+from ocr_preflight import PREFLIGHT_VERSION, classify_page, summarize_preflight
 from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
 from domain.questions.source import (
     QUESTION_SEGMENTATION_VERSION,
@@ -213,6 +214,7 @@ def resolve_routed_ocr_source(
             "output": "text",
             "cacheHit": False,
             "pageRoutes": [],
+            "preflight": {"version": PREFLIGHT_VERSION, **summarize_preflight([])},
             "quality": [],
             "retries": [],
             "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
@@ -226,12 +228,17 @@ def resolve_routed_ocr_source(
     for page_index in range(start_page, end_page + 1):
         page = reader.pages[page_index]
         text = _safe_page_text(page)
-        probe = probe_page(text, image_count=_safe_image_count(page))
+        image_count = _safe_image_count(page)
+        probe = probe_page(text, image_count=image_count)
         provider = choose_ocr_provider(
             probe,
             requested_provider=requested,
             mineru_available=mineru_available,
         )
+        # 预检只决定路由和提示：空白页（无文字层且无图片对象）没有任何可提取
+        # 内容，auto 模式不再为它升级到 MinerU——这是预检参与路由的唯一位置，
+        # 页面本身仍会保留在 routes 和质量记录里，不做任何删除。
+        preflight = classify_page(text, image_count, probe.formula_likelihood)
         quality = evaluate_page_quality(
             text,
             page_number=page_index + 1,
@@ -239,19 +246,33 @@ def resolve_routed_ocr_source(
         )
         # 自动模式只升级门禁失败的页面。显式 pypdf 常用于无 MinerU 环境，不能
         # 因为空文字层而偷偷改变用户选择。
-        if requested == "auto" and mineru_available and quality["status"] == "retry":
+        if (
+            requested == "auto"
+            and mineru_available
+            and quality["status"] == "retry"
+            and preflight["category"] != "blank"
+        ):
             provider = "mineru"
+            preflight["upgradeSkippedByPreflight"] = False
             retries.append({
                 **quality,
                 "fromProvider": "pypdf",
                 "toProvider": "mineru",
             })
+        elif (
+            requested == "auto"
+            and mineru_available
+            and quality["status"] == "retry"
+            and preflight["category"] == "blank"
+        ):
+            preflight["upgradeSkippedByPreflight"] = True
         routes.append({
             "pageIndex": page_index,
             "pageNumber": page_index + 1,
             "provider": provider,
             "text": text,
             "probe": asdict(probe),
+            "preflight": preflight,
             "preflightQuality": quality,
         })
 
@@ -340,6 +361,9 @@ def resolve_routed_ocr_source(
         if isinstance(url, str)
     ]
     provider = providers[0] if len(providers) == 1 else "hybrid"
+    # 教材级脏页摘要：逐页分类已随 pageRoutes 持久化，这里只聚合数字供工作台
+    # 展示"哪些页值得看"。预检不删除页面，处理与否仍由人工和质量门禁决定。
+    preflight_summary = summarize_preflight([route["preflight"] for route in routes])
     question_quality = [
         evaluate_question_quality(
             block,
@@ -364,6 +388,7 @@ def resolve_routed_ocr_source(
             {key: value for key, value in route.items() if key != "text"}
             for route in routes
         ],
+        "preflight": {"version": PREFLIGHT_VERSION, **preflight_summary},
         "quality": [run["quality"] for run in span_runs],
         "questionQuality": question_quality,
         "retries": retries,
