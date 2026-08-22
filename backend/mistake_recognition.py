@@ -1,4 +1,9 @@
-"""Adapter that reuses the textbook OCR/generation pipeline for one mistake."""
+"""复用教材 OCR/出题管线识别单张错题图的适配层。
+
+刻意不单独实现错题解析：教材管线里的切分、公式规范化和质量门禁已经过真实
+教材校准，错题图片本质上是"只有一道题的一页教材"。单独写一套规则必然与主
+管线漂移——同样的 OCR 文本在两边切出不同结果，学生会看到互相矛盾的题目。
+"""
 
 from __future__ import annotations
 

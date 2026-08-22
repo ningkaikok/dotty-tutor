@@ -1,3 +1,11 @@
+/**
+ * LessonBlock 渲染器注册表：块类型 → 渲染组件的查表边界。
+ *
+ * 设计约束：播放器只负责步骤与播放状态，不依赖任何具体内容块的实现；
+ * 新增内容类型走三步——补充类型契约、实现 Renderer、注册一条记录，
+ * 不在 LessonPlayer 里增加条件分支。公式一律经 MathText/KaTeX 渲染，
+ * 不允许回到 Canvas fillText 路径。
+ */
 import { GeometryCanvas } from "../GeometryCanvas";
 import MathText from "../MathText";
 import type { LessonBlock } from "../types/index";

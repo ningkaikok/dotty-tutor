@@ -1,3 +1,15 @@
+/**
+ * 教材导入全流程的编排 Hook（上传 → 批次处理 → 进度轮询 → 恢复/取消）。
+ *
+ * 阶段划分：小文件走同步 `importTextbook` 快速出题；大 PDF 走分块上传
+ * （init/chunks/complete）→ 后台 Job → 前端轮询 `loadBackgroundJob`。
+ *
+ * 两个关键设计：
+ * 1. 进度由前端轮询而非推送——单机 Demo 里 WebSocket 的复杂度不值得，
+ *    轮询天然幂等，页面刷新后重新拉取即可恢复；
+ * 2. 任务状态以服务端 Job Store 为唯一事实来源，本 Hook 只缓存最近一次
+ *    响应用于渲染；取消、重试都调用后端接口，不在前端自行推断任务状态。
+ */
 import { useEffect, useRef, useState } from "react";
 import {
   completePdfUpload,
