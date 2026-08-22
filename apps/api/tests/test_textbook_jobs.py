@@ -101,8 +101,8 @@ class TextbookJobRegistryTests(unittest.TestCase):
             store = JobStore(database_url=f"sqlite+pysqlite:///{directory}/jobs.sqlite3")
             try:
                 with (
-                    patch("api.routers.textbook_routes.job_store", store),
-                    patch("api.routers.textbook_routes.upload_job", return_value={}),
+                    patch("routers.textbook_routes.job_store", store),
+                    patch("routers.textbook_routes.upload_job", return_value={}),
                 ):
                     client = TestClient(app)
                     path = "/api/uploads/u1/batches/b1/process?force=true&refreshOcr=false"
@@ -124,8 +124,8 @@ class TextbookJobRegistryTests(unittest.TestCase):
             try:
                 store.create_job("textbook.paper.generate", {"uploadId": "u1"})
                 with (
-                    patch("api.routers.textbook_routes.job_store", store),
-                    patch("api.routers.textbook_routes.upload_job", return_value={}),
+                    patch("routers.textbook_routes.job_store", store),
+                    patch("routers.textbook_routes.upload_job", return_value={}),
                 ):
                     client = TestClient(app)
                     response = client.post("/api/uploads/u1/batches/b1/process")
@@ -140,9 +140,9 @@ class TextbookJobRegistryTests(unittest.TestCase):
             store = JobStore(database_url=f"sqlite+pysqlite:///{directory}/jobs.sqlite3")
             try:
                 with (
-                    patch("api.routers.textbook_routes.job_store", store),
+                    patch("routers.textbook_routes.job_store", store),
                     patch(
-                        "api.routers.textbook_routes.upload_job",
+                        "routers.textbook_routes.upload_job",
                         return_value={"status": "complete", "result": {"batches": []}},
                     ),
                 ):
@@ -170,8 +170,8 @@ class TextbookJobRegistryTests(unittest.TestCase):
                     },
                 }
                 with (
-                    patch("api.routers.textbook_routes.job_store", store),
-                    patch("api.routers.textbook_routes.upload_job", return_value=preview),
+                    patch("routers.textbook_routes.job_store", store),
+                    patch("routers.textbook_routes.upload_job", return_value=preview),
                 ):
                     client = TestClient(app)
                     queued = client.post("/api/uploads/u1/full-paper")

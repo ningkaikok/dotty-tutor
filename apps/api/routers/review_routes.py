@@ -10,11 +10,11 @@ from fastapi import APIRouter, HTTPException
 from sqlalchemy.engine import Engine
 
 from answer_evaluator import evaluate_structured_answer
-from api.routers.tutoring_routes import has_meaningful_answer
 from application.services.learning_funnel import build_funnel_snapshot
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
 from observability import log_event
+from routers.tutoring_routes import has_meaningful_answer
 
 
 def build_review_router(

@@ -34,7 +34,10 @@ class DatabaseStore:
         self.root = (
             Path(configured_root).expanduser().resolve()
             if configured_root
-            else Path(__file__).resolve().parents[2] / "data"
+            else (
+                # monorepo 布局：persistence → api → apps → 仓库根。
+                Path(__file__).resolve().parents[3] / "data"
+            )
         )
         self.upload_root = self.root / "uploads"
         self.upload_root.mkdir(parents=True, exist_ok=True)

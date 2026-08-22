@@ -19,7 +19,7 @@ if command -v uv >/dev/null 2>&1; then
   # 精确锁定路径：uv 可用时同步到仓库根 .venv（锁文件在 apps/api/uv.lock）。
   (cd "$ROOT_DIR/apps/api" && UV_PROJECT_ENVIRONMENT="$ROOT_DIR/.venv" uv sync --frozen)
 elif [[ ! -x "$ROOT_DIR/.venv/bin/python" ]]; then
-  echo "未找到 .venv。请安装 apps/api/requirements.txt，或安装 uv 后重跑（将自动 uv sync）。" >&2
+  echo "未找到 .venv。请先安装 uv（将自动按锁文件同步依赖）（将自动 uv sync）。" >&2
   exit 1
 fi
 

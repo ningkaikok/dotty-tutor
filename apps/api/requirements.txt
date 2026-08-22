@@ -1,7 +1,0 @@
-fastapi>=0.141.1,<1
-httpx2>=2.10.0,<3
-pypdf>=6.15.0,<7
-python-multipart>=0.0.32,<1
-psycopg[binary]>=3.3.4,<4
-SQLAlchemy>=2.0.52,<3
-uvicorn[standard]>=0.52.1,<1

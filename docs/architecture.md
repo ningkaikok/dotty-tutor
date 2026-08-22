@@ -102,9 +102,10 @@ flowchart TB
   ApiToolchain --> Gate
 ```
 
-包管理约定：JS 侧 pnpm（锁文件 `pnpm-lock.yaml`），Python 侧 uv
-（锁文件 `apps/api/uv.lock`）；`backend`/`frontend` 时代的范围声明文件保留给
-Docker/pip 路径使用。本地提交前检查见 [development](development.md) 的 pre-commit 说明。
+包管理约定（单一来源）：JS 侧 pnpm（锁文件 `pnpm-lock.yaml`），Python 侧 uv
+（依赖声明在 `apps/api/pyproject.toml`，锁文件 `apps/api/uv.lock`）。Docker 与 CI 均使用
+同一把锁安装，不再维护范围声明式的 requirements 文件。本地提交前检查见
+[development](development.md) 的 pre-commit 说明。
 
 ## 组件职责
 
@@ -523,5 +524,6 @@ POST /api/tts
 错题域的数据模型、智能体状态机和代码复用边界见
 [AI 错题陪练产品规划](mistake-coach-plan.md)。
 
-目标架构和后续 worker 拆分可在
-[Figma 架构图](https://www.figma.com/board/2ngUQNSgI0V27SEcBQKfzF)中查看。
+当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
+统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
+不再维护外部架构图，避免与代码脱节。
