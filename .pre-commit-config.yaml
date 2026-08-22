@@ -14,11 +14,11 @@ repos:
     hooks:
       - id: ruff-backend
         name: ruff (backend)
-        entry: uv run ruff check backend
+        entry: uv run --directory apps/api ruff check apps/api
         language: system
         pass_filenames: false
       - id: eslint-frontend
         name: eslint (frontend)
-        entry: npm run lint --prefix frontend
+        entry: npm run lint --prefix apps/web
         language: system
         pass_filenames: false

@@ -24,14 +24,14 @@
 再决定下一步修哪个：
 
 1. **T1 / `test/offline-ai-evaluation`**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练；
-   种子数据直接复用本轮已经写成单测夹具的真实坏样本（`backend/tests/test_question_processing.py`、
+   种子数据直接复用本轮已经写成单测夹具的真实坏样本（`apps/api/tests/test_question_processing.py`、
    `test_question_segmentation.py`、`test_question_content_residue.py`、`test_stem_image_placement.py`
    里的真实 OCR 片段），不必重新采集。
 2. **T1 / `feature/badcase-replay-loop`**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
    建成后，T0 里剩下的几项开放问题（见下）应该先进金标准集验证影响范围，再决定是否值得单独立项修复，
    不要再凭感觉判断优先级。
 3. **T2 / `feat/ocr-preflight-report`**：增加页面预检和脏页报告，复用现有页面级 OCR 路由、质量门禁和局部重试。
-   **已完成**（`backend/ocr_preflight.py` + `ocrRun.preflight`）：预检只参与路由（空白页跳过 MinerU
+   **已完成**（`apps/api/ocr_preflight.py` + `ocrRun.preflight`）：预检只参与路由（空白页跳过 MinerU
    升级）和报告，不删除页面；扫描页安全边界有专项测试。
 4. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
    **已完成**（`infrastructure/runtime/capabilities.py` + `providers()` 的 `modelDetails` +
@@ -54,12 +54,12 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
   > 这条曾被标记为完整覆盖“讲解、历史消息和错误回退”，但实际只覆盖了题目主链路。
   > 过度声称覆盖范围导致同一类缺陷被误判为已修复，换一种题型就复发一次；剩余通道见下面两条。
 - [ ] 课程 `markdown` 讲解块、陪练历史消息和错误回退仍把整段文本直接交给 `MathText`
-  （`frontend/src/lesson/rendererRegistry.tsx`），非公式内容会退化成纯文字。这些通道要么改为后端下发
+  （`apps/web/src/lesson/rendererRegistry.tsx`），非公式内容会退化成纯文字。这些通道要么改为后端下发
   结构化内容块，要么明确约定“只允许纯文本 + `$...$`”并在写入侧校验，不要在前端补一层解析。
   > 优先级：中。目前没有确认的真实坏样本（题目主链路上的同类问题已经修完），但结构上和这一轮反复
   > 复发的“某个渲染通道被漏掉”是同一类缺陷，大概率会在 Badcase 语料跑起来后自然暴露——先建语料，
   > 让真实坏样本决定这条什么时候动手，不要凭猜测排期。
-- [x] 题号识别根治（`QUESTION_START_PATTERN`，`backend/domain/questions/source.py`）。
+- [x] 题号识别根治（`QUESTION_START_PATTERN`，`apps/api/domain/questions/source.py`）。
   两个子问题均已修复并进入金标准语料回归：
   **子问题 A**（续举例编号 "3、4." 被误判为新题号，question-segmentation-v3）：'、'分隔的候选题号
   只有在前文最后一个非空白字符是枚举标记（、，,）时才判为续行举例；对本地全部真实教材 OCR 重放验证，
@@ -72,7 +72,7 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
   `line-break-reconstruction-recovers-9-and-10`；安全网行为由合成样本单测继续覆盖。
 
 - [ ] 图片与题目的版面级对应关系：图片归属曾经完全由 MinerU 的线性阅读顺序决定
-  （`backend/domain/questions/source.py` 按纯文本位置分配），多图页面可能把图错绑到相邻题。
+  （`apps/api/domain/questions/source.py` 按纯文本位置分配），多图页面可能把图错绑到相邻题。
   题干里“主视图/图1/图2”这类内联图注已经能就地对齐（图片会解析到题干文字中对应的位置，见
   `extract_image_placements`），OCR 原文里明确写着“第N题图/第N题”的显式标注也已经优先于纯文本位置
   （见 `_apply_caption_image_attribution`）。`feat/caption-attribution-from-structured-json` 落地后，
@@ -126,7 +126,7 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 当种子数据，不需要另外采集。
 
 1. [x] 建立脱敏金标准集，覆盖 OCR、公式、题图、题型和陪练意图（9 条语料，
-   `backend/evaluation/`，`python -m evaluation.replay`）。种子直接复用单测夹具的真实坏样本，
+   `apps/api/evaluation/`，`python -m evaluation.replay`）。种子直接复用单测夹具的真实坏样本，
    含一个固化 T0 子问题 A 的特征化条目（已随 v0.23.0 修复转正为回归证据）。重放器支持多入口：
    切分 / 公式规范化（幂等断言）/ 审核质量门禁（状态+错误摘要）/ 陪练意图识别。
    **剩余**：讲解样本与期望质量锚点维度依赖 LLM-as-Judge 落地后补齐。验收时同步收敛版本化
@@ -147,8 +147,8 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
    **进行中**：业务漏斗已上线（`GET /api/funnel`，`learning_funnel.py` 聚合导入→确认→陪练→
    验证→复习五阶段计数与比率）；成本/token 维度依赖"模型调用边界指标"落地后并入。
    "同知识点再次出错率"需要尝试与知识点的跨会话关联，待 subQuestions/画像工作后补充。
-7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `frontend/eslint.config.js`，
-   CI 中 `ruff check backend` 与 `npm run lint`）。规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
+7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
+   CI 中 `ruff check apps/api` 与 `npm run lint`）。规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
    ESLint 补 tsc 抓不到的 hooks 依赖与未使用变量。两条 React Compiler 时代的保守规则
    （set-state-in-effect/purity）暂关闭并记录理由，对应的"key 重挂载/派生状态"重构列入
    超长文件审查的同一重构窗口。Prettier/格式化统一不进本门禁。
@@ -254,7 +254,7 @@ torch/soundfile 为可选重依赖误报（已配置 venv 后仍缺，属预期�
   - `domain/questions/pipeline.py`（786 行）：按职责三分为 prompt 构建（~60 行）、模型输出规范化
     （normalize_* 系列，~250 行）、内容块构建与校验（rich_text/table/blocks/validate，~400 行）；
     `build_question_content_blocks` 作为公共 API 从原路径 re-export，调用方无感。
-  - `frontend/src/apps/textbook/TextbookApp.tsx`（530 行）：预览作答状态机（input/options/blanks/
+  - `apps/web/src/apps/textbook/TextbookApp.tsx`（530 行）：预览作答状态机（input/options/blanks/
     numeric/draw/hint/reply 及提交处理）提取为 `usePreviewAnswering`，整卷任务轮询与汇总提取为
     `useFullPaperJob`；组件保留组合与布局，延续既有 useTextbookImport/usePaperPublication 的模式。
   - 触发条件：任一文件需要行为改动且改动落在上述边界内时，先拆后改；纯行数下降不作为目标。

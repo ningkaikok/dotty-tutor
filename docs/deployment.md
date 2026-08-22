@@ -54,15 +54,15 @@ sudo -u postgres createdb -O dotty_app dotty_tutor
 sudo -u dotty python3.12 -m venv /opt/dotty-tutor/.venv
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install --upgrade pip
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  -r /opt/dotty-tutor/backend/requirements.txt
+  -r /opt/dotty-tutor/apps/api/requirements.txt
 
 sudo install -d -o dotty -g dotty /etc/dotty-tutor
-sudo touch /etc/dotty-tutor/backend.env
-sudo chown dotty:dotty /etc/dotty-tutor/backend.env
-sudo chmod 600 /etc/dotty-tutor/backend.env
+sudo touch /etc/dotty-tutor/api.env
+sudo chown dotty:dotty /etc/dotty-tutor/api.env
+sudo chmod 600 /etc/dotty-tutor/api.env
 ```
 
-`/etc/dotty-tutor/backend.env` 示例：
+`/etc/dotty-tutor/api.env` 示例：
 
 ```dotenv
 DATABASE_URL=postgresql+psycopg://dotty_app:replace-with-url-encoded-password@db.example.com:5432/dotty_tutor?sslmode=require
@@ -100,9 +100,9 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 
 ```bash
 sudo -u dotty bash -lc '
-  cd /opt/dotty-tutor/backend
+  cd /opt/dotty-tutor/apps/api
   set -a
-  . /etc/dotty-tutor/backend.env
+  . /etc/dotty-tutor/api.env
   set +a
   ../.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010
 '
@@ -131,8 +131,8 @@ Wants=network-online.target
 Type=simple
 User=dotty
 Group=dotty
-WorkingDirectory=/opt/dotty-tutor/backend
-EnvironmentFile=/etc/dotty-tutor/backend.env
+WorkingDirectory=/opt/dotty-tutor/apps/api
+EnvironmentFile=/etc/dotty-tutor/api.env
 ExecStart=/opt/dotty-tutor/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
@@ -162,8 +162,8 @@ Wants=network-online.target
 Type=simple
 User=dotty
 Group=dotty
-WorkingDirectory=/opt/dotty-tutor/backend
-EnvironmentFile=/etc/dotty-tutor/backend.env
+WorkingDirectory=/opt/dotty-tutor/apps/api
+EnvironmentFile=/etc/dotty-tutor/api.env
 ExecStart=/opt/dotty-tutor/.venv/bin/python -m worker --registry api.routers.textbook_routes:textbook_job_registry
 Restart=on-failure
 RestartSec=5
@@ -191,13 +191,13 @@ API 的 `complete` 和批次处理接口只负责创建任务并返回 `202 + jo
 
 ```bash
 sudo -u dotty bash -lc '
-  cd /opt/dotty-tutor/frontend
+  cd /opt/dotty-tutor/apps/web
   npm ci
   npm run build
 '
 
 sudo mkdir -p /var/www/dotty-tutor
-sudo rsync -a --delete /opt/dotty-tutor/frontend/dist/ /var/www/dotty-tutor/
+sudo rsync -a --delete /opt/dotty-tutor/apps/web/dist/ /var/www/dotty-tutor/
 sudo chown -R www-data:www-data /var/www/dotty-tutor
 ```
 
@@ -247,8 +247,8 @@ Docker 部署包含：
 | 文件 | 作用 |
 | --- | --- |
 | `compose.yaml` | 编排 PostgreSQL、一次性数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
-| `Dockerfile.backend` | 构建 API/Worker 共用的非 root 后端镜像 |
-| `Dockerfile.frontend` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
+| `apps/api/Dockerfile` | 构建 API/Worker 共用的非 root 后端镜像 |
+| `apps/web/Dockerfile` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
 | `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
 | `.env.docker.example` | Docker 环境变量模板 |
 | `.dockerignore` | 排除虚拟环境、模型、数据和构建产物 |
@@ -401,9 +401,9 @@ tar -czf /srv/backup/dotty-data-$(date +%F).tar.gz \
 ```bash
 sudo -u dotty git -C /opt/dotty-tutor pull --ff-only
 sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  -r /opt/dotty-tutor/backend/requirements.txt
-sudo -u dotty bash -lc 'cd /opt/dotty-tutor/frontend && npm ci && npm run build'
-sudo rsync -a --delete /opt/dotty-tutor/frontend/dist/ /var/www/dotty-tutor/
+  -r /opt/dotty-tutor/apps/api/requirements.txt
+sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && npm ci && npm run build'
+sudo rsync -a --delete /opt/dotty-tutor/apps/web/dist/ /var/www/dotty-tutor/
 sudo systemctl restart dotty-tutor-api dotty-tutor-worker
 sudo systemctl reload nginx
 ```

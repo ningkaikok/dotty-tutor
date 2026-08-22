@@ -44,7 +44,7 @@ scripts/check-node-version.sh
 **可选**：已安装 [uv](https://docs.astral.sh/uv/) 时可用精确锁跳过手动装依赖——
 在仓库根目录执行 `uv sync --frozen`（创建根目录 `.venv`，与脚本预期一致），
 之后命令改用 `uv run` 前缀即可。`uv.lock` 是唯一锁文件事实来源；
-`backend/requirements*.txt` 是给 Docker/pip 路径的范围声明导出，二者并存。
+`apps/api/requirements*.txt` 是给 Docker/pip 路径的范围声明导出，二者并存。
 
 ### 本机开发页与 Docker 页面
 
@@ -110,7 +110,7 @@ cd dotty-tutor
 
 python3.12 -m venv .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r backend/requirements.txt
+.venv/bin/pip install -r apps/api/requirements.txt
 ```
 
 创建本地数据库：
@@ -163,14 +163,14 @@ TUTOR_MODEL_NAME=gpt-5.6-sol
 启动 FastAPI：
 
 ```bash
-cd backend
+cd apps/api
 ../.venv/bin/python -m uvicorn app:app --reload --port 8010
 ```
 
 无需本地模型的界面开发可以使用 Mock：
 
 ```bash
-cd backend
+cd apps/api
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
   ../.venv/bin/python -m uvicorn app:app --reload --port 8010
 ```
@@ -180,7 +180,7 @@ MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
 另开终端：
 
 ```bash
-cd frontend
+cd apps/web
 npm ci
 npm run dev
 ```
@@ -194,7 +194,7 @@ npm run check:api
 
 `check:api` 会在临时目录生成 OpenAPI 类型并与已提交文件逐字比较；它不会用生成结果静默覆盖工作树。
 
-`frontend/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
+`apps/web/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
 收到可操作的切换提示。
 
 打开 <http://localhost:59174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
@@ -216,23 +216,23 @@ npm run check:api
 
 ## 修改代码时从哪里开始
 
-- 修改顶层页面或 URL：`frontend/src/App.tsx` 与对应 `frontend/src/apps/*`。
-- 修改教材上传交互：`frontend/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
+- 修改顶层页面或 URL：`apps/web/src/App.tsx` 与对应 `apps/web/src/apps/*`。
+- 修改教材上传交互：`apps/web/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
   PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
-- 修改教材 API/PDF 批次：`backend/api/routers/textbook_routes.py`；长流程在 `backend/application/services/textbook_processing.py`。
+- 修改教材 API/PDF 批次：`apps/api/api/routers/textbook_routes.py`；长流程在 `apps/api/application/services/textbook_processing.py`。
 - 内容生产端“修复本题”调用 `POST /api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，默认只重跑当前题并复用 OCR 缓存；需要重新识别页面时使用批次接口的 `refreshOcr=true`。
-- 修改教材页面路由/缓存：`backend/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
+- 修改教材页面路由/缓存：`apps/api/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
   `domain/questions/` 下的 OCR 纯函数；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `infrastructure/runtime/ocr_runtime.py`。
   Docker 后端镜像通过 `poppler-utils` 提供 `pdftoppm`，本机开发也需要 Poppler 才能启用矢量页渲染兜底。
 - 修改模型题目结构：`application/services/lesson_generation.py`、`domain/questions/contracts.py` 和 `domain/questions/pipeline.py`。
-- 修改错题功能：`backend/mistake_*.py` 与 `frontend/src/apps/mistake/`。
-- 修改多轮状态：`backend/application/services/stateful_tutor.py`、`api/routers/tutoring_routes.py`、`persistence/tutoring_store.py` 和
-  `frontend/src/apps/mistake/useMistakeTutor.ts`。
+- 修改错题功能：`apps/api/mistake_*.py` 与 `apps/web/src/apps/mistake/`。
+- 修改多轮状态：`apps/api/application/services/stateful_tutor.py`、`api/routers/tutoring_routes.py`、`persistence/tutoring_store.py` 和
+  `apps/web/src/apps/mistake/useMistakeTutor.ts`。
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
 数据库只支持全新空库启动。首次访问各领域 Store 时会根据
-`backend/persistence/schema.py` 及领域 Store 中的当前 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema；
+`apps/api/persistence/schema.py` 及领域 Store 中的当前 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema；
 项目不提供原地数据库升级，也不再维护编号 SQL 迁移链。已有本地测试库和 `data/` 资源应在切换当前基线前清空，
 生产环境需要通过备份后重建空库并重新导入当前数据。
 
@@ -319,7 +319,7 @@ Qwen3-TTS 使用独立 Python 环境：
 ```bash
 python3.12 -m venv .qwen3-tts-venv
 .qwen3-tts-venv/bin/pip install -U qwen-tts
-cd backend
+cd apps/api
 ../.qwen3-tts-venv/bin/python infrastructure/runtime/qwen_tts_service.py
 ```
 
@@ -355,8 +355,8 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 ## 测试
 
 ```bash
-cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
-cd frontend
+cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+cd apps/web
 npm run build
 npx playwright install chromium   # 首次运行或浏览器版本更新时执行
 npm run test:e2e

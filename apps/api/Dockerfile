@@ -1,0 +1,32 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+COPY apps/api/requirements.txt /app/backend/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends poppler-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r /app/backend/requirements.txt
+
+RUN groupadd --system dotty \
+    && useradd --system --gid dotty --home-dir /app --shell /usr/sbin/nologin dotty \
+    && mkdir -p /data/uploads \
+    && chown -R dotty:dotty /app /data
+
+COPY --chown=dotty:dotty apps/api /app/backend
+
+ENV DOTTY_DATA_DIR=/data
+WORKDIR /app/backend
+EXPOSE 8010
+
+USER dotty
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/api/health', timeout=3)" || exit 1
+
+# This image contains the API only. Run Ollama, MinerU and Qwen3-TTS as
+# separate services and configure their URLs/commands through the environment.
+CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8010", "--workers", "1"]

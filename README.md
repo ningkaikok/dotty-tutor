@@ -115,8 +115,8 @@ docker compose up --build --detach
 ## 测试
 
 ```bash
-cd backend && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-cd frontend && npm run build
+cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+cd apps/web && npm run build
 ```
 
 GitHub Actions 会在每次推送和 Pull Request 中运行后端测试、前端构建，以及完整 Docker
