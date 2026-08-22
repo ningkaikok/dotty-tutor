@@ -1,3 +1,26 @@
+[project]
+# 依赖的唯一事实来源；requirements.txt 是给 Docker/pip 路径的范围声明导出，
+# uv.lock 是 CI 与本地可选的精确锁定（`uv sync --frozen`）。
+name = "dotty-tutor-backend"
+version = "0.23.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.141.1,<1",
+    "httpx2>=2.10.0,<3",
+    "pypdf>=6.15.0,<7",
+    "python-multipart>=0.0.32,<1",
+    "psycopg[binary]>=3.3.4,<4",
+    "SQLAlchemy>=2.0.52,<3",
+    "uvicorn[standard]>=0.52.1,<1",
+]
+
+[dependency-groups]
+dev = ["ruff==0.16.4"]
+
+[tool.uv]
+# 只用系统/已装 Python，避免 CI 或本机意外下载解释器。
+python-preference = "only-system"
+
 [tool.ruff]
 # 中文注释和长 URL 让部分行天然超过 100 字符；行宽检查交给人工审查，
 # 这里只启用与正确性相关的规则集（见下方 select），不启用格式化。
