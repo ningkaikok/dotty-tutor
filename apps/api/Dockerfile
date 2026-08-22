@@ -14,7 +14,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv==0.12.5
 
-COPY apps/api/pyproject.toml apps/api/uv.lock ./apps/api/
+COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY --chown=dotty:dotty apps/api /app/apps/api
