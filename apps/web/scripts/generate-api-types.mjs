@@ -5,7 +5,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const repositoryRoot = resolve(frontendRoot, "..");
+// 脚本位于 <root>/apps/web/scripts，仓库根需要上跳两级。
+const repositoryRoot = resolve(frontendRoot, "..", "..");
 const outputPath = resolve(frontendRoot, "src/types/generated/api.ts");
 const checkOnly = process.argv.includes("--check");
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "dotty-tutor-openapi-"));
@@ -44,7 +45,7 @@ try {
     openapiPath,
   ], {
     cwd: repositoryRoot,
-    env: { ...process.env, PYTHONPATH: resolve(repositoryRoot, "backend") },
+    env: { ...process.env, PYTHONPATH: resolve(repositoryRoot, "apps/api") },
     stdio: "inherit",
   });
 
