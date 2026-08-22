@@ -124,6 +124,31 @@ class TextbookOcrPipelineTests(unittest.TestCase):
             self.assertEqual(runtime.parse_calls, [(0, 0), (0, 0)])
             self.assertFalse(refreshed_run["cacheHit"])
 
+    def test_auto_mode_skips_mineru_upgrade_for_blank_pages(self) -> None:
+        """预检参与路由：空白页（无文字层且无图片）不值得花费版面 OCR 成本。
+
+        扫描页（有图片、无文字）仍必须升级到 MinerU——预检绝不能把有内容的
+        页面当成空白页跳过。
+        """
+        with TemporaryDirectory() as directory:
+            runtime = _Runtime()
+            long_text = "普通电子教材文字层。" * 40
+            _source, run = self._resolve(directory, runtime, [
+                _Page(""),
+                _Page("", image_count=1),
+                _Page(long_text),
+            ])
+            # 只有扫描页进入 MinerU；真正的空白页留在 pypdf 路径。
+            self.assertEqual(runtime.parse_calls, [(1, 1)])
+            routes = run["pageRoutes"]
+            self.assertEqual([route["provider"] for route in routes], ["pypdf", "mineru", "pypdf"])
+            self.assertTrue(routes[0]["preflight"]["upgradeSkippedByPreflight"])
+            preflight = run["preflight"]
+            self.assertEqual(preflight["totalPages"], 3)
+            self.assertEqual(preflight["blankPages"], [1])
+            self.assertEqual(preflight["visualOcrNeededPages"], [2])
+            self.assertEqual(preflight["processablePages"], 2)
+
     def test_explicit_pypdf_never_upgrades_empty_page(self) -> None:
         with TemporaryDirectory() as directory:
             runtime = _Runtime(provider="pypdf")
