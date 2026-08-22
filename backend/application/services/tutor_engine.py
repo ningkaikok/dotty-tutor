@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from answer_evaluator import evaluate_structured_answer
+from answer_evaluator import EVALUATOR_VERSION, evaluate_structured_answer
 from domain.questions.contracts import (
     CANVAS_ACTIONS,
     HELP_SCHEMA,
@@ -88,6 +88,8 @@ class TutorEngine:
                     # 因沿用 answer-check 名称而错误获得推进状态机的权限。
                     "assessmentAuthority": "deterministic",
                     "misconception": normalize_misconception(None),
+                    # 客观判定事实随回复进入计划与消息动作；字段已保证不含标准答案。
+                    "evaluationEvidence": structured.get("evaluationEvidence"),
                 },
                 nextHintLevel=min(request.hintLevel + 1, 3),
                 canvasAction="show-base",
@@ -114,6 +116,11 @@ class TutorEngine:
                         "hint": "圈出题干中的关键条件，再逐项核对命题。",
                         "question": "题干中的哪条条件能支持你的判断？",
                         "misconception": normalize_misconception(None),
+                        "evaluationEvidence": {
+                            "strategy": "true-false-match",
+                            "submittedLabel": selected,
+                            "evaluatorVersion": EVALUATOR_VERSION,
+                        },
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
                     canvasAction=safe_canvas_action(question, "show-base"),
@@ -149,6 +156,12 @@ class TutorEngine:
                         "hint": interaction.get("instruction", "先找出题目要求连接的两个点。"),
                         "question": "你连接的线段对应题目中的哪条几何关系？",
                         "misconception": normalize_misconception(None),
+                        "evaluationEvidence": {
+                            "strategy": "line-connections",
+                            "submittedCount": len(submitted),
+                            "requiredCount": len(required),
+                            "evaluatorVersion": EVALUATOR_VERSION,
+                        },
                     },
                     nextHintLevel=min(request.hintLevel + 1, 3),
                     canvasAction=safe_canvas_action(question, "show-triangles"),
