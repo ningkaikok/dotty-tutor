@@ -89,4 +89,5 @@ app.include_router(build_review_router(
     mistake_store=mistake_store,
     review_store=review_store,
     variation_service=variation_service,
+    engine=store.engine,
 ))

@@ -144,6 +144,9 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
+   **进行中**：业务漏斗已上线（`GET /api/funnel`，`learning_funnel.py` 聚合导入→确认→陪练→
+   验证→复习五阶段计数与比率）；成本/token 维度依赖"模型调用边界指标"落地后并入。
+   "同知识点再次出错率"需要尝试与知识点的跨会话关联，待 subQuestions/画像工作后补充。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `frontend/eslint.config.js`，
    CI 中 `ruff check backend` 与 `npm run lint`）。规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
    ESLint 补 tsc 抓不到的 hooks 依赖与未使用变量。两条 React Compiler 时代的保守规则
