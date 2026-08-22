@@ -1,5 +1,6 @@
 import type { MistakeConfirmation, MistakeItem } from "../types/mistake";
 import { parse } from "./client";
+import { DEMO_LEARNER_ID } from "./client";
 
 export async function importMistake(
   file: File,
@@ -9,11 +10,11 @@ export async function importMistake(
   body.append("file", file);
   body.append("sourceText", input.sourceText ?? "");
   body.append("originalAnswer", input.originalAnswer ?? "");
-  body.append("learnerId", input.learnerId ?? "local-demo");
+  body.append("learnerId", input.learnerId ?? DEMO_LEARNER_ID);
   return parse<MistakeItem>(await fetch("/api/mistakes/import", { method: "POST", body }));
 }
 
-export async function loadMistakes(learnerId = "local-demo"): Promise<MistakeItem[]> {
+export async function loadMistakes(learnerId: string = DEMO_LEARNER_ID): Promise<MistakeItem[]> {
   const result = await parse<{ items: MistakeItem[] }>(
     await fetch(`/api/mistakes?learnerId=${encodeURIComponent(learnerId)}`, { cache: "no-store" }),
   );

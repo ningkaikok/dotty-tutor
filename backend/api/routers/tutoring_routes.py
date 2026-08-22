@@ -1,6 +1,9 @@
 """HTTP boundary for creating tutor threads and appending turns."""
 
 from __future__ import annotations
+from domain.constants import DEMO_LEARNER_ID
+
+
 
 from typing import Any
 
@@ -8,7 +11,6 @@ from fastapi import APIRouter, HTTPException
 
 from observability import log_event
 from domain.contracts.tutoring import TutorMessageRequest
-
 
 def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> bool:
     """Return whether a turn contains an answer a learner could have entered.
@@ -41,7 +43,9 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
     router = APIRouter(tags=["tutoring"])
 
     @router.post("/api/mistakes/{mistake_id}/thread")
-    def create_thread(mistake_id: str, learnerId: str = "local-demo") -> dict[str, Any]:
+    def create_thread(
+        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+    ) -> dict[str, Any]:
         """Create or restore the single tutoring thread for one confirmed mistake."""
         mistake = mistake_store.get(mistake_id)
         if not mistake:

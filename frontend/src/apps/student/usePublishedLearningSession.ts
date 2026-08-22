@@ -7,9 +7,9 @@ import {
   syncExerciseAttempts,
 } from "../../api/learning";
 import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types/index";
+import { DEMO_LEARNER_ID } from "../../api/client";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
-const DEMO_LEARNER_ID = "local-demo";
 
 interface PendingAttempt {
   sessionId: string;

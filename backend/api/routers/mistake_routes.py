@@ -1,6 +1,9 @@
 """HTTP routes for image capture, confirmation and the personal mistake book."""
 
 from __future__ import annotations
+from domain.constants import DEMO_LEARNER_ID
+
+
 
 import shutil
 import time
@@ -13,7 +16,6 @@ from fastapi.responses import FileResponse
 
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
 from observability import log_event
-
 
 MAX_MISTAKE_IMAGE_BYTES = 10 * 1024 * 1024
 ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".gif", ".bmp", ".tif", ".tiff"}
@@ -36,7 +38,7 @@ def build_mistake_router(
         file: UploadFile = File(...),
         sourceText: str = Form(default="", max_length=20_000),
         originalAnswer: str = Form(default="", max_length=2_000),
-        learnerId: str = Form(default="local-demo", min_length=1, max_length=128),
+        learnerId: str = Form(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
     ) -> dict[str, Any]:
         filename = Path(file.filename or "mistake-image").name
         suffix = Path(filename).suffix.lower()
@@ -107,7 +109,9 @@ def build_mistake_router(
         return _public_item(item)
 
     @router.get("")
-    def list_mistakes(learnerId: str = "local-demo", includeArchived: bool = False) -> dict[str, Any]:
+    def list_mistakes(
+        learnerId: str = DEMO_LEARNER_ID, includeArchived: bool = False
+    ) -> dict[str, Any]:
         return {"learnerId": learnerId, "items": [_public_item(item) for item in store.list(learnerId, include_archived=includeArchived)]}
 
     @router.get("/{mistake_id}")

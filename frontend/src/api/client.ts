@@ -1,5 +1,11 @@
 import type { operations } from "../types/generated/api";
 
+/**
+ * 当前匿名单用户 Demo 的固定学习者身份。接入服务端登录后必须整体移除，
+ * 各调用点改为传递真实身份；不要在业务代码里再硬编码这个字符串。
+ */
+export const DEMO_LEARNER_ID = "local-demo";
+
 /** Extract the documented 200 response while keeping domain adapters local to each API module. */
 export type GeneratedSuccess<Operation extends keyof operations> =
   operations[Operation] extends { responses: infer Responses }

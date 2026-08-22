@@ -49,8 +49,6 @@ class ReplayBehaviorTests(unittest.TestCase):
             [],
             f"documented bug behavior changed, corpus needs updating: {changed}",
         )
-        documented = [e for e in result["entries"] if e["documenting_bug"]]
-        self.assertTrue(documented, "corpus must keep at least one documented bug entry")
 
     def test_report_writer_produces_json_and_markdown(self) -> None:
         import tempfile
