@@ -152,6 +152,12 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
    ESLint 补 tsc 抓不到的 hooks 依赖与未使用变量。两条 React Compiler 时代的保守规则
    （set-state-in-effect/purity）暂关闭并记录理由，对应的"key 重挂载/派生状态"重构列入
    超长文件审查的同一重构窗口。Prettier/格式化统一不进本门禁。
+
+**附录：Pyright basic 模式基线（2026-08-22，仅评估未接门禁）**——120 文件共 100 项：
+生产代码 24 项（argumentType×13、optionalSubscript×6、callIssue×4、generalType×1，
+集中在 lesson_generation/qwen_tts/pipeline），测试代码 73 项，qwen_tts 的
+torch/soundfile 为可选重依赖误报（已配置 venv 后仍缺，属预期）。接入计划：
+先清零生产代码 24 项，再以 `pyright` 警告级别进 CI，最后收紧至错误级。
 8. [ ] 确定性判题返回结构化、客观的 `EvaluationEvidence`（如 normalizedResponse、expectedMatched、
    unitMatched、failedParts 和 evaluatorVersion），作为 P1 证据闭环的判题侧验收项。Turn Plan 使用该证据
    选择诊断动作；具体误区仍由模型提出带证据和置信度的假设并按需确认，判据器不得直接输出

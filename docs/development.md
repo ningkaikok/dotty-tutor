@@ -37,6 +37,10 @@ scripts/check-node-version.sh
 检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:59174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
+前端单元测试使用 Vitest（`npm run test`，纯函数模块优先，组件测试按需引入 jsdom）。
+本地提交前检查可选用 [pre-commit](https://pre-commit.com/)：`pip install pre-commit && pre-commit install`，
+钩子会在提交时自动运行 ruff 与 eslint（与 CI 相同的命令；未安装也不影响推送，CI 仍是最终门禁）。
+
 **可选**：已安装 [uv](https://docs.astral.sh/uv/) 时可用精确锁跳过手动装依赖——
 在仓库根目录执行 `uv sync --frozen`（创建根目录 `.venv`，与脚本预期一致），
 之后命令改用 `uv run` 前缀即可。`uv.lock` 是唯一锁文件事实来源；

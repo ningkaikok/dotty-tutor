@@ -59,3 +59,12 @@ known-first-party = [
 [tool.ruff.format]
 # 格式化暂不作为门禁：存量代码风格统一是独立的重构窗口任务。
 quote-style = "preserve"
+
+[tool.pyright]
+# 渐进接入（尚未作为门禁）：basic 模式存量统计见 engineering-roadmap T1#7 附录。
+include = ["backend"]
+extraPaths = ["backend"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"
+typeCheckingMode = "basic"

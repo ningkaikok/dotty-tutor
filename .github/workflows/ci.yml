@@ -53,6 +53,9 @@ jobs:
       - name: Lint frontend (eslint)
         working-directory: frontend
         run: npm run lint
+      - name: Unit tests (vitest)
+        working-directory: frontend
+        run: npm run test
       - name: Verify generated API types
         working-directory: frontend
         run: npm run check:api

@@ -1,0 +1,24 @@
+# 本地提交前自动检查（可选 DX 层）：pip install pre-commit && pre-commit install
+# 质量门禁的最终裁决在 CI；这里的钩子只做秒级反馈，全部可绕过。
+# 只挂快检查：ruff/eslint 与基础卫生；tsc/build 级别的验证留给 CI。
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=1024"]
+
+  - repo: local
+    hooks:
+      - id: ruff-backend
+        name: ruff (backend)
+        entry: uv run ruff check backend
+        language: system
+        pass_filenames: false
+      - id: eslint-frontend
+        name: eslint (frontend)
+        entry: npm run lint --prefix frontend
+        language: system
+        pass_filenames: false
