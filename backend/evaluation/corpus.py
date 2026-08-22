@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-from tests.test_question_processing import _REAL_DUPLICATE_NUMBER_OCR_EXCERPT
 from tests.test_question_segmentation import (
     _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT,
     _REAL_CONTENT_LIST_JSON_EXCERPT,
@@ -22,6 +21,31 @@ from tests.test_question_segmentation import (
 
 # 语料结构版本：期望字段的语义变化时递增，报告里记录以便对比历史结果。
 CORPUS_VERSION = "1"
+
+# 真实 OCR 原文摘录（教材 56503d0642c54d728a7672e9cb77dd57，batch-001，第 3-9 题），
+# 原存于 test_question_processing.py；question-segmentation-v3 修复后该测试改用合成
+# 样本测安全网，这段真实文本移入语料，作为"伪题号已不再出现"的回归证据。
+_REAL_DUPLICATE_NUMBER_OCR_EXCERPT = """3. （3分）计算 $3 x ^ { 2 } - x ^ { 2 }$ 的结果是（ )A. 2 B. $2 { \\tt x } ^ { 2 }$ C. 2x D. $4 \\mathsf { x } ^ { 2 }$
+
+4.（3分）五名女生的体重（单位：kg）分别为：37、40、38、42、42，这组数
+据的众数和中位数分别是（）
+A. 2、40 B. 42、38 C. 40、42 D. 42、40
+
+5. （3分）计算（a-2）（a+3）的结果是（）A. ${ \\mathsf { a } } ^ { 2 } - 6$ B. $\\mathsf { a } ^ { 2 } { + } \\mathsf { a } - 6$
+
+6. （3分）点 A（2，-5）关于x轴对称的点的坐标是（）A. (2, 5) B. (- 2, 5) C. ( - 2, - 5) D. ( - 5, 2)
+
+7.（3分）一个几何体由若干个相同的正方体组成，其主视图和俯视图如图所示，则这个几何体中正方体的个数最多是（）
+
+A. 3 B. 4 C. 5 D. 6
+
+8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、
+
+3、4. 随机抽取一张卡片，然后放回，再随机抽取一张卡片，则两次抽取的卡片上数字之积为偶数的概率是（）
+A. $\\textstyle { \\frac { 1 } { 4 } }$ B. $\\textstyle { \\frac { 1 } { 2 } }$ C. $\\frac { 3 } { 4 }$ D. $\\frac { 5 } { 6 }$
+
+9. （3分）将正整数1至2018按一定规律排列如下表：
+"""
 
 SUBPROBLEM_A_SOURCE = (
     "8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、"
@@ -87,31 +111,32 @@ CORPUS: list[dict] = [
     {
         "id": "duplicate-question-number-safety-net",
         "description": (
-            "真实教材 batch-001 第 3-9 题：句子中间的段落断点让 '3、' 被误判成新题号，"
-            "与真正的第 3 题共享 key。当前安全网把重复项隔离而不是静默覆盖。"
+            "真实教材 batch-001 第 3-9 题：句子中间的段落断点曾让 '3、' 被误判成新题号，"
+            "与真正的第 3 题共享 key（v2 切分下序列为 3,8,3）。question-segmentation-v3 "
+            "修复根因后序列恢复为干净的 [3, 8]；本条目固化为回归证据，防止误判回归。"
+            "安全网本身的单元覆盖见 test_question_processing 的合成重复样本。"
         ),
         "tags": ["question-number-boundary", "duplicate-key"],
         "ocr_markdown": _REAL_DUPLICATE_NUMBER_OCR_EXCERPT,
         "structured_payload": None,
         "expect": {
-            # 过滤出 {3, 8} 后的原始序列必须是 3, 8, 3：伪 '3' 与真 '3' 并存，
-            # 这是安全网生效的前提条件。
-            "filtered_number_sequence": {"numbers": ["3", "8"], "sequence": ["3", "8", "3"]},
+            # v3 修复后伪 '3' 不再是边界：真实文本的题号序列必须保持干净。
+            "filtered_number_sequence": {"numbers": ["3", "8"], "sequence": ["3", "8"]},
         },
     },
     {
-        "id": "subproblem-a-phantom-number-known-bug",
+        "id": "subproblem-a-enumeration-not-a-boundary",
         "description": (
-            "roadmap T0 子问题 A（续举例编号被误判为新题）的特征化条目：'3、' 伪题块"
-            "目前依然存在，且结构化重放与扁平路径结果完全一致。修复该缺陷后本条目会"
-            "失败，届时应把它转正为 absent_question_numbers 期望。"
+            "roadmap T0 子问题 A 的修复回归证据：句子中间断行产生的 '3、4. 随机抽取…' "
+            "不是新题号——'、'分隔且前文未以句末标点收尾时，必须并入上一题续行，"
+            "真正的第 8、9 题边界不受影响；结构化重放与扁平路径结果保持一致。"
         ),
-        "tags": ["question-number-boundary", "known-bug"],
-        "documenting_bug": "question-number-subproblem-a",
+        "tags": ["question-number-boundary"],
         "ocr_markdown": SUBPROBLEM_A_SOURCE,
         "structured_payload": dict(_REAL_SUBPROBLEM_A_PAYLOAD),
         "expect": {
-            "phantom_numbers_present": ["3"],
+            "absent_question_numbers": ["3"],
+            "question_numbers_present": ["8", "9"],
             "stable_across_structured_replay": True,
         },
     },

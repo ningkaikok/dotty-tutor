@@ -132,37 +132,26 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
 # 真实 OCR 原文摘录（教材 56503d0642c54d728a7672e9cb77dd57，batch-001，第 3-9 题）。
 # "数字1、2、" 和 "3、4. 随机抽取" 之间的空行是 MinerU 在句子中间插入的段落断点，不是
 # 真正的题目边界，但 QUESTION_START_PATTERN 只看行首，会把 "3、" 误判为新题号。
-_REAL_DUPLICATE_NUMBER_OCR_EXCERPT = """3. （3分）计算 $3 x ^ { 2 } - x ^ { 2 }$ 的结果是（ )A. 2 B. $2 { \\tt x } ^ { 2 }$ C. 2x D. $4 \\mathsf { x } ^ { 2 }$
+# 合成的重复题号样本。真实教材里的这类坏样本（句子中间断行让 "3、" 成为伪题号）
+# 已随 question-segmentation-v3 在切分阶段修复，其回归证据移入金标准语料
+# （evaluation/corpus.py 的 duplicate-question-number-safety-net 条目）；本测试改用
+# 合成输入固化安全网本身的行为：非相邻的同号题块必须被隔离而不是静默覆盖。
+_SYNTHETIC_DUPLICATE_NUMBER_OCR_EXCERPT = """3. （3分）计算 $3 x ^ { 2 } - x ^ { 2 }$ 的结果是（ )A. 2 B. $2 { \\tt x } ^ { 2 }$ C. 2x D. $4 \\mathsf { x } ^ { 2 }$
 
-4.（3分）五名女生的体重（单位：kg）分别为：37、40、38、42、42，这组数
-据的众数和中位数分别是（）
-A. 2、40 B. 42、38 C. 40、42 D. 42、40
-
-5. （3分）计算（a-2）（a+3）的结果是（）A. ${ \\mathsf { a } } ^ { 2 } - 6$ B. $\\mathsf { a } ^ { 2 } { + } \\mathsf { a } - 6$
-
-6. （3分）点 A（2，-5）关于x轴对称的点的坐标是（）A. (2, 5) B. (- 2, 5) C. ( - 2, - 5) D. ( - 5, 2)
-
-7.（3分）一个几何体由若干个相同的正方体组成，其主视图和俯视图如图所示，则这个几何体中正方体的个数最多是（）
-
-A. 3 B. 4 C. 5 D. 6
-
-8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、
-
-3、4. 随机抽取一张卡片，然后放回，再随机抽取一张卡片，则两次抽取的卡片上数字之积为偶数的概率是（）
+8.（3分）一个不透明的袋中有四张完全相同的卡片，把它们分别标上数字1、2、3、4。随机抽取一张卡片，则两次抽取的卡片上数字之积为偶数的概率是（）
 A. $\\textstyle { \\frac { 1 } { 4 } }$ B. $\\textstyle { \\frac { 1 } { 2 } }$ C. $\\frac { 3 } { 4 }$ D. $\\frac { 5 } { 6 }$
 
-9. （3分）将正整数1至2018按一定规律排列如下表：
+3. （3分）再算一次 $3 x ^ { 2 } - x ^ { 2 }$ 的结果是（ )A. 2 B. $2 { \\tt x } ^ { 2 }$ C. 2x D. $4 \\mathsf { x } ^ { 2 }$
 """
-
 
 class DuplicateQuestionNumberSafetyNetTests(unittest.TestCase):
     """回归证据 A：一道题曾经被同批次内另一道题静默覆盖。"""
 
     def test_process_question_sources_isolates_duplicate_number_within_one_batch(self) -> None:
-        blocks = split_question_sources(_REAL_DUPLICATE_NUMBER_OCR_EXCERPT)
+        blocks = split_question_sources(_SYNTHETIC_DUPLICATE_NUMBER_OCR_EXCERPT)
         question_sources = [block for block in blocks if block[0] in {"3", "8"}]
-        # 先确认真实文本确实重现了坏样本：真正的第 3 题、第 8 题，以及被误判成
-        # "新的第 3 题" 的第 8 题尾巴，三者的题号序列是 3, 8, 3。
+        # 合成样本重现了坏样本的形状：两个真正的第 3 题块夹着一个第 8 题，
+        # 过滤后的题号序列必须是 3, 8, 3。
         self.assertEqual([number for number, _, _ in question_sources], ["3", "8", "3"])
 
         def fake_generate_lesson(source_text: str, *, repair_errors=None):
@@ -222,7 +211,7 @@ class DuplicateQuestionNumberSafetyNetTests(unittest.TestCase):
             store[payload["question"]["sourceQuestionKey"]] = payload
         self.assertEqual(len(store), 3)
         self.assertIn("计算 $3 x", store[keys[0]]["question"]["prompt"])
-        self.assertIn("随机抽取", store[keys[2]]["question"]["prompt"])
+        self.assertIn("再算一次", store[keys[2]]["question"]["prompt"])
 
         # 真正的第 3 题、第 8 题不受影响，质量保持 ready。
         self.assertEqual(payloads[0]["quality"]["status"], "ready")

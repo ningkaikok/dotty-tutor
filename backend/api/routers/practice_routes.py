@@ -10,6 +10,7 @@ from answer_evaluator import evaluate_structured_answer
 from observability import log_event
 from domain.contracts.practice import VariationAnswerRequest
 from api.routers.tutoring_routes import has_meaningful_answer
+from domain.constants import DEMO_LEARNER_ID
 
 
 def build_practice_router(
@@ -29,7 +30,9 @@ def build_practice_router(
         return {"items": variation_store.list_for_mistake(mistake_id)}
 
     @router.post("/api/mistakes/{mistake_id}/variations")
-    def create_variation(mistake_id: str, learnerId: str = "local-demo") -> dict[str, Any]:
+    def create_variation(
+        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+    ) -> dict[str, Any]:
         mistake = mistake_store.get(mistake_id)
         if not mistake:
             raise HTTPException(status_code=404, detail="错题不存在")

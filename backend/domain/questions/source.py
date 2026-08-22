@@ -19,9 +19,17 @@ from ocr_pipeline import PAGE_MARKER, has_visual_hint
 
 # 只把版心左侧的题号视为新题。小问 ``(1)``、章节编号 ``1.1`` 都可能以数字
 # 开头，但前者属于当前题、后者通常不是可独立出题的题号，不能用宽泛的数字正则切开。
+# 分隔符单独命名（``sep``）：续举例编号误判（roadmap 子问题 A）只发生在 "、"
+# 分隔的候选上，修复逻辑需要区分对待，见 ``_is_enumeration_continuation``。
 QUESTION_START_PATTERN = re.compile(
-    r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})(?:(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
+    r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})"
+    r"(?P<sep>(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
 )
+# 枚举标记：一个"、"候选题号只有在前文以这些字符收尾时才被判为续行举例。
+# 不采用更宽的"非句末标点即续行"方案：真实语料里既有以公式（$…$）或数字收尾的
+# 合法题目，也存在合法的"、"风格题号（见 test_stops_a_question_at_inline_answer_…
+# 的 "7、/8、" 用例），宽规则会把它们错并进上一题。
+ENUMERATION_MARKS = frozenset("、，,")
 # 试卷通常在真正题目之前包含“注意事项”或考试信息。这里只把明确的题型章节
 # 作为题目区起点，避免把注意事项中的“1.”、“2.”误判成题号。OCR 可能在汉字
 # 之间插入空格或换行，因此章节标题的每个字之间都允许空白；这是版面 OCR 中
@@ -55,7 +63,8 @@ MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
 # 不同规则版本的产物不能静默混用，重新 OCR/生成时会写入新的版本证据。
-QUESTION_SEGMENTATION_VERSION = "question-segmentation-v2"
+# v3：'、'分隔的候选题号只有在前文以句末标点收尾时才允许开新题（修复子问题 A）。
+QUESTION_SEGMENTATION_VERSION = "question-segmentation-v3"
 
 ANSWER_SECTION_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?(?:参考答案与解析|答案与解析|参考答案|答案|解答|解析)\s*$"
@@ -334,6 +343,26 @@ def _reconstruct_question_line_breaks(source: str, asset_dir: Path | None) -> st
     return rebuilt_source
 
 
+def _is_enumeration_continuation(question_area: str, match: re.Match) -> bool:
+    """判断一个候选题号是否其实是上一题句子中间的续举例编号（子问题 A）。
+
+    真实坏样本："…把它们分别标上数字1、2、\\n\\n3、4. 随机抽取…"——OCR 在句子
+    中间插入段落断点后，行首的 "3、" 被 ``QUESTION_START_PATTERN`` 判成新题，
+    和真正的第 3 题共享 key。它的签名很窄：前文恰好停在枚举标记上。
+
+    修复规则因此刻意收窄：只约束 **"、"分隔** 且前文最后非空白字符是枚举标记
+    （、，,）的候选。已对本地全部真实教材 OCR 验证——合法题号从不使用"、"，
+    唯一受影响的行就是坏样本本身；roadmap 曾考虑过更宽的"要求句末标点前置"
+    方案，但真实语料里合法题目常以公式、数字等非句末标点收尾，宽规则误伤面大。
+    """
+    if match.group("sep") != "、":
+        return False
+    preceding = question_area[: match.start()].rstrip()
+    if not preceding:
+        return False
+    return preceding[-1] in ENUMERATION_MARKS
+
+
 def split_question_sources(
     source: str,
     asset_dir: Path | None = None,
@@ -351,10 +380,17 @@ def split_question_sources(
     source = _reconstruct_question_line_breaks(source, asset_dir)
     question_area = _question_area(source)
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
+    # 子问题 A 修复：先把"其实是续行枚举"的候选从边界集合里剔除，再按剩余边界
+    # 切块。剔除的候选文本自然并入上一题（它的 end 由下一个被接受的边界决定）。
+    boundaries = [
+        match
+        for index, match in enumerate(matches)
+        if index == 0 or not _is_enumeration_continuation(question_area, match)
+    ]
     page_markers = list(PAGE_MARKER.finditer(question_area))
     blocks: list[tuple[str, str, list[str]]] = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(question_area)
+    for index, match in enumerate(boundaries):
+        end = boundaries[index + 1].start() if index + 1 < len(boundaries) else len(question_area)
         block = INLINE_ANSWER_PATTERN.split(question_area[match.start():end], maxsplit=1)[0].strip()
         if len(block) < 4:
             continue

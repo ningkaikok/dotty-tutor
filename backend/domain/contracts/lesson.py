@@ -1,13 +1,15 @@
 """可编程课程、互动试卷和持久化学习活动的共享契约。"""
 
 from __future__ import annotations
+from domain.constants import DEMO_LEARNER_ID
+
+
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from domain.tutoring.checks import safe_canvas_action
-
 
 LessonBlockType = Literal[
     "markdown",
@@ -55,7 +57,7 @@ class PublicationStatusUpdate(BaseModel):
 
 
 class LearningSessionCreate(BaseModel):
-    learnerId: str = Field(default="local-demo", min_length=1, max_length=128)
+    learnerId: str = Field(default=DEMO_LEARNER_ID, min_length=1, max_length=128)
     # Sessions always target an immutable published paper, never an individual lesson.
     publicationId: str = Field(min_length=1, max_length=128)
 

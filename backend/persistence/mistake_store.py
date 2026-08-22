@@ -6,6 +6,9 @@ root with the rest of the application.
 """
 
 from __future__ import annotations
+from domain.constants import DEMO_LEARNER_ID
+
+
 
 import hashlib
 import threading
@@ -19,7 +22,6 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
 from domain.questions.pipeline import replace_question_prompt
-
 
 mistake_metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")
@@ -96,7 +98,7 @@ class MistakeStore:
         self._ensure_initialized()
         values = {
             "mistake_id": item["mistakeId"],
-            "learner_id": item.get("learnerId", "local-demo"),
+            "learner_id": item.get("learnerId", DEMO_LEARNER_ID),
             "source_filename": item["sourceFilename"],
             "content_type": item["contentType"],
             "source_image_path": item["sourceImagePath"],

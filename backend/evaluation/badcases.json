@@ -6,11 +6,13 @@
       "label": "question-number-boundary",
       "title": "续举例编号被误判为新题号（假阳性）",
       "stage": "segmentation",
-      "status": "open",
+      "status": "fixed",
       "detail": "句子中间的段落断点让行首出现 '3、'，被 QUESTION_START_PATTERN 判成新题号，与真正的第3题共享 key。修复方案（前文以句末标点结尾才允许开新题）已设计但需金标准集验证存量教材后再动手。",
-      "corpusEntryId": "subproblem-a-phantom-number-known-bug",
+      "corpusEntryId": "subproblem-a-enumeration-not-a-boundary",
       "sourceRef": "tests/test_question_segmentation.py::_REAL_SUBPROBLEM_A_PAYLOAD",
-      "addedIn": "0.21.1"
+      "addedIn": "0.21.1",
+      "fixedRelease": "unreleased",
+      "resolutionNote": "切分规则 question-segmentation-v3：\"、\"分隔的候选题号只有在前文最后一个非空白字符是枚举标记（、，,）时才判为续行举例。已对本地全部 5 本真实教材 OCR 重放验证：7 个批次中唯一变化即坏样本所在批次（伪 \"3\" 消失、序列恢复干净、第 9 题取回题图），其余批次逐字节不变。"
     },
     {
       "id": "question-number-line-break-loss",

@@ -1,6 +1,9 @@
 """PostgreSQL/SQLite persistence for tutor threads and bounded messages."""
 
 from __future__ import annotations
+from domain.constants import DEMO_LEARNER_ID
+
+
 
 import threading
 import time
@@ -10,7 +13,6 @@ from typing import Any
 from sqlalchemy import Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text, create_engine, delete, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
-
 
 tutoring_metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")
@@ -78,7 +80,7 @@ class TutoringStore:
             tutoring_metadata.create_all(self.engine)
             self._initialized = True
 
-    def create_or_get(self, mistake_id: str, learner_id: str = "local-demo") -> dict[str, Any]:
+    def create_or_get(self, mistake_id: str, learner_id: str = DEMO_LEARNER_ID) -> dict[str, Any]:
         """Return the one thread allowed for a learner/mistake pair."""
         self._ensure_initialized()
         existing = self.find_for_mistake(mistake_id, learner_id)
@@ -142,7 +144,7 @@ class TutoringStore:
         thread = self.get(thread_id, message_limit=limit)
         return thread["messages"] if thread else []
 
-    def delete_for_mistake(self, mistake_id: str, learner_id: str = "local-demo") -> int:
+    def delete_for_mistake(self, mistake_id: str, learner_id: str = DEMO_LEARNER_ID) -> int:
         """清理一道错题的陪练上下文，并返回删除的线程数。
 
         错题本的归档仍是软删除：题目和学习证据保留，列表默认隐藏。但归档后

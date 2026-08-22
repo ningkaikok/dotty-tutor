@@ -12,13 +12,14 @@ from answer_evaluator import evaluate_structured_answer
 from observability import log_event
 from domain.contracts.practice import VariationAnswerRequest
 from api.routers.tutoring_routes import has_meaningful_answer
+from domain.constants import DEMO_LEARNER_ID
 
 
 def build_review_router(*, mistake_store: Any, review_store: Any, variation_service: Any) -> APIRouter:
     router = APIRouter(tags=["review"])
 
     @router.get("/api/reviews")
-    def list_reviews(learnerId: str = "local-demo") -> dict[str, Any]:
+    def list_reviews(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
         items = review_store.list_for_learner(learnerId)
         for item in items:
             mistake = mistake_store.get(item["mistakeId"])
@@ -30,7 +31,7 @@ def build_review_router(*, mistake_store: Any, review_store: Any, variation_serv
         return {"items": items, "serverTime": time.time()}
 
     @router.get("/api/progress")
-    def get_progress(learnerId: str = "local-demo") -> dict[str, Any]:
+    def get_progress(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
         mistakes = [item for item in mistake_store.list(learnerId) if item["status"] != "pending_confirmation"]
         tasks = review_store.list_for_learner(learnerId)
         now = time.time()
