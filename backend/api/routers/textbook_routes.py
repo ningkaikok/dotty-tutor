@@ -17,27 +17,40 @@ from typing import Any
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
+from persistence.app_store import application_store as store
+from persistence.job_store import JobStore
 from pypdf import PdfReader
 
-from application.services.lesson_generation import generate_lesson, generate_model_reply, lesson_store
-from application.errors import AppError
-from domain.contracts.audit import BackgroundJobSummary, QuestionRegenerationResponse, RevisionSummary, RunSummary
 from api.routers.library_routes import build_library_router
-from observability import log_event
-from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
-from domain.questions.contracts import GUIDE_CARDS, HelpRequest, PdfUploadInitRequest, TutorReply
-from persistence.app_store import application_store as store
-from textbook_ocr import extract_pdf_text, resolve_ocr_text
+from application.errors import AppError
+from application.services.lesson_generation import (
+    generate_lesson,
+    generate_model_reply,
+    lesson_store,
+)
 from application.services.textbook_processing import (
     MAX_FULL_PAPER_PAGES,
     MAX_FULL_PAPER_QUESTIONS,
     PDF_BATCH_PAGES,
     TextbookProcessingService,
 )
-from infrastructure.files.upload_registry import UploadRegistry
-from persistence.job_store import JobStore
 from application.textbook_jobs import build_textbook_registry
-
+from domain.contracts.audit import (
+    BackgroundJobSummary,
+    QuestionRegenerationResponse,
+    RevisionSummary,
+    RunSummary,
+)
+from domain.questions.contracts import (
+    GUIDE_CARDS,
+    HelpRequest,
+    PdfUploadInitRequest,
+    TutorReply,
+)
+from infrastructure.files.upload_registry import UploadRegistry
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+from observability import log_event
+from textbook_ocr import extract_pdf_text, resolve_ocr_text
 
 router = APIRouter()
 

@@ -8,8 +8,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from domain.contracts.lesson import PublicationCreate, PublicationStatusUpdate
 from domain.contracts.audit import PublicationRevisionResponse
+from domain.contracts.lesson import PublicationCreate, PublicationStatusUpdate
 from observability import log_event
 from publication_quality import PublicationQualityError
 

@@ -7,11 +7,11 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from persistence.mistake_store import MistakeStore
+from persistence.review_store import ReviewStore
 from sqlalchemy import create_engine
 
-from persistence.mistake_store import MistakeStore
 from api.routers.review_routes import build_review_router
-from persistence.review_store import ReviewStore
 from variation_service import VariationService
 
 

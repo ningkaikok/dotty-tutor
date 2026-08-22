@@ -6,8 +6,15 @@ import time
 import unittest
 from pathlib import Path
 
-from application.job_worker import JobCancelled, JobWorker, RetryableJobError, TaskRegistry, TerminalJobError
 from persistence.job_store import JobStore
+
+from application.job_worker import (
+    JobCancelled,
+    JobWorker,
+    RetryableJobError,
+    TaskRegistry,
+    TerminalJobError,
+)
 
 
 class BackgroundJobTests(unittest.TestCase):
@@ -130,7 +137,7 @@ class BackgroundJobTests(unittest.TestCase):
                 return {"ok": True}
 
             registry.register("demo", handler)
-            job = store.create_job("demo", {"answer": 42})
+            store.create_job("demo", {"answer": 42})
             result = JobWorker(store, registry, worker_id="worker-a").run_once()
             self.assertEqual(result["status"], "succeeded")
             self.assertEqual(seen, [{"answer": 42}, False])
@@ -196,7 +203,7 @@ class BackgroundJobTests(unittest.TestCase):
             registry.register("retry", retry)
             registry.register("terminal", terminal)
             retry_job = store.create_job("retry", {}, max_attempts=2)
-            terminal_job = store.create_job("terminal", {})
+            store.create_job("terminal", {})
             worker = JobWorker(store, registry, worker_id="worker-a")
             self.assertEqual(worker.run_once()["status"], "queued")
             self.assertTrue(store.get_job(retry_job["jobId"])["lastError"]["retryable"])

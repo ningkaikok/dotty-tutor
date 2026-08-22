@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 RunOperation = Literal[
     "question_repair",
     "question_reocr",

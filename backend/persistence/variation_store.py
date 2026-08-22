@@ -7,10 +7,23 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import Column, Float, Index, Integer, JSON, MetaData, String, Table, Text, and_, create_engine, or_, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    Float,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    and_,
+    create_engine,
+    or_,
+    select,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
-
 
 variation_metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")

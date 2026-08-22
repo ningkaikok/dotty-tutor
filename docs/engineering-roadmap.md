@@ -142,9 +142,11 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
-7. [ ] 引入 Python Ruff/类型检查与前端 ESLint/Prettier 门禁。当前没有任何静态检查，"每个 PR 有回滚边界"
-   的原则实际守不住；本轮修复的多个 bug 属于"正则写宽""默认值撞车"这类静态检查可拦截的问题。
-   成本极低、收益确定，可与评测集并行推进，不需要等 Badcase 语料建成。
+7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `frontend/eslint.config.js`，
+   CI 中 `ruff check backend` 与 `npm run lint`）。规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
+   ESLint 补 tsc 抓不到的 hooks 依赖与未使用变量。两条 React Compiler 时代的保守规则
+   （set-state-in-effect/purity）暂关闭并记录理由，对应的"key 重挂载/派生状态"重构列入
+   超长文件审查的同一重构窗口。Prettier/格式化统一不进本门禁。
 8. [ ] 确定性判题返回结构化、客观的 `EvaluationEvidence`（如 normalizedResponse、expectedMatched、
    unitMatched、failedParts 和 evaluatorVersion），作为 P1 证据闭环的判题侧验收项。Turn Plan 使用该证据
    选择诊断动作；具体误区仍由模型提出带证据和置信度的假设并按需确认，判据器不得直接输出

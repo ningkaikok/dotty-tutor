@@ -9,27 +9,26 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import os
-import base64
 import shutil
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.request
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from observability import log_event
 from infrastructure.runtime.capabilities import HEALTH_BOOK
 from infrastructure.runtime.contracts import (
     RuntimeConfigSnapshot,
     RuntimeExecutionError,
     attach_runtime_config,
 )
-
+from observability import log_event
 
 Provider = Literal["ollama", "codex", "mock"]
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")

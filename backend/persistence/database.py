@@ -14,7 +14,6 @@ from urllib.parse import quote
 
 from observability import log_event
 
-
 DEFAULT_POSTGRES_URL = "postgresql+psycopg:///dotty_tutor"
 
 

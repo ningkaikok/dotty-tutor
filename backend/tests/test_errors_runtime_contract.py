@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import unittest
 
+from app_factory import create_app
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
 from application import AppError
-from app_factory import create_app
 from infrastructure.runtime.contracts import RuntimeConfigSnapshot
 
 

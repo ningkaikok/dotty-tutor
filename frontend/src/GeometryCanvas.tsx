@@ -126,7 +126,7 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
       context.font = "600 13px Inter, system-ui, sans-serif";
       context.fillText("P 的运动轨迹", M.x + 12, h * 0.11);
     }
-  }, [action, text, title, topic]);
+  }, [action, geometryMode, text, title, topic]);
 
   return (
     <div className="geometry-canvas-wrap">

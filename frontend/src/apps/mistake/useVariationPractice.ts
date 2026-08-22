@@ -61,6 +61,9 @@ export function useVariationPractice(
     if (!autoStart || loading || items.length > 0 || autoStarted.current || submitting) return;
     autoStarted.current = true;
     void generate();
+    // auto-start-once 语义：generate 每次渲染重建，纳入依赖只会让 effect 空转；
+    // autoStarted 守卫保证整个生命周期只触发一次。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoStart, items.length, loading, submitting]);
 
   const selectOption = (label: string) => {

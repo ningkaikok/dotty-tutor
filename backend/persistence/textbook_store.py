@@ -11,7 +11,12 @@ from sqlalchemy import delete, select, update
 
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
-from persistence.schema import batch_questions, question_revisions, run_snapshots, upload_jobs
+from persistence.schema import (
+    batch_questions,
+    question_revisions,
+    run_snapshots,
+    upload_jobs,
+)
 
 
 class TextbookStore(DatabaseStore):

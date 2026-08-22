@@ -5,8 +5,8 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from publication_quality import PublicationQualityError
 from api.routers.publication_routes import _public_lesson, build_publication_router
+from publication_quality import PublicationQualityError
 
 
 class PublicationBoundaryTests(unittest.TestCase):

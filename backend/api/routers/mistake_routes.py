@@ -1,9 +1,6 @@
 """HTTP routes for image capture, confirmation and the personal mistake book."""
 
 from __future__ import annotations
-from domain.constants import DEMO_LEARNER_ID
-
-
 
 import shutil
 import time
@@ -14,6 +11,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
 from observability import log_event
 

@@ -15,22 +15,28 @@ from typing import Any
 
 from pypdf import PdfReader
 
-from ocr_pipeline import (
-    OcrResultCache,
-    build_ocr_cache_key,
-    choose_ocr_provider,
-    probe_page,
-    has_visual_hint,
-)
-from ocr_preflight import PREFLIGHT_VERSION, classify_page, summarize_preflight
-from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
 from domain.questions.source import (
     QUESTION_SEGMENTATION_VERSION,
     QUESTION_START_PATTERN,
     split_question_sources,
 )
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
-
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
+from ocr_pipeline import (
+    OcrResultCache,
+    build_ocr_cache_key,
+    choose_ocr_provider,
+    has_visual_hint,
+    probe_page,
+)
+from ocr_preflight import PREFLIGHT_VERSION, classify_page, summarize_preflight
+from ocr_quality import (
+    MAX_OCR_RETRIES,
+    evaluate_page_quality,
+    evaluate_question_quality,
+)
 
 # 渲染矢量页图属于缓存结果的一部分；升级版本可以避免旧缓存继续沿用“只有文字”的结果。
 OCR_PIPELINE_VERSION = "page-routing-v2"

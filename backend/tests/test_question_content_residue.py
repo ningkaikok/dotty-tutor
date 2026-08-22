@@ -13,7 +13,10 @@ from __future__ import annotations
 
 import unittest
 
-from domain.questions.pipeline import apply_question_quality_gate, validate_question_payload
+from domain.questions.pipeline import (
+    apply_question_quality_gate,
+    validate_question_payload,
+)
 
 
 class QuestionContentResidueTests(unittest.TestCase):

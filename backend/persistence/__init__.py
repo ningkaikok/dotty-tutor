@@ -1,9 +1,9 @@
 """Focused persistence stores for the modular FastAPI application."""
 
-from persistence.base import DatabaseStore
 from persistence.app_store import AppStore
-from persistence.learning_store import LearningStore
+from persistence.base import DatabaseStore
 from persistence.job_store import JobStore
+from persistence.learning_store import LearningStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from persistence.textbook_store import TextbookStore

@@ -1,8 +1,12 @@
 """External capability adapters: LLM, OCR, review and TTS."""
 
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    RuntimeExecutionError,
+)
 from infrastructure.runtime.model_runtime import ModelRuntime, Provider, runtime
-from infrastructure.runtime.ocr_runtime import OcrProvider, OcrRuntime, runtime as ocr_runtime
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, RuntimeExecutionError
+from infrastructure.runtime.ocr_runtime import OcrProvider, OcrRuntime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import ReviewRuntime, runtime_reviewer
 
 __all__ = [

@@ -7,7 +7,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from application.services.question_processing import _generate_validated_question, process_question_sources
+from application.services.question_processing import (
+    _generate_validated_question,
+    process_question_sources,
+)
 from domain.questions.source import split_question_sources
 
 

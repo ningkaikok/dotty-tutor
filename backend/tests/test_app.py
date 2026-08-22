@@ -1,13 +1,24 @@
 from __future__ import annotations
 
-import unittest
 import os
+import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from application.services.lesson_generation import attach_question_source, generate_lesson, generate_model_reply, lesson_store
-from domain.questions.contracts import HELP_SCHEMA, LESSON_SCHEMA, HelpRequest
+from persistence.app_store import AppStore
+
+from application.services.lesson_generation import (
+    attach_question_source,
+    generate_lesson,
+    generate_model_reply,
+    lesson_store,
+)
+from domain.questions.contracts import (
+    HELP_SCHEMA,
+    LESSON_SCHEMA,
+    HelpRequest,
+)
 from domain.questions.pipeline import (
     apply_question_quality_gate,
     build_question_content_blocks,
@@ -15,18 +26,24 @@ from domain.questions.pipeline import (
     normalize_model_math_text,
     normalize_stacked_equation_choices,
     normalize_text_choices_from_source,
-    validate_question_payload,
+    strip_choice_text_from_prompt,
     write_model_prompt_artifact,
 )
-from domain.questions.source import limited_question_sources, select_complete_question_source, split_question_sources
-from domain.tutoring.checks import build_reply, equation_conflict, equivalent_linear_equations
-from infrastructure.runtime.model_runtime import runtime
-from infrastructure.runtime.model_runtime import ModelSelection
-from domain.questions.contracts import CANVAS_ACTIONS
-from domain.questions.pipeline import strip_choice_text_from_prompt
-from infrastructure.runtime.review_runtime import formula_anomaly_score, normalize_ocr_question
-from persistence.app_store import AppStore
-
+from domain.questions.source import (
+    limited_question_sources,
+    select_complete_question_source,
+    split_question_sources,
+)
+from domain.tutoring.checks import (
+    build_reply,
+    equation_conflict,
+    equivalent_linear_equations,
+)
+from infrastructure.runtime.model_runtime import ModelSelection, runtime
+from infrastructure.runtime.review_runtime import (
+    formula_anomaly_score,
+    normalize_ocr_question,
+)
 
 STEPS = [
     {"text": "方程两边同时减去 3。", "speechText": "先做移项。"},

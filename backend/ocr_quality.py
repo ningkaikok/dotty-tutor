@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from typing import Any, Literal
 
-
 MAX_OCR_RETRIES = 2
 QualityStatus = Literal["ready", "retry", "quarantine"]
 

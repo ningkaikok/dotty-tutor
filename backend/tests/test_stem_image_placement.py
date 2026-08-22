@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import unittest
 
-from domain.questions.pipeline import apply_question_quality_gate, extract_image_placements
+from domain.questions.pipeline import (
+    apply_question_quality_gate,
+    extract_image_placements,
+)
 
 STEM = (
     "7.（3分）一个几何体由若干个相同的正方体组成，其主视图和俯视图如图所示，"

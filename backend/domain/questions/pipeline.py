@@ -17,7 +17,10 @@ from domain.questions.source import (
     QUESTION_SEGMENTATION_VERSION,
     is_likely_exam_instruction,
 )
-from infrastructure.runtime.review_runtime import formula_anomaly_score, normalize_ocr_question
+from infrastructure.runtime.review_runtime import (
+    formula_anomaly_score,
+    normalize_ocr_question,
+)
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
@@ -366,7 +369,8 @@ def normalize_stacked_equation_choices(payload: dict[str, Any], source_block: st
     y_values = re.findall(r"y\s*=\s*(-?\s*\d+)", y_section, flags=re.IGNORECASE)
     if len(x_values) < 4 or len(y_values) < 4:
         return
-    compact = lambda value: re.sub(r"\s+", "", value)
+    def compact(value: str) -> str:
+        return re.sub(r"\s+", "", value)
     question = payload["question"]
     question["options"] = [f"$x={compact(x)},\\;y={compact(y)}$" for x, y in zip(x_values[:4], y_values[:4])]
     stem = QUESTION_START_PATTERN.sub("", normalized_source.split("的解为", 1)[0] + "的解为", count=1)
@@ -629,10 +633,6 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         label_only = bool(re.fullmatch(r"(?:\([A-H]\)|[A-H][.:：、]?)", option))
         if (not option or label_only) and index >= len(option_images):
             errors.append(f"选项 {chr(65 + index)} 缺少内容或图片")
-    prompt_choice_labels = [
-        match.group(1) or match.group(2)
-        for match in CHOICE_MARKER_PATTERN.finditer(str(question.get("prompt", "")))
-    ]
     # 比对“题干里成行列出的选项正文”与结构化选项，而不是比对标签序列。
     # 标签序列不可靠：题干正文里的 “点A、B分别表示…” 也会被 CHOICE_MARKER_PATTERN
     # 匹配成一个 A，于是三选项题的标签序列变成 ["A","A","B","C"]，旧的

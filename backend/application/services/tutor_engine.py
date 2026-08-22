@@ -15,7 +15,12 @@ import json
 from typing import Any
 
 from answer_evaluator import evaluate_structured_answer
-from domain.questions.contracts import CANVAS_ACTIONS, HELP_SCHEMA, HelpRequest, TutorReply
+from domain.questions.contracts import (
+    CANVAS_ACTIONS,
+    HELP_SCHEMA,
+    HelpRequest,
+    TutorReply,
+)
 from domain.tutoring.checks import (
     build_reply,
     equation_conflict,
@@ -24,7 +29,10 @@ from domain.tutoring.checks import (
     safe_canvas_action,
 )
 from domain.tutoring.turn_plan import normalize_misconception
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:

@@ -53,6 +53,8 @@ export function MistakeCoachApp() {
     }
   };
 
+  const activeMistakeId =
+    screen.name === "confirm" || screen.name === "tutor" ? screen.mistakeId : "";
   useEffect(() => {
     if (screen.name === "library") {
       void refreshLibrary();
@@ -66,7 +68,12 @@ export function MistakeCoachApp() {
         .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "错题加载失败"))
         .finally(() => setLoading(false));
     }
-  }, [screen.name, screen.name === "confirm" || screen.name === "tutor" ? screen.mistakeId : ""]);
+  // 依赖数组里的条件表达式提取为变量，让 hooks 规则可以静态校验。
+  // selected?.mistakeId 变化时条件守卫会拦截重复加载，行为不变。
+      // activeMistakeId 已完整表达"confirm/tutor 态的 mistakeId"；screen 是联合
+    // 类型，library 态没有该字段，直接引用无法通过类型检查。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMistakeId, screen.name, selected?.mistakeId]);
 
   const returnToLibrary = () => open("/mistakes");
   const returnsToStudentHome = screen.name === "library" || screen.name === "progress";

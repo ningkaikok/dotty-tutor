@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import unittest
-from tempfile import TemporaryDirectory
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from ocr_pipeline import OcrResultCache, build_ocr_cache_key, choose_ocr_provider, pdf_content_hash, probe_page
+from ocr_pipeline import (
+    OcrResultCache,
+    build_ocr_cache_key,
+    choose_ocr_provider,
+    pdf_content_hash,
+    probe_page,
+)
 
 
 class OcrPipelineTests(unittest.TestCase):

@@ -6,9 +6,6 @@ root with the rest of the application.
 """
 
 from __future__ import annotations
-from domain.constants import DEMO_LEARNER_ID
-
-
 
 import hashlib
 import threading
@@ -16,11 +13,24 @@ import time
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, Float, Index, JSON, MetaData, String, Table, Text, create_engine, select
-from sqlalchemy.dialects.postgresql import JSONB, insert as postgresql_insert
+from sqlalchemy import (
+    JSON,
+    Column,
+    Float,
+    Index,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    select,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
+from domain.constants import DEMO_LEARNER_ID
 from domain.questions.pipeline import replace_question_prompt
 
 mistake_metadata = MetaData()

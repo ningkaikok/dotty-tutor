@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from evaluation.labels import BADCASE_LABELS, validate_tags
+from evaluation.labels import BADCASE_LABELS
 
 BADCASES_PATH = Path(__file__).resolve().parent / "badcases.json"
 

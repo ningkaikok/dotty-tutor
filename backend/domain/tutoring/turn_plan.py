@@ -10,7 +10,6 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-
 STUDENT_INTENTS = (
     "submit-answer",
     "confirm-ready",

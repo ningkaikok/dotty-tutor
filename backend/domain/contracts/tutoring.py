@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 TutorStage = Literal["diagnose", "explain", "practice", "verify"]
 TutorInputMode = Literal["text", "structured"]
 
