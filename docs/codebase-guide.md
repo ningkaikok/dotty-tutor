@@ -35,6 +35,7 @@ dotty-tutor/
 │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
 │   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
+│   ├── ocr_preflight.py        # 正式 OCR 前的页面预检分类和脏页摘要
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
 │   ├── domain/contracts/       # 跨业务域的稳定请求/响应契约
 │   ├── domain/questions/       # 题目来源、规范化、Schema 和质量纯函数
@@ -45,7 +46,8 @@ dotty-tutor/
 │   ├── publication_revision.py # 不可变试卷新版编排
 │   ├── run_audit.py            # 运行快照与题目修订审计
 │   ├── worker.py               # 独立后台 Worker 入口（PostgreSQL Job Store）
-│   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器
+│   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器；capabilities.py 为能力目录与健康记录
+│   ├── evaluation/             # 脱敏金标准语料、Badcase 登记簿和确定性重放器（python -m evaluation.replay）
 │   ├── infrastructure/files/   # 上传注册和文件边界
 │   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
 │   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
@@ -132,8 +134,8 @@ flowchart LR
 ```text
 api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
-  → textbook_ocr_pipeline.py（页面探测 → pypdf/MinerU → 局部升级 → 缓存）
-  → ocr_pipeline.py / ocr_quality.py（无副作用路由与质量决策）
+  → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
+  → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
   → domain/questions/source.py（按题号切分 Markdown）
   → application/services/question_processing.py（生成、审校、确定性修复和质量门禁）
   → persistence/textbook_store.py（题目和上传任务）

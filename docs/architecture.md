@@ -201,7 +201,7 @@ erDiagram
 
 根路径和 `/learn` 只渲染导航，不调用生产端接口。进入 `/studio` 后，上传页首次加载时并行调用：
 
-1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。
+1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
 3. `GET /api/library`：从 PostgreSQL 恢复已完成教材。
 
@@ -314,6 +314,10 @@ flowchart TD
 - `pypdf`：电子文本且没有明显公式/图形依赖时，速度快，输出文字层。
 - `MinerU`：扫描页、公式页、图形页或视觉提示明显时，输出 Markdown、LaTeX 和图片资源。
 - `auto`：先用 pypdf 预检，质量状态为 `retry` 时只升级失败页段；不会重新处理整本 PDF。
+- `ocr_preflight.classify_page` 在路由前对每页做互斥主类别分类（空白/出版信息/公式密集/图文混排/
+  疑似题目/无图纯文字），逐页携带命中原因随 `pageRoutes` 持久化，批次聚合写入 `ocrRun.preflight`
+  脏页摘要。预检参与路由的位置只有一处：空白页（无文字层且无图片对象）在 auto 模式跳过 MinerU
+  升级——扫描页绝不误跳过。预检不删除任何页面，质量门禁和局部重试不变。
 
 `backend/textbook_ocr_pipeline.py` 再把相邻且 Provider 相同的页面合并成连续 span，调用
 `OcrResultCache` 保存结果。缓存命中仍会返回 `pageRoutes`、`quality`、`retries` 和 `spans`，因此页面能够解释

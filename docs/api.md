@@ -25,7 +25,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/health` | 检查 API 和数据库连接 |
-| `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型 |
+| `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
@@ -36,6 +36,8 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
 
 生成模型、统一审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
+`modelDetails.health` 是进程内连续失败计数（阈值 3 次），只用于候选筛选提示；它不会改写任何
+已开始运行的审计快照，成功调用会立即复位。
 
 ## 题目与教材导入
 
