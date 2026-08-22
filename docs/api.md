@@ -34,6 +34,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
+| `GET` | `/api/metrics/model-calls?days=7` | 模型调用边界指标聚合（只读）：按 runtime/task/provider/model 分组的调用数、失败数、平均耗时与输出 token 合计 |
 
 生成模型、统一审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
 `modelDetails.health` 是进程内连续失败计数（阈值 3 次），只用于候选筛选提示；它不会改写任何

@@ -22,7 +22,13 @@ from infrastructure.runtime.review_runtime import runtime_reviewer
 from observability import log_event
 
 
-def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]], tutor_runtime: Any) -> APIRouter:
+def build_runtime_router(
+    *,
+    store: Any,
+    question_payload: Callable[[], dict[str, Any]],
+    tutor_runtime: Any,
+    metrics_store: Any = None,
+) -> APIRouter:
     router = APIRouter()
     qwen_tts_url = os.getenv("QWEN_TTS_URL", "http://127.0.0.1:8020")
     tts_provider = os.getenv("TTS_PROVIDER", "auto").lower()
@@ -128,6 +134,14 @@ def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str,
         except ValueError as error:
             log_event("model.selection.failed", level=30, provider=request.provider, model=request.model, error=str(error)[:200])
             raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @router.get("/api/metrics/model-calls")
+    def get_model_call_metrics(days: int = 7) -> dict[str, Any]:
+        """模型调用边界指标聚合（只读；按 runtime/task/provider/model 分组）。"""
+        if metrics_store is None:
+            raise HTTPException(status_code=503, detail="指标存储未注入")
+        window = max(1, min(days, 90))
+        return {"days": window, "items": metrics_store.aggregate(days=window)}
 
     @router.get("/api/tutor-models")
     def get_tutor_models() -> dict[str, Any]:

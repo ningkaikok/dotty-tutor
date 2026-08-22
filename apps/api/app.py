@@ -18,8 +18,10 @@ from application.services.lesson_generation import generate_lesson, question_pay
 from application.services.stateful_tutor import StatefulTutor
 from domain.questions.pipeline import build_question_content_blocks
 from infrastructure.runtime.model_runtime import ModelRuntime
+from infrastructure.runtime.model_runtime import runtime as generation_runtime
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import application_store as store
+from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
@@ -31,11 +33,15 @@ from variation_service import VariationService
 app = create_app()
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
-tutor_runtime = ModelRuntime(env_prefix="TUTOR_")
+# 模型调用边界指标的共享存储；生成/陪练两个 Runtime 实例都写入同一张表。
+metrics_store = MetricsStore(engine=store.engine)
+generation_runtime.metrics_store = metrics_store
+tutor_runtime = ModelRuntime(env_prefix="TUTOR_", metrics_store=metrics_store)
 app.include_router(build_runtime_router(
     store=store,
     question_payload=question_payload,
     tutor_runtime=tutor_runtime,
+    metrics_store=metrics_store,
 ))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
