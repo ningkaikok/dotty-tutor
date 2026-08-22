@@ -38,7 +38,7 @@ CORPUS: list[dict] = [
             "历史现场），结构化 content_list.json 里明确写了'第9题图''第10题图'，"
             "但没有安全落点，必须和纯正则路径一样移除这两张图。"
         ),
-        "tags": ["caption-attribution", "question-number"],
+        "tags": ["image-misattribution", "question-number-boundary"],
         "ocr_markdown": _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT,
         "structured_payload": {
             "content_list": _REAL_CONTENT_LIST_JSON_EXCERPT,
@@ -63,7 +63,7 @@ CORPUS: list[dict] = [
             "题号 9、10 紧跟上一题末尾没有换行（MinerU 扁平化吃掉的）。带 middle.json "
             "时行级重建应恢复独立题块；这是 v0.21.x 修复的回归证据。"
         ),
-        "tags": ["line-break", "question-number"],
+        "tags": ["question-number-boundary"],
         "ocr_markdown": _REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD["content_list"][0]["text"],
         "structured_payload": dict(_REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD),
         "expect": {
@@ -76,7 +76,7 @@ CORPUS: list[dict] = [
             "同一段文本在没有 middle.json 时必须完全走扁平路径：9、10 保持丢失。"
             "这不是期望的最终行为，而是回退语义的固化——回退路径的行为变化必须显式可见。"
         ),
-        "tags": ["line-break", "fallback"],
+        "tags": ["fallback"],
         "ocr_markdown": _REAL_LINE_BREAK_RECONSTRUCTION_PAYLOAD["content_list"][0]["text"],
         "structured_payload": None,
         "expect": {
@@ -90,7 +90,7 @@ CORPUS: list[dict] = [
             "真实教材 batch-001 第 3-9 题：句子中间的段落断点让 '3、' 被误判成新题号，"
             "与真正的第 3 题共享 key。当前安全网把重复项隔离而不是静默覆盖。"
         ),
-        "tags": ["question-number", "duplicate-key"],
+        "tags": ["question-number-boundary", "duplicate-key"],
         "ocr_markdown": _REAL_DUPLICATE_NUMBER_OCR_EXCERPT,
         "structured_payload": None,
         "expect": {
@@ -106,8 +106,8 @@ CORPUS: list[dict] = [
             "目前依然存在，且结构化重放与扁平路径结果完全一致。修复该缺陷后本条目会"
             "失败，届时应把它转正为 absent_question_numbers 期望。"
         ),
-        "tags": ["question-number", "known-bug"],
-        "documenting_bug": "T0/question-number-subproblem-A",
+        "tags": ["question-number-boundary", "known-bug"],
+        "documenting_bug": "question-number-subproblem-a",
         "ocr_markdown": SUBPROBLEM_A_SOURCE,
         "structured_payload": dict(_REAL_SUBPROBLEM_A_PAYLOAD),
         "expect": {

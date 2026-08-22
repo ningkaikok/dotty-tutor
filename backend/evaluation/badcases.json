@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "badcases": [
+    {
+      "id": "question-number-subproblem-a",
+      "label": "question-number-boundary",
+      "title": "续举例编号被误判为新题号（假阳性）",
+      "stage": "segmentation",
+      "status": "open",
+      "detail": "句子中间的段落断点让行首出现 '3、'，被 QUESTION_START_PATTERN 判成新题号，与真正的第3题共享 key。修复方案（前文以句末标点结尾才允许开新题）已设计但需金标准集验证存量教材后再动手。",
+      "corpusEntryId": "subproblem-a-phantom-number-known-bug",
+      "sourceRef": "tests/test_question_segmentation.py::_REAL_SUBPROBLEM_A_PAYLOAD",
+      "addedIn": "0.21.1"
+    },
+    {
+      "id": "question-number-line-break-loss",
+      "label": "question-number-boundary",
+      "title": "题号粘连在上一题末尾，9/10 两题整块消失",
+      "stage": "segmentation",
+      "status": "fixed",
+      "fixedRelease": "0.21.x",
+      "resolutionNote": "用 middle.json 行级坐标重建被扁平化吃掉的换行，未改动 QUESTION_START_PATTERN 本身；对全部 5 本本地真实教材验证过前后差异。",
+      "corpusEntryId": "line-break-reconstruction-recovers-9-and-10",
+      "sourceRef": "tests/test_question_segmentation.py::LineBreakReconstructionTests",
+      "addedIn": "0.21.0"
+    },
+    {
+      "id": "caption-attribution-flat-text-only",
+      "label": "image-misattribution",
+      "title": "图注归属只依赖扁平文本位置",
+      "stage": "segmentation",
+      "status": "fixed",
+      "fixedRelease": "0.22.0",
+      "resolutionNote": "优先读取 content_list.json 的结构化 image_caption 字段，无结构化数据时完全回退到正则路径。",
+      "corpusEntryId": "caption-attribution-real-excerpt",
+      "sourceRef": "tests/test_question_segmentation.py::StructuredCaptionAttributionTests",
+      "addedIn": "0.21.0"
+    },
+    {
+      "id": "duplicate-key-silent-overwrite",
+      "label": "duplicate-key",
+      "title": "重复题号静默覆盖同批次先写入的题目",
+      "stage": "storage",
+      "status": "fixed",
+      "fixedRelease": "0.21.1",
+      "resolutionNote": "重复 key 现在被隔离为独立候选并标记 needs_review，不再覆盖。边界本身仍是错的（见 question-number-subproblem-a），安全网只是兜底。",
+      "corpusEntryId": "duplicate-question-number-safety-net",
+      "sourceRef": "tests/test_question_processing.py::DuplicateQuestionNumberSafetyNetTests",
+      "addedIn": "0.21.0"
+    },
+    {
+      "id": "stem-image-placement-stacked-at-end",
+      "label": "image-misattribution",
+      "title": "题干图片全部堆在文字末尾而不是原始位置",
+      "stage": "generation",
+      "status": "fixed",
+      "fixedRelease": "0.21.1",
+      "resolutionNote": "'主视图/图1/图2' 等内联图注就地对齐到题干文字中对应的位置。",
+      "sourceRef": "tests/test_stem_image_placement.py",
+      "addedIn": "0.21.0"
+    },
+    {
+      "id": "option-placeholder-residue",
+      "label": "ocr-text-loss",
+      "title": "图片选择题占位文字清理残留与误删",
+      "status": "fixed",
+      "fixedRelease": "0.21.1",
+      "stage": "segmentation",
+      "resolutionNote": "带内容的占位行整行删除；几何题干中以裸字母开头的正常内容不再被误删；三选项题按实际选项正文逐项比对重复。",
+      "sourceRef": "tests/test_question_content_residue.py",
+      "addedIn": "0.20.0"
+    }
+  ]
+}
