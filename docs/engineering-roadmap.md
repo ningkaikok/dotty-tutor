@@ -163,7 +163,10 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 找坏样本，成本高且覆盖面随机——下面两条正是要解决这个问题，而且已经有现成的真实坏样本可以直接
 当种子数据，不需要另外采集。
 
-1. [ ] 建立脱敏金标准集，覆盖 OCR、公式、题图、七类题型和陪练。
+1. [ ] 建立脱敏金标准集，覆盖 OCR、公式、题图、七类题型和陪练。验收时同步收敛版本化 Prompt 模板：
+   模板进入普通 Python 模块或小目录，运行快照记录 `templateId`/`templateVersion`/`templateHash`/
+   `schemaVersion`，动态输入只保存题目修订、OCR 产物和线程摘要 ID 的引用；不保存渲染后的完整
+   Prompt（含教材原文和学生输入），也不建设 Prompt 管理平台或巨型常量表。
 2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
@@ -172,6 +175,11 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 7. [ ] 引入 Python Ruff/类型检查与前端 ESLint/Prettier 门禁。当前没有任何静态检查，"每个 PR 有回滚边界"
    的原则实际守不住；本轮修复的多个 bug 属于"正则写宽""默认值撞车"这类静态检查可拦截的问题。
    成本极低、收益确定，可与评测集并行推进，不需要等 Badcase 语料建成。
+8. [ ] 确定性判题返回结构化、客观的 `EvaluationEvidence`（如 normalizedResponse、expectedMatched、
+   unitMatched、failedParts 和 evaluatorVersion），作为 P1 证据闭环的判题侧验收项。Turn Plan 使用该证据
+   选择诊断动作；具体误区仍由模型提出带证据和置信度的假设并按需确认，判据器不得直接输出
+   `error_type`/`concept` 结论——只看到最终答案无法区分符号错误与概念错误，越权输出会制造虚假诊断。
+   Evidence 只追加保存，Tutor 不能覆盖原始作答与评分结果。当前 `answer_evaluator.py` 只返回笼统反馈文案。
 
 ## T2：模型、OCR 与上下文优化
 
@@ -221,6 +229,11 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 - [ ] 实验性评估浏览器内推理（WebLLM/WebGPU）作为分层 Help 的离线兜底层；只覆盖提示生成这类
   低风险输出，不用于判题、出题和审校。沿用 TTS 三级回退的模式：云端模型 → 本地 Ollama →
   浏览器内小模型 → 固定模板提示，实验失败可整体移除且不影响其他层。
+- [ ] 版本化轻量知识点树（`id`/`name`/`parent_id`/`taxonomy_version`/`status`），作为 P2 数据治理实验。
+  知识标签从已审核内容派生（Source Artifact → Document Blocks → Learning Objects → Knowledge Tags），
+  先服务错题归类、掌握度聚合和教材知识点映射；当前知识点只是字符串和 JSON 数组，尚无稳定实体。
+  只有跨教材概念检索、先修关系推荐需求真实出现后再评估升级为正式图谱；不引入图数据库、embedding
+  或向量基础设施——OCR 错误会被图谱关系放大，派生索引先行可以把这个风险限制在可重建的层。
 
 ## 前端数据请求与校验工具决策
 
