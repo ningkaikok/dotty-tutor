@@ -4,29 +4,30 @@
 此文件只创建对象、注入依赖并注册路由。
 """
 
-from application import create_app
-from api.routers.learning_routes import build_learning_router
-from application.services.lesson_generation import generate_lesson, question_payload
-from mistake_recognition import build_mistake_recognizer
-from api.routers.mistake_routes import build_mistake_router
-from persistence.mistake_store import MistakeStore
-from infrastructure.runtime.model_runtime import ModelRuntime
-from api.routers.publication_routes import build_publication_router
-from publication_revision import PublicationRevisionService
-from api.routers.practice_routes import build_practice_router
-from domain.questions.pipeline import build_question_content_blocks
-from api.routers.review_routes import build_review_router
-from persistence.review_store import ReviewStore
-from api.routers.runtime_routes import build_runtime_router
 from persistence.app_store import application_store as store
-from application.services.stateful_tutor import StatefulTutor
-from textbook_ocr import resolve_ocr_text
-from api.routers.textbook_routes import processing_service, router as textbook_router
-from api.routers.tutoring_routes import build_tutoring_router
+from persistence.mistake_store import MistakeStore
+from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
-from variation_service import VariationService
 from persistence.variation_store import VariationStore
 
+from api.routers.learning_routes import build_learning_router
+from api.routers.mistake_routes import build_mistake_router
+from api.routers.practice_routes import build_practice_router
+from api.routers.publication_routes import build_publication_router
+from api.routers.review_routes import build_review_router
+from api.routers.runtime_routes import build_runtime_router
+from api.routers.textbook_routes import processing_service
+from api.routers.textbook_routes import router as textbook_router
+from api.routers.tutoring_routes import build_tutoring_router
+from application import create_app
+from application.services.lesson_generation import generate_lesson, question_payload
+from application.services.stateful_tutor import StatefulTutor
+from domain.questions.pipeline import build_question_content_blocks
+from infrastructure.runtime.model_runtime import ModelRuntime
+from mistake_recognition import build_mistake_recognizer
+from publication_revision import PublicationRevisionService
+from textbook_ocr import resolve_ocr_text
+from variation_service import VariationService
 
 app = create_app()
 

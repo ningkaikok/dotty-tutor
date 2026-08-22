@@ -1,14 +1,12 @@
 """可编程课程、互动试卷和持久化学习活动的共享契约。"""
 
 from __future__ import annotations
-from domain.constants import DEMO_LEARNER_ID
-
-
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from domain.constants import DEMO_LEARNER_ID
 from domain.tutoring.checks import safe_canvas_action
 
 LessonBlockType = Literal[

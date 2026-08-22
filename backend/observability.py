@@ -16,7 +16,6 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 
-
 request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
     "dotty_request_id", default=""
 )

@@ -15,8 +15,11 @@ import re
 from pathlib import Path
 from typing import Any
 
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
 from infrastructure.runtime.model_runtime import Provider, runtime
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
 
 
 def _normalize_review_math(value: str) -> str:

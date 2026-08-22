@@ -6,14 +6,13 @@
 
 from __future__ import annotations
 
-import time
 import hashlib
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
-from infrastructure.runtime.model_runtime import runtime
-from observability import log_event
+from application.services.tutor_engine import TutorEngine
 from domain.questions.contracts import (
     CANVAS_ACTIONS,
     GUIDE_CARDS,
@@ -31,16 +30,20 @@ from domain.questions.pipeline import (
     normalize_text_choices_from_source,
     strip_choice_text_from_prompt,
 )
-from domain.questions.source import safe_string_list, safe_text, select_complete_question_source
-from infrastructure.runtime.review_runtime import runtime_reviewer
+from domain.questions.source import (
+    safe_string_list,
+    safe_text,
+    select_complete_question_source,
+)
 from domain.tutoring.checks import (
     generic_guide_cards,
     is_geometry_question,
     mock_model_run,
     normalize_guide_cards,
 )
-from application.services.tutor_engine import TutorEngine
-
+from infrastructure.runtime.model_runtime import runtime
+from infrastructure.runtime.review_runtime import runtime_reviewer
+from observability import log_event
 
 # 该缓存仅加速单进程 Demo，PostgreSQL 才是持久化课程的真相来源。
 # 多 Worker 部署应改用共享缓存或 Store，不能尝试在进程间同步这个字典。

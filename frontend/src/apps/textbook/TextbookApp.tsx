@@ -40,7 +40,9 @@ export function TextbookApp() {
   const [questionLimit, setQuestionLimit] = useState(QUICK_QUESTION_LIMIT);
   const [textbookImport, setTextbookImport] = useState<TextbookImportResult | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [canvasAction, setCanvasAction] = useState<CanvasAction>(INITIAL_ACTION);
+  // 画布动作只通过 setter 驱动重渲染，当前预览不读取该值；
+  // 接入工作台画布回显时恢复值槽即可。
+  const [, setCanvasAction] = useState<CanvasAction>(INITIAL_ACTION);
   const [studentInput, setStudentInput] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});

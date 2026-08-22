@@ -10,15 +10,14 @@ from __future__ import annotations
 import importlib
 import os
 import threading
-import time
 import uuid
 from dataclasses import dataclass
 from threading import Event
 from typing import Any, Callable, Mapping
 
-from observability import log_event
 from persistence.job_store import JobStore
 
+from observability import log_event
 
 CancellationCheck = Callable[[], bool]
 JobHandler = Callable[[dict[str, Any], CancellationCheck], Any]

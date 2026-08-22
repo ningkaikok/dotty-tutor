@@ -1,0 +1,38 @@
+[tool.ruff]
+# 中文注释和长 URL 让部分行天然超过 100 字符；行宽检查交给人工审查，
+# 这里只启用与正确性相关的规则集（见下方 select），不启用格式化。
+target-version = "py312"
+
+[tool.ruff.lint]
+# E4/E7/E9/F：语法与未使用导入等真实错误；I：导入排序（可自动修复）。
+# 更激进的风格升级类规则（UP/SIM/BLE/TRY）留待后续单独评估，避免一次门禁
+# 产生数百个与行为无关的改动淹没真正的修复。
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.isort]
+# backend 以仓库根为导入根（如 `from domain...`、`from infrastructure...`），
+# first-party 需要显式声明，否则会被当成第三方排序。
+known-first-party = [
+    "answer_evaluator",
+    "api",
+    "application",
+    "domain",
+    "evaluation",
+    "infrastructure",
+    "mistake_recognition",
+    "observability",
+    "ocr_pipeline",
+    "ocr_preflight",
+    "ocr_quality",
+    "publication_revision",
+    "publication_quality",
+    "run_audit",
+    "textbook_ocr_pipeline",
+    "textbook_ocr",
+    "variation_service",
+    "worker",
+]
+
+[tool.ruff.format]
+# 格式化暂不作为门禁：存量代码风格统一是独立的重构窗口任务。
+quote-style = "preserve"

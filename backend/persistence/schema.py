@@ -6,9 +6,22 @@ metadata. New product domains such as mistakes and tutoring intentionally keep
 their own schemas next to their stores.
 """
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    Column,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-
 
 metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")

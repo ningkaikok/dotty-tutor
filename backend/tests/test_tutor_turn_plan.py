@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from types import SimpleNamespace
 
-from domain.questions.contracts import HELP_SCHEMA, HelpRequest, TutorReply
 from application.services.stateful_tutor import StatefulTutor
+from domain.questions.contracts import HELP_SCHEMA, HelpRequest, TutorReply
 from domain.tutoring.checks import build_reply
 from domain.tutoring.turn_plan import (
     build_tutor_turn_plan,

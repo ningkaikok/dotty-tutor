@@ -1,0 +1,2 @@
+# 开发/CI 专用工具；运行时依赖见 requirements.txt
+ruff==0.16.4

@@ -11,7 +11,6 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-
 VALIDATOR_VERSION = "p0-v4"
 
 

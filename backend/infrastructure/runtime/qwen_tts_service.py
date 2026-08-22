@@ -22,7 +22,6 @@ from qwen_tts import Qwen3TTSModel
 
 from observability import log_event
 
-
 app = FastAPI(title="Qwen3-TTS local service")
 MODEL_NAME = os.getenv("QWEN_TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice")
 DEFAULT_SPEAKER = os.getenv("QWEN_TTS_SPEAKER", "Serena")

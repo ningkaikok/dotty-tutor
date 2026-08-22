@@ -15,10 +15,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from domain.questions.contracts import CANVAS_ACTIONS, GUIDE_CARDS, HelpRequest, TutorReply
+from domain.questions.contracts import (
+    CANVAS_ACTIONS,
+    HelpRequest,
+    TutorReply,
+)
 from domain.tutoring.turn_plan import normalize_misconception
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
-
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
 
 EQUATION_PATTERN = re.compile(
     r"(?<![0-9A-Za-z])([0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*\s*=\s*"

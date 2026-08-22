@@ -11,8 +11,16 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
-from application.job_worker import JobCancelled, RetryableJobError, TerminalJobError, TaskRegistry
-from domain.questions.source import MAX_FULL_PAPER_QUESTIONS_PER_BATCH, MAX_QUESTIONS_PER_BATCH
+from application.job_worker import (
+    JobCancelled,
+    RetryableJobError,
+    TaskRegistry,
+    TerminalJobError,
+)
+from domain.questions.source import (
+    MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
+    MAX_QUESTIONS_PER_BATCH,
+)
 
 
 def build_textbook_registry(processing_service: Any) -> TaskRegistry:

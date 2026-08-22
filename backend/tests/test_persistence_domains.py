@@ -10,15 +10,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sqlalchemy import inspect
-
+from persistence.app_store import AppStore
+from persistence.learning_store import LearningStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
-from persistence.learning_store import LearningStore
 from persistence.textbook_store import TextbookStore
-from persistence.app_store import AppStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from sqlalchemy import inspect
 
 
 class PersistenceDomainTests(unittest.TestCase):

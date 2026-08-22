@@ -17,11 +17,10 @@ import uuid
 from typing import Any
 
 from domain.questions.contracts import LESSON_SCHEMA
+from infrastructure.runtime.contracts import RuntimeConfigSnapshot
 from infrastructure.runtime.model_runtime import runtime as model_runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot
-
 
 PROMPT_VERSION = "lesson-generation-v1"
 VALIDATOR_VERSION = "p0-v4"

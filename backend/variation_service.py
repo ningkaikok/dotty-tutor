@@ -14,7 +14,6 @@ from typing import Any, Callable
 
 from domain.tutoring.turn_plan import ERROR_STRATEGIES
 
-
 VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]]
 
 LEVELS = ("foundation", "parallel", "transfer")

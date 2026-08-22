@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
-
 RoutedProvider = Literal["pypdf", "mineru"]
 
 # 这些信号故意偏保守：普通电子文本优先走更快的文字层；只要很像扫描件或公式页，

@@ -5,14 +5,14 @@ from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from persistence.app_store import AppStore
+from persistence.mistake_store import MistakeStore
 
 from api.routers.learning_routes import build_learning_router
 from domain.contracts.lesson import (
     LessonDocument,
     lesson_document_from_payload,
 )
-from persistence.mistake_store import MistakeStore
-from persistence.app_store import AppStore
 
 
 class LessonContractTests(unittest.TestCase):

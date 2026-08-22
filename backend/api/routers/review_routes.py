@@ -9,10 +9,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from answer_evaluator import evaluate_structured_answer
-from observability import log_event
-from domain.contracts.practice import VariationAnswerRequest
 from api.routers.tutoring_routes import has_meaningful_answer
 from domain.constants import DEMO_LEARNER_ID
+from domain.contracts.practice import VariationAnswerRequest
+from observability import log_event
 
 
 def build_review_router(*, mistake_store: Any, review_store: Any, variation_service: Any) -> APIRouter:

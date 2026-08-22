@@ -6,13 +6,13 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from app import app
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from persistence.job_store import JobStore
 
-from app import app
 from application.job_worker import JobCancelled, RetryableJobError, TerminalJobError
 from application.textbook_jobs import build_textbook_registry
-from persistence.job_store import JobStore
 
 
 class _Service:
@@ -51,7 +51,8 @@ class TextbookJobRegistryTests(unittest.TestCase):
     def test_handlers_delegate_to_service_and_honor_cancellation(self) -> None:
         service = _Service()
         registry = build_textbook_registry(service)
-        check = lambda: False
+        def check() -> bool:
+            return False
         self.assertEqual(
             registry.get("textbook.upload.complete")({"uploadId": "u1"}, check),
             {"ok": True},

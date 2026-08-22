@@ -19,7 +19,6 @@ from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import background_jobs
 
-
 _SQLITE_CLAIM_LOCK = threading.Lock()
 JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
 

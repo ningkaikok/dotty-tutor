@@ -11,15 +11,15 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from infrastructure.runtime.model_runtime import runtime
-from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from domain.questions.contracts import (
     ModelSelectionRequest,
     OcrSelectionRequest,
     TtsRequest,
 )
-from observability import log_event
+from infrastructure.runtime.model_runtime import runtime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
+from observability import log_event
 
 
 def build_runtime_router(*, store: Any, question_payload: Callable[[], dict[str, Any]], tutor_runtime: Any) -> APIRouter:

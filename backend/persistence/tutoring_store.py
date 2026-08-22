@@ -1,18 +1,31 @@
 """PostgreSQL/SQLite persistence for tutor threads and bounded messages."""
 
 from __future__ import annotations
-from domain.constants import DEMO_LEARNER_ID
-
-
 
 import threading
 import time
 import uuid
 from typing import Any
 
-from sqlalchemy import Column, Float, ForeignKey, Index, Integer, JSON, MetaData, String, Table, Text, create_engine, delete, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    delete,
+    select,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
+
+from domain.constants import DEMO_LEARNER_ID
 
 tutoring_metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")

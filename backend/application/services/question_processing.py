@@ -9,8 +9,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from application.services.lesson_generation import attach_question_source, generate_lesson, review_lesson_payload
-from observability import log_event
+from application.services.lesson_generation import (
+    attach_question_source,
+    generate_lesson,
+    review_lesson_payload,
+)
 from domain.questions.pipeline import (
     apply_question_quality_gate,
     normalize_image_choice_question,
@@ -21,7 +24,7 @@ from domain.questions.pipeline import (
     strip_choice_text_from_prompt,
 )
 from domain.questions.source import question_image_paths, question_key, safe_string_list
-
+from observability import log_event
 
 ProgressUpdater = Callable[[dict[str, Any], str, int, str], None]
 # A failed question gets one targeted repair. A third full generation/review pass has a

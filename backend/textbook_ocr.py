@@ -12,9 +12,12 @@ from typing import Any
 
 from pypdf import PdfReader
 
-from observability import log_event
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+from observability import log_event
 
 
 def _with_ocr_config(run: dict[str, Any], *, provider: str, prompt: str) -> dict[str, Any]:

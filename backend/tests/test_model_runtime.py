@@ -4,7 +4,11 @@ import os
 import unittest
 from unittest.mock import patch
 
-from infrastructure.runtime.model_runtime import ModelRuntime, codex_command, codex_models
+from infrastructure.runtime.model_runtime import (
+    ModelRuntime,
+    codex_command,
+    codex_models,
+)
 
 
 class CodexCommandTests(unittest.TestCase):

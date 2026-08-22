@@ -1,16 +1,15 @@
 """HTTP boundary for creating tutor threads and appending turns."""
 
 from __future__ import annotations
-from domain.constants import DEMO_LEARNER_ID
-
-
 
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from observability import log_event
+from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.tutoring import TutorMessageRequest
+from observability import log_event
+
 
 def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> bool:
     """Return whether a turn contains an answer a learner could have entered.

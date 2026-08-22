@@ -15,8 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from infrastructure.runtime.contracts import RuntimeConfigSnapshot, attach_runtime_config
-
+from infrastructure.runtime.contracts import (
+    RuntimeConfigSnapshot,
+    attach_runtime_config,
+)
 
 OcrProvider = Literal["auto", "mineru", "pypdf"]
 

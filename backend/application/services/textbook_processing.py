@@ -15,10 +15,13 @@ from typing import Any
 from fastapi import HTTPException
 from pypdf import PdfReader
 
+from application.job_worker import JobCancelled
+from application.services.question_processing import (
+    _generate_validated_question,
+    process_question_sources,
+)
 from domain.contracts.lesson import lesson_document_from_payload
-from observability import log_event
 from domain.questions.pipeline import write_model_prompt_artifact
-from application.services.question_processing import _generate_validated_question, process_question_sources
 from domain.questions.source import (
     MARKDOWN_IMAGE_PATTERN,
     MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
@@ -27,10 +30,9 @@ from domain.questions.source import (
     question_key,
     split_question_sources,
 )
+from observability import log_event
 from run_audit import RunAudit, build_run_config
 from textbook_ocr_pipeline import resolve_routed_ocr_source
-from application.job_worker import JobCancelled
-
 
 PDF_BATCH_PAGES = 5
 

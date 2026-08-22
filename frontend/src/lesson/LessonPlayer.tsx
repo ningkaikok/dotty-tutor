@@ -48,6 +48,9 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     if (!studentMode && firstBlock) void preloadSpeech(blockNarration(firstBlock));
 
     return stopSpeech;
+    // 刻意只在课程切换时重置播放状态；playableBlocks/activateBlock 的身份变化
+    // 不应打断正在进行的讲解。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document.lessonId]);
 
   useEffect(() => {
@@ -71,6 +74,9 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
       cancelled = true;
       stopSpeech();
     };
+    // activateBlock 是稳定的 setState 包装；纳入依赖会让每步音频结束后
+    // 因函数身份变化重启同一音频。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, onActionChange, playableBlocks.length, playing, step]);
 
   if (!current) return null;

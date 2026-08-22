@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import unittest
 
-from ocr_quality import MAX_OCR_RETRIES, evaluate_page_quality, evaluate_question_quality
+from ocr_quality import (
+    MAX_OCR_RETRIES,
+    evaluate_page_quality,
+    evaluate_question_quality,
+)
 
 
 class OcrQualityTests(unittest.TestCase):

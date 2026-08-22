@@ -8,13 +8,12 @@ from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from persistence.mistake_store import MistakeStore
+from persistence.tutoring_store import TutoringStore
 from sqlalchemy import create_engine
 
-from persistence.mistake_store import MistakeStore
-from application.services.stateful_tutor import StatefulTutor
 from api.routers.tutoring_routes import build_tutoring_router
-from persistence.tutoring_store import TutoringStore
-
+from application.services.stateful_tutor import StatefulTutor
 
 GUIDE_CARD = {
     "level": 0,

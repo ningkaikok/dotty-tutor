@@ -6,12 +6,12 @@ from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-
-from api.routers.mistake_routes import build_mistake_router
 from persistence.mistake_store import MistakeStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from sqlalchemy import create_engine
+
+from api.routers.mistake_routes import build_mistake_router
 
 
 def fake_recognize(

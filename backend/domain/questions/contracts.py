@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 from infrastructure.runtime.model_runtime import Provider
 from infrastructure.runtime.ocr_runtime import OcrProvider
 
-
 QuestionType = Literal[
     "choice",
     "multi-select",

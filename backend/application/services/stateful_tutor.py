@@ -5,8 +5,8 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from typing import Any
 
-from domain.questions.contracts import HelpRequest, TutorReply
 from application.services.tutor_engine import TutorEngine
+from domain.questions.contracts import HelpRequest, TutorReply
 from domain.tutoring.checks import mock_model_run
 from domain.tutoring.turn_plan import (
     _has_structured_answer,
@@ -16,7 +16,6 @@ from domain.tutoring.turn_plan import (
     select_teaching_action,
     teaching_strategy_context,
 )
-
 
 STAGE_LABELS = {
     "diagnose": "定位卡点",
