@@ -18,13 +18,27 @@ class CorpusIntegrityTests(unittest.TestCase):
         ids = [entry["id"] for entry in corpus_module.CORPUS]
         self.assertEqual(len(ids), len(set(ids)))
 
-    def test_every_entry_has_description_tags_and_expectations(self) -> None:
+    def test_every_entry_has_description_and_kind_specific_payload(self) -> None:
         for entry in corpus_module.CORPUS:
             with self.subTest(entry=entry["id"]):
                 self.assertTrue(entry["description"].strip())
-                self.assertTrue(entry["tags"])
-                self.assertTrue(entry.get("expect"))
-                self.assertIn(entry["ocr_markdown"], (None, entry["ocr_markdown"]))
+                kind = entry.get("kind", "segmentation")
+                if kind == "segmentation":
+                    self.assertTrue(entry["tags"])
+                    self.assertTrue(entry.get("expect"))
+                    self.assertTrue(entry.get("ocr_markdown"))
+                elif kind == "formula-normalize":
+                    self.assertTrue(entry.get("cases"))
+                    for case in entry["cases"]:
+                        self.assertIn("raw", case)
+                        self.assertIn("expected", case)
+                elif kind == "quality-gate":
+                    self.assertIn("payload", entry)
+                    self.assertIn("sourceBlock", entry)
+                    self.assertIn("status", entry.get("expect", {}))
+                elif kind == "turn-plan-intent":
+                    for case in entry["cases"]:
+                        self.assertIn("intentId", case)
 
 
 class ReplayBehaviorTests(unittest.TestCase):
