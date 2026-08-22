@@ -11,7 +11,7 @@
       "corpusEntryId": "subproblem-a-enumeration-not-a-boundary",
       "sourceRef": "tests/test_question_segmentation.py::_REAL_SUBPROBLEM_A_PAYLOAD",
       "addedIn": "0.21.1",
-      "fixedRelease": "unreleased",
+      "fixedRelease": "0.23.0",
       "resolutionNote": "切分规则 question-segmentation-v3：\"、\"分隔的候选题号只有在前文最后一个非空白字符是枚举标记（、，,）时才判为续行举例。已对本地全部 5 本真实教材 OCR 重放验证：7 个批次中唯一变化即坏样本所在批次（伪 \"3\" 消失、序列恢复干净、第 9 题取回题图），其余批次逐字节不变。"
     },
     {
