@@ -31,9 +31,11 @@ function payload(overrides: {
 describe("lessonDocumentFromPayload", () => {
   it("draw-line 题视为几何题，保留模型给出的画布动作", () => {
     const doc = lessonDocumentFromPayload(payload({ questionType: "draw-line", stepAction: "show-triangles" }));
-    const diagram = doc.blocks.find((block) => block.type === "diagram");
-    expect(doc.blocks[0].payload.action).toBe("show-triangles");
-    expect(diagram).toBeDefined();
+    // 判别联合收窄后才能访问 geometry payload 的 action。
+    const diagram = doc.blocks.find(
+      (block): block is Extract<typeof block, { type: "diagram" }> => block.type === "diagram",
+    );
+    expect(diagram?.payload.action).toBe("show-triangles");
   });
 
   it("非几何题强制 show-base：不允许模型内容携带不匹配的几何动作", () => {
@@ -43,7 +45,10 @@ describe("lessonDocumentFromPayload", () => {
       knowledgePoint: "移项",
       stepAction: "show-triangles",
     }));
-    expect(doc.blocks[0].payload.action).toBe("show-base");
+    const diagram = doc.blocks.find(
+      (block): block is Extract<typeof block, { type: "diagram" }> => block.type === "diagram",
+    );
+    expect(diagram?.payload.action).toBe("show-base");
   });
 
   it("needs_review 映射为 in_review，其余为 draft", () => {
@@ -53,7 +58,7 @@ describe("lessonDocumentFromPayload", () => {
 
   it("末尾追加指向题目 ID 的 quiz 块", () => {
     const doc = lessonDocumentFromPayload(payload({}));
-    const last = doc.blocks.at(-1);
+    const last = doc.blocks[doc.blocks.length - 1];
     expect(last?.type).toBe("quiz");
     expect(last?.id).toBe("q-geometry-1-quiz");
   });
