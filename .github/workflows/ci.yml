@@ -66,9 +66,10 @@ jobs:
         run: npm run test
       - name: Verify generated API types
         working-directory: apps/web
-        env:
-          PATH: /home/runner/work/dotty-tutor/dotty-tutor/apps/api/.venv/bin:${{ env.PATH }}
-        run: pnpm run check:api
+        run: |
+          # 让脚本解析到的 python3 携带后端依赖（venv 由上一步 uv sync 创建）
+          echo "$GITHUB_WORKSPACE/apps/api/.venv/bin" >> "$GITHUB_PATH"
+          pnpm run check:api
       - name: Build frontend
         working-directory: apps/web
         run: pnpm run build
