@@ -7,16 +7,31 @@ from collections import defaultdict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from sqlalchemy.engine import Engine
 
 from answer_evaluator import evaluate_structured_answer
 from api.routers.tutoring_routes import has_meaningful_answer
+from application.services.learning_funnel import build_funnel_snapshot
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
 from observability import log_event
 
 
-def build_review_router(*, mistake_store: Any, review_store: Any, variation_service: Any) -> APIRouter:
+def build_review_router(
+    *,
+    mistake_store: Any,
+    review_store: Any,
+    variation_service: Any,
+    engine: Engine | None = None,
+) -> APIRouter:
     router = APIRouter(tags=["review"])
+
+    @router.get("/api/funnel")
+    def get_learning_funnel(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
+        """学习效果漏斗快照（只读聚合）；engine 未注入时明确返回不可用。"""
+        if engine is None:
+            raise HTTPException(status_code=503, detail="漏斗聚合需要数据库连接")
+        return build_funnel_snapshot(engine, learnerId)
 
     @router.get("/api/reviews")
     def list_reviews(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
