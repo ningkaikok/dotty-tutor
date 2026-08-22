@@ -73,8 +73,18 @@ def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tol
     return bool(normalized) and any(normalized == normalize_text(item) for item in expected)
 
 
-def _result(assessment: str, reply: str, hint: str) -> dict[str, Any]:
-    return {
+# 判据器版本参与证据溯源：evidence 的字段语义变化时必须递增，
+# 消费方（陪练计划、尝试记录）据此解释历史证据的结构。
+EVALUATOR_VERSION = "answer-evaluator-v1"
+
+
+def _result(
+    assessment: str,
+    reply: str,
+    hint: str,
+    evidence: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = {
         "assessment": assessment,
         "reply": reply,
         "hint": hint,
@@ -82,6 +92,12 @@ def _result(assessment: str, reply: str, hint: str) -> dict[str, Any]:
         "stuckAt": "需要根据题目要求检查作答格式和关键结果。",
         "question": "你能指出答案中的哪个量或步骤支持这个结果吗？",
     }
+    # 客观判定证据：只包含学生侧已知的事实（自己的作答、哪些空未匹配、容差等）。
+    # 绝不放入标准答案/期望标签——该结构会进入学生可见的 guideContext。
+    if evidence is not None:
+        evidence["evaluatorVersion"] = EVALUATOR_VERSION
+        payload["evaluationEvidence"] = evidence
+    return payload
 
 
 def evaluate_structured_answer(
@@ -110,9 +126,14 @@ def evaluate_structured_answer(
         submitted = {normalize_label(item) for item in submitted_values if normalize_label(item)}
         if not expected or not submitted:
             return None
+        evidence = {
+            "strategy": "choice-set-match",
+            "submittedLabels": sorted(submitted),
+            "expectedCount": len(expected),
+        }
         if submitted == expected:
-            return _result("correct", "选择正确。请再说明题干中的哪个条件支持这个选项。", "回到题干，找出支持该选项的关键条件。")
-        return _result("incorrect", "这组选项还不正确。请重新检查每个选项，再提交一次。", "逐项核对选项与题干条件，不要只凭直觉选择。")
+            return _result("correct", "选择正确。请再说明题干中的哪个条件支持这个选项。", "回到题干，找出支持该选项的关键条件。", evidence)
+        return _result("incorrect", "这组选项还不正确。请重新检查每个选项，再提交一次。", "逐项核对选项与题干条件，不要只凭直觉选择。", evidence)
 
     if question_type == "fill-blank":
         blanks = question.get("blanks")
@@ -120,6 +141,7 @@ def evaluate_structured_answer(
         if not isinstance(blanks, list) or not blanks or not isinstance(answers, dict):
             return None
         results: list[bool] = []
+        failed_blank_ids: list[str] = []
         for blank in blanks:
             if not isinstance(blank, dict):
                 continue
@@ -127,17 +149,26 @@ def evaluate_structured_answer(
             if not isinstance(expected, list) or not expected:
                 return None
             actual = answers.get(str(blank.get("id", "")), "")
-            results.append(_check_single_answer(
+            matched = _check_single_answer(
                 actual,
                 expected,
                 str(blank.get("answerType", "text")),
                 blank.get("tolerance", 0),
-            ))
+            )
+            results.append(matched)
+            if not matched:
+                failed_blank_ids.append(str(blank.get("id", "")))
         if not results:
             return None
+        evidence = {
+            "strategy": "fill-blank-parts",
+            "totalBlanks": len(results),
+            "matchedCount": sum(1 for item in results if item),
+            "failedBlankIds": failed_blank_ids,
+        }
         if all(results):
-            return _result("correct", "填空全部正确。请说说这些结果是怎样从题目条件得到的。", "检查每个空之间的关系，并补全推导过程。")
-        return _result("incorrect", "有些空还需要修改。请重新检查对应的运算或概念。", "先定位第一个不确定的空，再回到上一步条件。")
+            return _result("correct", "填空全部正确。请说说这些结果是怎样从题目条件得到的。", "检查每个空之间的关系，并补全推导过程。", evidence)
+        return _result("incorrect", "有些空还需要修改。请重新检查对应的运算或概念。", "先定位第一个不确定的空，再回到上一步条件。", evidence)
 
     if question_type == "numeric":
         spec = question.get("answerSpec")
@@ -148,9 +179,19 @@ def evaluate_structured_answer(
         expected = spec.get("accepted") or [spec.get("expected")]
         if not isinstance(expected, list):
             expected = [expected]
+        try:
+            tolerance_value = max(0.0, float(spec.get("tolerance", 0) or 0))
+        except (TypeError, ValueError):
+            tolerance_value = 0.0
+        evidence = {
+            "strategy": "numeric-tolerance",
+            "submittedRaw": str(actual or "")[:40],
+            "tolerance": tolerance_value,
+            "expectedCount": len(expected),
+        }
         correct = _check_single_answer(actual, expected, answer_type, spec.get("tolerance", 0))
         if correct:
-            return _result("correct", "答案正确。请再说明关键计算或公式依据。", "回看最后一步，确认结果和单位都符合题意。")
-        return _result("incorrect", "这个结果还不正确。请检查运算、符号和单位后再试一次。", "从已知条件开始，逐步检查每一行计算。")
+            return _result("correct", "答案正确。请再说明关键计算或公式依据。", "回看最后一步，确认结果和单位都符合题意。", evidence)
+        return _result("incorrect", "这个结果还不正确。请检查运算、符号和单位后再试一次。", "从已知条件开始，逐步检查每一行计算。", evidence)
 
     return None

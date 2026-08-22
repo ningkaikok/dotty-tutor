@@ -204,6 +204,7 @@ def select_teaching_action(
     current_stage: str,
     assessment: str,
     misconception: dict[str, Any] | None = None,
+    evaluation_evidence: dict[str, Any] | None = None,
 ) -> str:
     """根据领域事实选择唯一教学动作，模型无权覆盖结果。"""
     diagnosis = normalize_misconception(misconception)
@@ -217,6 +218,17 @@ def select_teaching_action(
         return "inspect-first-error"
     if diagnosis["needsConfirmation"] and diagnosis["hypothesis"]:
         return "ask-justification"
+    # 数值题空提交是判据器给出的客观事实：学生没有开始运算，任何阶段下
+    # "检查计算/完成步骤"类提示都无从谈起，应引导回题干条件。规则位于阶段
+    # 检查之前；误区确认（ask-justification）保持更高优先级。
+    if (
+        intent == "submit-answer"
+        and assessment == "incorrect"
+        and isinstance(evaluation_evidence, dict)
+        and evaluation_evidence.get("strategy") == "numeric-tolerance"
+        and not str(evaluation_evidence.get("submittedRaw") or "").strip()
+    ):
+        return "extract-conditions"
     if intent == "request-explanation":
         return "contrast-concepts" if error_reason == "concept" else "complete-step"
     if intent == "express-confusion":
@@ -243,22 +255,47 @@ def select_teaching_action(
     }.get(error_reason or "unknown", "extract-conditions")
 
 
+def _evaluation_fact_line(evidence: dict[str, Any] | None) -> str:
+    """把判据器证据压缩成一行可入提示词的客观事实；空证据返回空串。"""
+    if not isinstance(evidence, dict):
+        return ""
+    strategy = evidence.get("strategy")
+    if strategy == "fill-blank-parts":
+        failed = evidence.get("failedBlankIds") or []
+        return (
+            f"客观判定事实：共 {evidence.get('totalBlanks', '?')} 空，"
+            f"已匹配 {evidence.get('matchedCount', '?')} 空，未匹配空编号：{', '.join(map(str, failed)) or '无'}。"
+        )
+    if strategy == "numeric-tolerance":
+        raw = str(evidence.get("submittedRaw") or "").strip()
+        return f"客观判定事实：数值作答原文：'{raw or '(空提交)'}'（容差 {evidence.get('tolerance', 0)}）。"
+    if strategy == "choice-set-match":
+        labels = ", ".join(map(str, evidence.get("submittedLabels") or [])) or "无"
+        return f"客观判定事实：学生已选选项 {labels}（期望数量 {evidence.get('expectedCount', '?')}）。"
+    return ""
+
+
 def teaching_strategy_context(
     error_reason: str | None,
     current_stage: str,
     *,
     intent: dict[str, Any] | None = None,
     teaching_action: str | None = None,
+    evaluation_evidence: dict[str, Any] | None = None,
 ) -> str:
     """生成可安全放入提示词的锁定策略与动作约束。"""
     reason = error_reason if error_reason in ERROR_STRATEGIES else "unknown"
     strategy, objective = ERROR_STRATEGIES[reason]
     intent_id = (intent or {}).get("id", "request-hint")
     action = teaching_action if teaching_action in TEACHING_ACTIONS else "extract-conditions"
+    # 判据器客观事实进入提示词：误区假设必须建立在这些事实之上，
+    # 而不是模型自由发挥的猜测。
+    fact_line = _evaluation_fact_line(evaluation_evidence)
     return (
         f"本轮教学策略：{strategy}（{objective}）。当前阶段：{current_stage}。"
         f"学生意图：{intent_id}。首选且唯一教学动作：{action}。"
-        "只围绕这个动作推进一步；若误区证据不足或置信度低，唯一允许的替代动作是 ask-justification，"
+        + (fact_line if fact_line else "")
+        + "只围绕这个动作推进一步；若误区证据不足或置信度低，唯一允许的替代动作是 ask-justification，"
         "此时必须追问确认而不是继续讲解。"
         "模型不得修改意图、教学动作、判题或阶段，也不要重复上一条提示。"
     )
@@ -316,6 +353,7 @@ def build_tutor_turn_plan(
     student_intent: dict[str, Any] | None = None,
     misconception: dict[str, Any] | None = None,
     generation_teaching_action: str | None = None,
+    evaluation_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """用已确认事实和确定性结果构建稳定、可序列化的教学计划。"""
     reason = error_reason if error_reason in ERROR_STRATEGIES else "unknown"
@@ -340,6 +378,15 @@ def build_tutor_turn_plan(
         "evidence": [item[:80] for item in intent_evidence if isinstance(item, str) and item.strip()][:6],
     }
     diagnosis = normalize_misconception(misconception)
+    # 判据器证据白名单净化：只保留客观事实字段进入计划与消息动作摘要。
+    safe_evidence: dict[str, Any] | None = None
+    if isinstance(evaluation_evidence, dict) and evaluation_evidence.get("strategy"):
+        allowed = {
+            "strategy", "submittedLabels", "expectedCount", "totalBlanks",
+            "matchedCount", "failedBlankIds", "submittedRaw", "tolerance",
+            "evaluatorVersion",
+        }
+        safe_evidence = {key: value for key, value in evaluation_evidence.items() if key in allowed}
     next_stage = suggested_stage(
         current_stage,
         assessment,
@@ -353,6 +400,7 @@ def build_tutor_turn_plan(
         current_stage=current_stage,
         assessment=assessment,
         misconception=diagnosis,
+        evaluation_evidence=safe_evidence,
     )
     generation_action = (
         generation_teaching_action
@@ -374,6 +422,9 @@ def build_tutor_turn_plan(
         "intent": safe_intent,
         "assessment": assessment,
         "misconception": diagnosis,
+        # 客观判定事实随计划持久化到消息动作，供复盘"为什么这样回复"；
+        # 只追加不覆盖，且不含标准答案。
+        "evaluationEvidence": safe_evidence,
         "errorStrategy": {"id": strategy, "objective": objective, "reason": reason},
         "teachingAction": action,
         # 仅确定性判题路径可显示标准答案；普通提示不能借计划越权泄题。

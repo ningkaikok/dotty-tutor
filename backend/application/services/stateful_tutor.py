@@ -158,6 +158,7 @@ class StatefulTutor:
             student_intent=student_intent,
             misconception=misconception,
             generation_teaching_action=generation_action,
+            evaluation_evidence=tutor_reply.guideContext.get("evaluationEvidence"),
         )
         next_stage = plan["suggestedStage"]
         action = {
