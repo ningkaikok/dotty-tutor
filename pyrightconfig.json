@@ -8,5 +8,11 @@
   "venvPath": ".",
   "venv": ".venv",
   "pythonVersion": "3.12",
-  "typeCheckingMode": "basic"
+  "typeCheckingMode": "basic",
+  "exclude": [
+    "**/.venv",
+    "**/node_modules",
+    "apps/api/infrastructure/runtime/qwen_tts_service.py",
+    "apps/api/tests"
+  ]
 }

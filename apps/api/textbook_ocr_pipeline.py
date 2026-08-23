@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -326,7 +327,9 @@ def resolve_routed_ocr_source(
             retry_count=MAX_OCR_RETRIES if span_run.get("provider") == "mineru" else 0,
         )
         span_run["quality"] = quality
-        render_page = getattr(runtime, "render_page_image", None)
+        render_page: Callable[..., tuple[str, str] | None] | None = getattr(
+            runtime, "render_page_image", None
+        )
         if not span_run.get("imageUrls") and callable(render_page):
             rendered_urls: list[str] = []
             for route in group:

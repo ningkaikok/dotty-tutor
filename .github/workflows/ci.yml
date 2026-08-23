@@ -27,9 +27,12 @@ jobs:
       - name: Install backend dependencies (frozen lock)
         working-directory: apps/api
         run: uv sync --frozen
+      # 后续 ruff/pyright 步骤从仓库根调用，路径相对根解析
       - name: Lint backend (ruff)
         working-directory: apps/api
         run: uv run ruff check .
+      - name: Type check (pyright)
+        run: uv --directory apps/api run pyright
       - name: Run backend tests
         working-directory: apps/api
         env:

@@ -409,7 +409,7 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int,
         image_paths: list[Path] | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], dict[str, int | None]]:
         user_message: dict[str, Any] = {"role": "user", "content": prompt}
         if image_paths:
             user_message["images"] = [
@@ -485,7 +485,7 @@ class ModelRuntime:
         prompt: str,
         schema: dict[str, Any],
         image_paths: list[Path] | None = None,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], None]:
         with tempfile.TemporaryDirectory(prefix="dotty-codex-") as directory:
             root = Path(directory)
             schema_path = root / "schema.json"

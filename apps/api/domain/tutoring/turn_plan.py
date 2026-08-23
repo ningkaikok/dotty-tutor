@@ -364,7 +364,12 @@ def build_tutor_turn_plan(
         "confidence": 1.0,
         "evidence": [f"mode:{mode}"],
     }
-    intent_id = intent.get("id") if intent.get("id") in STUDENT_INTENTS else "request-hint"
+    raw_intent_id = intent.get("id")
+    intent_id: str = (
+        raw_intent_id
+        if isinstance(raw_intent_id, str) and raw_intent_id in STUDENT_INTENTS
+        else "request-hint"
+    )
     try:
         intent_confidence = float(intent.get("confidence", 0))
     except (TypeError, ValueError):

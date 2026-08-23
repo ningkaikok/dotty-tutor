@@ -69,9 +69,12 @@ class VariationStore:
     """
 
     def __init__(self, *, engine: Engine | None = None, database_url: str | None = None) -> None:
-        if engine is None and not database_url:
-            raise ValueError("engine 或 database_url 必须提供一个")
-        self.engine = engine if engine is not None else create_engine(database_url, future=True)
+        if engine is None:
+            if not database_url:
+                raise ValueError("engine 或 database_url 必须提供一个")
+            self.engine = create_engine(database_url, future=True)
+        else:
+            self.engine = engine
         self._initialized = False
         self._initialize_lock = threading.Lock()
 

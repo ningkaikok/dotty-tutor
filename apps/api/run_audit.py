@@ -106,10 +106,12 @@ def build_run_config(
         runtime="review",
         timeout=240.0,
     )
-    if isinstance(text_model_run.get("config"), dict):
-        text_config = RuntimeConfigSnapshot.from_mapping(text_model_run["config"], runtime="review")
-    if isinstance(vision_model_run.get("config"), dict):
-        vision_config = RuntimeConfigSnapshot.from_mapping(vision_model_run["config"], runtime="review")
+    text_config_raw = text_model_run.get("config")
+    if isinstance(text_config_raw, dict):
+        text_config = RuntimeConfigSnapshot.from_mapping(text_config_raw, runtime="review")
+    vision_config_raw = vision_model_run.get("config")
+    if isinstance(vision_config_raw, dict):
+        vision_config = RuntimeConfigSnapshot.from_mapping(vision_config_raw, runtime="review")
     ocr_config = RuntimeConfigSnapshot(
         provider=str(ocr_run.get("provider") or ocr_runtime.selection.provider),
         runtime="ocr",

@@ -81,9 +81,12 @@ class MistakeStore:
         database_url: str | None = None,
         data_root: str | Path,
     ) -> None:
-        if engine is None and not database_url:
-            raise ValueError("engine 或 database_url 必须提供一个")
-        self.engine = engine if engine is not None else create_engine(database_url, future=True)
+        if engine is None:
+            if not database_url:
+                raise ValueError("engine 或 database_url 必须提供一个")
+            self.engine = create_engine(database_url, future=True)
+        else:
+            self.engine = engine
         self.root = Path(data_root).expanduser().resolve()
         self.mistake_root = self.root / "mistakes"
         self.mistake_root.mkdir(parents=True, exist_ok=True)

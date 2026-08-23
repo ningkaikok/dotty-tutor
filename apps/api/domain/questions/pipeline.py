@@ -127,7 +127,8 @@ def normalize_question_interaction(raw: Any, question_type: str) -> dict[str, An
         return {"type": "none", "instruction": "", "points": [], "requiredConnections": []}
     points: list[dict[str, Any]] = []
     seen: set[str] = set()
-    raw_points = raw.get("points") if isinstance(raw.get("points"), list) else []
+    raw_points_value = raw.get("points")
+    raw_points: list[Any] = raw_points_value if isinstance(raw_points_value, list) else []
     for item in raw_points[:12]:
         if not isinstance(item, dict):
             continue
@@ -141,7 +142,10 @@ def normalize_question_interaction(raw: Any, question_type: str) -> dict[str, An
             continue
         seen.add(point_id)
         points.append({"id": point_id, "label": _safe_text(item.get("label"), point_id, 12), "x": round(x, 4), "y": round(y, 4)})
-    raw_connections = raw.get("requiredConnections") if isinstance(raw.get("requiredConnections"), list) else []
+    raw_connections_value = raw.get("requiredConnections")
+    raw_connections: list[list[str]] = (
+        raw_connections_value if isinstance(raw_connections_value, list) else []
+    )
     required_connections: list[list[str]] = []
     for item in raw_connections[:12]:
         if not isinstance(item, list) or len(item) != 2:

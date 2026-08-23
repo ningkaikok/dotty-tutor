@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -128,7 +128,8 @@ def lesson_document_from_payload(
         status="in_review" if question.get("publicationStatus") == "needs_review" else "draft",
         sourceUploadId=source_upload_id,
         knowledgePoints=[str(question.get("knowledgePoint") or title)],
-        blocks=blocks,
+        # blocks 由 _prompt_content_blocks 构造，字段结构在此经 Pydantic 校验兜底。
+        blocks=cast("list[LessonBlock]", blocks),
         questionPayload=payload,
         guideCards=guide_cards or [],
     )
