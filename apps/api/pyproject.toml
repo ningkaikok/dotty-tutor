@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff==0.16.4"]
+dev = ["ruff==0.16.4", "pyright==1.1.411"]
 
 [tool.uv]
 # 只用系统/已装 Python，避免 CI 或本机意外下载解释器。

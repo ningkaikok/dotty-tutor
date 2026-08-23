@@ -48,11 +48,12 @@ class OcrRuntime:
         configured = os.getenv("MINERU_COMMAND", "").strip()
         module_path = Path(__file__).resolve()
         project_root = module_path.parents[3]
+        which_mineru = shutil.which("mineru")
         candidates = [
             Path(configured).expanduser() if configured else None,
             project_root / ".mineru-venv" / "bin" / "mineru",
             Path("/opt/mineru/bin/mineru"),
-            Path(shutil.which("mineru")) if shutil.which("mineru") else None,
+            Path(which_mineru) if which_mineru else None,
         ]
         return next(
             (path for path in candidates if path and path.is_file() and os.access(path, os.X_OK)),

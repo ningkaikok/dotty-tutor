@@ -118,7 +118,8 @@ def _normalized_answer_spec(generated: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _normalized_steps(generated: dict[str, Any], question: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    raw_steps = generated.get("lessonSteps") if isinstance(generated.get("lessonSteps"), list) else []
+    raw_steps_value = generated.get("lessonSteps")
+    raw_steps: list[Any] = raw_steps_value if isinstance(raw_steps_value, list) else []
     steps: list[dict[str, Any]] = []
     for index in range(4):
         raw = raw_steps[index] if index < len(raw_steps) and isinstance(raw_steps[index], dict) else {}
@@ -141,7 +142,8 @@ def _normalized_guide_cards(
     knowledge_point: str,
     question: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    raw_cards = generated.get("guideCards") if isinstance(generated.get("guideCards"), list) else []
+    raw_cards_value = generated.get("guideCards")
+    raw_cards: list[Any] = raw_cards_value if isinstance(raw_cards_value, list) else []
     cards: list[dict[str, Any]] = []
     for index in range(3):
         fallback = {
