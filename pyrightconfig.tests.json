@@ -1,0 +1,12 @@
+{
+  "include": [
+    "apps/api/tests"
+  ],
+  "extraPaths": [
+    "apps/api"
+  ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic"
+}

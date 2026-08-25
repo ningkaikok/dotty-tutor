@@ -159,7 +159,12 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 **Pyright 门禁已接入（2026-08-23，错误级）**——基线 100 项中的生产代码 24 项已全部清零
 （含一处真实潜在缺陷：Store 在 engine 与 database_url 同时缺失时仍会调用 create_engine）；
 门禁范围为生产代码（排除 tests 目录与 qwen_tts 独立子进程服务），版本固定 1.1.411。
-后续收紧方向：测试目录类型质量、qwen_tts 以独立环境补齐桩注解。
+**收紧决策（2026-08-23）**：测试目录维持排除。理由：(1) 存量 64 处 Optional 下标需逐一
+改造为显式断言，churn 集中在历史测试文件且运行时断言已覆盖同类失败；(2) 仓库主配置纳入
+tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独立配置秒级完成——未来若纳入，
+用独立配置（pyrightconfig.tests.json 形态，已提交备用）而非合并主配置。
+新增测试文件已示范门禁友好写法（先断言非 None 再下标）。qwen_tts 桩注解随其独立环境
+工作单独处理。
 8. [x] 确定性判题返回结构化、客观的 `EvaluationEvidence`（normalizedResponse、expectedMatched、
    unitMatched、failedBlankIds、tolerance 和 evaluatorVersion），已随回复 guideContext 与消息动作
    持久化（#155）。Turn Plan 使用该证据选择诊断动作——数值题空提交在任意阶段返回
