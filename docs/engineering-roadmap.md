@@ -36,8 +36,12 @@
 4. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
    **已完成**（`infrastructure/runtime/capabilities.py` + `providers()` 的 `modelDetails` +
    调用路径健康挂钩）；剩余的"切换前后评测集比较"随 T1 模型维度解锁。
-5. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、Alembic、备份恢复、限流和资源生命周期；只有准备公网
-   测试时才进入开发。
+5. **T0 / `feature/sub-questions`（已立项排期）**：多小问结构三处联动，按既有 T0 设计块拆分为
+   三个独立 PR——①契约层 `subQuestions` schema + 逐小问 answerSpec + 质量门禁适配；
+   ②前端分小问作答渲染；③判题循环逐小问确定性判定与"不可判小问"显式标记。
+   触发条件已满足（本地题库占比 17%）；在每个 PR 改动落在对应文件时顺路执行。
+6. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、CodeQL、Actions SHA 固定、API 错误脱敏
+   与管理员调试入口、备份恢复、限流和资源生命周期；只有准备公网测试时才进入开发。
 
 每一项都必须单独有测试、文档和回滚边界；完成当前项后再进入下一项，不把模型接入、UI 重构和数据库迁移混在
 同一个 PR 中。
@@ -147,8 +151,9 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
    **基建已落地**（`evaluation/judge.py` + `judge_cli.py`）：固定 rubric（clarity/targeting/factual，
    1-5 分）+ 版本化提示词 + 输出校验门禁（分值越界/缺依据/置信度越界一律拒绝）+ 按需 CLI
    （`python -m evaluation.judge_cli`，报告落 output/eval-reports/judge/）。judge 需真实模型调用，
-   不进入确定性重放链路；内置三条讲解样本语料（分层引导卡模板产物）。剩余：真实模型批量运行
-   与分数分布报告。
+   不进入确定性重放链路；内置三条讲解样本语料（分层引导卡模板产物）。**真实运行已完成**（2026-08-25，ollama/qwen2.5:7b ×3 样本全成功）：
+clarity 均分 3.67、targeting 4.00、factual 5.00，置信度 0.9-0.95；报告落
+output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分数漂移。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
    **进行中**：业务漏斗已上线（`GET /api/funnel`），成本/token 维度的数据源也已就绪——
    模型调用边界指标表（`model_call_metrics`）随每次调用记录 runtime/task/provider/model/
