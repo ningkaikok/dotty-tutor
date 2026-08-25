@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { PipelinePanel } from "./apps/textbook/import/PipelinePanel";
 import { RuntimeSettings } from "./apps/textbook/import/RuntimeSettings";
 import { TextbookLibrary } from "./apps/textbook/import/TextbookLibrary";
@@ -31,6 +32,10 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
 
       <section className="import-intro">
         <span className="eyebrow">CONTENT STUDIO · 教材数字化</span>
+        {/* 只读指标面板入口；学生端不可见 */}
+        <nav aria-label="工作室工具" style={{ marginBottom: "0.5rem" }}>
+          <Link to="/studio/metrics">模型调用指标</Link>
+        </nav>
         <h1>上传教材页或整本 PDF</h1>
         <p>此处面向内容生产者。可同时加入多个 PDF；每个文件独立断点上传、识别和展示进度，最多并行处理 3 个任务。</p>
       </section>
