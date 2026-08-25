@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 import uuid
+from collections import deque
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +15,9 @@ from fastapi.responses import JSONResponse
 
 from application.errors import AppError, problem_details
 from observability import log_event, request_id_var
+
+# 管理员调试环形缓冲：最近 50 条失败请求的脱敏摘要；进程内存态，重启即清。
+_DEBUG_ERROR_RING: deque[dict[str, str | float]] = deque(maxlen=50)
 
 
 def _csv_env(name: str, default: str) -> list[str]:
@@ -97,6 +101,28 @@ def create_app() -> FastAPI:
             ),
         )
 
+    @app.get("/api/debug/errors")
+    def debug_errors(
+        request: Request,
+        x_debug_token: str = "",
+        request_id: str = "",
+    ) -> JSONResponse:
+        """管理员调试入口（P1 收尾）：按 request_id 查最近失败请求的内部摘要。
+
+        三重门控：环境未配置 token 时端点返回 404（对外等于不存在）；
+        token 不匹配返回 403；匹配才返回环形缓冲中的脱敏摘要。
+        正常 Problem JSON 响应仍然不含任何内部信息，两者互补。
+        """
+        expected = os.getenv("DOTTY_DEBUG_TOKEN", "").strip()
+        if not expected:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if request.headers.get("X-Debug-Token") != expected:
+            raise HTTPException(status_code=403, detail="Forbidden")
+        items = list(_DEBUG_ERROR_RING)
+        if request_id:
+            items = [item for item in items if item["requestId"] == request_id]
+        return JSONResponse({"items": items})
+
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, error: Exception) -> JSONResponse:
         # Middleware records the exception with request metadata. Keep the HTTP
@@ -143,6 +169,15 @@ def create_app() -> FastAPI:
             response = await call_next(request)
             return response
         except Exception as error:
+            # 管理员调试环形缓冲：只存脱敏摘要（类型 + 截断消息），完整堆栈仍只进日志。
+            _DEBUG_ERROR_RING.append({
+                "requestId": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "errorType": type(error).__name__,
+                "error": str(error)[:300],
+                "at": time.time(),
+            })
             log_event(
                 "http.request.failed",
                 level=40,

@@ -4,6 +4,30 @@
  */
 
 export interface paths {
+    "/api/debug/errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Debug Errors
+         * @description 管理员调试入口（P1 收尾）：按 request_id 查最近失败请求的内部摘要。
+         *
+         *     三重门控：环境未配置 token 时端点返回 404（对外等于不存在）；
+         *     token 不匹配返回 403；匹配才返回环形缓冲中的脱敏摘要。
+         *     正常 Problem JSON 响应仍然不含任何内部信息，两者互补。
+         */
+        get: operations["debug_errors_api_debug_errors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/funnel": {
         parameters: {
             query?: never;
@@ -1631,6 +1655,38 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    debug_errors_api_debug_errors_get: {
+        parameters: {
+            query?: {
+                request_id?: string;
+                x_debug_token?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_learning_funnel_api_funnel_get: {
         parameters: {
             query?: {
