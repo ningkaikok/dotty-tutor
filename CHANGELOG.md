@@ -7,6 +7,25 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.25.0] - 2026-08-23
+
+### Added
+
+- **模型调用边界指标**：每次模型调用记录 runtime/task/provider/model/耗时/token 用量与失败，聚合经 `GET /api/metrics/model-calls?days=N` 查询；内容生产端新增"模型调用指标"面板（最近 7/14/30 天）。
+- **LLM-as-Judge 讲解质量评估基建**：固定 rubric（清晰度/针对性/事实性，各 1-5 分）+ 版本化提示词；输出校验门禁拒绝分值越界、缺依据与置信度越界的评审；按需 CLI `python -m evaluation.judge_cli` 生成评分报告。
+- **开发期只读状态报告**：`python -m evaluation.report` 一页聚合 Badcase 登记簿状态、确定性重放计数与 Judge 评审均分；严格只读。
+
+### Fixed
+
+- 修复数据目录默认锚点在 monorepo 布局下指向 `apps/data` 的问题——现在稳定落在仓库根 `data/`。
+- 修复 Store 在 engine 与 database_url 同时缺失时仍调用 create_engine 的潜在崩溃（改为提前抛出明确错误）。
+- 修复 OpenAPI 类型导出步骤在无 PostgreSQL 的 CI 环境失败的问题（指标存储改为惰性建表）。
+
+### Changed
+
+- HTTP 路由层扁平化：`apps/api/api/routers/ → apps/api/routers/`，消除双层 api 嵌套。
+- 移除范围声明式的 requirements 文件：Docker、CI 与本地统一使用 uv 精确锁安装（依赖唯一来源为 `apps/api/pyproject.toml`）。
+
 ## [0.24.0] - 2026-08-23
 
 ### Added
