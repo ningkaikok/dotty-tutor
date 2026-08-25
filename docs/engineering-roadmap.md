@@ -200,8 +200,9 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 ### 开发期只读工具
 
-- [ ] 将 Badcase 查询、评测报告和运行状态统计暴露为开发期只读工具，供开发 Agent 和脚本使用；
-  只读、不接触学生数据写入路径。生产运行时不引入 MCP 或任何 Agent 工具协议。
+- [x] 开发期只读状态报告已落地（`python -m evaluation.report`）：聚合 Badcase 登记簿状态、
+  最近确定性重放计数与 LLM-as-Judge 评审均分为一页摘要；严格只读，不触碰学生数据写入路径。
+  运行状态统计的 HTTP 查询已由 `GET /api/metrics/model-calls` 覆盖。生产运行时不引入 MCP 或任何 Agent 工具协议。
 
 ### OCR 预检
 
