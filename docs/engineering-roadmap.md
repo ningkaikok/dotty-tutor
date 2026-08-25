@@ -144,6 +144,11 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
+   **基建已落地**（`evaluation/judge.py` + `judge_cli.py`）：固定 rubric（clarity/targeting/factual，
+   1-5 分）+ 版本化提示词 + 输出校验门禁（分值越界/缺依据/置信度越界一律拒绝）+ 按需 CLI
+   （`python -m evaluation.judge_cli`，报告落 output/eval-reports/judge/）。judge 需真实模型调用，
+   不进入确定性重放链路；内置三条讲解样本语料（分层引导卡模板产物）。剩余：真实模型批量运行
+   与分数分布报告。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
    **进行中**：业务漏斗已上线（`GET /api/funnel`），成本/token 维度的数据源也已就绪——
    模型调用边界指标表（`model_call_metrics`）随每次调用记录 runtime/task/provider/model/
