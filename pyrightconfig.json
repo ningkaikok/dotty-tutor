@@ -12,6 +12,7 @@
   "exclude": [
     "**/.venv",
     "**/node_modules",
-    "apps/api/infrastructure/runtime/qwen_tts_service.py"
+    "apps/api/infrastructure/runtime/qwen_tts_service.py",
+    "apps/api/tests"
   ]
 }
