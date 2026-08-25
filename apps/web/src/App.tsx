@@ -9,6 +9,7 @@ const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp"
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
 const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
 const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((module) => ({ default: module.TextbookApp })));
+const ModelMetricsApp = lazy(() => import("./apps/metrics/ModelMetricsApp").then((module) => ({ default: module.ModelMetricsApp })));
 
 function PageTitle() {
   const { pathname } = useLocation();
@@ -37,6 +38,7 @@ function AppRoutes() {
           <Route index element={<ProductHome />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
+          <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/*" element={<TextbookApp />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />
           <Route path="*" element={<Navigate to="/" replace />} />
