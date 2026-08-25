@@ -85,6 +85,7 @@ class RuntimeHookTests(unittest.TestCase):
             return_value=({"ok": True}, {"prompt_tokens": 10, "output_tokens": 7}),
         ):
             payload, _run = self.runtime.generate_json("提示词", {"type": "object"})
+        assert payload is not None
         self.assertEqual(payload, {"ok": True})
         rows = self.metrics.aggregate()
         self.assertEqual(rows[0]["calls"], 1)

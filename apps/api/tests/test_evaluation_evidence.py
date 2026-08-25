@@ -35,6 +35,7 @@ class EvidenceContentTests(unittest.TestCase):
             "",
             {"blankAnswers": {"b1": "4", "b2": "5", "b3": "平行"}},
         )
+        assert result is not None
         self.assertEqual(result["assessment"], "incorrect")
         evidence = result["evaluationEvidence"]
         self.assertEqual(evidence["strategy"], "fill-blank-parts")
@@ -53,6 +54,7 @@ class EvidenceContentTests(unittest.TestCase):
             "correctAnswer": "C",
         }
         result = evaluate_structured_answer(question, "我选 A", {"selectedOptions": ["A"]})
+        assert result is not None
         evidence = result["evaluationEvidence"]
         self.assertEqual(evidence["strategy"], "choice-set-match")
         self.assertEqual(evidence["submittedLabels"], ["A"])
@@ -69,6 +71,7 @@ class EvidenceContentTests(unittest.TestCase):
         result = evaluate_structured_answer(
             question, "", {"numericAnswer": "41.8"}
         ) or evaluate_structured_answer(question, "41.8", {})
+        assert result is not None
         self.assertEqual(result["evaluationEvidence"]["submittedRaw"], "41.8")
         self.assertEqual(result["evaluationEvidence"]["tolerance"], 0.5)
 
@@ -125,6 +128,7 @@ class DeterministicReplyEvidenceTests(unittest.TestCase):
         request = HelpRequest(questionId="q-1", studentInput="正确", hintLevel=0, mode="answer")
         reply = engine.reply(request)
         evidence = reply.guideContext.get("evaluationEvidence")
+        assert evidence is not None
         self.assertEqual(evidence["strategy"], "true-false-match")
         self.assertEqual(evidence["submittedLabel"], "正确")
 
@@ -144,6 +148,7 @@ class DeterministicReplyEvidenceTests(unittest.TestCase):
         )
         reply = engine.reply(request)
         evidence = reply.guideContext.get("evaluationEvidence")
+        assert evidence is not None
         self.assertEqual(evidence["strategy"], "line-connections")
         self.assertEqual(evidence["submittedCount"], 1)
         self.assertEqual(evidence["requiredCount"], 2)
