@@ -139,7 +139,8 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。**进行中**：
    统一标签体系（`evaluation/labels.py`）、坏样本登记簿（`evaluation/badcases.json` + `badcase.py`，
    状态机约束"fixed 必须带修复说明和版本"）、前后对比工具（`python -m evaluation.compare`）已落地，
-   结构维度的对比可用；评分/耗时/调用次数等模型维度待评测集接入模型调用后扩展。
+   结构维度的对比可用；模型调用边界指标表（#166）已就绪，评分/耗时/调用次数的对比
+   只差评测集接入模型调用后串联。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
@@ -159,11 +160,12 @@ Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与�
 （含一处真实潜在缺陷：Store 在 engine 与 database_url 同时缺失时仍会调用 create_engine）；
 门禁范围为生产代码（排除 tests 目录与 qwen_tts 独立子进程服务），版本固定 1.1.411。
 后续收紧方向：测试目录类型质量、qwen_tts 以独立环境补齐桩注解。
-8. [ ] 确定性判题返回结构化、客观的 `EvaluationEvidence`（如 normalizedResponse、expectedMatched、
-   unitMatched、failedParts 和 evaluatorVersion），作为 P1 证据闭环的判题侧验收项。Turn Plan 使用该证据
-   选择诊断动作；具体误区仍由模型提出带证据和置信度的假设并按需确认，判据器不得直接输出
-   `error_type`/`concept` 结论——只看到最终答案无法区分符号错误与概念错误，越权输出会制造虚假诊断。
-   Evidence 只追加保存，Tutor 不能覆盖原始作答与评分结果。当前 `answer_evaluator.py` 只返回笼统反馈文案。
+8. [x] 确定性判题返回结构化、客观的 `EvaluationEvidence`（normalizedResponse、expectedMatched、
+   unitMatched、failedBlankIds、tolerance 和 evaluatorVersion），已随回复 guideContext 与消息动作
+   持久化（#155）。Turn Plan 使用该证据选择诊断动作——数值题空提交在任意阶段返回
+   extract-conditions；具体误区仍由模型提出带证据和置信度的假设并按需确认，判据器不得直接输出
+   `error_type`/`concept` 结论。Evidence 只追加保存，Tutor 不能覆盖原始作答与评分结果。
+   泄漏断言保证标准答案不出现在任何返回结构。
 
 ## T2：模型、OCR 与上下文优化
 
