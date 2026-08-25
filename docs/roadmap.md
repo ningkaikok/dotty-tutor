@@ -211,12 +211,12 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 - [ ] 上传配额、限流、恶意文件扫描和数据保留策略。
 - [ ] 错误追踪和 readiness/liveness；HTTPS 与可信 Host 配置。
 
-## P1：协作与质量（部分完成）
+## P1：协作与质量（已完成）
 
 静态检查门禁见 engineering-roadmap T1；main 分支 Ruleset、Python 可复现依赖锁定（uv.lock）、
 CodeQL 扫描、Actions SHA 固定与真实 PostgreSQL 集成测试（CI service container）
-已完成；剩余：API 错误脱敏与
-管理员调试入口。
+、API 错误脱敏（Problem JSON 响应不含内部信息）与
+管理员调试入口（`DOTTY_DEBUG_TOKEN` 门控的环形缓冲查询）已完成。P1 收尾全部闭环。
 
 ## P2：产品能力（按需）
 
