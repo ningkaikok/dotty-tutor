@@ -51,8 +51,8 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
-| `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题），返回 `202 + jobId`；支持 `Idempotency-Key` |
-| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总和题目载荷 |
+| `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；返回 `202 + jobId`；支持 `Idempotency-Key` |
+| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport` 和题目载荷 |
 | `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
 | `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
@@ -66,6 +66,10 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 后台任务状态为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`。任务创建请求可以携带稳定
 `Idempotency-Key`；相同任务和幂等键不会重复入队。前端应以 `jobId` 轮询，不要持续占用创建任务的 HTTP
 连接。失败详情中的 `code` 与 `retryable` 用于决定展示“重试”还是“重新上传”，不要解析 Python 异常字符串。
+
+整本导入的 `qualityReport` 是确定性 OCR 检查结果：`ready` 表示可继续生成，`warning` 允许继续但需人工留意，
+`blocked` 表示检测到题号/图片归属等阻断项，Worker 不会继续调用模型。报告同时返回预计题数、题号范围、重复
+题号、缺失页和图片归属冲突，便于定位后重新上传或修复 OCR。
 
 ## 学习与语音
 

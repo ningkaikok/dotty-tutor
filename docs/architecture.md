@@ -146,6 +146,7 @@ flowchart TB
 | OCR 来源质量 | `apps/api/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
 | 课程生成 | `apps/api/application/services/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
 | OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
+| 导入质量报告 | `apps/api/domain/questions/quality.py` | 在整本生成前汇总题数、题号序列、未识别页和图片归属冲突，决定是否允许继续 |
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `apps/api/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |

@@ -391,6 +391,8 @@ def get_full_paper_summary(upload_id: str) -> dict[str, Any]:
             "limitReached": False,
             "batches": [],
         }
+    if result.get("qualityReport") and not summary.get("qualityReport"):
+        summary["qualityReport"] = result["qualityReport"]
     return {
         "uploadId": upload_id,
         "job": _job_response(latest) if latest else None,

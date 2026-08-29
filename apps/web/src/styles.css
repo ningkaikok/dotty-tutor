@@ -318,6 +318,18 @@ h2 { letter-spacing: -0.025em; }
 .review-details { margin: 0 0 18px; padding: 12px 14px; border: 1px solid #d9ddd7; border-radius: 11px; color: #58655e; background: #f5f6f2; font-size: 12px; }
 .quality-details { margin: 0 0 18px; padding: 12px 14px; border: 1px solid #e2c9a7; border-radius: 11px; color: #7b4c25; background: #fff8ec; font-size: 12px; }
 .quality-details p { margin: 8px 0 0; }
+.import-quality-report { margin-top: 16px; padding: 13px 14px; border: 1px solid #d7e0da; border-radius: 12px; background: #f7fbf8; color: #405149; }
+.import-quality-report.warning { border-color: #e2c9a7; background: #fffaf1; color: #7b4c25; }
+.import-quality-report.blocked { border-color: #e5b2ab; background: #fff7f5; color: #9d3d35; }
+.quality-report-heading { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.quality-report-heading b { font-size: 11px; font-weight: 700; }
+.quality-report-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.quality-report-metrics span { display: grid; gap: 2px; font-size: 9px; color: #718078; }
+.quality-report-metrics b { color: currentColor; font-size: 13px; }
+.quality-report-messages { margin-top: 9px; font-size: 10px; }
+.quality-report-messages p { margin: 4px 0 0; }
+.import-quality-report > small { display: block; margin-top: 9px; color: #84918a; font-size: 9px; }
+.continue-button:disabled { cursor: wait; opacity: .55; box-shadow: none; }
 .review-details summary { color: #28634e; font-weight: 700; cursor: pointer; }
 .review-details p { margin: 9px 0 0; line-height: 1.55; }
 .givens { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -388,6 +400,7 @@ footer b { color: #b1aea5; }
   .upload-item { grid-template-columns: minmax(0, 1fr) auto; }
   .upload-item-progress { grid-column: 1 / -1; grid-row: 2; }
   .upload-item-actions { grid-column: 2; grid-row: 1; }
+  .quality-report-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .product-home { width: calc(100% - 24px); margin-top: 16px; }
   .product-home-hero { margin-top: 70px; }
   .product-home-hero h1 { font-size: 42px; }

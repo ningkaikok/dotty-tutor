@@ -68,6 +68,10 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
                 "questionPayloads": full_paper.get("questionPayloads") or result.get("questionPayloads"),
                 "batches": full_paper.get("batches") or result.get("batches"),
                 "fullPaper": full_paper.get("summary"),
+                "qualityReport": (
+                    (full_paper.get("summary") or {}).get("qualityReport")
+                    or result.get("qualityReport")
+                ),
             }
         return result
 
