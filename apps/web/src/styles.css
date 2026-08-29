@@ -75,6 +75,30 @@ body::before {
 .import-intro { max-width: 680px; margin: 90px 0 34px; }
 .import-intro h1 { margin: 10px 0 13px; font-size: clamp(38px, 7vw, 68px); line-height: 1.02; }
 .import-intro p { color: #5b6861; font-size: 17px; line-height: 1.7; }
+.metrics-link { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid #cbd3cd; border-radius: 999px; color: #35463d; font-size: 12px; font-weight: 600; text-decoration: none; background: #f1f3ef; }
+.metrics-link:hover { border-color: #9fb6a9; background: #e8efe9; }
+.metrics-link span { color: #6d776f; }
+
+.metrics-shell { position: relative; width: min(1080px, calc(100% - 40px)); margin: 34px auto 60px; }
+.metrics-panel { margin-top: 24px; border-radius: 24px; }
+.metrics-window { display: flex; flex-direction: column; gap: 6px; color: #56635c; font-size: 12px; font-weight: 600; }
+.metrics-window select { padding: 9px 34px 9px 12px; border: 1px solid #cbd3cd; border-radius: 11px; color: #20352c; background: #f7f7f2; font-size: 13px; font-weight: 500; }
+.metrics-body { padding: 4px 26px 26px; }
+.metrics-table-wrapper { overflow-x: auto; border: 1px solid #d9ddd7; border-radius: 12px; }
+.metrics-table { width: 100%; border-collapse: collapse; font-size: 14px; color: #24372f; background: #fff; }
+.metrics-table caption { padding: 12px 14px; text-align: left; color: #56635c; font-size: 12px; font-weight: 600; border-bottom: 1px solid #e1e2dd; }
+.metrics-table th, .metrics-table td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #edeee9; white-space: nowrap; }
+.metrics-table th { color: #6d776f; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+.metrics-table tbody tr:last-child td { border-bottom: 0; }
+.metrics-table tbody tr:hover { background: #f7f9f6; }
+.muted { color: #6d776f; font-size: 13px; line-height: 1.6; }
+.error-text { color: #b0443c; font-size: 13px; font-weight: 600; }
+
+@media (max-width: 640px) {
+  .metrics-panel .panel-heading { display: block; }
+  .metrics-window { margin-top: 14px; }
+  .metrics-body { padding: 4px 16px 20px; }
+}
 .model-switcher { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, .7fr); gap: 10px 22px; align-items: center; margin-bottom: 18px; padding: 20px 24px; border-radius: 20px; }
 .model-switcher strong, .model-switcher small { display: block; }
 .model-switcher strong { margin: 5px 0; font-size: 17px; }
@@ -355,6 +379,7 @@ footer b { color: #b1aea5; }
   .answer-actions { align-items: stretch; flex-direction: column; }
   .status { display: none; }
   .product-home-button { display: none; }
+  .metrics-link { display: none; }
   .topbar .active-model { margin-left: auto; }
   .import-shell { width: calc(100% - 24px); margin-top: 16px; }
   .import-intro { margin-top: 48px; }
