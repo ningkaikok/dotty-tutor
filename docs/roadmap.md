@@ -19,14 +19,42 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
+| T0 | 知识点实体化 + 掌握度改为派生量（老师看板的前置，当前口径会产生错误的掌握记录） | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（结构维度语料、Badcase 回放循环已落地） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | Ruff/ESLint 静态检查门禁、超长文件审查（`local-demo` 收敛已完成） | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | 等真实坏样本占比决定立项 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| P1 教学法 | 分类型复习间隔、定量/定性双门槛、推进由掌握度算出、错因双归因（四条一组，依赖 T0） | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
+| T2 韧性 | 批次熔断与系统性失败识别、部分成功状态、依赖自检 preflight | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| 备选池 | 仿真卷、出题增量发射、内容块模板、教材定位与注释模型、拍照单次多模态、题图视觉复审、生成前审形状+成本估算（价值已论证，各自等触发信号） | 未排期 | [`product-roadmap.md`](product-roadmap.md) |
 | P2 实验 | 互动数学库二选一、WebLLM 提示兜底、知识点树派生索引、动画表现层 | 按信号暂缓 | 本文件“前端知识表达与互动技术选型” |
-| 生产化 | 登录、多租户、商业化、高可用和公网运营 | 明确暂缓 | 本文件“暂缓范围” |
+| 生产化 | 登录鉴权、多租户隔离、商业化、高可用和公网运营 | 明确暂缓 | 本文件“暂缓范围” |
+
+> **方向 ≠ 部署（2026-08-29）**：产品方向已明确为“先服务一个学科组、主用户是老师”，
+> 由此新增作业指派和老师看板；但这只是**做什么功能**的判断，不改变部署形态。
+> 登录鉴权、`org_id` 租户隔离和角色权限仍然暂缓到出现第一个真实试用的学科组为止——
+> 班级和作业在单机单库下同样跑得通，而提前铺多租户是为可能不存在的客户付钱。
+> 详见 [`product-roadmap.md`](product-roadmap.md) 的“服务对象”与“方向 ≠ 部署”两节。
 
 执行原则：先修复会产生错误学习记录的问题，再补可复现性和质量证据，最后做性能/表现实验；任何新模型或新
 框架都不能绕过现有状态机、质量门禁和运行快照。
+
+## 已具备，不必再论证（2026-08-29）
+
+一次与同类开源产品（DeepTutor）的架构对照中，下面这些“最佳实践”**本项目已经实现，且部分比参考
+实现更严谨**。记录在此，避免以后再被当成改进建议重新提一遍：
+
+| 能力 | 本项目现状 | 对照 |
+| --- | --- | --- |
+| OCR 内容寻址缓存 | `build_ocr_cache_key(content_hash, pages, provider, provider_version)`，带 `schema` 版本字段与入参校验，Provider 升级自动产生新键 | 参考实现无 schema 版本、不校验哈希格式 |
+| 不可变审计与修订链 | `question_revisions`（带 `previous_revision_id`）+ `run_snapshots` 记录实际运行配置 | 参考实现的审计更薄 |
+| 后台任务幂等 | `background_jobs.idempotency_key` + `uq_background_jobs_idempotency` 唯一索引 | 同等 |
+| 内容质量评测闭环 | `apps/api/evaluation/`：badcase / judge / replay / compare / corpus | **参考实现没有对应物**，这是本项目的差异化资产 |
+| 语音多级回退 | Azure Speech → Qwen3-TTS → 浏览器 Web Speech | 参考实现只有适配层，无回退链 |
+| 角色分离 | 学生端不暴露 OCR、模型和上传配置 | 参考实现把模型/引擎选择全部摊给用户 |
+
+其中评测闭环值得单独说：K12 内容的正确性是红线，“题目经过哪些自动校验、历史 badcase 全部回归”
+是可以对外讲的信任凭证，而不只是内部工具。这条在产品层面被低估了。
 
 ## 当前限制
 
@@ -42,6 +70,10 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 - 数据库表由 `create_all()` 初始化，尚无 Alembic 迁移历史。
 - 已有结构化日志和请求 ID，但尚无集中式指标、追踪、错误监控和自动备份。
 - 错题章节和知识点目前由模型建议、学生确认，尚未关联版本化教材知识树。
+- 知识点在库里是自由文本（`knowledge_point String(160)`，且是 `mastery_states` 的主键之一），
+  没有学科/教材维度，跨教材同名知识点会合并；掌握度是累加式 EMA，重复练习已掌握的题会虚高，
+  且无低置信度封顶。两者均已列入 T0 待修（见 [`engineering-roadmap.md`](engineering-roadmap.md)）。
+- 没有班级、作业指派和教师视图：学生自选已发布试卷，老师看不到班级层面的掌握分布。
 - 错题陪练已实现对话线程、受约束状态机、按错误原因生成的变式验证、进阶本迁移和 1/3/7 天复习进度闭环。
 
 ## 工程决策摘要
