@@ -50,6 +50,20 @@ class QuestionSegmentationTests(unittest.TestCase):
         self.assertNotIn("考试时间", blocks[0][1])
         self.assertIn("下列各数", blocks[0][1])
 
+    def test_accepts_fullwidth_comma_question_numbers_and_filters_next_section_notice(self) -> None:
+        source = """
+        一、选择题（本大题有2个小题）
+        1，计算 1+1 的值。
+        2，求 x 的值。
+        卷Ⅱ（非选择题）
+        注意事项：1.答卷Ⅱ前，请填写姓名。
+        2. 答卷Ⅱ时，请使用黑色字迹的笔。
+        二、填空题（本大题有1个小题）
+        3，计算 2+2 的值。
+        """
+        blocks = split_question_sources(source)
+        self.assertEqual([number for number, _, _ in blocks], ["1", "2", "3"])
+
     def test_accepts_markdown_heading_prefix_from_ocr_export(self) -> None:
         source = """
         # 一、选择题（每题 2 分）
