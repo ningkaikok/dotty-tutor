@@ -50,6 +50,8 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | 不可变审计与修订链 | `question_revisions`（带 `previous_revision_id`）+ `run_snapshots` 记录实际运行配置 | 参考实现的审计更薄 |
 | 后台任务幂等 | `background_jobs.idempotency_key` + `uq_background_jobs_idempotency` 唯一索引 | 同等 |
 | 内容质量评测闭环 | `apps/api/evaluation/`：badcase / judge / replay / compare / corpus | **参考实现没有对应物**，这是本项目的差异化资产 |
+| OCR 引擎路由与降级 | `choose_ocr_provider` 按信号自动路由（短文字+图片、公式信号 → MinerU，其余走 pypdf）；`ocr_preflight` 的扫描页信号参与路由；**质量门禁不达标时向上升级** pypdf → MinerU；运行时异常降级到 `text-layer-fallback` → `ocr-failed`，`run` 里记 `fallback`/`mode` 可追溯 | 参考实现只有全局单引擎 + 失败即跳过，**无自动探测、无降级链、无向上升级** |
+| MinerU 产物定位 | `OcrRuntime.parse` 用临时目录 + `rglob("*.md")` 按文件大小降序取最大的一份 | 参考实现要靠三级候选目录兜底去捞 CLI 产物树；本项目这一招更简单，且同样不受 MinerU 版本目录结构变动影响 |
 | 语音多级回退 | Azure Speech → Qwen3-TTS → 浏览器 Web Speech | 参考实现只有适配层，无回退链 |
 | 角色分离 | 学生端不暴露 OCR、模型和上传配置 | 参考实现把模型/引擎选择全部摊给用户 |
 
