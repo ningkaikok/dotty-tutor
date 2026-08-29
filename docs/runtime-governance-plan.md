@@ -117,7 +117,7 @@ PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务；SQLite 只作为
 - `POST /api/uploads/{uploadId}/complete`：返回 `202` 和任务快照；
 - `POST /api/uploads/{uploadId}/batches/{batchId}/process`：返回 `202` 和任务快照；
 - `GET /api/jobs/{jobId}`、`POST /api/jobs/{jobId}/cancel`、`POST /api/jobs/{jobId}/retry`：查询、取消和人工重试；
-- `python -m worker --registry api.routers.textbook_routes:textbook_job_registry`：独立 Worker 进程；
+- `python -m worker --registry routers.textbook_routes:textbook_job_registry`：独立 Worker 进程；
 - Compose 和 systemd 分别运行 API 与 Worker，但两者复用同一应用服务、数据库和文件目录。
 
 自动重试预算不会被人工重试清零；人工重试只给失败任务增加一次明确预算并保留最后错误。任务错误统一记录

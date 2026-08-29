@@ -84,7 +84,7 @@ api_pid=$!
 (
   cd "$ROOT_DIR/apps/api"
   exec "$ROOT_DIR/.venv/bin/python" -m worker \
-    --registry api.routers.textbook_routes:textbook_job_registry
+    --registry routers.textbook_routes:textbook_job_registry
 ) &
 worker_pid=$!
 
