@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { loadModelCallMetrics, type ModelCallMetricsSnapshot } from "../../api/metrics";
 import { toRowViews, type MetricRowView } from "./metricsView";
 
@@ -9,6 +10,7 @@ const DAY_OPTIONS = [7, 14, 30] as const;
  * 数据来自 GET /api/metrics/model-calls 的只读聚合；本组件不做任何写操作。
  */
 export function ModelMetricsApp() {
+  const navigate = useNavigate();
   const [days, setDays] = useState<number>(7);
   const [snapshot, setSnapshot] = useState<ModelCallMetricsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,67 +35,89 @@ export function ModelMetricsApp() {
   const rows: MetricRowView[] = snapshot ? toRowViews(snapshot.items) : [];
 
   return (
-    <section className="panel" aria-label="模型调用指标">
-      <h2>模型调用指标</h2>
-      <p className="muted">
-        按 runtime / task / provider / model 分组的调用边界聚合；只读，不包含任何学生数据。
-      </p>
-      <label>
-        统计窗口：
-        <select
-          value={days}
-          onChange={(event) => setDays(Number(event.target.value))}
-          aria-label="统计窗口天数"
-        >
-          {DAY_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              最近 {option} 天
-            </option>
-          ))}
-        </select>
-      </label>
-      {loading && <p role="status">加载中…</p>}
-      {error && (
-        <p role="alert" className="error-text">
-          {error}
-        </p>
-      )}
-      {!loading && !error && rows.length === 0 && (
-        <p role="status">窗口内没有模型调用记录。</p>
-      )}
-      {!loading && !error && rows.length > 0 && (
-        <table>
-          <caption>模型调用边界指标（最近 {snapshot?.days ?? days} 天）</caption>
-          <thead>
-            <tr>
-              <th scope="col">runtime</th>
-              <th scope="col">task</th>
-              <th scope="col">provider</th>
-              <th scope="col">model</th>
-              <th scope="col">调用</th>
-              <th scope="col">失败</th>
-              <th scope="col">失败率</th>
-              <th scope="col">平均耗时</th>
-              <th scope="col">输出 tokens</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={`${row.runtime}/${row.task}/${row.provider}/${row.model}`}>
-                <td>{row.runtime}</td>
-                <td>{row.task}</td>
-                <td>{row.provider}</td>
-                <td>{row.model}</td>
-                <td>{row.calls}</td>
-                <td>{row.failures}</td>
-                <td>{row.failureRate === null ? "—" : `${row.failureRate}%`}</td>
-                <td>{row.durationLabel}</td>
-                <td>{row.tokenLabel}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
+    <main className="metrics-shell">
+      <header className="import-header">
+        <button className="route-back-button" onClick={() => navigate("/studio")}>← 返回工作台</button>
+        <div className="brand-mark">D</div>
+        <div>
+          <strong>Dotty</strong>
+          <span>模型调用指标</span>
+        </div>
+        <span className="demo-badge">LOCAL DEMO</span>
+      </header>
+
+      <section className="panel metrics-panel" aria-label="模型调用指标">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">CONTENT STUDIO · 只读聚合</span>
+            <h2>模型调用指标</h2>
+            <p className="muted">
+              按 runtime / task / provider / model 分组的调用边界聚合；只读，不包含任何学生数据。
+            </p>
+          </div>
+          <label className="metrics-window">
+            统计窗口
+            <select
+              value={days}
+              onChange={(event) => setDays(Number(event.target.value))}
+              aria-label="统计窗口天数"
+            >
+              {DAY_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  最近 {option} 天
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="metrics-body">
+          {loading && <p role="status" className="muted">加载中…</p>}
+          {error && (
+            <p role="alert" className="error-text">
+              {error}
+            </p>
+          )}
+          {!loading && !error && rows.length === 0 && (
+            <p role="status" className="muted">窗口内没有模型调用记录。</p>
+          )}
+          {!loading && !error && rows.length > 0 && (
+            <div className="metrics-table-wrapper">
+              <table className="metrics-table">
+                <caption>模型调用边界指标（最近 {snapshot?.days ?? days} 天）</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">runtime</th>
+                    <th scope="col">task</th>
+                    <th scope="col">provider</th>
+                    <th scope="col">model</th>
+                    <th scope="col">调用</th>
+                    <th scope="col">失败</th>
+                    <th scope="col">失败率</th>
+                    <th scope="col">平均耗时</th>
+                    <th scope="col">输出 tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={`${row.runtime}/${row.task}/${row.provider}/${row.model}`}>
+                      <td>{row.runtime}</td>
+                      <td>{row.task}</td>
+                      <td>{row.provider}</td>
+                      <td>{row.model}</td>
+                      <td>{row.calls}</td>
+                      <td>{row.failures}</td>
+                      <td>{row.failureRate === null ? "—" : `${row.failureRate}%`}</td>
+                      <td>{row.durationLabel}</td>
+                      <td>{row.tokenLabel}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }
