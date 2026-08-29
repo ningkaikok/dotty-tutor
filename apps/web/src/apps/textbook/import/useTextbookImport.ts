@@ -258,6 +258,10 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
               progress: lastProgress,
               message: job.status === "queued" ? job.message : uploadStatus?.message || job.message,
             },
+            // The upload registry persists the preview and quality report before the
+            // whole-paper Worker finishes. Surface that snapshot immediately so a
+            // blocked import is explainable without waiting for the final job result.
+            ...(uploadStatus?.result ? { result: uploadStatus.result } : {}),
           });
         };
         updateJob(activeJob);

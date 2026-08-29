@@ -1,4 +1,4 @@
-import type { PdfUploadTask, TextbookImportResult } from "../../../types/index";
+import type { ImportQualityReport, PdfUploadTask, TextbookImportResult } from "../../../types/index";
 import type { UploadPhase } from "./useTextbookImport";
 
 interface PipelinePanelProps {
@@ -13,13 +13,40 @@ interface PipelinePanelProps {
 const IMAGE_PIPELINE = ["文件校验", "版面与公式识别", "题目结构化", "引导卡生成"];
 const PDF_PIPELINE = ["PDF 分块上传", "PDF 合并与校验", "按页规划批次", "页面级 OCR 与局部重试", "结构化与引导卡"];
 
+function QualityReport({ report }: { report: ImportQualityReport }) {
+  const statusLabel = report.status === "ready" ? "可执行整本生成" : report.status === "warning" ? "有警告，可继续" : "已暂停整本生成";
+  return (
+    <section className={`import-quality-report ${report.status}`} aria-live="polite">
+      <div className="quality-report-heading">
+        <strong>导入质量报告</strong>
+        <b>{statusLabel}</b>
+      </div>
+      <div className="quality-report-metrics">
+        <span>预计题目 <b>{report.expectedQuestionCount}</b></span>
+        <span>题号范围 <b>{report.questionRange}</b></span>
+        <span>重复题号 <b>{report.duplicateQuestionNumbers.length}</b></span>
+        <span>未识别页 <b>{report.unidentifiedPages.length}</b></span>
+        <span>图片冲突 <b>{report.imageAttributionConflicts.length}</b></span>
+      </div>
+      {(report.blockers.length > 0 || report.warnings.length > 0) && (
+        <div className="quality-report-messages">
+          {report.blockers.map((message) => <p key={`blocker-${message}`}>⛔ {message}</p>)}
+          {report.warnings.map((message) => <p key={`warning-${message}`}>⚠ {message}</p>)}
+        </div>
+      )}
+      <small>已检查 {report.checkedBatchCount} 个批次 · {report.scope === "full-paper" ? "整本 OCR" : "首批预览"}</small>
+    </section>
+  );
+}
+
 export function PipelinePanel({ result, pdfMode, phase, processingTask, activeStage, onContinue }: PipelinePanelProps) {
   const pipeline = pdfMode ? PDF_PIPELINE : IMAGE_PIPELINE;
+  const canContinue = Boolean(result) && (phase === "done" || !pdfMode);
 
   return (
     <aside className="pipeline-panel panel">
       <span className="eyebrow">PROCESS</span>
-      <h2>{result ? "教材已拆分并结构化" : "即将执行的处理链路"}</h2>
+      <h2>{result ? (phase === "done" ? "教材已拆分并结构化" : "预览已完成，整本处理中") : "即将执行的处理链路"}</h2>
       <ol className="pipeline-list">
         {(result?.stages.map((stage) => stage.label) ?? pipeline).map((label, index) => {
           const complete = Boolean(result) || (activeStage > 0 && index < activeStage);
@@ -62,7 +89,14 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
               ))}
             </div>
           )}
-          <button className="continue-button" onClick={() => onContinue(result)}>进入动态教材 →</button>
+          {result.qualityReport && <QualityReport report={result.qualityReport} />}
+          <button
+            className="continue-button"
+            disabled={!canContinue}
+            onClick={() => canContinue && onContinue(result)}
+          >
+            {canContinue ? "进入动态教材 →" : "整本教材处理中…"}
+          </button>
         </div>
       ) : (
         <p className="pipeline-note">

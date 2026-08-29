@@ -22,6 +22,7 @@ from application.services.question_processing import (
 )
 from domain.contracts.lesson import lesson_document_from_payload
 from domain.questions.pipeline import write_model_prompt_artifact
+from domain.questions.quality import build_import_quality_report
 from domain.questions.source import (
     MARKDOWN_IMAGE_PATTERN,
     MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
@@ -400,6 +401,17 @@ class TextbookProcessingService:
         question_sources = limited_question_sources(
             lesson_source, first_batch_question_limit, asset_dir=asset_dir
         )
+        quality_report = build_import_quality_report(
+            [{
+                "id": first_batch["id"],
+                "startPage": first_batch["startPage"],
+                "endPage": first_batch["endPage"],
+                "source": lesson_source,
+                "blocks": split_question_sources(lesson_source, asset_dir=asset_dir),
+            }],
+            total_pages=page_count,
+        )
+        quality_report["scope"] = "preview"
         write_model_prompt_artifact(asset_dir, question_sources)
         ocr_run["sourceArtifactUrl"] = (
             f"/api/uploads/{upload_id}/artifacts/{first_batch['id']}/source.md"
@@ -456,6 +468,7 @@ class TextbookProcessingService:
                 "mode": f"model-from-{ocr_run['provider']}" if lesson_source else "demo-seed-no-ocr",
             },
             "batches": batches,
+            "qualityReport": quality_report,
             "questionPayload": payload,
             "questionPayloads": payloads,
             "batchQuestionKeys": {first_batch["id"]: question_keys},
@@ -498,6 +511,9 @@ class TextbookProcessingService:
         result = job.get("result")
         if job.get("status") != "complete" or not result:
             raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+        quality_report = self._build_full_paper_quality_report(
+            upload_id, job, result, cancellation_check=cancellation_check,
+        )
         self._reconcile_batch_question_keys(job, result)
         try:
             requested_limit = int(max_questions or MAX_FULL_PAPER_QUESTIONS)
@@ -520,10 +536,22 @@ class TextbookProcessingService:
             "questionLimit": limit,
             "limitReached": False,
             "batches": [],
+            "qualityReport": quality_report,
+            "blockedByQualityReport": not quality_report["readyForFullPaper"],
         }
         # Persist intermediate summary so the UI can show progress while the worker runs.
         result["fullPaper"] = summary
         self.upload_registry.update(job, "complete", 100, "整套试卷任务已开始，正在逐批处理")
+        if not quality_report["readyForFullPaper"]:
+            result["fullPaper"] = summary
+            self.upload_registry.update(job, "complete", 100, "导入质量报告未通过，已暂停整本生成")
+            payloads = self._ordered_batch_payloads(job, result, limit=limit)
+            return {
+                "summary": summary,
+                "questionPayload": payloads[0] if payloads else None,
+                "questionPayloads": payloads,
+                "batches": result.get("batches", []),
+            }
         for index, batch in enumerate(batches):
             self._check_cancel(cancellation_check)
             current_payloads = self._ordered_batch_payloads(job, result, limit=limit)
@@ -646,6 +674,63 @@ class TextbookProcessingService:
             "questionPayloads": payloads,
             "batches": result.get("batches", []),
         }
+
+    def _build_full_paper_quality_report(
+        self,
+        upload_id: str,
+        job: dict[str, Any],
+        result: dict[str, Any],
+        *,
+        cancellation_check: Any = None,
+    ) -> dict[str, Any]:
+        """在整本模型调用前读取各批次 OCR，生成一次确定性的质量报告。"""
+        # 旧的内存测试夹具和已迁移的轻量快照可能没有目录，无法重新读取 OCR；保留
+        # 已持久化的预览报告，避免质量报告本身破坏断点续跑兼容性。
+        if "directory" not in job:
+            report = dict(result.get("qualityReport") or {
+                "status": "ready",
+                "readyForFullPaper": True,
+                "totalPages": int((result.get("extraction") or {}).get("pageCount") or 0),
+                "expectedQuestionCount": len(result.get("questionPayloads") or []),
+                "detectedQuestionNumbers": [],
+                "questionRange": "—",
+                "duplicateQuestionNumbers": [],
+                "missingQuestionNumbers": [],
+                "unidentifiedPages": [],
+                "imageAttributionConflicts": [],
+                "warnings": [],
+                "blockers": [],
+                "checkedBatchCount": len(result.get("batches") or []),
+            })
+            report["scope"] = "full-paper"
+            result["qualityReport"] = report
+            return report
+        reports: list[dict[str, Any]] = []
+        batches = result.get("batches") or []
+        for batch in batches:
+            self._check_cancel(cancellation_check)
+            source, _ocr_run, asset_dir, _question_sources = self._load_batch_sources(
+                upload_id=upload_id,
+                job=job,
+                batch=batch,
+                result=result,
+                question_limit=MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
+            )
+            reports.append({
+                "id": batch["id"],
+                "startPage": batch["startPage"],
+                "endPage": batch["endPage"],
+                "source": source,
+                "blocks": split_question_sources(source, asset_dir=asset_dir),
+            })
+        report = build_import_quality_report(
+            reports,
+            total_pages=int((result.get("extraction") or {}).get("pageCount") or 0),
+        )
+        report["scope"] = "full-paper"
+        result["qualityReport"] = report
+        self.upload_registry.update(job, "complete", 100, "导入质量报告已生成，准备整本生成")
+        return report
 
     def process_batch(
         self,

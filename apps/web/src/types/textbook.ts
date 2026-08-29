@@ -67,6 +67,7 @@ export interface TextbookImportResult {
     status: "processed" | "queued" | "failed";
     error?: string;
   }>;
+  qualityReport?: ImportQualityReport;
   questionPayload: QuestionPayload;
   questionPayloads?: QuestionPayload[];
   fullPaper?: FullPaperSummary;
@@ -91,6 +92,25 @@ export interface FullPaperSummary {
   questionLimit?: number;
   limitReached?: boolean;
   batches: FullPaperBatchSummary[];
+  qualityReport?: ImportQualityReport;
+  blockedByQualityReport?: boolean;
+}
+
+export interface ImportQualityReport {
+  scope?: "preview" | "full-paper";
+  status: "ready" | "warning" | "blocked";
+  readyForFullPaper: boolean;
+  totalPages: number;
+  expectedQuestionCount: number;
+  detectedQuestionNumbers: string[];
+  questionRange: string;
+  duplicateQuestionNumbers: string[];
+  missingQuestionNumbers: number[];
+  unidentifiedPages: number[];
+  imageAttributionConflicts: Array<{ image: string; questionNumbers: string[] }>;
+  warnings: string[];
+  blockers: string[];
+  checkedBatchCount: number;
 }
 
 export interface FullPaperResult {

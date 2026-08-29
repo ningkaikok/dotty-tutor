@@ -127,6 +127,50 @@ class TextbookProcessingTests(unittest.TestCase):
         self.assertEqual(result["summary"]["questionCount"], 1)
         self.assertTrue(result["summary"]["limitReached"])
 
+    def test_full_paper_stops_before_model_when_quality_report_is_blocked(self) -> None:
+        job = {
+            "status": "complete",
+            "result": {
+                "batches": [{"id": "batch-001", "status": "queued"}],
+                "batchQuestionKeys": {},
+                "questionPayloads": [],
+            },
+            "batchQuestionKeys": {},
+            "batchPayloads": {},
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current.update(status=status, progress=progress, message=message)
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+        blocked = {
+            "status": "blocked",
+            "readyForFullPaper": False,
+            "expectedQuestionCount": 1,
+            "questionRange": "2",
+            "duplicateQuestionNumbers": [],
+            "unidentifiedPages": [],
+            "imageAttributionConflicts": [],
+            "warnings": [],
+            "blockers": ["题号过少"],
+            "detectedQuestionNumbers": ["2"],
+            "missingQuestionNumbers": [],
+            "totalPages": 5,
+            "checkedBatchCount": 1,
+        }
+        with (
+            patch.object(service, "_build_full_paper_quality_report", return_value=blocked),
+            patch.object(service, "process_batch") as process_batch,
+        ):
+            result = service.generate_full_paper("quality-blocked-upload", max_questions=100)
+        process_batch.assert_not_called()
+        self.assertTrue(result["summary"]["blockedByQualityReport"])
+        self.assertEqual(result["summary"]["qualityReport"]["status"], "blocked")
+
     def test_full_paper_reuses_an_already_complete_first_batch(self) -> None:
         """Automatic whole-book uploads must not regenerate their full preview batch."""
         payloads = [
