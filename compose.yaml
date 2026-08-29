@@ -108,7 +108,7 @@ services:
       - -m
       - worker
       - --registry
-      - api.routers.textbook_routes:textbook_job_registry
+      - routers.textbook_routes:textbook_job_registry
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dotty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dotty_tutor}
       DOTTY_DATA_DIR: /data
