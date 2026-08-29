@@ -764,6 +764,11 @@ class TextbookProcessingService:
         if not batch:
             raise HTTPException(status_code=404, detail="没有找到这个教材批次")
 
+        # 强制重跑意味着来源/分段规则可能已经变化。清除整卷安全点，避免后续
+        # full-paper 任务把这批仍标记为已处理而跳过新 OCR 结果。
+        if force:
+            batch["fullPaperProcessed"] = False
+
         batch_question_keys = job.setdefault("batchQuestionKeys", {}).get(batch_id, [])
         stored_payloads = [
             job.setdefault("batchPayloads", {})[key]

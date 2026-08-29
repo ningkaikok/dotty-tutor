@@ -19,13 +19,13 @@ from ocr_pipeline import PAGE_MARKER, has_visual_hint
 
 # 只把版心左侧的题号视为新题。小问 ``(1)``、章节编号 ``1.1`` 都可能以数字
 # 开头，但前者属于当前题、后者通常不是可独立出题的题号，不能用宽泛的数字正则切开。
-# 分隔符单独命名（``sep``）：续举例编号误判（roadmap 子问题 A）只发生在 "、"
+# 分隔符单独命名（``sep``）：续举例编号误判（roadmap 子问题 A）只发生在顿号/逗号
 # 分隔的候选上，修复逻辑需要区分对待，见 ``_is_enumeration_continuation``。
 QUESTION_START_PATTERN = re.compile(
     r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})"
-    r"(?P<sep>(?:\s*题\s*(?:[:：]|\s))|[.．、]|[】\]])\s*"
+    r"(?P<sep>(?:\s*题\s*(?:[:：]|\s))|[.．、，,]|[】\]])\s*"
 )
-# 枚举标记：一个"、"候选题号只有在前文以这些字符收尾时才被判为续行举例。
+# 枚举标记：一个顿号/逗号候选题号只有在前文以这些字符收尾时才被判为续行举例。
 # 不采用更宽的"非句末标点即续行"方案：真实语料里既有以公式（$…$）或数字收尾的
 # 合法题目，也存在合法的"、"风格题号（见 test_stops_a_question_at_inline_answer_…
 # 的 "7、/8、" 用例），宽规则会把它们错并进上一题。
@@ -36,7 +36,7 @@ ENUMERATION_MARKS = frozenset("、，,")
 # 比“精确匹配整行标题”更稳定的做法。
 QUESTION_SECTION_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?(?:(?:第\s*[一二三四五六七八九十百\d]+\s*(?:大题|部分|节))|"
-    r"(?:[一二三四五六七八九十百\d]+\s*[、.．]))\s*"
+    r"(?:[一二三四五六七八九十百\d]+\s*[、，,.．]))\s*"
     r"(?:选\s*择\s*题|填\s*空\s*题|判\s*断\s*题|解\s*答\s*题|计\s*算\s*题|"
     r"应\s*用\s*题|作\s*图\s*题|证\s*明\s*题|实\s*验\s*题|综\s*合\s*题|"
     r"单\s*项\s*选\s*择\s*题|多\s*项\s*选\s*择\s*题|非\s*选\s*择\s*题)"
@@ -63,8 +63,8 @@ MAX_QUESTIONS_PER_BATCH = 5
 MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
 # 不同规则版本的产物不能静默混用，重新 OCR/生成时会写入新的版本证据。
-# v3：'、'分隔的候选题号只有在前文以句末标点收尾时才允许开新题（修复子问题 A）。
-QUESTION_SEGMENTATION_VERSION = "question-segmentation-v3"
+# v4：兼容 OCR 常见的全角逗号题号（如“1，”“17，”），并继续隔离顿号/逗号枚举续行。
+QUESTION_SEGMENTATION_VERSION = "question-segmentation-v4"
 
 ANSWER_SECTION_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?(?:参考答案与解析|答案与解析|参考答案|答案|解答|解析)\s*$"
@@ -85,6 +85,7 @@ EXAM_INSTRUCTION_MARKERS = (
     r"准考证",
     r"条形码",
     r"答题卡",
+    r"答卷",
     r"监考",
     r"签字笔",
     r"涂黑",
@@ -109,6 +110,7 @@ QUESTION_EVIDENCE_MARKERS = (
     r"取值",
     r"结果",
     r"填空",
+    r"本小题",
     r"方程",
     r"不等式",
     r"平均数|中位数|概率",
@@ -355,7 +357,7 @@ def _is_enumeration_continuation(question_area: str, match: re.Match) -> bool:
     唯一受影响的行就是坏样本本身；roadmap 曾考虑过更宽的"要求句末标点前置"
     方案，但真实语料里合法题目常以公式、数字等非句末标点收尾，宽规则误伤面大。
     """
-    if match.group("sep") != "、":
+    if match.group("sep") not in {"、", "，", ","}:
         return False
     preceding = question_area[: match.start()].rstrip()
     if not preceding:
@@ -380,6 +382,19 @@ def split_question_sources(
     source = _reconstruct_question_line_breaks(source, asset_dir)
     question_area = _question_area(source)
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
+    # 分页 OCR 可能把下一卷的注意事项带进当前批次；这些编号不是题目边界。
+    # 只按候选块首行做语义过滤，避免说明后的真正题干被误删。
+    filtered_matches: list[re.Match[str]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(question_area)
+        candidate = question_area[match.start():end]
+        next_heading = QUESTION_SECTION_PATTERN.search(candidate, 1)
+        if next_heading:
+            candidate = candidate[:next_heading.start()]
+        first_line = next((line.strip() for line in candidate.splitlines() if line.strip()), candidate)
+        if not is_likely_exam_instruction(first_line):
+            filtered_matches.append(match)
+    matches = filtered_matches
     # 子问题 A 修复：先把"其实是续行枚举"的候选从边界集合里剔除，再按剩余边界
     # 切块。剔除的候选文本自然并入上一题（它的 end 由下一个被接受的边界决定）。
     boundaries = [
