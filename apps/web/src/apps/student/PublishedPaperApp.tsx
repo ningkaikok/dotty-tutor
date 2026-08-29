@@ -223,7 +223,6 @@ export function PublishedPaperApp() {
         const attemptResult = await queueAttempt({
           attemptId: crypto.randomUUID(),
           questionId,
-          knowledgePoint: payload.question.knowledgePoint,
           response: { text: submittedInput, interactionResult: interactionResult ?? {} },
           assessment: response.guideContext.assessment,
           hintLevel,
@@ -288,6 +287,7 @@ export function PublishedPaperApp() {
         <span className="active-model live paper-sync-badge">{syncMessage}</span>
       </header>
       <PaperLearningProgress
+        knowledgePointId={publication.lessons[questionIndex].knowledgePointId}
         knowledgePoint={payload.question.knowledgePoint}
         mastery={mastery}
         syncMessage={syncMessage}

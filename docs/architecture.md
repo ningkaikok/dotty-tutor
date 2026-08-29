@@ -160,7 +160,8 @@ flowchart TB
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
-| 教材与学习存储 | `apps/api/persistence/app_store.py`、各领域 Store | 应用组合 Store 共享引擎，领域 Store 分别保存教材、课程、作答和掌握度 |
+| 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
+| 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `apps/api/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
@@ -516,8 +517,11 @@ POST /api/tts
 - `batch_questions.payload_json` 保存结构化题目和审校信息。
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
-- `learning_sessions.publication_id` 绑定整份互动试卷，`exercise_attempts` 和 `mastery_states` 保存作答与
-  知识点掌握证据。
+- `learning_sessions.publication_id` 绑定整份互动试卷；`knowledge_points` 使用发布版本和规范化名称生成稳定
+  `knowledge_point_id`，`exercise_attempts` 保存服务端解析出的题目归属，`mastery_states` 以
+  `(learner_id, knowledge_point_id)` 为键保存 `raw_score`、`score`、`evidence_confidence`、`evidence_count`、
+  `algorithm_version` 和 `computed_at` 等掌握度投影。重复作答仍保留在日志中，但派生时每个发布版本的每道题只
+  取最新作答，因此离线乱序不会污染结果。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。

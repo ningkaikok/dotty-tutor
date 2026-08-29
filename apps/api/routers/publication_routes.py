@@ -35,6 +35,7 @@ def _public_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
         "title": lesson["title"],
         "version": lesson["version"],
         "status": lesson["status"],
+        "knowledgePointId": lesson.get("knowledgePointId"),
         "knowledgePoints": lesson["knowledgePoints"],
         "blocks": lesson["blocks"],
         "questionPayload": payload,
