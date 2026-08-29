@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import time
 from typing import Any
@@ -167,6 +168,7 @@ class TextbookProcessingService:
         result: dict[str, Any],
         refresh_ocr: bool = False,
         question_limit: int = MAX_QUESTIONS_PER_BATCH,
+        exclude_question_numbers: set[str] | None = None,
     ) -> tuple[str, dict[str, Any], Any, list[tuple[str, str, list[str]]]]:
         """读取批次 OCR 来源，并切成稳定题块。
 
@@ -201,8 +203,12 @@ class TextbookProcessingService:
             f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
             f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
         )
+        blocks = split_question_sources(lesson_source, asset_dir=asset_dir)
         question_sources = limited_question_sources(lesson_source, question_limit, asset_dir=asset_dir)
-        if not split_question_sources(lesson_source, asset_dir=asset_dir):
+        excluded = {str(number).strip() for number in (exclude_question_numbers or set()) if str(number).strip()}
+        if excluded:
+            question_sources = [item for item in question_sources if item[0] not in excluded]
+        if not blocks:
             question_sources = [
                 ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
             ]
@@ -210,6 +216,17 @@ class TextbookProcessingService:
         ocr_run["sourceArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/source.md"
         ocr_run["promptArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/model-prompt.md"
         return lesson_source, ocr_run, asset_dir, question_sources
+
+    @staticmethod
+    def _question_numbers(payloads: list[dict[str, Any]]) -> set[str]:
+        """提取已生成题目的原始题号，用于跨批次 overlap 去重。"""
+        numbers: set[str] = set()
+        for payload in payloads:
+            value = str(payload.get("question", {}).get("questionNumber", "")).strip()
+            match = re.match(r"\d{1,3}", value)
+            if match:
+                numbers.add(match.group(0))
+        return numbers
 
     @staticmethod
     def _reconcile_batch_question_keys(job: dict[str, Any], result: dict[str, Any]) -> None:
@@ -552,13 +569,22 @@ class TextbookProcessingService:
                 "questionPayloads": payloads,
                 "batches": result.get("batches", []),
             }
-        for index, batch in enumerate(batches):
+        for index, batch_snapshot in enumerate(batches):
             self._check_cancel(cancellation_check)
+            # process_batch reloads and persists its own snapshot; refresh it here so a
+            # later progress write cannot overwrite newly generated question mappings.
+            job = self.upload_registry.get(upload_id)
+            result = job.get("result") or result
+            self._reconcile_batch_question_keys(job, result)
+            batch_id = batch_snapshot["id"]
+            batch = next(
+                (item for item in result.get("batches", []) if item.get("id") == batch_id),
+                batch_snapshot,
+            )
             current_payloads = self._ordered_batch_payloads(job, result, limit=limit)
             if len(current_payloads) >= limit:
                 summary["limitReached"] = True
                 break
-            batch_id = batch["id"]
             keys = (
                 job.setdefault("batchQuestionKeys", {}).get(batch_id)
                 or result.setdefault("batchQuestionKeys", {}).get(batch_id, [])
@@ -614,6 +640,11 @@ class TextbookProcessingService:
                 continue
             try:
                 remaining = limit - len(current_payloads)
+                current_batch_keys = set(job.setdefault("batchQuestionKeys", {}).get(batch_id, []))
+                prior_payloads = [
+                    item for item in current_payloads
+                    if item.get("question", {}).get("sourceQuestionKey") not in current_batch_keys
+                ]
                 generated = self.process_batch(
                     upload_id,
                     batch_id,
@@ -621,6 +652,7 @@ class TextbookProcessingService:
                     persist=True,
                     cancellation_check=cancellation_check,
                     question_limit=min(MAX_FULL_PAPER_QUESTIONS_PER_BATCH, remaining),
+                    exclude_question_numbers=self._question_numbers(prior_payloads),
                 )
                 count = len(generated.get("questionPayloads") or [])
                 generated_payloads = generated.get("questionPayloads") or []
@@ -654,6 +686,9 @@ class TextbookProcessingService:
                     "id": batch_id, "status": "failed", "error": str(error)[:500],
                     "questionCount": 0, "quarantinedQuestions": 0,
                 })
+            job = self.upload_registry.get(upload_id)
+            result = job.get("result") or result
+            self._reconcile_batch_question_keys(job, result)
             summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
             result["fullPaper"] = summary
             self.upload_registry.update(
@@ -743,6 +778,7 @@ class TextbookProcessingService:
         run_id: str | None = None,
         cancellation_check: Any = None,
         question_limit: int = MAX_QUESTIONS_PER_BATCH,
+        exclude_question_numbers: set[str] | None = None,
     ) -> dict[str, Any]:
         """OCR 一个页范围，并可选择是否立即保存生成练习。
 
@@ -812,6 +848,7 @@ class TextbookProcessingService:
                 result=result,
                 refresh_ocr=refresh_ocr,
                 question_limit=question_limit,
+                exclude_question_numbers=exclude_question_numbers,
             )
             self._check_cancel(cancellation_check)
             payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
