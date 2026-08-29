@@ -48,6 +48,7 @@ dotty-tutor/
 │   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
 │   ├── domain/contracts/       # 跨业务域的稳定请求/响应契约
 │   ├── domain/questions/       # 题目来源、导入质量、规范化、Schema 和质量纯函数
+│   ├── domain/learning/        # 知识点身份规范化与 mastery-v2 派生算法
 │   ├── domain/tutoring/        # 判题、陪练策略和状态机纯函数
 │   ├── mistake_recognition.py  # 复用教材流水线的错题识别适配
 │   ├── variation_service.py    # 错题变式验证题生成与确定性题型门禁
@@ -63,6 +64,7 @@ dotty-tutor/
 │   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
 │   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
 │   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
+├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
 ├── apps/web/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
@@ -300,7 +302,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | PDF 如何变成题目 | `useTextbookImport.ts` → `api/routers/textbook_routes.py` → `application/services/textbook_processing.py` → `application/services/question_processing.py` → `domain/questions/pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
 | 长任务将如何后台化 | `runtime-governance-plan.md` → `infrastructure/files/upload_registry.py` → `persistence/schema.py` → `application/services/textbook_processing.py` | 运行快照、Job Store、租约、幂等与 Worker 边界 |
 | 试卷如何安全发布新版 | `usePaperPublication.ts` → `api/routers/publication_routes.py` → `publication_revision.py` → `persistence/learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
-| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `api/routers/learning_routes.py` → `persistence/learning_store.py` | 受控组件、幂等 attemptId、掌握度投影 |
+| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、最新不同题证据掌握度投影 |
 | 错题如何多轮陪练 | `useMistakeTutor.ts` → `api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长

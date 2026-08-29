@@ -7,11 +7,17 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from domain.learning.mastery import (
+    derive_mastery,
+    knowledge_point_id,
+    normalize_knowledge_point_name,
+)
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import (
     batch_questions,
     exercise_attempts,
+    knowledge_points,
     learning_sessions,
     lesson_documents,
     lesson_publications,
@@ -175,6 +181,9 @@ class LearningStore(DatabaseStore):
                 )
             ).mappings().all()
         by_id = {lesson["lesson_id"]: self._lesson_from_row(lesson) for lesson in lessons}
+        for lesson in by_id.values():
+            source = next(item for item in lessons if item["lesson_id"] == lesson["lessonId"])
+            lesson["knowledgePointId"] = knowledge_point_id(row["publication_id"], self._question_name(source))
         return {
             "publicationId": row["publication_id"],
             "title": row["title"],
@@ -314,15 +323,16 @@ class LearningStore(DatabaseStore):
         attempt_id: str,
         session_id: str,
         question_id: str,
-        knowledge_point: str,
+        knowledge_point: str | None = None,
         response: dict[str, Any],
         assessment: str,
         hint_level: int,
         duration_ms: int,
         created_at: float,
     ) -> dict[str, Any]:
+        # Keep the optional argument for direct-store callers during the
+        # transition, but never use client-provided text as identity data.
         self._ensure_initialized()
-        target = {"correct": 1.0, "partial": 0.55, "incorrect": 0.0}[assessment]
         with self.engine.begin() as connection:
             session = connection.execute(
                 select(learning_sessions).where(
@@ -339,67 +349,198 @@ class LearningStore(DatabaseStore):
                     # attempt_id is the idempotency key. Reusing it in another
                     # session is a client error, not a successful retry.
                     raise LookupError("作答记录不属于当前学习会话")
+                existing_kp_id = existing_attempt.get("knowledge_point_id")
                 current = connection.execute(
                     select(mastery_states).where(
                         mastery_states.c.learner_id == session["learner_id"],
-                        mastery_states.c.knowledge_point == existing_attempt["knowledge_point"],
+                        mastery_states.c.knowledge_point_id == existing_kp_id,
                     )
                 ).mappings().first()
                 return {
                     "attemptId": attempt_id,
-                    "mastery": self._mastery_from_row(current, session["learner_id"], existing_attempt["knowledge_point"]),
+                    "mastery": self._mastery_from_row(
+                        current,
+                        session["learner_id"],
+                        existing_kp_id or knowledge_point_id(session["publication_id"], existing_attempt["knowledge_point"]),
+                        existing_attempt.get("knowledge_point") or "未分类知识点",
+                    ),
                 }
+            resolved = self._resolve_knowledge_point(
+                connection,
+                session=session,
+                question_id=question_id,
+                legacy_name=knowledge_point,
+            )
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
+                publication_id=session["publication_id"],
                 question_id=question_id,
-                knowledge_point=knowledge_point,
+                knowledge_point_id=resolved["knowledgePointId"],
+                knowledge_point=resolved["name"],
                 response_json=response,
                 assessment=assessment,
                 hint_level=hint_level,
                 duration_ms=duration_ms,
                 created_at=created_at,
             ))
-            current = connection.execute(
-                select(mastery_states).where(
-                    mastery_states.c.learner_id == session["learner_id"],
-                    mastery_states.c.knowledge_point == knowledge_point,
-                )
-            ).mappings().first()
-            previous_score = float(current["score"]) if current else 0.0
-            attempt_count = int(current["attempt_count"]) + 1 if current else 1
-            previous_correct = int(current["correct_count"]) if current else 0
-            correct_count = previous_correct + (1 if assessment == "correct" else 0)
-            score = round(previous_score * 0.7 + target * 0.3, 4)
-            self._upsert(
+            mastery = self._recompute_mastery(
                 connection,
-                mastery_states,
-                {
-                    "learner_id": session["learner_id"],
-                    "knowledge_point": knowledge_point,
-                    "score": score,
-                    "attempt_count": attempt_count,
-                    "correct_count": correct_count,
-                    "last_practiced_at": created_at,
-                },
-                ["learner_id", "knowledge_point"],
-                ["score", "attempt_count", "correct_count", "last_practiced_at"],
+                learner_id=session["learner_id"],
+                knowledge_point_id_value=resolved["knowledgePointId"],
+                knowledge_point_name=resolved["name"],
             )
             connection.execute(
                 learning_sessions.update()
                 .where(learning_sessions.c.session_id == session_id)
-                .values(updated_at=created_at)
+                .values(updated_at=max(float(session["updated_at"]), created_at))
             )
         return {
             "attemptId": attempt_id,
-            "mastery": {
-                "learnerId": session["learner_id"],
-                "knowledgePoint": knowledge_point,
-                "score": score,
-                "attemptCount": attempt_count,
-                "correctCount": correct_count,
-                "lastPracticedAt": created_at,
+            "mastery": mastery,
+        }
+
+    @staticmethod
+    def _question_name(lesson: Any) -> str:
+        payload = decode_json(lesson["question_json"]) or {}
+        question = payload.get("question") or {}
+        return normalize_knowledge_point_name(
+            question.get("knowledgePoint")
+            or (decode_json(lesson["knowledge_points_json"]) or [None])[0]
+            or lesson["title"]
+        )
+
+    def _resolve_knowledge_point(
+        self,
+        connection: Any,
+        *,
+        session: Any,
+        question_id: str,
+        legacy_name: str | None,
+    ) -> dict[str, str]:
+        """Resolve the question from the immutable publication, never from client labels."""
+        publication = connection.execute(
+            select(lesson_publications).where(
+                lesson_publications.c.publication_id == session["publication_id"]
+            )
+        ).mappings().first()
+        if publication:
+            lesson_ids = decode_json(publication["lesson_ids_json"]) or []
+            lessons = connection.execute(
+                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids))
+            ).mappings().all()
+            lesson = next(
+                (
+                    item for item in lessons
+                    if (decode_json(item["question_json"]) or {}).get("question", {}).get("id") == question_id
+                ),
+                None,
+            )
+            if lesson is None:
+                raise LookupError("题目不属于当前已发布互动试卷")
+            name = self._question_name(lesson)
+            normalized = normalize_knowledge_point_name(name)
+            point_id = knowledge_point_id(session["publication_id"], normalized)
+            self._upsert(
+                connection,
+                knowledge_points,
+                {
+                    "knowledge_point_id": point_id,
+                    "publication_id": session["publication_id"],
+                    "name": name,
+                    "normalized_name": normalized,
+                    "created_at": time.time(),
+                },
+                ["knowledge_point_id"],
+                ["name", "normalized_name"],
+            )
+            return {"knowledgePointId": point_id, "name": name}
+
+        # Direct Store callers from before publication records existed may
+        # still provide a legacy label. The HTTP route no longer accepts or
+        # forwards that field, so untrusted clients cannot reach this path.
+        if legacy_name:
+            name = normalize_knowledge_point_name(legacy_name)
+            return {
+                "knowledgePointId": knowledge_point_id(session["publication_id"], name),
+                "name": name,
+            }
+        raise LookupError("题目不属于当前已发布互动试卷")
+
+    def _recompute_mastery(
+        self,
+        connection: Any,
+        *,
+        learner_id: str,
+        knowledge_point_id_value: str,
+        knowledge_point_name: str,
+    ) -> dict[str, Any]:
+        # The mastery row may not exist on the first attempt, so locking it
+        # cannot serialize concurrent first writes. A published knowledge
+        # point row is created before this method and is stable for the
+        # publication; PostgreSQL locks it for the duration of this transaction
+        # while SQLite treats the clause as a no-op.
+        connection.execute(
+            select(knowledge_points.c.knowledge_point_id)
+            .where(knowledge_points.c.knowledge_point_id == knowledge_point_id_value)
+            .with_for_update()
+        ).first()
+        rows = connection.execute(
+            select(
+                exercise_attempts.c.publication_id,
+                exercise_attempts.c.question_id,
+                exercise_attempts.c.attempt_id,
+                exercise_attempts.c.assessment,
+                exercise_attempts.c.created_at,
+            )
+            .select_from(exercise_attempts.join(
+                learning_sessions,
+                exercise_attempts.c.session_id == learning_sessions.c.session_id,
+            ))
+            .where(
+                learning_sessions.c.learner_id == learner_id,
+                exercise_attempts.c.knowledge_point_id == knowledge_point_id_value,
+            )
+        ).mappings().all()
+        derived = derive_mastery(rows)
+        computed_at = time.time()
+        self._upsert(
+            connection,
+            mastery_states,
+            {
+                "learner_id": learner_id,
+                "knowledge_point_id": knowledge_point_id_value,
+                "knowledge_point": knowledge_point_name,
+                "score": derived["score"],
+                "raw_score": derived["raw_score"],
+                "evidence_confidence": derived["evidence_confidence"],
+                "evidence_count": derived["evidence_count"],
+                "algorithm_version": derived["algorithm_version"],
+                "computed_at": computed_at,
+                "attempt_count": derived["attempt_count"],
+                "correct_count": derived["correct_count"],
+                "last_practiced_at": derived["last_practiced_at"],
             },
+            ["learner_id", "knowledge_point_id"],
+            [
+                "knowledge_point", "score", "raw_score", "evidence_confidence",
+                "evidence_count", "algorithm_version", "computed_at",
+                "attempt_count", "correct_count", "last_practiced_at",
+            ],
+        )
+        return {
+            "learnerId": learner_id,
+            "knowledgePointId": knowledge_point_id_value,
+            "knowledgePoint": knowledge_point_name,
+            "score": derived["score"],
+            "rawScore": derived["raw_score"],
+            "evidenceConfidence": derived["evidence_confidence"],
+            "evidenceCount": derived["evidence_count"],
+            "algorithmVersion": derived["algorithm_version"],
+            "computedAt": computed_at,
+            "attemptCount": derived["attempt_count"],
+            "correctCount": derived["correct_count"],
+            "lastPracticedAt": derived["last_practiced_at"],
         }
 
     def get_learning_session(self, session_id: str) -> dict[str, Any] | None:
@@ -413,7 +554,7 @@ class LearningStore(DatabaseStore):
             attempts = connection.execute(
                 select(exercise_attempts)
                 .where(exercise_attempts.c.session_id == session_id)
-                .order_by(exercise_attempts.c.created_at.asc())
+                .order_by(exercise_attempts.c.created_at.asc(), exercise_attempts.c.attempt_id.asc())
             ).mappings().all()
         return {
             "sessionId": session["session_id"],
@@ -424,7 +565,8 @@ class LearningStore(DatabaseStore):
             "attempts": [{
                 "attemptId": row["attempt_id"],
                 "questionId": row["question_id"],
-                "knowledgePoint": row["knowledge_point"],
+                "knowledgePointId": row.get("knowledge_point_id"),
+                "knowledgePoint": row.get("knowledge_point"),
                 "response": decode_json(row["response_json"]),
                 "assessment": row["assessment"],
                 "hintLevel": row["hint_level"],
@@ -434,11 +576,17 @@ class LearningStore(DatabaseStore):
         }
 
     @staticmethod
-    def _mastery_from_row(row: Any, learner_id: str, knowledge_point: str) -> dict[str, Any]:
+    def _mastery_from_row(row: Any, learner_id: str, knowledge_point_id_value: str, knowledge_point: str) -> dict[str, Any]:
         return {
             "learnerId": learner_id,
+            "knowledgePointId": knowledge_point_id_value,
             "knowledgePoint": knowledge_point,
             "score": float(row["score"]) if row else 0.0,
+            "rawScore": float(row["raw_score"]) if row and row.get("raw_score") is not None else 0.0,
+            "evidenceConfidence": float(row["evidence_confidence"]) if row and row.get("evidence_confidence") is not None else 0.0,
+            "evidenceCount": int(row["evidence_count"]) if row and row.get("evidence_count") is not None else 0,
+            "algorithmVersion": row.get("algorithm_version") if row else "mastery-v2",
+            "computedAt": row.get("computed_at") if row else None,
             "attemptCount": int(row["attempt_count"]) if row else 0,
             "correctCount": int(row["correct_count"]) if row else 0,
             "lastPracticedAt": row["last_practiced_at"] if row else None,
@@ -454,8 +602,14 @@ class LearningStore(DatabaseStore):
             ).mappings().all()
         return [{
             "learnerId": row["learner_id"],
-            "knowledgePoint": row["knowledge_point"],
+            "knowledgePointId": row.get("knowledge_point_id") or knowledge_point_id("legacy", row.get("knowledge_point") or "未分类知识点"),
+            "knowledgePoint": row.get("knowledge_point") or "未分类知识点",
             "score": row["score"],
+            "rawScore": row.get("raw_score", row["score"]),
+            "evidenceConfidence": row.get("evidence_confidence", 0.0),
+            "evidenceCount": row.get("evidence_count", row.get("attempt_count", 0)),
+            "algorithmVersion": row.get("algorithm_version", "mastery-v1-legacy"),
+            "computedAt": row.get("computed_at"),
             "attemptCount": row["attempt_count"],
             "correctCount": row["correct_count"],
             "lastPracticedAt": row["last_practiced_at"],
@@ -483,5 +637,11 @@ class LearningStore(DatabaseStore):
                 ) or 0,
                 "exercise_attempts": connection.scalar(
                     select(func.count()).select_from(exercise_attempts)
+                ) or 0,
+                "knowledge_points": connection.scalar(
+                    select(func.count()).select_from(knowledge_points)
+                ) or 0,
+                "mastery_states": connection.scalar(
+                    select(func.count()).select_from(mastery_states)
                 ) or 0,
             }

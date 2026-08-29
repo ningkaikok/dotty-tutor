@@ -96,7 +96,7 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
   const mergeMastery = useCallback((next: MasteryState) => {
     setMastery((current) => [
       next,
-      ...current.filter((item) => item.knowledgePoint !== next.knowledgePoint),
+      ...current.filter((item) => item.knowledgePointId !== next.knowledgePointId),
     ]);
   }, []);
 

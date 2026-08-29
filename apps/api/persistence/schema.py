@@ -115,6 +115,15 @@ lesson_publications = Table(
     Column("updated_at", Float, nullable=False),
 )
 
+knowledge_points = Table(
+    "knowledge_points", metadata,
+    Column("knowledge_point_id", String(64), primary_key=True),
+    Column("publication_id", String(128), ForeignKey("lesson_publications.publication_id", ondelete="CASCADE"), nullable=False),
+    Column("name", String(160), nullable=False),
+    Column("normalized_name", String(160), nullable=False),
+    Column("created_at", Float, nullable=False),
+)
+
 run_snapshots = Table(
     "run_snapshots", metadata,
     Column("run_id", String(64), primary_key=True),
@@ -158,8 +167,11 @@ exercise_attempts = Table(
     "exercise_attempts", metadata,
     Column("attempt_id", String(64), primary_key=True),
     Column("session_id", String(64), ForeignKey("learning_sessions.session_id", ondelete="CASCADE"), nullable=False),
+    Column("publication_id", String(128), nullable=True),
     Column("question_id", String(128), nullable=False),
-    Column("knowledge_point", String(160), nullable=False),
+    Column("knowledge_point_id", String(64), ForeignKey("knowledge_points.knowledge_point_id"), nullable=True),
+    # Legacy display value. New writes derive it from knowledge_points and never trust it as an ID.
+    Column("knowledge_point", String(160), nullable=True),
     Column("response_json", json_document, nullable=False, default=dict),
     Column("assessment", String(32), nullable=False),
     Column("hint_level", Integer, nullable=False, default=0),
@@ -170,11 +182,17 @@ exercise_attempts = Table(
 mastery_states = Table(
     "mastery_states", metadata,
     Column("learner_id", String(128), primary_key=True),
-    Column("knowledge_point", String(160), primary_key=True),
+    Column("knowledge_point_id", String(64), ForeignKey("knowledge_points.knowledge_point_id"), primary_key=True),
+    Column("knowledge_point", String(160), nullable=True),
     Column("score", Float, nullable=False, default=0),
+    Column("raw_score", Float, nullable=False, default=0),
+    Column("evidence_confidence", Float, nullable=False, default=0),
+    Column("evidence_count", Integer, nullable=False, default=0),
+    Column("algorithm_version", String(64), nullable=False, default="mastery-v2"),
+    Column("computed_at", Float, nullable=False, default=0),
     Column("attempt_count", Integer, nullable=False, default=0),
     Column("correct_count", Integer, nullable=False, default=0),
-    Column("last_practiced_at", Float, nullable=False),
+    Column("last_practiced_at", Float),
 )
 
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
@@ -189,3 +207,6 @@ Index("idx_lesson_publications_status", lesson_publications.c.status, lesson_pub
 Index("idx_lesson_publications_revision", lesson_publications.c.revision_of, lesson_publications.c.version.desc())
 Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
 Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())
+Index("uq_knowledge_points_publication_name", knowledge_points.c.publication_id, knowledge_points.c.normalized_name, unique=True)
+Index("idx_exercise_attempts_publication_question", exercise_attempts.c.publication_id, exercise_attempts.c.question_id, exercise_attempts.c.created_at.desc())
+Index("uq_mastery_states_learner_knowledge_point", mastery_states.c.learner_id, mastery_states.c.knowledge_point_id, unique=True)

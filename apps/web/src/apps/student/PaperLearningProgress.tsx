@@ -1,6 +1,7 @@
 import type { MasteryState } from "../../types/index";
 
 interface PaperLearningProgressProps {
+  knowledgePointId: string;
   knowledgePoint: string;
   mastery: MasteryState[];
   syncMessage: string;
@@ -13,11 +14,12 @@ interface PaperLearningProgressProps {
  * variation answers and drives the 1/3/7-day review schedule.
  */
 export function PaperLearningProgress({
+  knowledgePointId,
   knowledgePoint,
   mastery,
   syncMessage,
 }: PaperLearningProgressProps) {
-  const current = mastery.find((item) => item.knowledgePoint === knowledgePoint);
+  const current = mastery.find((item) => item.knowledgePointId === knowledgePointId);
   const score = Math.round((current?.score ?? 0) * 100);
   const totalAttempts = mastery.reduce((sum, item) => sum + item.attemptCount, 0);
 
@@ -36,9 +38,10 @@ export function PaperLearningProgress({
         </div>
       </div>
       <dl>
-        <div><dt>当前知识点</dt><dd>{current?.attemptCount ?? 0} 次</dd></div>
-        <div><dt>答对</dt><dd>{current?.correctCount ?? 0} 次</dd></div>
-        <div><dt>累计练习</dt><dd>{totalAttempts} 次</dd></div>
+        <div><dt>不同题证据</dt><dd>{current?.evidenceCount ?? 0} 道</dd></div>
+        <div><dt>答对证据</dt><dd>{current?.correctCount ?? 0} 道</dd></div>
+        <div><dt>置信度</dt><dd>{Math.round((current?.evidenceConfidence ?? 0) * 100)}%</dd></div>
+        <div><dt>不同题总数</dt><dd>{totalAttempts} 道</dd></div>
       </dl>
     </section>
   );

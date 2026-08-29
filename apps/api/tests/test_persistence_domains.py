@@ -76,6 +76,7 @@ class PersistenceDomainTests(unittest.TestCase):
                         "learning_sessions",
                         "lesson_documents",
                         "lesson_publications",
+                        "knowledge_points",
                         "mastery_states",
                         "mistake_items",
                         "question_revisions",

@@ -85,9 +85,9 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 | `GET` | `/api/publications/source/{sourceUploadId}` | 内容生产页刷新后恢复该教材最新试卷版本和工作区题目 |
 | `POST` | `/api/learning/sessions` | 使用 `learnerId`、`publicationId` 创建互动试卷学习会话 |
 | `GET` | `/api/learning/sessions/{sessionId}` | 恢复学习会话和已同步作答 |
-| `POST` | `/api/learning/sessions/{sessionId}/attempts` | 保存作答并更新知识点掌握度 |
-| `POST` | `/api/learning/sessions/{sessionId}/sync` | 批量补传离线期间排队的作答记录 |
-| `GET` | `/api/learning/mastery/{learnerId}` | 查询学习者的知识点掌握度 |
+| `POST` | `/api/learning/sessions/{sessionId}/attempts` | 校验题目属于当前发布试卷，服务端解析知识点并保存作答、更新 mastery-v2 |
+| `POST` | `/api/learning/sessions/{sessionId}/sync` | 批量补传离线期间排队的作答记录；按 `attemptId` 幂等 |
+| `GET` | `/api/learning/mastery/{learnerId}` | 查询包含 `knowledgePointId`、`score`、`rawScore`、`evidenceCount`、`evidenceConfidence`、`algorithmVersion` 和 `computedAt` 的掌握度 |
 | `POST` | `/api/help` | 判定学生答案或返回下一层提示 |
 | `POST` | `/api/tts` | 调用 Azure Speech 或代理 Qwen3-TTS |
 
@@ -100,12 +100,20 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 渲染器扩展方式和掌握度计算见
 [可编程课程与学习闭环](programmable-learning.md)。
 
-作答同步请求中的每个 `attemptId` 应由客户端稳定生成。服务端按该 ID 幂等写入，网络重试不会重复
-增加掌握度计数；同一 ID 不能跨学习会话复用。`createdAt` 使用 Unix 秒时间戳并记录真实作答时间，
+作答同步请求中的每个 `attemptId` 应由客户端稳定生成。请求只提交 `questionId`、答案和判定，不提交可信的
+知识点字符串；服务端使用当前会话绑定的 `publicationId` 查找发布题目并解析知识点。题目不属于试卷时返回
+`404`，客户端伪造标签不会改变知识点实体。服务端按该 ID 幂等写入，网络重试不会重复
+增加掌握度证据；同一 ID 不能跨学习会话复用。`createdAt` 使用 Unix 秒时间戳并记录真实作答时间，
 离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
-会话查询响应中的 `attempts` 是按作答时间排序的答案快照，包含 `questionId`、`response`、判定和提示层级；
+会话查询响应中的 `attempts` 是按作答时间排序的答案快照，包含 `questionId`、`knowledgePointId`、`response`、判定和提示层级；
 学生端用它恢复已提交题目的选择、填空、数值或画线状态。模型讲解文本不作为恢复数据，避免旧反馈串题。
 学习会话请求使用 `publicationId` 指向已发布试卷；题目 `lessonId` 不作为会话输入。
+
+mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确为 `1`、部分正确为 `0.55`、错误为 `0`；
+不同题证据数的置信度上限依次为 1/2/3/4/5 道题的 `0.6/0.7/0.8/0.9/1.0`。`rawScore` 是最新题证据平均分，
+`score = rawScore × evidenceConfidence`。旧数据库使用
+`python scripts/migrate_mastery_v2.py --dry-run|--apply|--verify` 迁移；迁移会保留旧掌握度表、补齐实体和作答归属，
+再从可用作答日志重建 mastery-v2 投影；没有作答证据的旧投影会明确标记为 legacy，重复执行为 no-op。
 
 试卷新版不会覆盖原课程文档。接口为每道题创建新的 `lessonId`，将试卷 `version` 加一并记录
 `revisionOf`；新版本从 `in_review` 开始，仍须通过质量门禁后发布。若原 PDF、来源批次或 OCR 所需文件
