@@ -24,7 +24,8 @@ from infrastructure.runtime.review_runtime import (
 )
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
-MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+# Possessive quantifiers prevent backtracking on malformed, user-provided OCR text.
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*+\]\(([^)]++)\)")
 # 右方括号不计入路径：模型会把图片写成 ``[主视图图片：images/x.jpg]``，若把 ``]`` 当作
 # 路径的一部分吃掉，剩下的左方括号就会变成无法配对的残缺文本。
 BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)\]<>]+")

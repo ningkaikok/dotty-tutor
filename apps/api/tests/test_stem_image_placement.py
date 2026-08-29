@@ -70,6 +70,14 @@ class StemImagePlacementTests(unittest.TestCase):
             "ready",
         )
 
+    def test_malformed_image_markers_do_not_trigger_regex_backtracking(self) -> None:
+        malformed = "![" * 2_000
+
+        protected, context = protect_image_references(malformed)
+
+        self.assertEqual(protected, malformed)
+        self.assertEqual(context.originals, ())
+
     def test_placeholder_audit_flags_dropped_or_reordered_images(self) -> None:
         _protected, context = protect_image_references(
             "主视图 ![](images/206a.jpg) 俯视图 ![](images/e00fb.jpg)"
