@@ -23,11 +23,14 @@ from domain.questions.contracts import (
     TutorReply,
 )
 from domain.questions.pipeline import (
+    audit_image_placeholders,
     build_lesson_prompt,
     clean_question_stem,
     normalize_model_math_text,
     normalize_question_interaction,
     normalize_text_choices_from_source,
+    protect_image_references,
+    restore_image_placeholders,
     strip_choice_text_from_prompt,
 )
 from domain.questions.source import (
@@ -225,6 +228,8 @@ def generate_lesson(
     if selected_number:
         source = selected_source
 
+    protected_source, image_placeholder_context = protect_image_references(source)
+
     if selection.provider == "mock":
         run = mock_model_run()
         if not provided_source:
@@ -238,7 +243,7 @@ def generate_lesson(
 
     try:
         generated, run = runtime.generate_json(
-            build_lesson_prompt(source, repair_errors),
+            build_lesson_prompt(protected_source, repair_errors),
             LESSON_SCHEMA,
             max_tokens=1600,
         )
@@ -258,6 +263,11 @@ def generate_lesson(
             exc_info=True,
         )
         return payload, cards, run
+
+    run["imagePlaceholderAudit"] = audit_image_placeholders(
+        str(generated.get("prompt", "")), image_placeholder_context
+    )
+    generated = restore_image_placeholders(generated, image_placeholder_context)
 
     question_id = new_question_id("generated", source)
     question_type = safe_text(generated.get("questionType"), "short-answer", 30)

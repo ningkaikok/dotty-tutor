@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,70 @@ ANSWER_LEAK_PATTERN = re.compile(r"(?im)^\s*(?:【\s*)?(?:参考)?(?:答案|解�
 # 不用正则猜测标签和属性。
 TABLE_BLOCK_PATTERN = re.compile(r"(<table\b[^>]*>.*?</table>)", re.IGNORECASE | re.DOTALL)
 TABLE_TAG_PATTERN = re.compile(r"</?table\b|</?t[dr]\b", re.IGNORECASE)
+IMAGE_PLACEHOLDER_PATTERN = re.compile(r"⟦IMG_(\d+)⟧")
+
+
+@dataclass(frozen=True)
+class ImagePlaceholderContext:
+    """模型输入中的图片占位符与 OCR 原始引用之间的不可变映射。"""
+
+    placeholders: tuple[str, ...]
+    originals: tuple[str, ...]
+
+
+def protect_image_references(text: str) -> tuple[str, ImagePlaceholderContext]:
+    """把 Markdown 图片引用替换为稳定记号，避免模型改写版面语法。"""
+    originals: list[str] = []
+
+    def replace(match: re.Match[str]) -> str:
+        originals.append(match.group(0))
+        return f"⟦IMG_{len(originals)}⟧"
+
+    protected = MARKDOWN_IMAGE_PATTERN.sub(replace, text)
+    placeholders = tuple(f"⟦IMG_{index}⟧" for index in range(1, len(originals) + 1))
+    return protected, ImagePlaceholderContext(placeholders, tuple(originals))
+
+
+def restore_image_placeholders(value: Any, context: ImagePlaceholderContext) -> Any:
+    """递归恢复模型 JSON 中的图片记号；非字符串值保持原结构。"""
+    if isinstance(value, str):
+        replacements = dict(zip(context.placeholders, context.originals))
+        return IMAGE_PLACEHOLDER_PATTERN.sub(
+            lambda match: replacements.get(match.group(0), match.group(0)),
+            value,
+        )
+    if isinstance(value, list):
+        return [restore_image_placeholders(item, context) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: restore_image_placeholders(item, context)
+            for key, item in value.items()
+        }
+    return value
+
+
+def audit_image_placeholders(
+    text: str,
+    context: ImagePlaceholderContext,
+) -> dict[str, Any]:
+    """按出现顺序校验模型是否保留全部图片记号。"""
+    actual = tuple(match.group(0) for match in IMAGE_PLACEHOLDER_PATTERN.finditer(text))
+    errors: list[str] = []
+    if actual != context.placeholders:
+        if len(actual) != len(context.placeholders):
+            errors.append(
+                f"图片占位符数量不守恒：期望 {len(context.placeholders)} 个，实际 {len(actual)} 个"
+            )
+        elif actual != context.placeholders:
+            errors.append(
+                f"图片占位符顺序不守恒：期望 {list(context.placeholders)}，实际 {list(actual)}"
+            )
+    return {
+        "status": "ready" if not errors else "needs_review",
+        "expected": list(context.placeholders),
+        "actual": list(actual),
+        "errors": errors,
+    }
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -74,6 +139,8 @@ def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
 
 def build_lesson_prompt(source: str, repair_errors: list[str] | None = None) -> str:
     """构造结构化出题提示；重试时只附加上一轮的确定性错误。"""
+    # 让直接调用这个公共构造函数的路径也遵守图片保护约束；已保护的输入不会被重复替换。
+    source, _context = protect_image_references(source)
     repair_instruction = ""
     if repair_errors:
         bounded_errors = "\n".join(f"- {str(error)[:180]}" for error in repair_errors[:8])
@@ -94,10 +161,10 @@ def build_lesson_prompt(source: str, repair_errors: list[str] | None = None) -> 
 7. true-false 的 correctAnswer 必须是“正确”或“错误”；multi-select 应填写 correctAnswers；其他题型如果教材没有明确答案则不要猜测。
 8. fill-blank 必须为每个空生成 blanks，包含稳定 id、label、answerType、correctAnswers、tolerance 和 unit；numeric 必须生成 answerSpec，包含 answerType、expected、accepted、tolerance 和 unit。
 9. draw-line 题必须生成 interaction：type 为 draw-line，points 中给出需要显示的点及 0 到 1 的归一化坐标，requiredConnections 给出必须连接的点对；其他题型 interaction.type 为 none。
-10. 选择题的文字选项逐项放入 options。若 A/B/C/D 是四张图片，则 options 保留四个标签，并把四个图片文件名按 A、B、C、D 顺序放入 imageReferences。
-11. givens 只拆出题目明确给出的条件，不要用整段教材或图片 Markdown 代替。
-11.1 题干中图片出现的位置必须原样保留教材文字里的 `![](images/xxx.jpg)` 引用，不要删除、移动或改写成“[主视图图片：...]”这类文字描述。图注文字（如“主视图”“图1”）照常保留。系统据此把图片放回题干中的正确位置。
-12. 不依赖图片则 imageReferences 返回空数组。
+10. 选择题的文字选项逐项放入 options。若 A/B/C/D 是四张图片，则 options 保留四个标签，并按占位符在教材中的顺序记录对应的 imageReferences；不要猜测或编造图片路径。
+11. givens 只拆出题目明确给出的条件，不要用整段教材或图片引用代替。
+12. 题干里的图片已替换为 `⟦IMG_1⟧` 这类占位符；必须在 prompt 中按教材原顺序原样保留，不要删除、移动或改写。图注文字（如“主视图”“图1”）照常保留。
+13. 不依赖图片则 imageReferences 返回空数组。
 
 教材文字：
 ---
@@ -115,7 +182,8 @@ def write_model_prompt_artifact(asset_dir: Path, question_sources: list[tuple[st
         f"> 题目切分版本：`{QUESTION_SEGMENTATION_VERSION}`。不同版本提示词不会被视为本次切分结果。\n",
     ]
     for index, (number, block, _images) in enumerate(question_sources, start=1):
-        sections.append(f"\n## 第 {number or index} 题\n\n```text\n{build_lesson_prompt(block)}\n```\n")
+        protected_block, _context = protect_image_references(block)
+        sections.append(f"\n## 第 {number or index} 题\n\n```text\n{build_lesson_prompt(protected_block)}\n```\n")
     path = asset_dir / "model-prompt.md"
     path.write_text("\n".join(sections), encoding="utf-8")
     return path
@@ -604,6 +672,14 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     question = payload["question"]
     errors: list[str] = []
     warnings: list[str] = []
+    for audit in payload.get("_imagePlaceholderAudits", []):
+        if not isinstance(audit, dict):
+            continue
+        errors.extend(
+            f"图片占位符校验失败：{error}"
+            for error in audit.get("errors", [])
+            if error
+        )
     expected_images = [Path(reference).name for reference in source_images]
     actual_images = [Path(str(url)).name for url in question.get("imageUrls", [])]
     if actual_images != expected_images:
@@ -778,6 +854,7 @@ def apply_question_quality_gate(payload: dict[str, Any], source_block: str, sour
     question.pop("stemImagePlacements", None)
     question["sourceEvidence"] = {"questionNumber": question.get("questionNumber", ""), "sourceHash": hashlib.sha256(source_block.encode("utf-8")).hexdigest(), "imageReferences": list(source_images)}
     quality = validate_question_payload(payload, source_block, source_images)
+    payload.pop("_imagePlaceholderAudits", None)
     if question.get("qualityRepairNotes"):
         quality["errors"].extend(str(note) for note in question["qualityRepairNotes"])
         quality["status"] = "needs_review"

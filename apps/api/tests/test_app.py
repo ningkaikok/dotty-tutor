@@ -202,6 +202,37 @@ class LessonGenerationTests(unittest.TestCase):
             ["show-base"] * 3,
         )
 
+    def test_protects_image_references_before_generation_and_restores_them(self) -> None:
+        original_selection = runtime.selection
+        runtime.selection = ModelSelection("codex", "default")
+        source = (
+            "7. 几何体的主视图和俯视图如下。\n"
+            "![](images/front.jpg)\n主视图\n"
+            "![](images/top.jpg)\n俯视图"
+        )
+        generated = {
+            "questionType": "short-answer",
+            "prompt": "主视图 ⟦IMG_1⟧，俯视图 ⟦IMG_2⟧",
+            "lessonSteps": [],
+        }
+        payload = None
+        try:
+            with patch(
+                "application.services.lesson_generation.runtime.generate_json",
+                return_value=(generated, {"provider": "codex", "model": "default", "fallback": False}),
+            ) as generate:
+                payload, _guide_cards, run = generate_lesson(source)
+        finally:
+            runtime.selection = original_selection
+            if payload:
+                lesson_store.pop(payload["question"]["id"], None)
+
+        model_prompt = generate.call_args.args[0]
+        self.assertNotIn("images/front.jpg", model_prompt)
+        self.assertIn("⟦IMG_1⟧", model_prompt)
+        self.assertEqual(run["imagePlaceholderAudit"]["status"], "ready")
+        self.assertNotIn("images/", payload["question"]["prompt"])
+
 
 class PersistentStoreTests(unittest.TestCase):
     def test_completed_pdf_and_questions_survive_store_recreation(self) -> None:
