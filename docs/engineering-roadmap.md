@@ -46,8 +46,11 @@
 每一项都必须单独有测试、文档和回滚边界；完成当前项后再进入下一项，不把模型接入、UI 重构和数据库迁移混在
 同一个 PR 中。
 
-**并行工程卫生项**（不占用上面队列的顺序位，见 T0/T1/架构边界对应条目）：`local-demo` 身份集中配置、
-Ruff/ESLint 静态检查门禁、超长文件审查。三项成本低，可与评测集建设并行推进。
+**并行工程卫生项**（不占用上面队列的顺序位，见 T0/T1/架构边界对应条目）：三项已全部完成——
+`local-demo` 身份集中配置（`domain/constants.py:DEMO_LEARNER_ID` + `apps/web/src/api/client.ts`，
+生产代码内不再有字面量）、Ruff/ESLint/Pyright 静态检查门禁（见 T1 第 7 条）、超长文件审查
+（见“架构边界”的逐文件拆分边界）。超长文件的**执行**仍待触发：拆分按“下次需要行为改动时顺路执行”，
+不做纯搬家式重构，因此这里不会出现一个可勾选的完成时间点。
 
 ## T0：正确性与回归保护
 
@@ -161,7 +164,8 @@ output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分
    联合展示待前端页面；"同知识点再次出错率"需要尝试与知识点的跨会话关联，
    待 subQuestions/画像工作后补充。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
-   CI 中 `ruff check apps/api` 与 `npm run lint`）。规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
+   CI 中在 `apps/api` 下跑 `uv run ruff check .`、在 `apps/web` 下跑 `pnpm run lint`）。
+   规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
    ESLint 补 tsc 抓不到的 hooks 依赖与未使用变量。两条 React Compiler 时代的保守规则
    （set-state-in-effect/purity）暂关闭并记录理由，对应的"key 重挂载/派生状态"重构列入
    超长文件审查的同一重构窗口。Prettier/格式化统一不进本门禁。

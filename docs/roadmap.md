@@ -20,7 +20,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（结构维度语料、Badcase 回放循环已落地） | [`engineering-roadmap.md`](engineering-roadmap.md) |
-| 并行卫生 | Ruff/ESLint 静态检查门禁、超长文件审查（`local-demo` 收敛已完成） | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | 等真实坏样本占比决定立项 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P2 实验 | 互动数学库二选一、WebLLM 提示兜底、知识点树派生索引、动画表现层 | 按信号暂缓 | 本文件“前端知识表达与互动技术选型” |
 | 生产化 | 登录、多租户、商业化、高可用和公网运营 | 明确暂缓 | 本文件“暂缓范围” |
