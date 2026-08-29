@@ -12,7 +12,11 @@ import unittest
 
 from domain.questions.pipeline import (
     apply_question_quality_gate,
+    audit_image_placeholders,
+    build_lesson_prompt,
     extract_image_placements,
+    protect_image_references,
+    restore_image_placeholders,
 )
 
 STEM = (
@@ -34,6 +38,72 @@ def _payload(prompt: str, image_urls: list[str]) -> dict:
 
 
 class StemImagePlacementTests(unittest.TestCase):
+    def test_lesson_prompt_never_exposes_markdown_image_paths(self) -> None:
+        prompt = build_lesson_prompt("题干 ![](images/front.jpg)\n主视图")
+
+        self.assertNotIn("images/front.jpg", prompt)
+        self.assertIn("⟦IMG_1⟧", prompt)
+
+    def test_image_references_round_trip_through_placeholders(self) -> None:
+        source = " ".join(
+            f"图{index} ![](images/image-{index}.jpg)"
+            for index in range(1, 11)
+        )
+        protected, context = protect_image_references(source)
+
+        self.assertNotIn("images/", protected)
+        self.assertEqual(protected.count("⟦IMG_"), 10)
+        self.assertEqual(restore_image_placeholders(protected, context), source)
+
+        protected, context = protect_image_references(
+            "主视图\n![](images/206a.jpg)\n俯视图\n![](images/e00fb.jpg)"
+        )
+
+        self.assertNotIn("images/", protected)
+        self.assertEqual(protected.count("⟦IMG_"), 2)
+        self.assertEqual(
+            restore_image_placeholders(protected, context),
+            "主视图\n![](images/206a.jpg)\n俯视图\n![](images/e00fb.jpg)",
+        )
+        self.assertEqual(
+            audit_image_placeholders("主视图 ⟦IMG_1⟧ 俯视图 ⟦IMG_2⟧", context)["status"],
+            "ready",
+        )
+
+    def test_malformed_image_markers_do_not_trigger_regex_backtracking(self) -> None:
+        malformed = "![" * 2_000
+
+        protected, context = protect_image_references(malformed)
+
+        self.assertEqual(protected, malformed)
+        self.assertEqual(context.originals, ())
+
+    def test_placeholder_audit_flags_dropped_or_reordered_images(self) -> None:
+        _protected, context = protect_image_references(
+            "主视图 ![](images/206a.jpg) 俯视图 ![](images/e00fb.jpg)"
+        )
+
+        dropped = audit_image_placeholders("主视图 ⟦IMG_1⟧", context)
+        reordered = audit_image_placeholders("俯视图 ⟦IMG_2⟧ 主视图 ⟦IMG_1⟧", context)
+
+        self.assertEqual(dropped["status"], "needs_review")
+        self.assertIn("数量不守恒", dropped["errors"][0])
+        self.assertEqual(reordered["status"], "needs_review")
+        self.assertIn("顺序不守恒", reordered["errors"][0])
+
+    def test_quality_gate_rejects_placeholder_conservation_failure(self) -> None:
+        payload = _payload("7. 题干", URLS)
+        payload["_imagePlaceholderAudits"] = [{
+            "status": "needs_review",
+            "errors": ["图片占位符数量不守恒：期望 2 个，实际 1 个"],
+        }]
+
+        quality = apply_question_quality_gate(payload, SOURCE, REFERENCES)
+
+        self.assertEqual(quality["status"], "needs_review")
+        self.assertTrue(any("图片占位符校验失败" in error for error in quality["errors"]))
+        self.assertNotIn("_imagePlaceholderAudits", payload)
+
     def test_records_placement_offsets_while_cleaning(self) -> None:
         """清理引用的同时必须记录位置；中英文方括号注释也要覆盖。"""
         cleaned, placements = extract_image_placements(

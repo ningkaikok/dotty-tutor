@@ -93,7 +93,6 @@ export interface LearningSession {
 export interface ExerciseAttemptInput {
   attemptId: string;
   questionId: string;
-  knowledgePoint: string;
   response: Record<string, unknown>;
   assessment: "correct" | "partial" | "incorrect";
   hintLevel: number;
@@ -104,13 +103,23 @@ export interface ExerciseAttemptInput {
 /** 学习会话中已经落库的作答；response 保留结构化控件的原始值。 */
 export interface ExerciseAttemptRecord extends ExerciseAttemptInput {
   attemptId: string;
+  knowledgePointId?: string;
+  /** 仅用于兼容旧服务端返回，不参与客户端提交或查找。 */
+  knowledgePoint?: string;
 }
 
 export interface MasteryState {
   learnerId: string;
+  knowledgePointId: string;
+  /** 服务端解析出的展示名称；客户端不得用它作为身份键。 */
   knowledgePoint: string;
   score: number;
+  rawScore: number;
+  evidenceConfidence: number;
+  evidenceCount: number;
+  algorithmVersion: string;
+  computedAt: number | null;
   attemptCount: number;
   correctCount: number;
-  lastPracticedAt: number;
+  lastPracticedAt: number | null;
 }

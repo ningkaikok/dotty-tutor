@@ -239,7 +239,17 @@ class ReviewRuntime:
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         corrected = copy.deepcopy(payload)
         draft = json.dumps(payload, ensure_ascii=False)
-        normalized_source = normalize_ocr_question(ocr_question_block)
+        # 审校模型也必须看到不可改写的记号；否则第一模型即使保留了版面，审校模型仍可能
+        # 把图片引用改写成自然语言。恢复只发生在模型返回后，供后续确定性内容块构建使用。
+        from domain.questions.pipeline import (
+            audit_image_placeholders,
+            protect_image_references,
+            restore_image_placeholders,
+        )
+
+        protected_ocr, image_placeholder_context = protect_image_references(ocr_question_block)
+        normalized_source = normalize_ocr_question(protected_ocr)
+        placeholder_audits: list[dict[str, Any]] = []
         text_prompt = f"""
 你是第二审校模型。逐项对照 OCR 原题与第一模型生成结果，系统性检查 OCR 错字、数字、运算符、上下标、根号、分数、角度、单位和公式，并检查四步讲解是否与原题一致。
 
@@ -251,7 +261,7 @@ class ReviewRuntime:
 
 OCR 原题：
 ---
-{_compact_prompt_text(ocr_question_block)}
+{_compact_prompt_text(protected_ocr)}
 ---
 
 去除 OCR 字体包装与常见排版噪声后的候选原题（优先参考其公式写法，但仍须核对语义）：
@@ -271,6 +281,12 @@ OCR 原题：
                 TEXT_REVIEW_SCHEMA,
                 max_tokens=2200,
             )
+            placeholder_audits.append(
+                audit_image_placeholders(
+                    str(text_review.get("correctedPrompt", "")), image_placeholder_context
+                )
+            )
+            text_review = restore_image_placeholders(text_review, image_placeholder_context)
             self._audit_run(text_run, schema=TEXT_REVIEW_SCHEMA, prompt=text_prompt)
             question = corrected["question"]
             if text_review.get("correctedPrompt"):
@@ -315,6 +331,9 @@ OCR 原题：
                 "fallback": True,
                 "error": text_error,
             }
+            placeholder_audits.append(
+                audit_image_placeholders("", image_placeholder_context)
+            )
             self._audit_run(text_run, schema=TEXT_REVIEW_SCHEMA, prompt=text_prompt)
 
         vision_error = None
@@ -413,7 +432,7 @@ OCR 原题：
 4. 只输出 JSON，不输出 Markdown。
 
 当前题目与讲解：
-{_compact_prompt_text(json.dumps(corrected, ensure_ascii=False))}
+{_compact_prompt_text(protect_image_references(json.dumps(corrected, ensure_ascii=False))[0])}
 
 视觉审校结果：
 {_compact_prompt_text(json.dumps(vision_review, ensure_ascii=False))}
@@ -428,6 +447,14 @@ OCR 原题：
                     repair_prompt,
                     TEXT_REVIEW_SCHEMA,
                     max_tokens=2200,
+                )
+                placeholder_audits.append(
+                    audit_image_placeholders(
+                        str(repaired_review.get("correctedPrompt", "")), image_placeholder_context
+                    )
+                )
+                repaired_review = restore_image_placeholders(
+                    repaired_review, image_placeholder_context
                 )
                 self._audit_run(repair_run, schema=TEXT_REVIEW_SCHEMA, prompt=repair_prompt)
                 repaired_prompt = str(repaired_review.get("correctedPrompt", ""))
@@ -467,6 +494,17 @@ OCR 原题：
             "textModelRun": text_run,
             "visionModelRun": vision_run,
             "needsHumanReview": bool(text_review.get("needsHumanReview") or vision_review.get("needsHumanReview")),
+            "imagePlaceholderAudit": {
+                "status": "ready" if all(
+                    audit["status"] == "ready" for audit in placeholder_audits
+                ) else "needs_review",
+                "attempts": placeholder_audits,
+                "errors": [
+                    error
+                    for audit in placeholder_audits
+                    for error in audit.get("errors", [])
+                ],
+            },
         }
         self._audit_run(
             review_run,

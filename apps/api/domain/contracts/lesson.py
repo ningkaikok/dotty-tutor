@@ -63,7 +63,6 @@ class LearningSessionCreate(BaseModel):
 class ExerciseAttemptCreate(BaseModel):
     attemptId: str | None = Field(default=None, min_length=1, max_length=64)
     questionId: str = Field(min_length=1, max_length=128)
-    knowledgePoint: str = Field(min_length=1, max_length=160)
     response: dict[str, Any] = Field(default_factory=dict)
     assessment: Literal["correct", "partial", "incorrect"]
     hintLevel: int = Field(default=0, ge=0, le=10)

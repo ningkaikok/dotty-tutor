@@ -15,29 +15,14 @@
 
 本轮 P0（任务状态、Worker、错误契约和 Runtime 配置）已经完成并通过后端、前端和 Docker 验收。
 
-**队列插入（2026-08-29）· T0 掌握度口径**：产品路线已把主用户明确为老师（见
-[`product-roadmap.md`](product-roadmap.md)），老师侧的第一个交付物是“班级知识点掌握分布”。
-它读的是 `mastery_states`，而这张表当前的两个建模选择都会让那张图说谎。按 T0 的定义
-（“会产生错误学习记录的问题必须先修复”），这一项排在评测集建设之前：
+**T0 收口（2026-08-29）· 知识点实体与 mastery-v2**：代码、迁移脚本、并发锁和测试已完成。
+`knowledge_points` 以 `publication_id + normalized_name` 建立发布版本作用域内的实体；服务端从发布题目解析
+知识点，作答保存 `knowledge_point_id`；`mastery_states` 按每道题最新证据重建，并记录证据置信度、算法版本
+和计算时间。详见 [`ADR-001`](adr/001-knowledge-point-identity-and-mastery-v2.md)。
 
-- **`knowledge_point` 是 `String(160)` 自由文本，且没有学科/教材维度**
-  （`apps/api/persistence/schema.py`，同时是 `mastery_states` 的主键之一）。单人 Demo 撞不上，
-  一个学科组进来立刻撞——“函数”在初中和高中是两回事，跨教材的同名知识点会被合并成同一行掌握度。
-  它同时堵死了按知识点类型（记忆 / 概念 / 程序 / 设计）分化复习间隔与掌握判定的路：
-  “解一元一次方程”该用准确率卡，“理解为什么要移项”该让学生讲一遍，现在共用一把尺子。
-- **掌握度是累加式 EMA**（`learning_store.record_exercise_attempt`：`score = prev*0.7 + target*0.3`）。
-  累加意味着重做一道已经会的题会把分数一路刷高，而早期的错误会长期拖低；且没有低置信度封顶，
-  “蒙对一次”和“稳定答对五次”在数值上不可区分。正确口径是**按每道题的最新一次尝试重算**
-  （derived，而非 accumulated），并在证据不足时封顶。
-
-两项是同一次迁移：`knowledge_points` 维表（带 `subject_id` 与类型）+ `mastery_states` 换主键 +
-重算函数。重算逻辑放 `domain/learning/` 下的纯函数（无 I/O），这样后续换成更复杂的掌握度模型
-（IRT/BKT 之类）只替换这一个函数，`learning_store` 不用动。
-
-因为掌握度改成派生量，迁移**不需要保留旧的 EMA 分数**——直接从 `exercise_attempts` 的历史重算，
-这本身就是派生设计的收益之一。注意本项目没有 Alembic（表由 `create_all()` 初始化），
-需要配套一次性迁移脚本：建表、补列、回填 `knowledge_point_id`、重算、计数校验。
-现有断言旧口径的测试（`tests/test_learning_runtime.py` 里 `score == 0.3`）需要同步更新。
+实际开发 PostgreSQL 已完成 `dry-run/apply/verify`：6 条作答记录已回填、5 条掌握度投影已重建，旧表保留且
+无空知识点 ID。空的新数据库不需要手动迁移；已有旧表的数据库必须显式迁移。跨教材知识点是否需要升级到
+学科/教材作用域，留到老师视图前基于真实使用场景决定，不在本次 T0 中提前建模。
 
 实施要求：新引入的枚举（知识点类型、错因分类）必须自带**旧值映射**——在 `Enum._missing_` 里把
 已删除或改名的取值映射到最近的现存值。本项目用 PostgreSQL JSONB 存学习证据，枚举一改，
@@ -291,7 +276,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
   浏览器内小模型 → 固定模板提示，实验失败可整体移除且不影响其他层。
 - [ ] 版本化轻量知识点树（`id`/`name`/`parent_id`/`taxonomy_version`/`status`），作为 P2 数据治理实验。
   知识标签从已审核内容派生（Source Artifact → Document Blocks → Learning Objects → Knowledge Tags），
-  先服务错题归类、掌握度聚合和教材知识点映射；当前知识点只是字符串和 JSON 数组，尚无稳定实体。
+  当前已有发布版本作用域内的稳定知识点实体，尚未建立父子关系、课标版本和跨教材映射。
   只有跨教材概念检索、先修关系推荐需求真实出现后再评估升级为正式图谱；不引入图数据库、embedding
   或向量基础设施——OCR 错误会被图谱关系放大，派生索引先行可以把这个风险限制在可重建的层。
 

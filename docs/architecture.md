@@ -160,7 +160,8 @@ flowchart TB
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
-| 教材与学习存储 | `apps/api/persistence/app_store.py`、各领域 Store | 应用组合 Store 共享引擎，领域 Store 分别保存教材、课程、作答和掌握度 |
+| 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
+| 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `apps/api/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
@@ -401,7 +402,9 @@ revision 是不可变证据；规则修复不会偷偷改写历史产物，必�
 
 ```text
 题块 + 来源图片
+  → 生成模型前将 Markdown 图片引用替换为 `⟦IMG_N⟧` 占位符
   → 生成模型（JSON Schema）输出题干、选项、答案、四步讲解和引导卡
+  → 确定性校验占位符数量与顺序，再恢复原始图片引用
   → attach_question_source 绑定题号、页码、题干图和选项图
   → 统一审核模型检查文字、公式、单位、讲解，以及题干图/选项图的归属和事实
   → 审核后再次绑定来源图片，防止模型删除图片或把文件名写进正文
@@ -421,9 +424,12 @@ revision 是不可变证据；规则修复不会偷偷改写历史产物，必�
 
 ```text
 OCR 题块 + 来源图片
+  → 生成模型前将 Markdown 图片引用替换为 `⟦IMG_N⟧` 占位符
   → 生成模型按 JSON Schema 输出候选题
+  → 确定性校验占位符数量与顺序，再恢复原始图片引用
   → attach_question_source 绑定来源
-  → 同一个审核模型执行文字审核；有图片时继续执行视觉审核
+  → 同一个审核模型以相同占位符执行文字审核；有图片时继续执行视觉审核
+  → 审校返回后再次校验并恢复图片引用
   → 审核后再次绑定来源，避免模型改坏图片归属
   → 确定性修复公式、`(A)`/`A.` 等选项标记和图片结构
   → 构建 contentBlocks
@@ -466,7 +472,8 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 题干图按其在题干中出现的位置就地渲染，而不是整批贴在文字之后。清理图片引用时会同时记录
   每张图在清理后文本中的偏移（`extract_image_placements`），内容块据此在原位插入 `image` 块。
   只有当记录到的位置覆盖全部题干图、且顺序与 OCR 来源一致时才启用；任何不一致都回退到整批追加，
-  宁可版式不理想也不要把图放到错误位置。生成提示词要求模型原样保留 `![](images/xxx.jpg)` 引用。
+  宁可版式不理想也不要把图放到错误位置。生成和文字审校模型看到的是 `⟦IMG_N⟧` 占位符，返回后
+  才恢复为原始 Markdown；占位符丢失或乱序会被质量门禁标记为 `needs_review`。
 - MinerU 会把统计表输出成原始 `<table>` HTML。这类内容由后端用标准库 `html.parser` 解析成结构化
   `table` 内容块，并保留在题干中的原始位置；前端只渲染结构化块，不做 HTML 解析。
   `prompt` 字段仍保留原始 OCR 文本作为来源审计事实，只有 `contentBlocks` 会渲染给学生。
@@ -510,8 +517,11 @@ POST /api/tts
 - `batch_questions.payload_json` 保存结构化题目和审校信息。
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
-- `learning_sessions.publication_id` 绑定整份互动试卷，`exercise_attempts` 和 `mastery_states` 保存作答与
-  知识点掌握证据。
+- `learning_sessions.publication_id` 绑定整份互动试卷；`knowledge_points` 使用发布版本和规范化名称生成稳定
+  `knowledge_point_id`，`exercise_attempts` 保存服务端解析出的题目归属，`mastery_states` 以
+  `(learner_id, knowledge_point_id)` 为键保存 `raw_score`、`score`、`evidence_confidence`、`evidence_count`、
+  `algorithm_version` 和 `computed_at` 等掌握度投影。重复作答仍保留在日志中，但派生时每个发布版本的每道题只
+  取最新作答，因此离线乱序不会污染结果。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。

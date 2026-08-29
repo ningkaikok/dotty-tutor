@@ -19,7 +19,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| T0 | 知识点实体化 + 掌握度改为派生量（老师看板的前置，当前口径会产生错误的掌握记录） | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（结构维度语料、Badcase 回放循环已落地） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -50,6 +50,8 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | 不可变审计与修订链 | `question_revisions`（带 `previous_revision_id`）+ `run_snapshots` 记录实际运行配置 | 参考实现的审计更薄 |
 | 后台任务幂等 | `background_jobs.idempotency_key` + `uq_background_jobs_idempotency` 唯一索引 | 同等 |
 | 内容质量评测闭环 | `apps/api/evaluation/`：badcase / judge / replay / compare / corpus | **参考实现没有对应物**，这是本项目的差异化资产 |
+| OCR 引擎路由与降级 | `choose_ocr_provider` 按信号自动路由（短文字+图片、公式信号 → MinerU，其余走 pypdf）；`ocr_preflight` 的扫描页信号参与路由；**质量门禁不达标时向上升级** pypdf → MinerU；运行时异常降级到 `text-layer-fallback` → `ocr-failed`，`run` 里记 `fallback`/`mode` 可追溯 | 参考实现只有全局单引擎 + 失败即跳过，**无自动探测、无降级链、无向上升级** |
+| MinerU 产物定位 | `OcrRuntime.parse` 用临时目录 + `rglob("*.md")` 按文件大小降序取最大的一份 | 参考实现要靠三级候选目录兜底去捞 CLI 产物树；本项目这一招更简单，且同样不受 MinerU 版本目录结构变动影响 |
 | 语音多级回退 | Azure Speech → Qwen3-TTS → 浏览器 Web Speech | 参考实现只有适配层，无回退链 |
 | 角色分离 | 学生端不暴露 OCR、模型和上传配置 | 参考实现把模型/引擎选择全部摊给用户 |
 
@@ -67,12 +69,11 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 - 选择、多选、填空和数值题已由确定性答案引擎判定（`apps/api/answer_evaluator.py`）；简答题和证明类
   内容仍无统一判题，多小问结构（`subQuestions`)尚未支持。
 - 快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题。
-- 数据库表由 `create_all()` 初始化，尚无 Alembic 迁移历史。
+- 数据库表由 `create_all()` 初始化；mastery-v2 已有一次性迁移脚本，但尚无通用 Alembic 迁移历史。
 - 已有结构化日志和请求 ID，但尚无集中式指标、追踪、错误监控和自动备份。
 - 错题章节和知识点目前由模型建议、学生确认，尚未关联版本化教材知识树。
-- 知识点在库里是自由文本（`knowledge_point String(160)`，且是 `mastery_states` 的主键之一），
-  没有学科/教材维度，跨教材同名知识点会合并；掌握度是累加式 EMA，重复练习已掌握的题会虚高，
-  且无低置信度封顶。两者均已列入 T0 待修（见 [`engineering-roadmap.md`](engineering-roadmap.md)）。
+- 知识点已通过 `knowledge_points` 建立稳定实体，当前按发布版本作用域隔离；掌握度已改为按最新不同题证据
+  派生，并设置低证据置信度上限。跨教材聚合仍未建模，需等老师视图的真实使用场景再决定身份维度。
 - 没有班级、作业指派和教师视图：学生自选已发布试卷，老师看不到班级层面的掌握分布。
 - 错题陪练已实现对话线程、受约束状态机、按错误原因生成的变式验证、进阶本迁移和 1/3/7 天复习进度闭环。
 
@@ -82,8 +83,9 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
   只有出现"多代理并行编排、跨请求长流程恢复、同一编排逻辑在两个以上流程重复"信号时，才局部评估；
   详细触发条件见 [engineering-roadmap](engineering-roadmap.md) 的架构边界一节。
 - **暂不引入 TanStack Query / Zod**：理由和重评条件见 engineering-roadmap 的前端工具决策一节。
-- **数据基线不迁移**：项目只支持全新数据库，切换版本前清空本地库和 `data/`（见 CHANGELOG v0.20.0），
-  这是个人 Demo 场景的显式决策。
+- **学习数据采用显式迁移**：`create_all()` 只初始化缺失表；mastery-v2 通过
+  `scripts/migrate_mastery_v2.py` 进行 dry-run/apply/verify。进入公网生产前仍需补齐通用版本化迁移历史、
+  备份恢复演练和回滚流程。
 
 ## 下一阶段：AI 运行治理与后台任务
 

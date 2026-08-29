@@ -39,6 +39,7 @@ export interface PublishedLesson {
   title: string;
   version: number;
   status: string;
+  knowledgePointId: string;
   questionPayload: QuestionPayload;
   guideCards: Array<Record<string, unknown>>;
 }

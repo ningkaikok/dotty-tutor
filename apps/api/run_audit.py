@@ -22,7 +22,7 @@ from infrastructure.runtime.model_runtime import runtime as model_runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 
-PROMPT_VERSION = "lesson-generation-v1"
+PROMPT_VERSION = "lesson-generation-v2"
 VALIDATOR_VERSION = "p0-v4"
 SCHEMA_VERSION = hashlib.sha256(
     json.dumps(LESSON_SCHEMA, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()

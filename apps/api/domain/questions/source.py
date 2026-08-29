@@ -41,7 +41,8 @@ QUESTION_SECTION_PATTERN = re.compile(
     r"应\s*用\s*题|作\s*图\s*题|证\s*明\s*题|实\s*验\s*题|综\s*合\s*题|"
     r"单\s*项\s*选\s*择\s*题|多\s*项\s*选\s*择\s*题|非\s*选\s*择\s*题)"
 )
-MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+# Keep malformed OCR input linear-time; these spans never need to backtrack.
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*+\]\(([^)]++)\)")
 # 只匹配"图片引用后紧跟第N题图/第N题"这种明确格式，中间只允许空白，不允许跨越其他
 # 内容——这是比文本位置更可靠的归属信号，但格式必须足够窄才不会误伤正常题干。
 IMAGE_CAPTION_PATTERN = re.compile(

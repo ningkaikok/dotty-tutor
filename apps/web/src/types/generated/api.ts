@@ -1233,8 +1233,6 @@ export interface components {
              * @default 0
              */
             hintLevel: number;
-            /** Knowledgepoint */
-            knowledgePoint: string;
             /** Questionid */
             questionId: string;
             /** Response */

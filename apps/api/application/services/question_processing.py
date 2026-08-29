@@ -97,6 +97,14 @@ def _generate_validated_question(
             )
         )
         normalize_image_choice_question(payload, block, images)
+        placeholder_audits = [
+            audit
+            for audit in (model_run.get("imagePlaceholderAudit"), review_run.get("imagePlaceholderAudit"))
+            if isinstance(audit, dict)
+        ]
+        if placeholder_audits:
+            # 这是质量门禁的瞬时输入，不进入最终题目契约；门禁会把失败证据写入 quality。
+            payload["_imagePlaceholderAudits"] = placeholder_audits
         quality = apply_question_quality_gate(payload, block, images)
         can_retry = (
             quality["status"] != "ready"

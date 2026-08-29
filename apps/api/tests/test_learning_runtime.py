@@ -80,7 +80,7 @@ class LearningStoreTests(unittest.TestCase):
                 duration_ms=800,
                 created_at=2.0,
             )
-            self.assertEqual(result["mastery"]["score"], 0.3)
+            self.assertEqual(result["mastery"]["score"], 0.6)
             self.assertEqual(result["mastery"]["attemptCount"], 1)
             self.assertEqual(store.list_mastery("student-1")[0]["correctCount"], 1)
 
@@ -167,6 +167,7 @@ class LearningStoreTests(unittest.TestCase):
             self.assertEqual(store.get_learning_session("paper-session")["attempts"], [{
                 "attemptId": "stable-attempt",
                 "questionId": "lesson-a",
+                "knowledgePointId": first["mastery"]["knowledgePointId"],
                 "knowledgePoint": "分数",
                 "response": {"text": "1/2"},
                 "assessment": "correct",
