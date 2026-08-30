@@ -58,8 +58,22 @@ class LearningStoreTests(unittest.TestCase):
                     "title": "移项",
                     "payload": {"renderer": "geometry", "action": "show-base"},
                 }],
+                "questionPayload": {
+                    "question": {"id": "question-1", "knowledgePoint": "移项"},
+                    "quality": {"status": "ready"},
+                },
             }
             store.save_lesson(document)
+            store.create_publication(
+                publication_id="paper-1",
+                title="学习试卷",
+                source_upload_id=None,
+                lesson_ids=["lesson-1"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("paper-1", "in_review")
+            store.update_publication_status("paper-1", "published")
             restored = store.load_lesson("lesson-1")
             self.assertEqual(restored["blocks"][0]["type"], "diagram")
 
@@ -230,6 +244,28 @@ class LearningStoreTests(unittest.TestCase):
                 database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
                 data_root=directory,
             )
+            store.save_lesson({
+                "lessonId": "lesson-1",
+                "title": "分数",
+                "version": 1,
+                "status": "draft",
+                "knowledgePoints": ["分数"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {"id": "question-1", "knowledgePoint": "分数"},
+                    "quality": {"status": "ready"},
+                },
+            })
+            store.create_publication(
+                publication_id="paper-1",
+                title="学习试卷",
+                source_upload_id=None,
+                lesson_ids=["lesson-1"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("paper-1", "in_review")
+            store.update_publication_status("paper-1", "published")
             for session_id in ("session-a", "session-b"):
                 store.create_learning_session(
                     session_id=session_id,
@@ -369,7 +405,8 @@ class LearningRouteTests(unittest.TestCase):
             repeated = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)
 
             self.assertEqual(first.status_code, 200)
-            self.assertEqual(first.json()["autoMistake"]["status"], "unmastered")
+            self.assertEqual(first.json()["autoMistake"]["status"], "pending_confirmation")
+            self.assertIsNone(first.json()["autoMistake"]["errorReason"])
             self.assertEqual(first.json()["autoMistake"]["contentType"], "application/vnd.dotty.publication+json")
             self.assertEqual(repeated.json()["autoMistake"]["mistakeId"], first.json()["autoMistake"]["mistakeId"])
             self.assertEqual(len(mistake_store.list("student-1")), 1)

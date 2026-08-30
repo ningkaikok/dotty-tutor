@@ -23,6 +23,37 @@ QuestionType = Literal[
     "draw-line",
 ]
 
+SUB_QUESTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 40},
+        "label": {"type": "string", "minLength": 1, "maxLength": 20},
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 800},
+        "questionType": {"type": "string", "enum": list(QuestionType.__args__)},
+        "evaluation": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "mode": {"type": "string", "enum": ["deterministic", "tutor"]},
+                "reason": {"type": ["string", "null"], "maxLength": 160},
+            },
+            "required": ["mode", "reason"],
+        },
+        "correctAnswer": {"type": ["string", "null"], "maxLength": 120},
+        "correctAnswers": {"type": ["array", "null"], "items": {"type": "string", "maxLength": 120}},
+        "options": {"type": ["array", "null"], "items": {"type": "string", "maxLength": 120}},
+        "blanks": {"type": ["array", "null"], "items": {"type": "object"}},
+        "answerSpec": {"type": ["object", "null"]},
+        "interaction": {"type": ["object", "null"]},
+        "contentBlocks": {"type": ["array", "null"], "items": {"type": "object"}},
+    },
+    "required": [
+        "id", "label", "prompt", "questionType", "evaluation", "correctAnswer",
+        "correctAnswers", "options", "blanks", "answerSpec", "interaction", "contentBlocks",
+    ],
+}
+
 CANVAS_ACTIONS = ["show-base", "show-point-p", "show-triangles", "show-bisector"]
 
 QUESTION = {
@@ -173,6 +204,11 @@ LESSON_SCHEMA = {
             },
             "required": ["type", "instruction", "points", "requiredConnections"],
         },
+        "subQuestions": {
+            "type": "array",
+            "maxItems": 12,
+            "items": SUB_QUESTION_SCHEMA,
+        },
         "givens": {"type": "array", "maxItems": 5, "items": {"type": "string", "maxLength": 80}},
         "options": _choice_schema(),
         "imageReferences": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 160}},
@@ -211,7 +247,7 @@ LESSON_SCHEMA = {
     "required": [
         "chapter", "knowledgePoint", "questionNumber", "questionType", "selectionMode", "prompt",
         "correctAnswer", "correctAnswers", "blanks", "answerSpec", "interaction", "givens", "options", "imageReferences",
-        "lessonSteps", "guideCards",
+        "subQuestions", "lessonSteps", "guideCards",
     ],
 }
 

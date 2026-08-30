@@ -58,6 +58,15 @@ def build_review_router(
             point = item["knowledgePoint"] or "未分类"
             knowledge[point]["total"] += 1
             knowledge[point]["mastered"] += int(item["status"] == "mastered")
+        effect: dict[str, Any] = {}
+        if engine is not None:
+            funnel = build_funnel_snapshot(engine, learnerId)
+            effect = funnel.get("learningEffect", {})
+            verification = funnel.get("verification", {})
+            review = funnel.get("review", {})
+        else:
+            verification = {}
+            review = {}
         return {
             "learnerId": learnerId,
             "totalMistakes": len(mistakes),
@@ -68,6 +77,11 @@ def build_review_router(
             "reviewAccuracy": round(
                 sum(task["assessment"] == "correct" for task in completed) / len(completed), 4
             ) if completed else 0,
+            "verificationAccuracy": verification.get("passRate"),
+            "reviewCompletionRate": review.get("completionRate", round(
+                len(completed) / len(tasks), 4
+            ) if tasks else None),
+            "sameKnowledgePointReerrorRate": effect.get("sameKnowledgePointReerrorRate"),
             "knowledgePoints": [
                 {"knowledgePoint": point, **counts}
                 for point, counts in sorted(knowledge.items())

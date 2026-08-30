@@ -42,6 +42,9 @@ export interface LearningProgress {
   dueReviewCount: number;
   completedReviewCount: number;
   reviewAccuracy: number;
+  verificationAccuracy: number | null;
+  reviewCompletionRate: number | null;
+  sameKnowledgePointReerrorRate: number | null;
   knowledgePoints: KnowledgeProgress[];
 }
 

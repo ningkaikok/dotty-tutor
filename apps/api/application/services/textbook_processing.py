@@ -733,6 +733,7 @@ class TextbookProcessingService:
                 "missingQuestionNumbers": [],
                 "unidentifiedPages": [],
                 "imageAttributionConflicts": [],
+                "imageAttributionAudit": [],
                 "warnings": [],
                 "blockers": [],
                 "checkedBatchCount": len(result.get("batches") or []),
@@ -751,12 +752,18 @@ class TextbookProcessingService:
                 result=result,
                 question_limit=MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
             )
+            attribution_audit: list[dict[str, Any]] = []
             reports.append({
                 "id": batch["id"],
                 "startPage": batch["startPage"],
                 "endPage": batch["endPage"],
                 "source": source,
-                "blocks": split_question_sources(source, asset_dir=asset_dir),
+                "blocks": split_question_sources(
+                    source,
+                    asset_dir=asset_dir,
+                    attribution_audit=attribution_audit,
+                ),
+                "imageAttributionAudit": attribution_audit,
             })
         report = build_import_quality_report(
             reports,

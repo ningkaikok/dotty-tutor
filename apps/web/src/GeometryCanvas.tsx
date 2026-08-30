@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import MathText from "./MathText";
+import { RichText } from "./RichText";
 import type { CanvasAction } from "./types/index";
 
 interface GeometryCanvasProps {
@@ -133,7 +133,7 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
       <canvas ref={ref} className="geometry-canvas" aria-label="动态讲解画板" />
       {!geometryMode && (
         <div className="geometry-canvas-text" aria-label="画布讲解文字">
-          <MathText text={text} />
+          <RichText text={text} />
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
-import MathText from "../../../MathText";
+import { RichText } from "../../../RichText";
 import type { ReviewTask, StructuredAnswerInput } from "../../../types/index";
 import { buildStructuredAnswer } from "../structuredAnswer";
 
@@ -80,7 +80,7 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
       {task.status === "completed" && (
         <div className={`review-result ${task.assessment}`}>
           <strong>{task.assessment === "correct" ? "复习正确" : "本次仍需巩固"}</strong>
-          <p><MathText text={task.feedback} /></p>
+          <p><RichText text={task.feedback} /></p>
         </div>
       )}
     </article>

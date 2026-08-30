@@ -78,6 +78,17 @@ def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tol
 EVALUATOR_VERSION = "answer-evaluator-v1"
 
 
+def _has_submitted_sub_answer(value: Any) -> bool:
+    """Return whether a tutor-only sub-question has meaningful student input."""
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return any(_has_submitted_sub_answer(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_submitted_sub_answer(item) for item in value.values())
+    return value is not None
+
+
 def _result(
     assessment: str,
     reply: str,
@@ -111,6 +122,9 @@ def evaluate_structured_answer(
     调用方必须回退到模型反馈，而不是把 None 当作"答错"。
     """
     interaction = interaction_result or {}
+    sub_questions = question.get("subQuestions")
+    if isinstance(sub_questions, list) and sub_questions:
+        return _evaluate_sub_questions(sub_questions, student_input, interaction)
     question_type = question.get("questionType")
 
     if question_type in {"choice", "multi-select"}:
@@ -194,4 +208,156 @@ def evaluate_structured_answer(
             return _result("correct", "答案正确。请再说明关键计算或公式依据。", "回看最后一步，确认结果和单位都符合题意。", evidence)
         return _result("incorrect", "这个结果还不正确。请检查运算、符号和单位后再试一次。", "从已知条件开始，逐步检查每一行计算。", evidence)
 
+    if question_type == "short-answer" and (
+        isinstance(question.get("evaluation"), dict)
+        and question["evaluation"].get("mode") == "deterministic"
+    ):
+        expected_values = question.get("correctAnswers") or []
+        if not expected_values and question.get("correctAnswer") not in (None, ""):
+            expected_values = [question["correctAnswer"]]
+        actual = interaction.get("text") or student_input
+        if not expected_values or not str(actual).strip():
+            return None
+        correct = _check_single_answer(actual, expected_values, "text", 0)
+        evidence = {
+            "strategy": "short-answer-text-match",
+            "submittedRaw": str(actual)[:80],
+            "expectedCount": len(expected_values),
+        }
+        return _result(
+            "correct" if correct else "incorrect",
+            "作答正确。请再说明依据。" if correct else "文字答案还不正确，请回到题干检查关键概念。",
+            "先圈出题干中的关键词，再逐句核对你的答案。",
+            evidence,
+        )
+
+    if question_type == "draw-line":
+        interaction_spec = question.get("interaction")
+        required = interaction_spec.get("requiredConnections") if isinstance(interaction_spec, dict) else None
+        submitted = interaction.get("connections")
+        if not isinstance(required, list) or not required or not isinstance(submitted, list) or not submitted:
+            return None
+
+        def normalize_connection(item: Any) -> tuple[str, str] | None:
+            if not isinstance(item, list) or len(item) != 2:
+                return None
+            values = sorted(str(value) for value in item)
+            return values[0], values[1]
+
+        expected_connections = {item for item in (normalize_connection(value) for value in required) if item}
+        submitted_connections = {item for item in (normalize_connection(value) for value in submitted) if item}
+        correct = submitted_connections == expected_connections
+        assessment = "correct" if correct else "partial" if submitted_connections & expected_connections else "incorrect"
+        evidence = {
+            "strategy": "line-connections",
+            "submittedCount": len(submitted_connections),
+            "requiredCount": len(expected_connections),
+        }
+        return _result(
+            assessment,
+            "连接关系正确。请说说这些点之间为什么应当这样对应。" if correct else "已完成部分连接，请逐条核对剩余对应点。" if assessment == "partial" else "连接关系还不正确，请逐条核对对应点。",
+            "按题目给出的关系逐条检查起点和终点。",
+            evidence,
+        )
+
     return None
+
+
+def _evaluate_sub_questions(
+    sub_questions: list[Any],
+    student_input: str,
+    interaction: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Evaluate each structured sub-question without giving tutor-only parts a score."""
+    answers = interaction.get("subQuestionAnswers")
+    if not isinstance(answers, dict):
+        answers = {}
+    parts: list[dict[str, Any]] = []
+    deterministic_count = 0
+    matched_count = 0
+    ungraded_count = 0
+    has_tutor_part = False
+    has_incomplete_part = False
+    has_incorrect_part = False
+
+    for index, raw_sub_question in enumerate(sub_questions, start=1):
+        if not isinstance(raw_sub_question, dict):
+            continue
+        sub_id = str(raw_sub_question.get("id") or f"sq-{index}")
+        evaluation = raw_sub_question.get("evaluation")
+        mode = evaluation.get("mode") if isinstance(evaluation, dict) else None
+        answer = answers.get(sub_id)
+        answer = answer if isinstance(answer, dict) else {}
+        if not answer and len(sub_questions) == 1 and student_input.strip():
+            answer = {"text": student_input}
+        if mode == "tutor":
+            has_tutor_part = True
+            submitted = _has_submitted_sub_answer(answer.get("text")) or _has_submitted_sub_answer(answer)
+            parts.append({
+                "subQuestionId": sub_id,
+                "status": "tutor" if submitted else "incomplete",
+                "feedbackRequired": True,
+            })
+            if not submitted:
+                has_incomplete_part = True
+            ungraded_count += 1
+            continue
+
+        deterministic_count += 1
+        result = evaluate_structured_answer(raw_sub_question, "", answer)
+        if result is None:
+            parts.append({"subQuestionId": sub_id, "status": "ungraded", "feedbackRequired": True})
+            ungraded_count += 1
+            has_incomplete_part = True
+            continue
+        matched = result.get("assessment") == "correct"
+        parts.append({"subQuestionId": sub_id, "status": "correct" if matched else "incorrect"})
+        if matched:
+            matched_count += 1
+        else:
+            has_incorrect_part = True
+
+    if not parts:
+        return None
+    complete = not has_incomplete_part
+    # Eligibility describes whether this question can produce objective
+    # evidence, not whether this particular submission was correct. A wrong
+    # deterministic answer is still valuable negative evidence for mastery;
+    # only incomplete/ungraded parts and tutor-only parts exclude the attempt.
+    mastery_eligible = complete and not has_tutor_part and ungraded_count == 0
+    if has_incorrect_part:
+        assessment = "incorrect"
+        reply = "有些小问还不正确。请按小问顺序检查每一步，再重新提交。"
+        hint = "先定位第一个标记为需要修正的小问，回到它的已知条件。"
+    elif not complete:
+        assessment = "partial"
+        reply = "还需要完成所有小问，再一起检查答案。"
+        hint = "按小问编号逐项作答；开放性小问请写出你的理由。"
+    elif has_tutor_part:
+        assessment = "partial"
+        reply = "可判分的小问已完成；陪练小问会由老师继续反馈，暂不记为客观全对。"
+        hint = "继续补充陪练小问的理由或推导过程。"
+    else:
+        assessment = "correct"
+        reply = "各小问答案正确。请再回顾每一步为什么成立。"
+        hint = "检查每个小问使用的条件，并说出关键依据。"
+    evidence = {
+        "strategy": "sub-question-parts",
+        "parts": parts,
+        "gradableCount": deterministic_count,
+        "matchedCount": matched_count,
+        "ungradedCount": ungraded_count,
+        "complete": complete,
+        "masteryEligible": mastery_eligible,
+    }
+    result = _result(assessment, reply, hint, evidence)
+    result["evaluationSummary"] = {
+        "strategy": "sub-question-parts",
+        "parts": parts,
+        "gradableCount": deterministic_count,
+        "matchedCount": matched_count,
+        "ungradedCount": ungraded_count,
+        "complete": complete,
+        "masteryEligible": mastery_eligible,
+    }
+    return result

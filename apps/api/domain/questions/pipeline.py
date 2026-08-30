@@ -24,7 +24,8 @@ from infrastructure.runtime.review_runtime import (
 )
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
-MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+# Possessive quantifiers prevent backtracking on malformed, user-provided OCR text.
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*+\]\(([^)]++)\)")
 # 右方括号不计入路径：模型会把图片写成 ``[主视图图片：images/x.jpg]``，若把 ``]`` 当作
 # 路径的一部分吃掉，剩下的左方括号就会变成无法配对的残缺文本。
 BARE_IMAGE_REFERENCE_PATTERN = re.compile(r"(?<![A-Za-z0-9_.-])(?:images/|/api/uploads/)[^\s)\]<>]+")
@@ -795,12 +796,65 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             errors.append(f"第 {index} 个公式环境不完整：begin={begins}，end={ends}，{evidence}")
     if not prompt.strip():
         errors.append("题干为空")
-    # 多小问题目当前没有结构化表示：questionType、correctAnswer 和 answerSpec 都是
-    # 单答案模型。实测的坏样本是一道 short-answer 证明题带着 `answerType: numeric`、
-    # `expected: "5/2"`——那其实只是第 (2) 问的答案。今天 short-answer 不走确定性
-    # 判题，这条错配数据读不到所以无害；一旦有人把题型改成 numeric，答对第 (1) 问
-    # 的学生就会被判错。在 subQuestions 结构落地前（见 docs/engineering-roadmap.md），
-    # 先把这种沉默的错配变成显式错误。
+    # 多小问必须有独立的答案边界。父题答案和小问答案同时存在会产生两份真相，
+    # tutor-only 小问携带标准答案则会把开放性证明伪装成确定性判题。
+    sub_questions = question.get("subQuestions")
+    has_structured_sub_questions = isinstance(sub_questions, list) and bool(sub_questions)
+    detected_sub_questions = len(SUB_QUESTION_PATTERN.findall(prompt)) >= 2
+    if detected_sub_questions and not has_structured_sub_questions:
+        errors.append("检测到多个小问但缺少 subQuestions 结构，请人工复核")
+    if has_structured_sub_questions:
+        interaction = question.get("interaction")
+        has_parent_interaction = isinstance(interaction, dict) and (
+            interaction.get("type") not in (None, "", "none")
+            or any(interaction.get(field) not in (None, "", [], {}) for field in (
+                "instruction", "points", "requiredConnections",
+            ))
+        )
+        parent_answer_fields = (
+            question.get("correctAnswer"), question.get("correctAnswers"),
+            question.get("blanks"), question.get("answerSpec"),
+        )
+        if has_parent_interaction or any(value not in (None, "", [], {}) for value in parent_answer_fields):
+            errors.append("多小问题目不得同时携带父题答案结构")
+        seen_ids: set[str] = set()
+        for index, sub_question in enumerate(sub_questions, start=1):
+            if not isinstance(sub_question, dict):
+                errors.append(f"第 {index} 个小问不是对象")
+                continue
+            sub_id = str(sub_question.get("id") or "").strip()
+            if not sub_id:
+                errors.append(f"第 {index} 个小问缺少稳定 id")
+            elif sub_id in seen_ids:
+                errors.append(f"小问 id 重复：{sub_id}")
+            seen_ids.add(sub_id)
+            for field in ("label", "prompt", "questionType"):
+                if not str(sub_question.get(field) or "").strip():
+                    errors.append(f"小问 {sub_id or index} 缺少 {field}")
+            evaluation = sub_question.get("evaluation")
+            mode = evaluation.get("mode") if isinstance(evaluation, dict) else None
+            if mode not in {"deterministic", "tutor"}:
+                errors.append(f"小问 {sub_id or index} 的 evaluation.mode 无效")
+                continue
+            if mode == "tutor":
+                if any(sub_question.get(field) not in (None, "", [], {}) for field in (
+                    "correctAnswer", "correctAnswers", "blanks", "answerSpec",
+                )):
+                    errors.append(f"tutor-only 小问 {sub_id or index} 不得携带自动判分答案")
+            elif str(sub_question.get("questionType")) in DETERMINISTIC_ANSWER_TYPES or str(sub_question.get("questionType")) in {"short-answer", "draw-line"}:
+                has_answer = (
+                    sub_question.get("answerSpec") not in (None, {}, "")
+                    or sub_question.get("correctAnswers") not in (None, [], "")
+                    or sub_question.get("correctAnswer") not in (None, "")
+                    or sub_question.get("blanks") not in (None, [], "")
+                    or (
+                        str(sub_question.get("questionType")) == "draw-line"
+                        and isinstance(sub_question.get("interaction"), dict)
+                        and sub_question["interaction"].get("requiredConnections")
+                    )
+                )
+                if not has_answer:
+                    errors.append(f"deterministic 小问 {sub_id or index} 缺少答案规范")
     question_type = str(question.get("questionType", ""))
     answer_spec = question.get("answerSpec")
     if question_type not in DETERMINISTIC_ANSWER_TYPES and isinstance(answer_spec, dict) and answer_spec.get("expected"):
@@ -808,8 +862,6 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             f"题型 {question_type} 不参与确定性判题，却携带 answerSpec："
             f"{str(answer_spec.get('expected'))[:40]}"
         )
-    if SUB_QUESTION_PATTERN.search(prompt) and len(SUB_QUESTION_PATTERN.findall(prompt)) >= 2:
-        warnings.append("题干包含多个小问，当前数据模型只保存一个答案；发布前请人工确认判题范围")
     prompt_has_percent = bool(re.search(r"(?:%|\\%)", prompt))
     temperature_options = options and all(
         "℃" in option or bool(re.search(r"\\circ\}?\\mathrm\{C\}", option))
@@ -819,7 +871,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
         errors.append("题干使用百分比，但选项均为温度值，单位语义冲突")
     if not source_block.strip():
         warnings.append("缺少 OCR 原始题块，无法进行来源覆盖校验")
-    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v5", "validatedAt": time.time()}
+    return {"status": "ready" if not errors else "needs_review", "errors": errors, "warnings": warnings, "validatorVersion": "p0-v6", "validatedAt": time.time()}
 
 
 def apply_question_quality_gate(payload: dict[str, Any], source_block: str, source_images: list[str]) -> dict[str, Any]:

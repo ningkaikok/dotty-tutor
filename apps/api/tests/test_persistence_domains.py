@@ -84,6 +84,7 @@ class PersistenceDomainTests(unittest.TestCase):
                         "run_snapshots",
                         "tutor_messages",
                         "tutor_threads",
+                        "variation_attempts",
                         "upload_jobs",
                         "variation_exercises",
                     },

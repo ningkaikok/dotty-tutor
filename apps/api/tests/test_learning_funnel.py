@@ -112,12 +112,18 @@ class LearningFunnelTests(unittest.TestCase):
         # 这本身就是漏斗数字能暴露的"静默失败"类别。
         self.variations.answer(
             created_variation["variationId"], response={"interactionResult": {}},
+            attempt_id="variation-wrong",
+            assessment="incorrect", feedback="",
+        )
+        self.variations.answer(
+            created_variation["variationId"], response={"interactionResult": {}},
+            attempt_id="variation-correct",
             assessment="correct", feedback="",
         )
         snapshot = build_funnel_snapshot(self.engine, "local-demo")
-        self.assertEqual(snapshot["verification"]["answeredVariations"], 1)
+        self.assertEqual(snapshot["verification"]["answeredVariations"], 2)
         self.assertEqual(snapshot["verification"]["correctVariations"], 1)
-        self.assertEqual(snapshot["verification"]["passRate"], 1.0)
+        self.assertEqual(snapshot["verification"]["passRate"], 0.5)
 
         # 复习任务只排一个间隔并完成
         self.reviews.schedule(mistake_id="m-0", learner_id="local-demo", intervals=(1,))

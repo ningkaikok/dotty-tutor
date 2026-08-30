@@ -19,10 +19,13 @@ from sqlalchemy import (
     Text,
     and_,
     create_engine,
+    func,
     or_,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
 variation_metadata = MetaData()
@@ -47,11 +50,40 @@ variation_exercises = Table(
     Column("answered_at", Float),
 )
 
+# A variation row is the current projection used by the practice UI.  Every
+# submission is also appended here so a correction never erases the original
+# wrong answer or its deterministic EvaluationEvidence.
+variation_attempts = Table(
+    "variation_attempts",
+    variation_metadata,
+    Column("attempt_id", String(64), primary_key=True),
+    Column("variation_id", String(64), nullable=False),
+    Column("mistake_id", String(64), nullable=False),
+    Column("learner_id", String(128), nullable=False),
+    Column("attempt_number", Integer, nullable=False),
+    Column("response_json", json_document, nullable=False),
+    Column("evaluation_evidence_json", json_document, nullable=False, default=dict),
+    Column("assessment", String(32), nullable=False),
+    Column("feedback", Text, nullable=False, default=""),
+    Column("created_at", Float, nullable=False),
+)
+
 Index(
     "idx_variation_exercises_mistake",
     variation_exercises.c.mistake_id,
     variation_exercises.c.sequence,
     unique=True,
+)
+Index(
+    "idx_variation_attempts_variation",
+    variation_attempts.c.variation_id,
+    variation_attempts.c.attempt_number,
+    unique=True,
+)
+Index(
+    "idx_variation_attempts_learner",
+    variation_attempts.c.learner_id,
+    variation_attempts.c.created_at.desc(),
 )
 Index(
     "idx_variation_exercises_learner",
@@ -77,6 +109,10 @@ class VariationStore:
             self.engine = engine
         self._initialized = False
         self._initialize_lock = threading.Lock()
+        # Serialize local submissions so the max(attempt_number) allocation
+        # cannot race between concurrent requests.  PostgreSQL also locks the
+        # variation projection below, covering separate worker transactions.
+        self._answer_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
         if self._initialized:
@@ -153,8 +189,8 @@ class VariationStore:
     def mastery_summary(self, mistake_id: str, *, required: int = 1) -> dict[str, Any]:
         """Derive the current streak from evidence instead of a mutable counter."""
         attempts = [
-            item for item in self.list_for_mistake(mistake_id)
-            if item["status"] == "answered"
+            item for variation in self.list_for_mistake(mistake_id)
+            for item in self.list_attempts(variation["variationId"])
         ]
         streak = 0
         for attempt in reversed(attempts):
@@ -168,29 +204,96 @@ class VariationStore:
             "answeredCount": len(attempts),
         }
 
+    def list_attempts(self, variation_id: str) -> list[dict[str, Any]]:
+        """Return immutable submissions in the order they were accepted."""
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                select(variation_attempts)
+                .where(variation_attempts.c.variation_id == variation_id)
+                .order_by(variation_attempts.c.attempt_number)
+            ).mappings().all()
+        return [self._serialize_attempt(row) for row in rows]
+
+    def get_attempt(self, attempt_id: str) -> dict[str, Any] | None:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(variation_attempts).where(
+                    variation_attempts.c.attempt_id == attempt_id
+                )
+            ).mappings().first()
+        return self._serialize_attempt(row) if row else None
+
     def answer(
         self,
         variation_id: str,
         *,
+        attempt_id: str | None = None,
         response: dict[str, Any],
         assessment: str,
         feedback: str,
+        evaluation_evidence: dict[str, Any] | None = None,
+        created_at: float | None = None,
     ) -> dict[str, Any] | None:
-        """Save an answer, allowing correction after an incorrect submission.
+        """Append an answer and update the variation's current projection.
 
-        The SQL predicate is repeated here instead of trusting the earlier read,
-        so two browser requests cannot overwrite a correctly completed question.
-        A correct record is therefore terminal while an incorrect record remains
-        retryable.
+        ``attempt_id`` is the idempotency key.  The append-only row is the source
+        of truth for learning evidence; the variation row remains a convenient
+        latest-state projection for existing clients.  A correct projection is
+        terminal, while an incorrect projection remains retryable.
         """
         self._ensure_initialized()
-        current = self.get(variation_id)
-        if not current or (
-            current["status"] == "answered" and current["assessment"] == "correct"
-        ):
-            return None
-        with self.engine.begin() as connection:
-            result = connection.execute(
+        stable_attempt_id = attempt_id or uuid.uuid4().hex
+        timestamp = created_at or time.time()
+        evidence = evaluation_evidence or {}
+        with self._answer_lock, self.engine.begin() as connection:
+            current = connection.execute(
+                select(variation_exercises)
+                .where(variation_exercises.c.variation_id == variation_id)
+                .with_for_update()
+            ).mappings().first()
+            if not current:
+                return None
+            existing_attempt = connection.execute(
+                select(variation_attempts).where(
+                    variation_attempts.c.attempt_id == stable_attempt_id
+                )
+            ).mappings().first()
+            if existing_attempt:
+                if existing_attempt["variation_id"] != variation_id:
+                    return None
+                saved = self._serialize(current)
+                saved["attemptId"] = existing_attempt["attempt_id"]
+                saved["evaluationEvidence"] = existing_attempt["evaluation_evidence_json"] or {}
+                return saved
+            if current["status"] == "answered" and current["assessment"] == "correct":
+                return None
+            next_number = connection.execute(
+                select(func.coalesce(func.max(variation_attempts.c.attempt_number), 0) + 1)
+                .where(variation_attempts.c.variation_id == variation_id)
+            ).scalar_one()
+            values = {
+                "attempt_id": stable_attempt_id,
+                "variation_id": variation_id,
+                "mistake_id": current["mistake_id"],
+                "learner_id": current["learner_id"],
+                "attempt_number": int(next_number),
+                "response_json": response,
+                "evaluation_evidence_json": evidence,
+                "assessment": assessment,
+                "feedback": feedback,
+                "created_at": timestamp,
+            }
+            insert = (
+                postgresql_insert(variation_attempts)
+                if self.engine.dialect.name == "postgresql"
+                else sqlite_insert(variation_attempts)
+            )
+            result = connection.execute(insert.values(**values).on_conflict_do_nothing())
+            if not result.rowcount:
+                return self._serialize(current)
+            connection.execute(
                 variation_exercises.update()
                 .where(
                     variation_exercises.c.variation_id == variation_id,
@@ -207,10 +310,14 @@ class VariationStore:
                     assessment=assessment,
                     response_json=response,
                     feedback=feedback,
-                    answered_at=time.time(),
+                    answered_at=timestamp,
                 )
             )
-        return self.get(variation_id) if result.rowcount else None
+        saved = self.get(variation_id)
+        if saved is not None:
+            saved["attemptId"] = stable_attempt_id
+            saved["evaluationEvidence"] = evidence
+        return saved
 
     @staticmethod
     def _serialize(row: Any) -> dict[str, Any]:
@@ -229,6 +336,21 @@ class VariationStore:
             "feedback": row["feedback"],
             "createdAt": row["created_at"],
             "answeredAt": row["answered_at"],
+        }
+
+    @staticmethod
+    def _serialize_attempt(row: Any) -> dict[str, Any]:
+        return {
+            "attemptId": row["attempt_id"],
+            "variationId": row["variation_id"],
+            "mistakeId": row["mistake_id"],
+            "learnerId": row["learner_id"],
+            "attemptNumber": row["attempt_number"],
+            "response": row["response_json"] or {},
+            "evaluationEvidence": row["evaluation_evidence_json"] or {},
+            "assessment": row["assessment"],
+            "feedback": row["feedback"],
+            "createdAt": row["created_at"],
         }
 
     def close(self) -> None:

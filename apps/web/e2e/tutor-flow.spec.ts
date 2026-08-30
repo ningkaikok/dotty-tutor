@@ -1,5 +1,16 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  // 业务会话和离线队列按 publication 持久化；测试不能依赖上一次浏览器上下文的残留。
+  await page.addInitScript(() => {
+    const resetMarker = "dotty-e2e-storage-reset";
+    if (window.sessionStorage.getItem(resetMarker)) return;
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.sessionStorage.setItem(resetMarker, "done");
+  });
+});
+
 const TINY_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNg+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",

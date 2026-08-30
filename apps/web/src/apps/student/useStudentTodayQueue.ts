@@ -58,15 +58,19 @@ export function useStudentTodayQueue(): StudentTodayQueue {
 
   useEffect(() => {
     let cancelled = false;
+    // 试卷目录支持取消，卸载时直接中止在途请求；错题和复习进度的 loader 还没有
+    // signal 参数，仍靠 cancelled 守卫拦住迟到的 setState。两者目的相同。
+    const controller = new AbortController();
 
     const errors: string[] = [];
 
-    const publicationsRequest = loadPublishedPublications()
+    const publicationsRequest = loadPublishedPublications(controller.signal)
       .then((items) => {
         if (cancelled) return;
         setPapers(items.map((item) => ({ ...item, started: hasStartedSession(item.publicationId) })));
       })
       .catch((requestError) => {
+        if (controller.signal.aborted) return;
         errors.push(requestError instanceof Error ? requestError.message : "试卷目录加载失败");
       });
 
@@ -97,7 +101,10 @@ export function useStudentTodayQueue(): StudentTodayQueue {
       setLoading(false);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   return { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, loading, error, allFailed };

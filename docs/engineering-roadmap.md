@@ -41,20 +41,21 @@
 不需要再另外准备语料。因此把这两项从队列提前到最优先，先用现成坏样本把金标准集和回放循环建起来，
 再决定下一步修哪个：
 
-1. **T1 / `test/offline-ai-evaluation`**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练；
+1. **T1 / `test/offline-ai-evaluation`（已完成）**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练；
    种子数据直接复用本轮已经写成单测夹具的真实坏样本（`apps/api/tests/test_question_processing.py`、
    `test_question_segmentation.py`、`test_question_content_residue.py`、`test_stem_image_placement.py`
    里的真实 OCR 片段），不必重新采集。
-2. **T1 / `feature/badcase-replay-loop`**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
-   建成后，T0 里剩下的几项开放问题（见下）应该先进金标准集验证影响范围，再决定是否值得单独立项修复，
-   不要再凭感觉判断优先级。
+2. **T1 / `feature/badcase-replay-loop`（已完成）**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
+   确定性报告比较结构回归；Judge 报告使用 `judge-report-v2`，固定比较条件并对共同成功样本做配对评分，
+   同时展示成功率、失败数、P50/P95、逻辑调用数和 Provider 实际请求数。缺失指标不按 0 计算，评分变化不自动阻断。
+   后续用真实运行持续扩充样本，不把真实模型调用作为单元测试依赖。
 3. **T2 / `feat/ocr-preflight-report`**：增加页面预检和脏页报告，复用现有页面级 OCR 路由、质量门禁和局部重试。
    **已完成**（`apps/api/ocr_preflight.py` + `ocrRun.preflight`）：预检只参与路由（空白页跳过 MinerU
    升级）和报告，不删除页面；扫描页安全边界有专项测试。
 4. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
    **已完成**（`infrastructure/runtime/capabilities.py` + `providers()` 的 `modelDetails` +
    调用路径健康挂钩）；剩余的"切换前后评测集比较"随 T1 模型维度解锁。
-5. **T0 / `feature/sub-questions`（已立项排期）**：多小问结构三处联动，按既有 T0 设计块拆分为
+5. **T0 / `feature/sub-questions`（已完成，v0.26.0）**：多小问结构三处联动，按既有 T0 设计块拆分为
    三个独立 PR——①契约层 `subQuestions` schema + 逐小问 answerSpec + 质量门禁适配；
    ②前端分小问作答渲染；③判题循环逐小问确定性判定与"不可判小问"显式标记。
    触发条件已满足（本地题库占比 17%）；在每个 PR 改动落在对应文件时顺路执行。
@@ -78,12 +79,9 @@
   未结构化的图片引用或表格标签会让题目进入人工复核，不再依赖人工在页面上发现。
   > 这条曾被标记为完整覆盖“讲解、历史消息和错误回退”，但实际只覆盖了题目主链路。
   > 过度声称覆盖范围导致同一类缺陷被误判为已修复，换一种题型就复发一次；剩余通道见下面两条。
-- [ ] 课程 `markdown` 讲解块、陪练历史消息和错误回退仍把整段文本直接交给 `MathText`
-  （`apps/web/src/lesson/rendererRegistry.tsx`），非公式内容会退化成纯文字。这些通道要么改为后端下发
-  结构化内容块，要么明确约定“只允许纯文本 + `$...$`”并在写入侧校验，不要在前端补一层解析。
-  > 优先级：中。目前没有确认的真实坏样本（题目主链路上的同类问题已经修完），但结构上和这一轮反复
-  > 复发的“某个渲染通道被漏掉”是同一类缺陷，大概率会在 Badcase 语料跑起来后自然暴露——先建语料，
-  > 让真实坏样本决定这条什么时候动手，不要凭猜测排期。
+- [x] 课程 `markdown` 讲解块、陪练历史消息、错误回退和普通反馈统一通过 `RichText` 渲染；普通文本、换行
+  和明确的 `$...$`/`$$...$$` 数学片段分流，HTML/script、转义美元、金额文本和残缺公式均按安全文本处理，
+  只有明确数学片段进入 `MathText`/KaTeX（`trust=false`）。专项前端单测已覆盖这些边界。
 - [x] 题号识别根治（`QUESTION_START_PATTERN`，`apps/api/domain/questions/source.py`）。
   两个子问题均已修复并进入金标准语料回归：
   **子问题 A**（续举例编号 "3、4." 被误判为新题号，question-segmentation-v3）：'、'分隔的候选题号
@@ -106,22 +104,10 @@
   紧跟第N题图"；没有结构化数据时完全回退到原来的正则逻辑。用本地 5 本真实教材验证过，这条改动在
   当前语料里和原来的正则结果完全一致（真实教材的扁平文本里图注文字本身没有丢失，正则已经够用），
   价值在于对"扁平化过程丢失图注文字、但结构化字段仍保留"的场景更稳健——已有单元测试用构造场景验证。
-  仍未覆盖的是“既没有内联图注、也没有显式题号标注（不管是文本还是结构化字段）”的纯位置场景，需要
-  版面坐标或语义校验才能根治，属于独立工程，不要与渲染契约混在一起做。
-  > 优先级：低。两条高置信度信号（内联图注、显式题号标注，且后者现在有结构化数据兜底）已经覆盖
-  > 大多数真实案例；剩下的纯位置场景目前没有独立于子问题 B（题号识别）之外的确认坏样本——先看
-  > Badcase 语料积累后这类场景的真实占比。
-- [ ] 支持多小问结构（`subQuestions`）。当前 `questionType`、`correctAnswer` 和 `answerSpec` 都假设
-  一道题只有一个答案，而真实中考卷约 17% 的题目是多小问（本地 64 道题库中 11 道，其中 6 道含证明）。
-  典型形态是「(1) 求证… + (2) 求数值…」：证明部分无法确定性判题，数值部分完全可以，但现在整题被归成
-  `short-answer`，连可判的那一问也拿不到自动反馈。方案是每个小问带自己的题型与判题规范；没有规范的
-  小问（证明、说理）显式标记为“由陪练反馈、不自动判分”并在界面说明，而不是假装能判。
-  过渡措施已生效：质量门禁会拒绝“不可判题型携带 answerSpec”的错配数据，并对多小问发出提示。
-  设计时先决定 `subQuestions` 与填空题已有的 `blanks` 分项结构是否合并，避免出现两套并行的分项模型。
-  不要为证明题单独新增题型——证明只是“不可确定性判题”的一种，会被这个结构自然吸收。
-  > 优先级：低。过渡门禁已生效，错配数据不会再静默进入发布结果，当前只是“多小问的可判部分拿不到
-  > 自动反馈”的功能缺口，不是正在产生错误学习记录；`subQuestions` 涉及契约、前端渲染和判题循环
-  > 三处联动改动，值得等 Badcase 语料确认真实占比和影响后再单独立项，不要抢跑。
+- [x] 支持多小问结构（`subQuestions`）：每个小问拥有稳定 `id`、题型、独立作答字段和 `evaluation.mode`；前端
+  支持选择、填空、数值、文本和画线小问，保留父题公共题干，逐小问展示判定并支持刷新、切题和离线补传恢复。
+  服务端不信任客户端 `masteryEligible`，从已发布题目契约推导 tutor-only 边界；确定性小问答对和答错都保留为
+  mastery 证据，含 tutor-only 的题保留审计但不进入 mastery，tutor-only 的 partial 不自动进入错题本。
 - [x] 从 FastAPI 的 OpenAPI Schema 自动生成前端 API 边界类型；API 适配层再与页面所需的领域类型
   交叉校验，保留清晰的前端领域模型，同时避免 Pydantic `response_model` 与请求代码发生契约漂移。
 - [x] 固化学生答案状态、重新提交、下一题、完成态和验证题重试的 Playwright 流程。
@@ -150,22 +136,22 @@
 找坏样本，成本高且覆盖面随机——下面两条正是要解决这个问题，而且已经有现成的真实坏样本可以直接
 当种子数据，不需要另外采集。
 
-1. [x] 建立脱敏金标准集，覆盖 OCR、公式、题图、题型和陪练意图（9 条语料，
+1. [x] 建立脱敏金标准集，覆盖 OCR、公式、题图、题型和陪练意图（9 条确定性语料，另有版本化讲解 Judge 语料，
    `apps/api/evaluation/`，`python -m evaluation.replay`）。种子直接复用单测夹具的真实坏样本，
    含一个固化 T0 子问题 A 的特征化条目（已随 v0.23.0 修复转正为回归证据）。重放器支持多入口：
    切分 / 公式规范化（幂等断言）/ 审核质量门禁（状态+错误摘要）/ 陪练意图识别。
-   **剩余**：讲解样本与期望质量锚点维度依赖 LLM-as-Judge 落地后补齐。验收时同步收敛版本化
+   讲解 Judge 使用独立的 `judge-report-v2` 报告契约，按需生成，不进入确定性重放链路。验收时同步收敛版本化
    Prompt 模板：
    模板进入普通 Python 模块或小目录，运行快照记录 `templateId`/`templateVersion`/`templateHash`/
    `schemaVersion`，动态输入只保存题目修订、OCR 产物和线程摘要 ID 的引用；不保存渲染后的完整
    Prompt（含教材原文和学生输入），也不建设 Prompt 管理平台或巨型常量表。快照同时记录采样参数
    （temperature 等 options）；回放目标是结构化重放与指标比较，不是逐字节复现——本地 LLM 输出
    本身非确定，同模板同参数也可能因运行时版本产生差异。
-2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。**进行中**：
+2. [x] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。**已完成**：
    统一标签体系（`evaluation/labels.py`）、坏样本登记簿（`evaluation/badcases.json` + `badcase.py`，
-   状态机约束"fixed 必须带修复说明和版本"）、前后对比工具（`python -m evaluation.compare`）已落地，
-   结构维度的对比可用；模型调用边界指标表（#166）已就绪，评分/耗时/调用次数的对比
-   只差评测集接入模型调用后串联。
+   状态机约束"fixed 必须带修复说明和版本"）、前后对比工具（`python -m evaluation.compare`）已落地。
+   Judge 报告单独记录 `judgeMetrics`，每样本保留真实耗时、token、逻辑调用和 Provider 尝试次数；报告带
+   唯一 `runId`，且配置或样本不一致时只报告不可比原因，不计算虚假分差。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
@@ -176,11 +162,10 @@
 clarity 均分 3.67、targeting 4.00、factual 5.00，置信度 0.9-0.95；报告落
 output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分数漂移。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
-   **进行中**：业务漏斗已上线（`GET /api/funnel`），成本/token 维度的数据源也已就绪——
+   **进行中**：业务漏斗已上线（`GET /api/funnel`），验证证据链第一版和同知识点再错率已落地；成本/token 维度的数据源也已就绪——
    模型调用边界指标表（`model_call_metrics`）随每次调用记录 runtime/task/provider/model/
    耗时/token/失败，聚合经 `GET /api/metrics/model-calls?days=N` 查询。漏斗与成本的
-   联合展示待前端页面；"同知识点再次出错率"需要尝试与知识点的跨会话关联，
-   待 subQuestions/画像工作后补充。
+   联合展示仍待前端页面；当前再错率限定为同一学生、同一发布版本内有后续作答的知识点路径。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
    CI 中在 `apps/api` 下跑 `uv run ruff check .`、在 `apps/web` 下跑 `pnpm run lint`）。
    规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
@@ -320,7 +305,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 历史正确性修复、`RunSnapshot`、事件模型、可恢复后台任务和整卷任务汇总已经完成；新的 PR 顺序为：
 
-`test/offline-ai-evaluation` → `feature/badcase-replay-loop` → `feat/ocr-preflight-report` →
+`test/offline-ai-evaluation`（已完成） → `feature/badcase-replay-loop`（已完成） → `feat/ocr-preflight-report` →
 `feat/model-capability-registry` → `test/postgres-integration` → `chore/public-test-hardening`。
 
 前两项种子数据直接复用本轮已核实的真实坏样本（见“当前执行队列”），不必重新采集；建成后再回头评估

@@ -391,6 +391,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mistakes/{mistake_id}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mistake Evidence
+         * @description Return the explainable evidence chain for one mistake.
+         */
+        get: operations["get_mistake_evidence_api_mistakes__mistake_id__evidence_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mistakes/{mistake_id}/source": {
         parameters: {
             query?: never;
@@ -1637,6 +1657,8 @@ export interface components {
         };
         /** VariationAnswerRequest */
         VariationAnswerRequest: {
+            /** Attemptid */
+            attemptId?: string | null;
             /**
              * Content
              * @default
@@ -2392,6 +2414,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_mistake_evidence_api_mistakes__mistake_id__evidence_get: {
+        parameters: {
+            query?: {
+                learnerId?: string;
+            };
+            header?: never;
+            path: {
+                mistake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
             };
             /** @description Validation Error */
             422: {

@@ -18,6 +18,7 @@ VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]],
 
 LEVELS = ("foundation", "parallel", "transfer")
 SUPPORTED_QUESTION_TYPES = {"choice", "multi-select", "fill-blank", "numeric"}
+STRATEGY_VERSION = "variation-strategy-v1"
 
 
 class VariationService:
@@ -27,8 +28,10 @@ class VariationService:
         self.generator = generator
 
     def generate(self, mistake: dict[str, Any], sequence: int) -> dict[str, Any]:
-        reason = mistake.get("errorReason") or "unknown"
-        strategy, objective = ERROR_STRATEGIES.get(reason, ERROR_STRATEGIES["unknown"])
+        reason = mistake.get("errorReason")
+        if not reason or reason not in ERROR_STRATEGIES:
+            raise ValueError("请先确认错误原因，再生成变式验证题")
+        strategy, objective = ERROR_STRATEGIES[reason]
         level = LEVELS[min(max(sequence - 1, 0), len(LEVELS) - 1)]
         original = mistake["questionPayload"]["question"]
         prompt = (
@@ -57,9 +60,15 @@ class VariationService:
         )
         question["variationOf"] = original.get("id")
         question["variationStrategy"] = strategy
+        question["variationStrategyVersion"] = STRATEGY_VERSION
+        question["variationObjective"] = objective
+        question["variationTarget"] = reason
         question["variationLevel"] = level
         return {
             "strategy": strategy,
+            "strategyVersion": STRATEGY_VERSION,
+            "target": reason,
+            "objective": objective,
             "level": level,
             "questionPayload": payload,
             "guideCards": guide_cards,

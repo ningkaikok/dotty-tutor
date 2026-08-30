@@ -96,6 +96,60 @@ class CompareReportsTests(unittest.TestCase):
         self.assertFalse(any(comparison[key] for key in
                              ("regressions", "fixes", "bugSignatureChanged")))
 
+    def test_compares_model_scores_latency_and_calls(self) -> None:
+        base = {
+            "reportKind": "judge",
+            "corpusVersion": "explanation-samples-v1",
+            "sampleSetHash": "same",
+            "judge": {"provider": "ollama", "model": "qwen", "promptVersion": "v1"},
+            "judgeMetrics": {
+                "successRate": 0.5, "failureCount": 1, "p50DurationMs": 120.0,
+                "p95DurationMs": 160.0, "logicalCalls": 3, "providerAttempts": 3,
+                "schemaFallbackCount": 0,
+            },
+            "results": [{"id": "sample", "judgeSucceeded": True,
+                         "scores": {"clarity": 3.0, "targeting": 3.0, "factual": 4.0}}],
+        }
+        updated = {
+            **base,
+            "judgeMetrics": {
+                "successRate": 1.0, "failureCount": 0, "p50DurationMs": 135.5,
+                "p95DurationMs": 170.0, "logicalCalls": 4, "providerAttempts": 4,
+                "schemaFallbackCount": 0,
+            },
+            "results": [{"id": "sample", "judgeSucceeded": True,
+                         "scores": {"clarity": 3.5, "targeting": 3.0, "factual": 4.0}}],
+        }
+        comparison = compare_reports(base, updated)
+        self.assertEqual(comparison["judge"]["metrics"]["logicalCalls"]["delta"], 1.0)
+        self.assertEqual(comparison["judge"]["metrics"]["failureCount"]["delta"], -1.0)
+        self.assertEqual(comparison["judge"]["scoreComparison"]["delta"]["clarity"], 0.5)
+
+    def test_judge_scores_are_not_comparable_when_configuration_changes(self) -> None:
+        base = {
+            "reportKind": "judge", "corpusVersion": "v1", "sampleSetHash": "same",
+            "judge": {"provider": "ollama", "model": "qwen-a", "promptVersion": "p1"},
+            "judgeMetrics": {"logicalCalls": 1},
+            "results": [{"id": "sample", "judgeSucceeded": True,
+                         "scores": {"clarity": 3, "targeting": 3, "factual": 3}}],
+        }
+        updated = {**base, "judge": {**base["judge"], "model": "qwen-b"}}
+        comparison = compare_reports(base, updated)
+        self.assertFalse(comparison["judge"]["comparable"])
+        self.assertIsNone(comparison["judge"]["scoreComparison"])
+        self.assertIn("judge.model differs", comparison["judge"]["incomparableReasons"])
+
+    def test_missing_metric_is_unavailable_not_zero(self) -> None:
+        base = {
+            "reportKind": "judge", "corpusVersion": "v1", "sampleSetHash": "same",
+            "judge": {"provider": "ollama", "model": "qwen", "promptVersion": "p1"},
+            "judgeMetrics": {"logicalCalls": 1}, "results": [],
+        }
+        updated = {**base, "judgeMetrics": {"logicalCalls": 2}}
+        comparison = compare_reports(base, updated)
+        self.assertIsNone(comparison["judge"]["metrics"]["failureCount"]["delta"])
+        self.assertIn("failureCount", comparison["judge"]["unavailableMetrics"])
+
 
 if __name__ == "__main__":
     unittest.main()

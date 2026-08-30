@@ -46,6 +46,18 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 reason="published question not found",
             )
             return None
+        question = (lesson.get("questionPayload") or {}).get("question") or {}
+        has_tutor_only_part = any(
+            isinstance(part, dict)
+            and isinstance(part.get("evaluation"), dict)
+            and part["evaluation"].get("mode") == "tutor"
+            for part in (question.get("subQuestions") or [])
+        )
+        # A tutor-only partial is an auditable completion, not an objective
+        # wrong answer. Keep the attempt in the learning log but do not create
+        # a misleading automatic mistake entry.
+        if request.assessment == "partial" and has_tutor_only_part:
+            return None
         mistake = mistake_store.record_published_attempt(
             learner_id=session["learnerId"],
             publication=publication,

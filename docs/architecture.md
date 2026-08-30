@@ -127,10 +127,10 @@ flowchart TB
 | 课程播放器 | `apps/web/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `apps/web/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 内容预览工作区 | `apps/web/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |
-| 题型作答 | `apps/web/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
+| 题型作答 | `apps/web/src/components/QuestionAnswer.tsx`、`apps/web/src/answerAssembly.ts` | 选择、多选、判断、填空、数值、画线和多小问输入及答案组装 |
 | 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `apps/web/src/api/`、`apps/web/src/types/` | 按产品域组织请求和类型 |
-| 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
+| 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `apps/api/app.py`、`apps/api/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
 | 教材 HTTP 边界 | `apps/api/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
@@ -157,6 +157,7 @@ flowchart TB
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
 | 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
+| 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
@@ -170,7 +171,7 @@ flowchart TB
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
-| 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、可修正答案和确定性判题结果 |
+| 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
 | 间隔复习 | `apps/api/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
 ## 错题录入与确认
@@ -189,10 +190,11 @@ flowchart TB
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张应用组合 `AppStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
 辅导线程。完成陪练后，独立的 `VariationStore` 保存唯一验证题和结构化作答，避免自由对话被误算为掌握证据。
-答错时允许更新同一道题的证据；答对一次时 `MistakeStore` 只负责执行明确的
-`unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
+每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
+答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
-快照和答案，不参与首次掌握连续计数；`/api/progress` 只从错题状态与复习证据实时聚合统计。
+快照和答案，不参与首次掌握连续计数；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
+`/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
 ## 有状态单题陪练
 
@@ -311,7 +313,10 @@ erDiagram
 - **Run Events**：使用 `run_id` 串联 OCR 路由、局部重试、生成、审校、隔离、发布和结束事件。
 - **PostgreSQL Job Store（已完成）**：使用独立任务表和单个 Worker 执行 PDF/OCR/批量生成，HTTP 返回
   `202 + jobId`；支持幂等、取消、有限重试和租约恢复，不预先引入 Redis。
-- **离线评测**：通过脱敏固定样本测量公式损坏、切题偏差、质量门禁、审核纠错、陪练判定和耗时。
+- **离线评测**：`evaluation.replay` 无模型重放确定性语料；`evaluation.judge_cli` 按需调用独立审核模型。
+  Judge 报告固定记录语料版本、样本哈希、审核模型/Prompt 版本、每样本成功率/耗时/逻辑调用数/Provider
+  实际尝试数/token/Schema 降级，以及聚合 `judgeMetrics`。`evaluation.compare` 对确定性报告做结构回归，
+  对 Judge 报告只比较配置一致时的共同成功样本配对评分；评分变化不自动阻断。测试不依赖真实模型调用。
 - **轻量 Model Gateway**：在现有 Runtime 上统一请求与结果字段，显式记录实际 Provider、Model、回退和
   错误，而不是新增独立服务。
 
@@ -390,7 +395,7 @@ flowchart TD
 - 页码范围、OCR Provider、缓存键和图片引用；
 - `sourceArtifactUrl`、`promptArtifactUrl`，方便在内容生产端查看原文和送给模型的提示。
 
-题目切分规则有独立版本号（当前为 `question-segmentation-v2`）。已生成的 `source.md`、`model-prompt.md` 和题目
+题目切分规则有独立版本号（当前为 `question-segmentation-v4`）。已生成的 `source.md`、`model-prompt.md` 和题目
 revision 是不可变证据；规则修复不会偷偷改写历史产物，必须通过“刷新 OCR/重新生成”创建新 revision。这能区分
 “代码已修复但页面仍展示旧结果”和“新运行再次误切”两类问题，也便于回放同一份 OCR 输入。
 
@@ -480,20 +485,33 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。
+- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox`，且 Markdown、结构化图注都没有
+  明确归属时，`source.py` 才使用同页垂直区间和栏位证据尝试绑定图片。置信度不足或候选接近时保持未绑定，
+  在 `imageAttributionAudit` 中记录候选、分数和 `needs_review`，整卷质量报告会阻断继续生成，避免把相邻题目的图静默贴错。
+
+### 多小问答案边界
+
+模型输出中的 `subQuestions` 是可选结构；每个小问有稳定 `id`、题型、独立 prompt 和 `evaluation.mode`。
+`deterministic` 小问携带自己的 `answerSpec`/答案字段并复用统一判题器，`tutor` 小问只保留学生作答和陪练上下文。
+质量门禁拒绝“检测到多小问但缺少结构”以及父题答案与小问答案并存的载荷。前端按小问维护答案映射，后端返回
+逐小问状态；`evaluationSummary.masteryEligible` 是本轮可解释摘要，掌握度投影不信任客户端字段，而是从已发布题目
+契约重新判断 tutor-only 边界。确定性小问的正确和错误都保留为学习证据，含 tutor 小问的整题不进入 mastery。
 - 前端快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题（`FULL_PAPER_QUESTION_LIMIT`）。
 
 ## 学生作答与 Help
 
-前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果：
+前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果；多小问额外提交
+`interactionResult.subQuestionAnswers`：
 
 1. 多选题比较 `selectedOptions` 与 `correctAnswers` 的完整集合。
 2. 填空题逐空比较文本、数值或公式答案，可配置 `tolerance` 和 `unit`。
 3. 数值题使用 `answerSpec` 做数值容差或等价文本核对。
 4. 判断题优先使用明确答案做确定性判题。
 5. 画线题比较 `requiredConnections` 与学生连接集合。
-6. 其他题先检查学生等式是否与题干或标准步骤冲突。
-7. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
-8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
+6. 多小问逐项判定；开放性小问只生成陪练反馈，不产生客观正确分。
+7. 其他题先检查学生等式是否与题干或标准步骤冲突。
+8. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
+9. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
 判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
 并把 `incorrect` / `partial` 作答幂等写入个人错题本。前端在学习证据卡显示当前知识点分数与累计作答，
@@ -525,6 +543,7 @@ POST /api/tts
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
+- `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。

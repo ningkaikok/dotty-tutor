@@ -199,6 +199,8 @@ class ModelRuntime:
         usage: dict[str, Any] | None = None,
         prompt_chars: int | None = None,
         max_tokens: int | None = None,
+        provider_attempts: int = 1,
+        schema_fallback: bool = False,
     ) -> None:
         """把一次调用写入边界指标；存储异常绝不影响主流程。"""
         if self.metrics_store is None:
@@ -215,6 +217,8 @@ class ModelRuntime:
             "output_tokens": usage.get("output_tokens") if usage else None,
             "status": status,
             "error_type": error_type,
+            "provider_attempts": provider_attempts,
+            "schema_fallback": schema_fallback,
         }
         try:
             self.metrics_store.record(entry)
@@ -256,6 +260,19 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型调用失败：{error}", snapshot=snapshot, cause=error
             )
+            failed_run = self._build_run(
+                requested_provider=selection.provider,
+                provider=selection.provider,
+                model=selection.model,
+                started=started,
+                prompt_chars=prompt_chars,
+                max_tokens=max_tokens,
+                usage=None,
+                provider_attempts=self._provider_attempts(error),
+                schema_fallback=self._schema_fallback(error),
+            )
+            attach_runtime_config(failed_run, snapshot)
+            execution_error.runtime_run = failed_run
             HEALTH_BOOK.mark_failure(
                 selection.provider, selection.model, str(execution_error)
             )
@@ -268,6 +285,8 @@ class ModelRuntime:
                 error_type=type(execution_error).__name__,
                 prompt_chars=prompt_chars,
                 max_tokens=max_tokens,
+                provider_attempts=failed_run["providerAttempts"],
+                schema_fallback=failed_run["schemaFallback"]["used"],
             )
             log_event(
                 "model.request.failed",
@@ -290,6 +309,8 @@ class ModelRuntime:
             usage=usage,
             prompt_chars=prompt_chars,
             max_tokens=max_tokens,
+            provider_attempts=self._provider_attempts_from_usage(usage),
+            schema_fallback=self._schema_fallback_from_usage(usage)["used"],
         )
         log_event(
             "model.request.completed",
@@ -297,14 +318,17 @@ class ModelRuntime:
             model=selection.model,
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        run = {
-            "requestedProvider": selection.provider,
-            "provider": selection.provider,
-            "model": selection.model,
-            "fallback": False,
-            "promptChars": prompt_chars,
-            "maxOutputTokens": max_tokens,
-        }
+        run = self._build_run(
+            requested_provider=selection.provider,
+            provider=selection.provider,
+            model=selection.model,
+            started=started,
+            prompt_chars=prompt_chars,
+            max_tokens=max_tokens,
+            usage=usage,
+            provider_attempts=self._provider_attempts_from_usage(usage),
+            schema_fallback=self._schema_fallback_from_usage(usage),
+        )
         attach_runtime_config(run, snapshot)
         return result, run
 
@@ -350,6 +374,19 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
             )
+            failed_run = self._build_run(
+                requested_provider=provider,
+                provider=provider,
+                model=model,
+                started=started,
+                prompt_chars=prompt_chars,
+                max_tokens=max_tokens,
+                usage=None,
+                provider_attempts=self._provider_attempts(error),
+                schema_fallback=self._schema_fallback(error),
+            )
+            attach_runtime_config(failed_run, snapshot)
+            execution_error.runtime_run = failed_run
             HEALTH_BOOK.mark_failure(provider, model, str(execution_error))
             self._record_metric(
                 task="review",
@@ -360,6 +397,8 @@ class ModelRuntime:
                 error_type=type(execution_error).__name__,
                 prompt_chars=prompt_chars,
                 max_tokens=max_tokens,
+                provider_attempts=failed_run["providerAttempts"],
+                schema_fallback=failed_run["schemaFallback"]["used"],
             )
             log_event(
                 "model.review.failed",
@@ -383,6 +422,8 @@ class ModelRuntime:
             usage=usage,
             prompt_chars=prompt_chars,
             max_tokens=max_tokens,
+            provider_attempts=self._provider_attempts_from_usage(usage),
+            schema_fallback=self._schema_fallback_from_usage(usage)["used"],
         )
         log_event(
             "model.review.completed",
@@ -391,16 +432,89 @@ class ModelRuntime:
             image_count=len(images),
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        run = {
-            "requestedProvider": provider,
+        run = self._build_run(
+            requested_provider=provider,
+            provider=provider,
+            model=model,
+            started=started,
+            prompt_chars=prompt_chars,
+            max_tokens=max_tokens,
+            usage=usage,
+            provider_attempts=self._provider_attempts_from_usage(usage),
+            schema_fallback=self._schema_fallback_from_usage(usage),
+        )
+        attach_runtime_config(run, snapshot)
+        return result, run
+
+    @staticmethod
+    def _provider_attempts_from_usage(usage: dict[str, Any] | None) -> int:
+        if not isinstance(usage, dict):
+            return 1
+        value = usage.get("providerAttempts", 1)
+        return value if isinstance(value, int) and value > 0 else 1
+
+    @staticmethod
+    def _schema_fallback_from_usage(usage: dict[str, Any] | None) -> dict[str, Any]:
+        if not isinstance(usage, dict):
+            return {"used": False, "reason": None}
+        value = usage.get("schemaFallback")
+        if isinstance(value, dict):
+            return {"used": bool(value.get("used")), "reason": value.get("reason")}
+        return {"used": False, "reason": None}
+
+    @staticmethod
+    def _provider_attempts(error: Exception) -> int:
+        value = getattr(error, "provider_attempts", 1)
+        return value if isinstance(value, int) and value > 0 else 1
+
+    @staticmethod
+    def _schema_fallback(error: Exception) -> dict[str, Any]:
+        value = getattr(error, "schema_fallback", None)
+        if isinstance(value, dict):
+            return {"used": bool(value.get("used")), "reason": value.get("reason")}
+        return {"used": False, "reason": None}
+
+    @staticmethod
+    def _attach_provider_metadata(
+        error: Exception,
+        provider_attempts: int,
+        used: bool,
+        reason: str | None,
+    ) -> None:
+        # Adapter errors are internal and are converted to RuntimeExecutionError
+        # by the caller; these attributes carry only safe execution metadata.
+        error.provider_attempts = provider_attempts  # type: ignore[attr-defined]
+        error.schema_fallback = {"used": used, "reason": reason}  # type: ignore[attr-defined]
+
+    @staticmethod
+    def _build_run(
+        *,
+        requested_provider: str,
+        provider: str,
+        model: str,
+        started: float,
+        prompt_chars: int,
+        max_tokens: int,
+        usage: dict[str, Any] | None,
+        provider_attempts: int,
+        schema_fallback: dict[str, Any],
+    ) -> dict[str, Any]:
+        usage = usage or {}
+        return {
+            "requestedProvider": requested_provider,
             "provider": provider,
             "model": model,
             "fallback": False,
             "promptChars": prompt_chars,
             "maxOutputTokens": max_tokens,
+            "durationMs": round((time.perf_counter() - started) * 1000, 1),
+            "usage": {
+                "promptTokens": usage.get("prompt_tokens"),
+                "outputTokens": usage.get("output_tokens"),
+            },
+            "providerAttempts": provider_attempts,
+            "schemaFallback": schema_fallback,
         }
-        attach_runtime_config(run, snapshot)
-        return result, run
 
     def _ollama_json(
         self,
@@ -409,7 +523,7 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int,
         image_paths: list[Path] | None = None,
-    ) -> tuple[dict[str, Any], dict[str, int | None]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         user_message: dict[str, Any] = {"role": "user", "content": prompt}
         if image_paths:
             user_message["images"] = [
@@ -456,28 +570,58 @@ class ModelRuntime:
                 raise RuntimeError("Ollama 返回值不是 JSON 对象")
             return response_payload
 
+        provider_attempts = 0
+
+        def send_with_attempt() -> dict[str, Any]:
+            nonlocal provider_attempts
+            provider_attempts += 1
+            return send()
+
+        schema_fallback = False
+        fallback_reason: str | None = None
         try:
-            payload = send()
+            payload = send_with_attempt()
         except RuntimeError as error:
             # 部分 Ollama/llama.cpp 运行时无法把复杂 JSON Schema 转成 grammar。
             # 此时退到普通 JSON 模式，并把 Schema 写入系统提示；可用性提高，但后续
             # 仍必须经过 Pydantic 和确定性质量门禁，不能把它当成可信结构。
             if "grammar" not in str(error).lower() and "sampler" not in str(error).lower():
+                self._attach_provider_metadata(error, provider_attempts, False, None)
                 raise
+            schema_fallback = True
+            fallback_reason = type(error).__name__
             request_payload["format"] = "json"
             schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
             request_payload["messages"][0]["content"] += (
                 "\n当前运行时不支持直接加载复杂 Schema，请仍严格使用以下字段结构：\n"
                 + schema_text
             )
-            payload = send()
+            try:
+                payload = send_with_attempt()
+            except RuntimeError as retry_error:
+                self._attach_provider_metadata(
+                    retry_error, provider_attempts, True, fallback_reason
+                )
+                raise
         # Ollama 原生透出 token 计数；Codex 路径暂无对应字段，由调用方记 None。
         usage = {
             "prompt_tokens": payload.get("prompt_eval_count"),
             "output_tokens": payload.get("eval_count"),
+            "providerAttempts": provider_attempts,
+            "schemaFallback": {
+                "used": schema_fallback,
+                "reason": fallback_reason,
+            },
         }
         content = payload.get("message", {}).get("content", "")
-        return parse_json_object(content), usage
+        try:
+            parsed = parse_json_object(content)
+        except RuntimeError as error:
+            self._attach_provider_metadata(
+                error, provider_attempts, schema_fallback, fallback_reason
+            )
+            raise
+        return parsed, usage
 
     def _codex_json(
         self,
@@ -485,7 +629,7 @@ class ModelRuntime:
         prompt: str,
         schema: dict[str, Any],
         image_paths: list[Path] | None = None,
-    ) -> tuple[dict[str, Any], None]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         with tempfile.TemporaryDirectory(prefix="dotty-codex-") as directory:
             root = Path(directory)
             schema_path = root / "schema.json"
@@ -531,7 +675,12 @@ class ModelRuntime:
             if not output_path.exists():
                 raise RuntimeError("Codex 没有生成结构化输出")
             # Codex CLI 不透出 token 计数；记 None 而不是用字符数冒充。
-            return parse_json_object(output_path.read_text(encoding="utf-8")), None
+            return parse_json_object(output_path.read_text(encoding="utf-8")), {
+                "prompt_tokens": None,
+                "output_tokens": None,
+                "providerAttempts": 1,
+                "schemaFallback": {"used": False, "reason": None},
+            }
 
 
 def parse_json_object(content: str) -> dict[str, Any]:
