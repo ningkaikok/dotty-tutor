@@ -7,15 +7,27 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.26.0] - 2026-08-30
+
 ### Added
 
 - 知识点掌握度升级为按发布版本实体和最新不同题证据计算的 mastery-v2；作答响应新增知识点 ID、原始分、证据数、置信度、算法版本和计算时间，支持可重复数据库迁移。
 - 教材导入完成后生成质量报告，展示预计题数、题号范围、重复题号、未识别页和图片归属冲突；存在阻断项时暂停整本模型生成。
 - 生成和审校模型使用稳定的图片占位符，图片引用丢失或乱序会被确定性门禁拦截，避免依赖提示词维持题图版面。
+- 多小问题支持独立题型、答案和判定状态；确定性小问可分别反馈，开放性小问继续通过陪练处理。
+- 教材导入质量报告增加图片坐标归属审计；无法高置信判断时会进入人工复核，避免相邻题目图片静默错绑。
+- 新增安全富文本渲染，课程讲解、陪练历史和错误回退中的普通文字、换行与显式公式可以一致显示。
 
 ### Fixed
 
 - 修复 OCR 使用全角逗号标记题号时未能切分（例如“17，”），导致整页题目被错误合并并重复生成同一道题的问题；强制重跑批次会清除旧的整卷完成标记。
+- 修复多小问作答中开放性小问误进入客观掌握度，以及确定性答错证据被丢弃的问题。
+- 修复学生学习入口初始化请求重复和本地回归测试并行冷启动导致的状态不稳定。
+- 修复题图引用和题目质量门禁相关的导入回归。
+
+### Changed
+
+- 学生端多小问答案支持刷新、切题和离线补传后恢复；本地 Playwright 回归默认使用单 worker，CI 仍保留并行配置。
 
 ## [0.25.0] - 2026-08-23
 
@@ -414,7 +426,14 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.25.0...v0.26.0
+[0.25.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.24.0...v0.25.0
+[0.24.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.23.0...v0.24.0
+[0.23.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.22.0...v0.23.0
+[0.22.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.21.1...v0.22.0
+[0.21.1]: https://github.com/ningkaikok/dotty-tutor/compare/v0.21.0...v0.21.1
+[0.21.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.19.0...v0.20.0
 [0.19.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.17.0...v0.18.0
