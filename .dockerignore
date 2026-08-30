@@ -6,6 +6,7 @@
 !.env.example
 !.env.docker.example
 .venv
+**/.venv
 .mineru-venv
 .qwen3-tts-venv
 .qwen-models

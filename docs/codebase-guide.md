@@ -52,7 +52,7 @@ dotty-tutor/
 │   ├── domain/tutoring/        # 判题、陪练策略和状态机纯函数
 │   ├── mistake_recognition.py  # 复用教材流水线的错题识别适配
 │   ├── variation_service.py    # 错题变式验证题生成与确定性题型门禁
-│   ├── answer_evaluator.py     # 选择/多选/填空/数值的确定性答案判定
+│   ├── answer_evaluator.py     # 结构化题型与多小问的确定性答案判定
 │   ├── publication_revision.py # 不可变试卷新版编排
 │   ├── run_audit.py            # 运行快照与题目修订审计
 │   ├── worker.py               # 独立后台 Worker 入口（PostgreSQL Job Store）
@@ -74,7 +74,9 @@ dotty-tutor/
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
-│   ├── components/             # 跨教材题型复用的作答组件
+│   ├── components/             # 跨教材题型复用的作答组件与富文本渲染
+│   ├── answerAssembly.ts       # 多小问及画线等交互答案的统一组装
+│   ├── richTextParser.ts       # 普通文本与显式数学片段的安全分词
 │   ├── lesson/                 # 课程文档和内容块渲染器
 │   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
 │   ├── types/                  # 按领域拆分的稳定类型
@@ -148,7 +150,7 @@ api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
-  → domain/questions/source.py（按题号切分 Markdown）
+  → domain/questions/source.py（按题号切分 Markdown、图注/坐标归属和审计）
   → domain/questions/quality.py（导入质量报告：题数、题号、页面和图片归属）
   → application/services/question_processing.py（生成、审校、确定性修复和质量门禁）
   → persistence/textbook_store.py（题目和上传任务）
@@ -200,6 +202,9 @@ flowchart LR
 替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据。
 内容生产端使用 `PracticeWorkspace` 展示重新生成、审核和诊断信息，学生端使用
 `StudentQuestionWorkspace` 表达作答、求助和反馈；两者只复用无副作用的 `QuestionAnswer` 与课程渲染器。
+多小问由 `QuestionAnswer` 按 `subQuestionAnswers` 分小问提交，后端仅对声明为
+`deterministic` 的小问自动判分，`tutor` 小问进入陪练但不会进入 mastery。课程、陪练历史和回退消息
+统一通过 `RichText` 渲染普通文字与显式 `$...$` 数学片段，避免把普通文本整段送入公式解析器。
 这种边界避免为了复用视觉外壳而把作者权限和内部术语带入学生任务流。
 
 学生的非正确作答由 `api/routers/learning_routes.py` 编排写入 `MistakeStore`。稳定错题 ID 使用学生、试卷和题目
@@ -302,7 +307,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | PDF 如何变成题目 | `useTextbookImport.ts` → `api/routers/textbook_routes.py` → `application/services/textbook_processing.py` → `application/services/question_processing.py` → `domain/questions/pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
 | 长任务将如何后台化 | `runtime-governance-plan.md` → `infrastructure/files/upload_registry.py` → `persistence/schema.py` → `application/services/textbook_processing.py` | 运行快照、Job Store、租约、幂等与 Worker 边界 |
 | 试卷如何安全发布新版 | `usePaperPublication.ts` → `api/routers/publication_routes.py` → `publication_revision.py` → `persistence/learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
-| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、最新不同题证据掌握度投影 |
+| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
 | 错题如何多轮陪练 | `useMistakeTutor.ts` → `api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长

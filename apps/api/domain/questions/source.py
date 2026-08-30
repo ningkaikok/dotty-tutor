@@ -369,6 +369,7 @@ def _is_enumeration_continuation(question_area: str, match: re.Match) -> bool:
 def split_question_sources(
     source: str,
     asset_dir: Path | None = None,
+    attribution_audit: list[dict[str, Any]] | None = None,
 ) -> list[tuple[str, str, list[str]]]:
     """Split OCR Markdown into bounded questions without answer-key leakage.
 
@@ -439,9 +440,146 @@ def split_question_sources(
             blocks[-1] = (previous_number, f"{previous_block}\n{block}", merged_images)
         else:
             blocks.append((number, block, images))
+    structured_captions = _structured_caption_attributions(asset_dir)
+    # Apply the positional fallback per image. Explicit inline/caption evidence
+    # is reconciled afterwards and wins for that image only; it must not suppress
+    # bbox attribution for unrelated images in the same batch.
+    blocks = _apply_bbox_image_attribution(blocks, asset_dir, attribution_audit)
     return _apply_caption_image_attribution(
-        blocks, question_area, structured_captions=_structured_caption_attributions(asset_dir)
+        blocks,
+        question_area,
+        structured_captions=structured_captions,
     )
+
+
+def _bbox(value: Any) -> tuple[float, float, float, float] | None:
+    if not isinstance(value, list) or len(value) != 4:
+        return None
+    try:
+        left, top, right, bottom = (float(item) for item in value)
+    except (TypeError, ValueError):
+        return None
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
+
+
+def _overlap_ratio(first: tuple[float, float, float, float], second: tuple[float, float, float, float]) -> float:
+    left = max(first[0], second[0])
+    top = max(first[1], second[1])
+    right = min(first[2], second[2])
+    bottom = min(first[3], second[3])
+    overlap = max(0.0, right - left) * max(0.0, bottom - top)
+    area = max(1.0, min((first[2] - first[0]) * (first[3] - first[1]), (second[2] - second[0]) * (second[3] - second[1])))
+    return overlap / area
+
+
+def _apply_bbox_image_attribution(
+    blocks: list[tuple[str, str, list[str]]],
+    asset_dir: Path | None,
+    audit: list[dict[str, Any]] | None,
+) -> list[tuple[str, str, list[str]]]:
+    """Assign uncaptioned images from page layout evidence, or explicitly abstain.
+
+    The content-list text blocks provide question-start coordinates and the image
+    blocks provide page/bbox coordinates.  A candidate must be on the same page,
+    inside the vertical interval before the next question, and overlap the question
+    column.  Low scores or near ties are left unassigned and recorded for review.
+    """
+    content_list = _load_structured_content_list(asset_dir)
+    if not content_list:
+        return blocks
+    text_items = [item for item in content_list if isinstance(item, dict) and item.get("type") == "text"]
+    image_items = [item for item in content_list if isinstance(item, dict) and item.get("type") in {"image", "chart"}]
+    starts: list[dict[str, Any]] = []
+    used_start_indexes: set[int] = set()
+    for number, _block, _images in blocks:
+        pattern = re.compile(rf"^\s*(?:第\s*)?{re.escape(number)}\s*[.．、，,)]")
+        match_index = next((index for index, item in enumerate(text_items) if index not in used_start_indexes and pattern.search(str(item.get("text", "")))), None)
+        if match_index is None:
+            continue
+        item = text_items[match_index]
+        item_bbox = _bbox(item.get("bbox"))
+        if item_bbox is None or not isinstance(item.get("page_idx"), int):
+            continue
+        used_start_indexes.add(match_index)
+        starts.append({"number": number, "page": item["page_idx"], "bbox": item_bbox})
+    if not starts:
+        return blocks
+
+    mutable = [list(images) for _number, _block, images in blocks]
+    index_by_number = {number: index for index, (number, _block, _images) in enumerate(blocks)}
+    ordered_starts = sorted(starts, key=lambda item: (item["page"], item["bbox"][1], item["bbox"][0]))
+    assigned_basenames = {Path(path).name for _number, _block, images in blocks for path in images}
+    seen_paths: set[str] = set()
+    for image in image_items:
+        path = image.get("img_path")
+        image_bbox = _bbox(image.get("bbox"))
+        page = image.get("page_idx")
+        if not isinstance(path, str) or not path:
+            continue
+        if Path(path).name in assigned_basenames:
+            continue
+        if path in seen_paths:
+            if audit is not None:
+                audit.append({"image": path, "status": "needs_review", "reason": "duplicate image record"})
+            continue
+        seen_paths.add(path)
+        if image_bbox is None or not isinstance(page, int):
+            if audit is not None:
+                audit.append({"image": path, "status": "needs_review", "reason": "invalid bbox or page"})
+            continue
+        image_center = ((image_bbox[0] + image_bbox[2]) / 2, (image_bbox[1] + image_bbox[3]) / 2)
+        candidates: list[dict[str, Any]] = []
+        page_starts = [item for item in ordered_starts if item["page"] == page]
+        for start in page_starts:
+            start_bbox = start["bbox"]
+            start_center_x = (start_bbox[0] + start_bbox[2]) / 2
+            start_width = start_bbox[2] - start_bbox[0]
+            same_column = [
+                other for other in page_starts
+                if other["bbox"][1] > start_bbox[1]
+                and abs((other["bbox"][0] + other["bbox"][2]) / 2 - start_center_x)
+                <= max(start_width, other["bbox"][2] - other["bbox"][0]) * 1.5
+            ]
+            next_start = min(same_column, key=lambda item: item["bbox"][1], default=None)
+            if image_center[1] < start["bbox"][1] or (next_start and image_center[1] >= next_start["bbox"][1]):
+                continue
+            column_overlap = _overlap_ratio(image_bbox, start["bbox"])
+            # A start line can be short; use its horizontal center as a column hint
+            # when the image does not literally overlap the line's bbox.
+            in_column = start["bbox"][0] - 40 <= image_center[0] <= start["bbox"][2] + 40
+            if not in_column and column_overlap == 0:
+                continue
+            vertical_span = (next_start["bbox"][1] - start["bbox"][1]) if next_start else 1000.0
+            if next_start:
+                position = (image_center[1] - start["bbox"][1]) / max(vertical_span, 1.0)
+                # Being inside the interval is strong evidence; proximity to a
+                # boundary lowers confidence but does not make the first candidate
+                # win merely because it starts earlier on the page.
+                vertical_score = 0.75 + 0.25 * max(0.0, 1.0 - abs(position - 0.5) * 2)
+            else:
+                vertical_score = 1.0
+            score = 0.65 * vertical_score + 0.35 * max(column_overlap, 0.5 if in_column else 0.0)
+            candidates.append({"number": start["number"], "score": round(score, 3), "page": page, "imageBbox": list(image_bbox), "questionBbox": list(start["bbox"])})
+        candidates.sort(key=lambda item: item["score"], reverse=True)
+        best = candidates[0] if candidates else None
+        second_score = candidates[1]["score"] if len(candidates) > 1 else 0.0
+        confident = bool(best and best["score"] >= 0.72 and best["score"] - second_score >= 0.12)
+        entry = {
+            "image": path,
+            "status": "assigned" if confident else "needs_review",
+            "candidates": candidates,
+            "selectedQuestionNumber": best["number"] if best is not None and confident else None,
+        }
+        if audit is not None:
+            audit.append(entry)
+        if not confident or best is None:
+            continue
+        target = index_by_number.get(best["number"])
+        if target is not None and path not in mutable[target]:
+            mutable[target].append(path)
+    return [(number, block, mutable[index]) for index, (number, block, _images) in enumerate(blocks)]
 
 
 def _apply_caption_image_attribution(

@@ -72,7 +72,7 @@ body::before {
 .product-entry-card button { width: 100%; margin-top: auto; padding: 14px 18px; border: 0; border-radius: 13px; color: #fff; background: #183f31; font-weight: 700; }
 .product-entry-card button:hover { background: #245b46; }
 
-.import-intro { max-width: 680px; margin: 90px 0 34px; }
+.import-intro { max-width: 680px; margin: 48px 0; }
 .import-intro h1 { margin: 10px 0 13px; font-size: clamp(38px, 7vw, 68px); line-height: 1.02; }
 .import-intro p { color: #5b6861; font-size: 17px; line-height: 1.7; }
 .metrics-link { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: 1px solid #cbd3cd; border-radius: 999px; color: #35463d; font-size: 12px; font-weight: 600; text-decoration: none; background: #f1f3ef; }
@@ -298,6 +298,19 @@ h2 { letter-spacing: -0.025em; }
 .question-options.image-options { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
 .question-options.image-options li { align-items: flex-start; min-height: 210px; }
 .question-options.image-options li img { width: calc(100% - 46px); height: 190px; }
+.sub-question-list { display: grid; gap: 16px; margin: 12px 0 20px; }
+.sub-question-fieldset { min-width: 0; padding: 14px 16px 12px; border: 1px solid #d8e1db; border-radius: 12px; background: #fbfcf9; }
+.sub-question-fieldset legend { max-width: 100%; padding: 0 6px; color: #24372f; font-weight: 700; }
+.sub-question-label { margin-right: 8px; color: #176d54; }
+.sub-question-fieldset .canonical-question-content { display: inline; }
+.sub-question-fieldset textarea, .sub-question-fieldset > input { width: 100%; min-height: 42px; margin-top: 10px; padding: 10px; border: 1px solid #cbd5ce; border-radius: 8px; background: #fff; }
+.sub-question-options { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); margin: 12px 0 0; }
+.sub-question-tutor-note { display: block; margin-top: 8px; color: #8a6840; }
+.sub-question-results { display: grid; gap: 6px; margin: 12px 0 0; padding-left: 20px; color: #56635c; }
+.sub-question-result { display: flex; justify-content: space-between; gap: 12px; }
+.sub-question-result.correct strong { color: #176d54; }
+.sub-question-result.incorrect strong { color: #b0443c; }
+.sub-question-result.tutor strong, .sub-question-result.ungraded strong, .sub-question-result.incomplete strong { color: #8a6840; }
 .selected-option { margin: -8px 0 16px; color: #1b8062; font-size: 13px; font-weight: 600; }
 .question-table-wrapper { overflow-x: auto; margin: 4px 0 20px; border: 1px solid #d9ddd7; border-radius: 12px; }
 .question-table { width: 100%; border-collapse: collapse; font-size: 15px; color: #24372f; background: #fff; }
@@ -378,7 +391,7 @@ footer b { color: #b1aea5; }
   .model-switcher .tutor-label, .model-switcher .tutor-select,
   .model-switcher .review-label, .model-switcher .review-select,
   .model-switcher .ocr-label, .model-switcher .ocr-select, .model-switcher .ocr-status { grid-column: 1; grid-row: auto; }
-  .import-intro { margin-top: 60px; }
+  .import-intro { margin: 36px 0; }
   .product-entry-grid { grid-template-columns: 1fr; }
   .product-entry-card { min-height: 390px; }
 }
@@ -394,7 +407,7 @@ footer b { color: #b1aea5; }
   .metrics-link { display: none; }
   .topbar .active-model { margin-left: auto; }
   .import-shell { width: calc(100% - 24px); margin-top: 16px; }
-  .import-intro { margin-top: 48px; }
+  .import-intro { margin: 28px 0; }
   .file-preview { grid-template-columns: 1fr; }
   .file-preview img, .pdf-preview { height: 210px; }
   .upload-item { grid-template-columns: minmax(0, 1fr) auto; }

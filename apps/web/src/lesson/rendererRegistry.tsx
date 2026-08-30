@@ -8,6 +8,7 @@
  */
 import { GeometryCanvas } from "../GeometryCanvas";
 import MathText from "../MathText";
+import { RichText } from "../RichText";
 import type { LessonBlock } from "../types/index";
 
 interface LessonRendererProps {
@@ -21,7 +22,7 @@ type LessonBlockRenderer = (props: LessonRendererProps) => React.ReactNode;
 // 新增内容类型时只需补充契约、Renderer 和一条注册记录，不必继续扩大 LessonPlayer 的条件分支。
 const renderers: Record<LessonBlock["type"], LessonBlockRenderer> = {
   markdown: ({ block }) => block.type === "markdown"
-    ? <MathText block text={block.payload.markdown} className="lesson-markdown" />
+    ? <RichText text={block.payload.markdown} className="lesson-markdown" />
     : null,
   formula: ({ block }) => block.type === "formula"
     ? <MathText block text={`$$${block.payload.latex}$$`} className="lesson-formula" />
@@ -45,11 +46,11 @@ const renderers: Record<LessonBlock["type"], LessonBlockRenderer> = {
     )
     : null,
   annotation: ({ block }) => block.type === "annotation"
-    ? <aside className="lesson-annotation"><MathText text={block.payload.text} /></aside>
+    ? <aside className="lesson-annotation"><RichText text={block.payload.text} /></aside>
     : null,
   quiz: () => null,
   hint: ({ block }) => block.type === "hint"
-    ? <aside className="lesson-hint"><MathText text={block.payload.hint} /></aside>
+    ? <aside className="lesson-hint"><RichText text={block.payload.hint} /></aside>
     : null,
 };
 

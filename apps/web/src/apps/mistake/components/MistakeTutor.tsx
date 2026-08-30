@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
-import MathText from "../../../MathText";
+import { RichText } from "../../../RichText";
 import type { MistakeItem, TutorStage } from "../../../types/index";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { VariationPractice } from "./VariationPractice";
@@ -50,17 +50,19 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
         <div className="tutor-question-meta">
           <span>{item.chapter}</span><span>{item.knowledgePoint}</span>
         </div>
-        {item.originalAnswer && <p><strong>原来的答案：</strong><MathText text={item.originalAnswer} /></p>}
+        {item.originalAnswer && <p><strong>原来的答案：</strong><RichText text={item.originalAnswer} /></p>}
         <QuestionAnswer
           question={question}
           selectedOptions={state.selectedOptions}
           blankAnswers={state.blankAnswers}
           numericAnswer={state.numericAnswer}
           drawConnections={state.drawConnections}
+          subQuestionAnswers={state.subQuestionAnswers}
           onSelectOption={state.selectOption}
           onBlankChange={(id, value) => state.setBlankAnswers((current) => ({ ...current, [id]: value }))}
           onNumericChange={state.setNumericAnswer}
           onDrawConnectionsChange={state.setDrawConnections}
+          onSubQuestionChange={(id, answer) => state.setSubQuestionAnswers((current) => ({ ...current, [id]: answer }))}
           readOnly={!understanding}
         />
       </aside>
@@ -84,7 +86,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           {state.thread.messages?.map((message) => (
             <div key={message.messageId} className={`tutor-message ${message.role}`}>
               <strong>{message.role === "student" ? "我" : "Dotty"}</strong>
-              <p><MathText text={message.content} /></p>
+              <p><RichText text={message.content} /> </p>
               {message.assessment && (
                 <small className={`assessment ${message.assessment}`}>
                   {assessmentLabel(message)}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api/tutoring";
-import type { MistakeItem, TutorStage, TutorThread } from "../../types/index";
+import { assembleSubQuestionText, hasMeaningfulSubQuestionAnswer } from "../../answerAssembly";
+import type { MistakeItem, SubQuestionAnswer, TutorStage, TutorThread } from "../../types/index";
 
 /**
  * 管理一个持久化陪练线程的客户端状态。
@@ -15,6 +16,7 @@ export function useMistakeTutor(item: MistakeItem) {
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
   const [numericAnswer, setNumericAnswer] = useState("");
   const [drawConnections, setDrawConnections] = useState<Array<[string, string]>>([]);
+  const [subQuestionAnswers, setSubQuestionAnswers] = useState<Record<string, SubQuestionAnswer>>({});
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -52,7 +54,9 @@ export function useMistakeTutor(item: MistakeItem) {
     const questionType = item.questionPayload.question.questionType;
     // 所有可视化作答控件都转换为后端共享结构；自由文本继续承载思路，
     // 但确定性判题优先使用无歧义的结构化字段。
-    const interactionResult = questionType === "fill-blank"
+    const interactionResult = item.questionPayload.question.subQuestions?.length
+      ? { subQuestionAnswers }
+      : questionType === "fill-blank"
       ? { blankAnswers }
       : questionType === "numeric"
         ? { numericAnswer }
@@ -61,7 +65,9 @@ export function useMistakeTutor(item: MistakeItem) {
           : questionType === "draw-line"
             ? { connections: drawConnections }
             : {};
-    const hasStructuredAnswer = questionType === "fill-blank"
+    const hasStructuredAnswer = item.questionPayload.question.subQuestions?.length
+      ? hasMeaningfulSubQuestionAnswer(subQuestionAnswers)
+      : questionType === "fill-blank"
       ? Object.values(blankAnswers).some((answer) => answer.trim())
       : questionType === "numeric"
         ? Boolean(numericAnswer.trim())
@@ -70,7 +76,9 @@ export function useMistakeTutor(item: MistakeItem) {
           : questionType === "draw-line"
             ? drawConnections.length > 0
             : false;
+    const subQuestionText = assembleSubQuestionText(item.questionPayload.question, subQuestionAnswers);
     const content = studentInput.trim()
+      || subQuestionText
       || (questionType === "fill-blank" ? Object.values(blankAnswers).join("；") : "")
       || (questionType === "numeric" ? numericAnswer : "")
       || (selectedOptions.length ? `我选择${selectedOptions.join("、")}` : "")
@@ -100,6 +108,7 @@ export function useMistakeTutor(item: MistakeItem) {
       setBlankAnswers({});
       setNumericAnswer("");
       setDrawConnections([]);
+      setSubQuestionAnswers({});
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "发送失败");
     } finally {
@@ -114,6 +123,7 @@ export function useMistakeTutor(item: MistakeItem) {
     blankAnswers,
     numericAnswer,
     drawConnections,
+    subQuestionAnswers,
     loading,
     sending,
     error,
@@ -122,6 +132,7 @@ export function useMistakeTutor(item: MistakeItem) {
     setBlankAnswers,
     setNumericAnswer,
     setDrawConnections,
+    setSubQuestionAnswers,
     setStage: (stage: TutorStage) => setThread((current) => current ? { ...current, stage } : current),
     submit,
   };

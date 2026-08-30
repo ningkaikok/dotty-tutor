@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createLearningSession,
   loadLearningMastery,
@@ -85,6 +85,7 @@ async function flushPending(activeSessionId: string, replacedSessionId = ""): Pr
  * 本地队列可重复发送，但服务端只累计一次掌握度。
  */
 export function usePublishedLearningSession(publicationId: string | undefined) {
+  const sessionRequestRef = useRef<{ publicationId: string; promise: ReturnType<typeof openOrRecoverSession> } | null>(null);
   const [sessionId, setSessionId] = useState("");
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
   const [mastery, setMastery] = useState<MasteryState[]>([]);
@@ -108,7 +109,12 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     setAttempts([]);
     setSessionReady(false);
     setSyncMessage("正在连接学习记录…");
-    void openOrRecoverSession(publicationId).then(async ({ session, replacedSessionId }) => {
+    const existingRequest = sessionRequestRef.current?.publicationId === publicationId
+      ? sessionRequestRef.current.promise
+      : null;
+    const sessionRequest = existingRequest ?? openOrRecoverSession(publicationId);
+    if (!existingRequest) sessionRequestRef.current = { publicationId, promise: sessionRequest };
+    void sessionRequest.then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
       setAttempts(session.attempts ?? []);

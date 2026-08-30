@@ -21,6 +21,7 @@ def build_import_quality_report(
     detected: list[str] = []
     duplicate_numbers: set[str] = set()
     image_numbers: defaultdict[str, set[str]] = defaultdict(set)
+    image_attribution_audit: list[dict[str, Any]] = []
     unidentified_pages: set[int] = set()
     sparse_batches: list[str] = []
     page_markers_seen = False
@@ -35,6 +36,9 @@ def build_import_quality_report(
         for number, _block, images in blocks:
             for image in images or []:
                 image_numbers[str(image)].add(number)
+        image_attribution_audit.extend(
+            item for item in (batch.get("imageAttributionAudit") or []) if isinstance(item, dict)
+        )
 
         markers = [int(value) for value in PAGE_MARKER.findall(source)]
         if markers:
@@ -76,6 +80,11 @@ def build_import_quality_report(
         blockers.append(f"长 OCR 文本但题号过少：{', '.join(sparse_batches)}")
     if image_conflicts:
         blockers.append(f"{len(image_conflicts)} 张图片被归属到多个题号")
+    uncertain_attributions = [
+        item for item in image_attribution_audit if item.get("status") == "needs_review"
+    ]
+    if uncertain_attributions:
+        blockers.append(f"{len(uncertain_attributions)} 张无明确图注的图片无法可靠归属题号")
     if unidentified_pages:
         warnings.append(f"{len(unidentified_pages)} 页缺少可确认的 OCR 页面标记")
     if missing_numbers:
@@ -97,6 +106,7 @@ def build_import_quality_report(
         "missingQuestionNumbers": missing_numbers,
         "unidentifiedPages": sorted(unidentified_pages),
         "imageAttributionConflicts": image_conflicts,
+        "imageAttributionAudit": image_attribution_audit,
         "warnings": warnings,
         "blockers": blockers,
         "checkedBatchCount": len(batches),

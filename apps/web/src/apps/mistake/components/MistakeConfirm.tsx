@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { confirmMistake } from "../../../api/mistakes";
-import MathText from "../../../MathText";
+import { RichText } from "../../../RichText";
 import type { MistakeConfirmation, MistakeErrorReason, MistakeItem } from "../../../types/index";
 import { displayedPrompt, optionText } from "../../../questionPresentation";
 
@@ -84,9 +84,9 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
           )}
           <div>
             <span>识别结果预览</span>
-            <MathText text={form.prompt} block />
+            <RichText text={form.prompt} />
             {question.options?.length ? (
-              <ol>{question.options.map((option) => <li key={option}><MathText text={optionText(option)} /></li>)}</ol>
+              <ol>{question.options.map((option) => <li key={option}><RichText text={optionText(option)} /></li>)}</ol>
             ) : null}
           </div>
           <small>{fromPublishedPaper ? "来源：已发布互动试卷" : `OCR：${item.ocrRun.provider} · 模型：${item.modelRun.provider}`}</small>

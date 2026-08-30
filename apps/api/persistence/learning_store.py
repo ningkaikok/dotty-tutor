@@ -369,7 +369,6 @@ class LearningStore(DatabaseStore):
                 connection,
                 session=session,
                 question_id=question_id,
-                legacy_name=knowledge_point,
             )
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
@@ -416,7 +415,6 @@ class LearningStore(DatabaseStore):
         *,
         session: Any,
         question_id: str,
-        legacy_name: str | None,
     ) -> dict[str, str]:
         """Resolve the question from the immutable publication, never from client labels."""
         publication = connection.execute(
@@ -456,16 +454,40 @@ class LearningStore(DatabaseStore):
             )
             return {"knowledgePointId": point_id, "name": name}
 
-        # Direct Store callers from before publication records existed may
-        # still provide a legacy label. The HTTP route no longer accepts or
-        # forwards that field, so untrusted clients cannot reach this path.
-        if legacy_name:
-            name = normalize_knowledge_point_name(legacy_name)
-            return {
-                "knowledgePointId": knowledge_point_id(session["publication_id"], name),
-                "name": name,
-            }
         raise LookupError("题目不属于当前已发布互动试卷")
+
+    @staticmethod
+    def _question_is_mastery_eligible(
+        connection: Any,
+        *,
+        publication_id: str,
+        question_id: str,
+    ) -> bool:
+        """Derive the mastery boundary from the immutable published question."""
+        publication = connection.execute(
+            select(lesson_publications.c.lesson_ids_json).where(
+                lesson_publications.c.publication_id == publication_id
+            )
+        ).mappings().first()
+        if not publication:
+            return False
+        lesson_ids = decode_json(publication["lesson_ids_json"]) or []
+        lessons = connection.execute(
+            select(lesson_documents.c.question_json).where(
+                lesson_documents.c.lesson_id.in_(lesson_ids)
+            )
+        ).mappings().all()
+        for row in lessons:
+            question = (decode_json(row["question_json"]) or {}).get("question") or {}
+            if question.get("id") != question_id:
+                continue
+            return not any(
+                isinstance(part, dict)
+                and isinstance(part.get("evaluation"), dict)
+                and part["evaluation"].get("mode") == "tutor"
+                for part in (question.get("subQuestions") or [])
+            )
+        return False
 
     def _recompute_mastery(
         self,
@@ -491,6 +513,7 @@ class LearningStore(DatabaseStore):
                 exercise_attempts.c.question_id,
                 exercise_attempts.c.attempt_id,
                 exercise_attempts.c.assessment,
+                exercise_attempts.c.response_json,
                 exercise_attempts.c.created_at,
             )
             .select_from(exercise_attempts.join(
@@ -502,7 +525,21 @@ class LearningStore(DatabaseStore):
                 exercise_attempts.c.knowledge_point_id == knowledge_point_id_value,
             )
         ).mappings().all()
-        derived = derive_mastery(rows)
+        # Do not read evaluationSummary from response_json: it is client data.
+        # Tutor-only eligibility is derived from the immutable publication.
+        eligible_by_question: dict[str, bool] = {}
+        mastery_rows = [
+            row for row in rows
+            if eligible_by_question.setdefault(
+                row["question_id"],
+                self._question_is_mastery_eligible(
+                    connection,
+                    publication_id=row["publication_id"],
+                    question_id=row["question_id"],
+                ),
+            )
+        ]
+        derived = derive_mastery(mastery_rows)
         computed_at = time.time()
         self._upsert(
             connection,

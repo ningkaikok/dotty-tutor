@@ -1,6 +1,6 @@
 import { QuestionAnswer } from "../../components/QuestionAnswer";
-import MathText from "../../MathText";
-import type { ExerciseAttemptInput, QuestionPayload, TutorReply } from "../../types/index";
+import { RichText } from "../../RichText";
+import type { ExerciseAttemptInput, QuestionPayload, SubQuestionAnswer, TutorReply } from "../../types/index";
 
 interface StudentQuestionWorkspaceProps {
   payload: QuestionPayload;
@@ -11,6 +11,7 @@ interface StudentQuestionWorkspaceProps {
   blankAnswers: Record<string, string>;
   numericAnswer: string;
   drawConnections: Array<[string, string]>;
+  subQuestionAnswers: Record<string, SubQuestionAnswer>;
   studentInput: string;
   error: string;
   reply: TutorReply | null;
@@ -23,6 +24,7 @@ interface StudentQuestionWorkspaceProps {
   onBlankChange: (id: string, value: string) => void;
   onNumericChange: (value: string) => void;
   onDrawConnectionsChange: (connections: Array<[string, string]>) => void;
+  onSubQuestionChange: (id: string, answer: SubQuestionAnswer) => void;
   onStudentInputChange: (value: string) => void;
   onSubmit: () => void;
   onHelp: () => void;
@@ -44,6 +46,7 @@ export function StudentQuestionWorkspace({
   blankAnswers,
   numericAnswer,
   drawConnections,
+  subQuestionAnswers,
   studentInput,
   error,
   reply,
@@ -56,6 +59,7 @@ export function StudentQuestionWorkspace({
   onBlankChange,
   onNumericChange,
   onDrawConnectionsChange,
+  onSubQuestionChange,
   onStudentInputChange,
   onSubmit,
   onHelp,
@@ -66,7 +70,10 @@ export function StudentQuestionWorkspace({
   const hasStructuredAnswer = selectedOptions.length > 0
     || Object.values(blankAnswers).some((value) => value.trim())
     || Boolean(numericAnswer.trim())
-    || drawConnections.length > 0;
+    || drawConnections.length > 0
+    || Object.values(subQuestionAnswers).some((answer) => Object.values(answer).some((value) => (
+      typeof value === "string" ? value.trim().length > 0 : Array.isArray(value) ? value.length > 0 : Boolean(value && Object.keys(value).length)
+    )));
   const assessment = reply?.guideContext.assessment;
 
   return (
@@ -89,16 +96,18 @@ export function StudentQuestionWorkspace({
           blankAnswers={blankAnswers}
           numericAnswer={numericAnswer}
           drawConnections={drawConnections}
+          subQuestionAnswers={subQuestionAnswers}
           onSelectOption={onSelectOption}
           onBlankChange={onBlankChange}
           onNumericChange={onNumericChange}
           onDrawConnectionsChange={onDrawConnectionsChange}
+          onSubQuestionChange={onSubQuestionChange}
         />
         {question.givens.length > 0 && (
           <div className="student-question-givens" aria-label="题目条件（辅助读题）">
             <span className="student-question-givens-heading">题目条件</span>
             {question.givens.map((given) => (
-              <span key={given}><MathText text={given} /></span>
+              <span key={given}><RichText text={given} /></span>
             ))}
           </div>
         )}
@@ -140,7 +149,16 @@ export function StudentQuestionWorkspace({
             <strong>{assessment === "correct" ? "回答正确" : assessment === "incorrect" ? "这一步需要修正" : assessment === "partial" ? "已经接近了" : "给你一个提示"}</strong>
             <span>Dotty</span>
           </div>
-          {reply.reply.split("\n").map((line, index) => <p key={index}>{line ? <MathText text={line} /> : <br />}</p>)}
+          <p><RichText text={reply.reply} /></p>
+          {reply.guideContext.evaluationSummary && (
+            <ol className="sub-question-results" aria-label="小问判定结果">
+              {reply.guideContext.evaluationSummary.parts.map((part) => {
+                const label = question.subQuestions?.find((item) => item.id === part.subQuestionId)?.label ?? part.subQuestionId;
+                const status = part.status === "correct" ? "正确" : part.status === "incorrect" ? "需要修正" : part.status === "tutor" ? "待陪练反馈" : "未完成";
+                return <li key={part.subQuestionId} className={`sub-question-result ${part.status}`}><span>{label}</span><strong>{status}</strong></li>;
+              })}
+            </ol>
+          )}
         </section>
       )}
 

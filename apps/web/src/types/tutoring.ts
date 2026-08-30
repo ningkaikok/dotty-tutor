@@ -7,6 +7,16 @@ export type TutorStage = "diagnose" | "explain" | "practice" | "verify";
 export interface GuideContext {
   assessment?: "correct" | "partial" | "incorrect";
   assessmentAuthority?: "deterministic" | "guided";
+  /** 逐小问判定摘要；tutor-only 小问不会获得 mastery 资格。 */
+  evaluationSummary?: {
+    strategy: string;
+    parts: Array<{ subQuestionId: string; status: string; feedbackRequired?: boolean }>;
+    gradableCount: number;
+    matchedCount: number;
+    ungradedCount: number;
+    complete: boolean;
+    masteryEligible: boolean;
+  };
   stuckAt?: string;
   knowledge?: string[];
   hint?: string;

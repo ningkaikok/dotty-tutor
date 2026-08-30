@@ -107,6 +107,59 @@ class MasteryStoreTests(unittest.TestCase):
             self.assertEqual(len(items), 1)
             self.assertNotEqual(items[0]["knowledgePointId"], knowledge_point_id("paper-a", "同名知识点"))
 
+    def test_mastery_boundary_comes_from_published_sub_questions(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            store = AppStore(database_url=f"sqlite+pysqlite:///{Path(root) / 'tutor-only.sqlite3'}", data_root=root)
+            store.save_lesson({
+                "lessonId": "lesson-tutor-only",
+                "title": "证明题",
+                "version": 1,
+                "status": "draft",
+                "knowledgePoints": ["证明"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {
+                        "id": "question-tutor-only",
+                        "knowledgePoint": "证明",
+                        "subQuestions": [{
+                            "id": "sq-1",
+                            "prompt": "说明理由",
+                            "questionType": "short-answer",
+                            "evaluation": {"mode": "tutor"},
+                        }],
+                    },
+                    "quality": {"status": "ready"},
+                },
+            })
+            store.create_publication(
+                publication_id="paper-tutor-only",
+                title="证明试卷",
+                source_upload_id=None,
+                lesson_ids=["lesson-tutor-only"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("paper-tutor-only", "in_review")
+            store.update_publication_status("paper-tutor-only", "published")
+            store.create_learning_session(
+                session_id="session-tutor-only",
+                learner_id="learner",
+                publication_id="paper-tutor-only",
+                started_at=1.0,
+            )
+            result = store.record_exercise_attempt(
+                attempt_id="forged-mastery",
+                session_id="session-tutor-only",
+                question_id="question-tutor-only",
+                response={"evaluationSummary": {"masteryEligible": True}},
+                assessment="correct",
+                hint_level=0,
+                duration_ms=0,
+                created_at=2.0,
+            )
+            self.assertEqual(result["mastery"]["evidenceCount"], 0)
+            self.assertEqual(result["mastery"]["rawScore"], 0.0)
+
     def test_schema_contains_v2_projection_fields(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             store = AppStore(database_url=f"sqlite+pysqlite:///{root}/schema.sqlite3", data_root=root)

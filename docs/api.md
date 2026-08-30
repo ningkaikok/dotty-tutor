@@ -69,7 +69,7 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 
 整本导入的 `qualityReport` 是确定性 OCR 检查结果：`ready` 表示可继续生成，`warning` 允许继续但需人工留意，
 `blocked` 表示检测到题号/图片归属等阻断项，Worker 不会继续调用模型。报告同时返回预计题数、题号范围、重复
-题号、缺失页和图片归属冲突，便于定位后重新上传或修复 OCR。
+题号、缺失页、图片归属冲突以及坐标归属审计 `imageAttributionAudit`，便于定位后重新上传或修复 OCR。
 
 ## 学习与语音
 
@@ -154,7 +154,39 @@ curl -X POST http://127.0.0.1:8010/api/help \
 - `multi-select`：前端提交 `interactionResult.selectedOptions`，后端比较完整的 `correctAnswers` 集合。
 - `fill-blank`：前端提交 `interactionResult.blankAnswers`，逐空比较文本或数值。
 - `numeric`：前端提交 `interactionResult.numericAnswer`，按 `answerSpec.tolerance` 判定数值误差。
+- `subQuestions`：多小问各自声明 `id`、`questionType` 和 `evaluation.mode`；前端提交
+  `interactionResult.subQuestionAnswers`，键为小问 `id`，值沿用选择、填空、数值或文本字段。
+  `deterministic` 小问复用对应题型判题，`tutor` 小问只进入陪练反馈，不自动判分。
 - 没有明确答案规格的题目继续交给模型和分层引导卡处理。
+
+多小问响应的 `guideContext.evaluationSummary` 会列出每个小问的 `status`、可判分数量、完成情况和
+`masteryEligible`。该字段只用于解释本轮结果，不能作为学习证据授权；掌握度投影会根据已发布题目契约在服务端
+重新判断是否含 tutor-only 小问。确定性小问的正确和错误都可形成学习证据；含 tutor-only 小问的作答保留审计，
+但整题不进入 mastery。
+
+示例：
+
+```json
+{
+  "questionType": "short-answer",
+  "subQuestions": [
+    {
+      "id": "part-1",
+      "label": "（1）",
+      "prompt": "说明理由。",
+      "questionType": "short-answer",
+      "evaluation": {"mode": "tutor", "reason": "开放性证明"},
+      "correctAnswer": null,
+      "correctAnswers": null,
+      "options": null,
+      "blanks": null,
+      "answerSpec": null,
+      "interaction": null,
+      "contentBlocks": []
+    }
+  ]
+}
+```
 
 ## 资源与教材库
 

@@ -101,6 +101,34 @@ export type QuestionType =
   | "numeric"
   | "draw-line";
 
+export interface SubQuestionEvaluation {
+  mode: "deterministic" | "tutor";
+  reason?: string | null;
+}
+
+export interface SubQuestion {
+  id: string;
+  label: string;
+  prompt: string;
+  questionType: QuestionType;
+  evaluation: SubQuestionEvaluation;
+  options?: string[] | null;
+  correctAnswer?: string | null;
+  correctAnswers?: string[] | null;
+  blanks?: BlankSpec[] | null;
+  answerSpec?: AnswerSpec | null;
+  interaction?: QuestionInteraction | null;
+  contentBlocks?: Array<TextContentBlock | MathContentBlock>;
+}
+
+export interface SubQuestionAnswer {
+  text?: string;
+  selectedOptions?: string[];
+  blankAnswers?: Record<string, string>;
+  numericAnswer?: string;
+  connections?: Array<[string, string]>;
+}
+
 export interface BlankSpec {
   id: string;
   label: string;
@@ -158,6 +186,8 @@ export interface Question {
   sourceQuestionKey?: string;
   sourcePages?: { start: number; end: number };
   visualContext?: Array<{ description: string; facts: string[]; conflicts: string[] }>;
+  /** Optional independent parts; each part owns its answer/evaluation boundary. */
+  subQuestions?: SubQuestion[];
 }
 
 export interface QuestionPayload {

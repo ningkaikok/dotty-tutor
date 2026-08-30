@@ -120,6 +120,53 @@ def _normalized_answer_spec(generated: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _normalized_sub_questions(generated: dict[str, Any]) -> list[dict[str, Any]]:
+    """Normalize optional multi-part questions without inventing answer keys.
+
+    Each part keeps its own answer contract.  Tutor-only parts deliberately have no
+    deterministic answer fields so the evaluator and mastery projection can abstain.
+    """
+    raw_parts = generated.get("subQuestions")
+    if not isinstance(raw_parts, list):
+        return []
+    parts: list[dict[str, Any]] = []
+    allowed_types = {"choice", "multi-select", "true-false", "short-answer", "fill-blank", "numeric", "draw-line"}
+    for index, raw in enumerate(raw_parts[:12], start=1):
+        if not isinstance(raw, dict):
+            continue
+        raw_evaluation = raw.get("evaluation")
+        evaluation: dict[str, Any] = raw_evaluation if isinstance(raw_evaluation, dict) else {}
+        mode_value = evaluation.get("mode")
+        mode = mode_value if mode_value in {"deterministic", "tutor"} else "tutor"
+        question_type = safe_text(raw.get("questionType"), "short-answer", 30)
+        if question_type not in allowed_types:
+            question_type = "short-answer"
+        part: dict[str, Any] = {
+            "id": safe_text(raw.get("id"), f"sub-question-{index}", 40),
+            "label": safe_text(raw.get("label"), f"（{index}）", 20),
+            "prompt": normalize_model_math_text(safe_text(raw.get("prompt"), "请完成这一小问。", 800)),
+            "questionType": question_type,
+            "evaluation": {
+                "mode": mode,
+                "reason": safe_text(evaluation.get("reason"), "", 160) or None,
+            },
+            "options": safe_string_list(raw.get("options"), [], 6),
+            "correctAnswer": None,
+            "correctAnswers": None,
+            "blanks": None,
+            "answerSpec": None,
+            "interaction": raw.get("interaction") if isinstance(raw.get("interaction"), dict) else None,
+            "contentBlocks": raw.get("contentBlocks") if isinstance(raw.get("contentBlocks"), list) else [],
+        }
+        if mode == "deterministic":
+            part["correctAnswer"] = safe_text(raw.get("correctAnswer"), "", 120) or None
+            part["correctAnswers"] = safe_string_list(raw.get("correctAnswers"), [], 6) or None
+            part["blanks"] = _normalized_blanks(raw) or None
+            part["answerSpec"] = _normalized_answer_spec(raw)
+        parts.append(part)
+    return parts
+
+
 def _normalized_steps(generated: dict[str, Any], question: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     raw_steps_value = generated.get("lessonSteps")
     raw_steps: list[Any] = raw_steps_value if isinstance(raw_steps_value, list) else []
@@ -300,6 +347,7 @@ def generate_lesson(
         "interaction": normalize_question_interaction(generated.get("interaction"), question_type),
         "givens": givens,
         "options": options,
+        "subQuestions": _normalized_sub_questions(generated),
         "imageReferences": selected_images or (safe_string_list(generated.get("imageReferences"), [], 4) if generated.get("imageReferences") else []),
     }
     guide_cards = _normalized_guide_cards(generated, knowledge_point, question)
