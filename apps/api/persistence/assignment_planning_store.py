@@ -67,6 +67,33 @@ class AssignmentPlanningStore:
             row = connection.execute(select(assignment_plans).where(assignment_plans.c.plan_id == plan_id)).mappings().first()
         return self._serialize(row) if row else None
 
+    def update_result(self, plan_id: str, result: dict[str, Any], *, updated_at: float) -> None:
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            connection.execute(
+                update(assignment_plans).where(assignment_plans.c.plan_id == plan_id).values(
+                    result_json=result, updated_at=updated_at,
+                )
+            )
+
+    def create_personalized_plan(
+        self, *, plan_id: str, class_id: str, publication_id: str,
+        source_fingerprint: str, input_snapshot: dict[str, Any], result: dict[str, Any],
+        run_id: str | None, created_at: float,
+    ) -> dict[str, Any]:
+        """Persist the final generated paper as its own confirmable plan."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            connection.execute(assignment_plans.insert().values(
+                plan_id=plan_id, class_id=class_id, publication_id=publication_id,
+                publication_version=1, source_fingerprint=source_fingerprint,
+                status="draft", input_snapshot_json=input_snapshot,
+                result_json=result, warnings_json=[], run_id=run_id,
+                assignment_id=None, created_at=created_at, updated_at=created_at,
+                confirmed_at=None,
+            ))
+        return self.get(plan_id)  # type: ignore[return-value]
+
     def list_mastery_states(self, learner_ids: list[str]) -> list[dict[str, Any]]:
         """Join publication-scoped IDs to their publication/name for planning only."""
         self._ensure_initialized()

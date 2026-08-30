@@ -9,6 +9,7 @@ import os
 from application import create_app
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lesson_generation import generate_lesson, question_payload
+from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.stateful_tutor import StatefulTutor
 from domain.questions.pipeline import build_question_content_blocks
 from infrastructure.runtime.model_runtime import ModelRuntime
@@ -59,7 +60,16 @@ assignment_planning_service = AssignmentPlanningService(
     runtime=generation_runtime if os.getenv("ASSIGNMENT_PLANNER_ENABLED") == "1" else None,
 )
 app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
-app.include_router(build_classroom_router(store=store, planning_service=assignment_planning_service))
+personalized_assignment_service = PersonalizedAssignmentService(
+    store=store,
+    planning_service=assignment_planning_service,
+    model_runtime=generation_runtime,
+)
+app.include_router(build_classroom_router(
+    store=store,
+    planning_service=assignment_planning_service,
+    personalized_service=personalized_assignment_service,
+))
 publication_revision_service = PublicationRevisionService(
     store=store,
     processing_service=processing_service,

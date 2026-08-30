@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -241,7 +242,7 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
     OCR 通常会输出“题干图 + A-D 四张选项图”五张图片；审核模型可能把文件名
     当作普通文字写回 JSON，因此这里不信任模型的图片字段，而是以 OCR 来源顺序
     重新绑定；题干图缺失时也支持四张选项图的当前版式。
-    """
+"""
     labels = _image_choice_labels(source_block, len(source_images))
     if labels[:4] != ["A", "B", "C", "D"] or len(source_images) not in {4, 5}:
         return
@@ -272,6 +273,26 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
     # 这类以裸字母开头的正常内容会被连同后半行一起吞掉，这是本行曾经出现过的真实回归。
     prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、（(])\s*.*$", "", prompt)
     question["prompt"] = re.sub(r"\n{3,}", "\n\n", prompt).strip()
+
+
+def build_personalized_assignment_prompt(context: dict[str, Any], question_count: int) -> str:
+    """Build the privacy-bounded batch prompt for a class assignment."""
+    safe_context = {
+        "subject": str(context.get("subject") or "数学")[:80],
+        "gradeBand": str(context.get("gradeBand") or "初中")[:80],
+        "goals": context.get("goals") or [],
+        "mastery": context.get("mastery") or [],
+        "errors": context.get("errors") or [],
+        "sourceExamples": context.get("sourceExamples") or [],
+    }
+    return (
+        "请根据班级聚合学习证据生成一份新的中文数学试卷。\n"
+        f"题目数量必须恰好为 {question_count}。每道题对应一个给定 planningTopicKey。\n"
+        "只能使用 subject、gradeBand、聚合 mastery/错因、目标、无身份 evidenceRefs 和来源题示例；"
+        "不得要求或输出 learnerId、姓名、原始答案、聊天内容。新题必须改写数字、情境或设问，不能复制来源题。"
+        "每道题必须是服务端可确定判题的 choice、multi-select、true-false、fill-blank 或 numeric，答案字段完整。\n"
+        + json.dumps(safe_context, ensure_ascii=False, sort_keys=True)
+    )
 
 
 def _image_choice_labels(source_block: str, image_count: int) -> list[str]:

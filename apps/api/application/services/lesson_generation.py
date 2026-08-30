@@ -18,13 +18,18 @@ from domain.questions.contracts import (
     GUIDE_CARDS,
     LESSON_SCHEMA,
     LESSON_STEPS,
+    PERSONALIZED_ASSIGNMENT_PROMPT_VERSION,
+    PERSONALIZED_ASSIGNMENT_SCHEMA,
+    PERSONALIZED_ASSIGNMENT_SCHEMA_VERSION,
     QUESTION,
     HelpRequest,
     TutorReply,
 )
 from domain.questions.pipeline import (
+    apply_question_quality_gate,
     audit_image_placeholders,
     build_lesson_prompt,
+    build_personalized_assignment_prompt,
     clean_question_stem,
     normalize_model_math_text,
     normalize_question_interaction,
@@ -361,6 +366,117 @@ def generate_lesson(
         question_type=question_type,
     )
     return payload, guide_cards, run
+
+
+class PersonalizedLessonGenerationError(ValueError):
+    """The batch generator failed closed and produced no assignable lessons."""
+
+
+def _has_deterministic_answer(question: dict[str, Any]) -> bool:
+    question_type = question.get("questionType")
+    if question_type in {"choice", "multi-select"}:
+        return bool(question.get("correctAnswers"))
+    if question_type == "true-false":
+        return str(question.get("correctAnswer") or "") in {"正确", "错误", "true", "false"}
+    if question_type == "fill-blank":
+        blanks = question.get("blanks")
+        return bool(blanks) and all(item.get("correctAnswers") for item in blanks if isinstance(item, dict))
+    if question_type == "numeric":
+        spec = question.get("answerSpec")
+        return bool(question.get("correctAnswer") or (isinstance(spec, dict) and (spec.get("expected") or spec.get("accepted"))))
+    return False
+
+
+def generate_personalized_lessons(
+    context: dict[str, Any],
+    question_count: int,
+    *,
+    model_runtime: Any = runtime,
+) -> list[dict[str, Any]]:
+    """Generate a whole-class batch once and reject unsafe model output.
+
+    There is intentionally no deterministic fallback here: a fallback lesson
+    would look like a successful personalized assignment to the teacher.
+    """
+    if not 1 <= question_count <= 5:
+        raise PersonalizedLessonGenerationError("题目数量必须在 1 到 5 之间")
+    prompt = build_personalized_assignment_prompt(context, question_count)
+    try:
+        raw, run = model_runtime.generate_json(
+            prompt, PERSONALIZED_ASSIGNMENT_SCHEMA, max_tokens=2_800,
+        )
+    except Exception as error:  # noqa: BLE001
+        raise PersonalizedLessonGenerationError("个性化作业模型不可用") from error
+    if not isinstance(raw, dict) or not isinstance(raw.get("questions"), list):
+        raise PersonalizedLessonGenerationError("个性化作业结果结构不完整")
+    if not isinstance(run, dict) or run.get("fallback") or run.get("provider") in {"mock", "deterministic"}:
+        raise PersonalizedLessonGenerationError("个性化作业不接受模型回退结果")
+    questions = raw["questions"]
+    if len(questions) != question_count:
+        raise PersonalizedLessonGenerationError("模型返回的题目数量不符合请求")
+    allowed_keys = {str(item.get("planningTopicKey")) for item in context.get("goals", [])}
+    source_prompts = {
+        str(item.get("prompt") or "").strip().casefold()
+        for item in context.get("sourceExamples", [])
+    }
+    results: list[dict[str, Any]] = []
+    for index, item in enumerate(questions, start=1):
+        if not isinstance(item, dict) or item.get("planningTopicKey") not in allowed_keys:
+            raise PersonalizedLessonGenerationError("模型引用了计划之外的主题")
+        lesson = item.get("lesson")
+        if not isinstance(lesson, dict):
+            raise PersonalizedLessonGenerationError("模型返回的 lesson 不完整")
+        question_type = str(lesson.get("questionType") or "")
+        prompt_text = str(lesson.get("prompt") or "").strip()
+        if not prompt_text or question_type not in {"choice", "multi-select", "true-false", "fill-blank", "numeric"}:
+            raise PersonalizedLessonGenerationError("个性化题目缺少可判题结构")
+        if prompt_text.casefold() in source_prompts:
+            raise PersonalizedLessonGenerationError("个性化题目复制了来源题")
+        lesson_id = new_question_id("personalized", f"{item['planningTopicKey']}:{prompt_text}:{index}")
+        question = {
+            "id": lesson_id,
+            "questionType": question_type,
+            "chapter": safe_text(lesson.get("chapter"), "班级个性化作业", 80),
+            "knowledgePoint": safe_text(lesson.get("knowledgePoint"), item["planningTopicKey"], 120),
+            "questionNumber": str(lesson.get("questionNumber") or index),
+            "prompt": normalize_model_math_text(prompt_text),
+            "correctAnswer": safe_text(lesson.get("correctAnswer"), "", 120),
+            "correctAnswers": safe_string_list(lesson.get("correctAnswers"), [], 6),
+            "selectionMode": "multiple" if question_type == "multi-select" else "single",
+            "blanks": _normalized_blanks(lesson),
+            "answerSpec": _normalized_answer_spec(lesson),
+            "interaction": normalize_question_interaction(lesson.get("interaction"), question_type),
+            "givens": safe_string_list(lesson.get("givens"), [], 5),
+            "options": safe_string_list(lesson.get("options"), [], 6),
+            "imageReferences": [],
+            "subQuestions": [],
+        }
+        if not _has_deterministic_answer(question):
+            raise PersonalizedLessonGenerationError("个性化题目答案不完整")
+        payload = question_payload(question, _normalized_steps(lesson, question), run)
+        cards = _normalized_guide_cards(lesson, question["knowledgePoint"], question)
+        quality = apply_question_quality_gate(payload, prompt_text, [])
+        if quality.get("status") != "ready":
+            raise PersonalizedLessonGenerationError("个性化题目未通过质量门禁")
+        metadata = {
+            "sourcePlanId": context["sourcePlanId"],
+            "sourcePublicationId": context["sourcePublicationId"],
+            "planningTopicKey": item["planningTopicKey"],
+            "evidenceRefs": list(next(goal for goal in context["goals"] if goal["planningTopicKey"] == item["planningTopicKey"]).get("evidenceRefs", [])),
+            "promptVersion": PERSONALIZED_ASSIGNMENT_PROMPT_VERSION,
+            "schemaVersion": PERSONALIZED_ASSIGNMENT_SCHEMA_VERSION,
+            "difficulty": str(lesson.get("difficulty") or "按班级证据调整"),
+        }
+        question["personalization"] = metadata
+        payload["personalization"] = metadata
+        results.append({
+            "lessonId": lesson_id,
+            "title": f"个性化练习 · {question['knowledgePoint']}",
+            "questionPayload": payload,
+            "guideCards": cards,
+            "metadata": metadata,
+        })
+    return results
 
 
 def attach_question_source(

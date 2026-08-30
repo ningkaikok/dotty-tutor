@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { addClassMember, createAssignment, createClass, loadClass, loadClassDashboard, loadClasses, recordTeacherReview } from "../../api/classroom";
+import { addClassMember, createAssignment, createClass, createPersonalizedAssignment, loadClass, loadClassDashboard, loadClasses, recordTeacherReview } from "../../api/classroom";
 import { loadPublishedPublications } from "../../api/publications";
 import type { ClassDashboard, ClassDetail, ClassSummary } from "../../types/classroom";
 import type { PublicationSummary } from "../../types/publication";
@@ -51,6 +51,7 @@ export function TeacherClassroomApp() {
   const [dashboardError, setDashboardError] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewPendingKey, setReviewPendingKey] = useState("");
+  const [personalizing, setPersonalizing] = useState(false);
   const [overrideScores, setOverrideScores] = useState<Record<string, string>>({});
   const planning = useAssignmentPlanning(selectedClassId);
   const clearPlanning = planning.clear;
@@ -177,6 +178,21 @@ export function TeacherClassroomApp() {
       setError(requestError instanceof Error ? requestError.message : "布置作业失败");
     } finally {
       setPending("");
+    }
+  };
+
+  const generatePersonalized = async () => {
+    if (!selectedClassId || !planning.plan) return;
+    setPersonalizing(true);
+    setError("");
+    try {
+      const finalPlan = await createPersonalizedAssignment(selectedClassId, planning.plan.planId, 3);
+      await planning.restore(finalPlan.planId);
+      setPublicationId(finalPlan.publicationId);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "生成个性化作业失败");
+    } finally {
+      setPersonalizing(false);
     }
   };
 
@@ -349,6 +365,8 @@ export function TeacherClassroomApp() {
                     confirming={pending === "assignment"}
                     onConfirm={(confirmWarnings) => void saveAssignment(confirmWarnings)}
                     onRegenerate={() => void analyzeAssignment()}
+                    onPersonalize={() => void generatePersonalized()}
+                    personalizing={personalizing}
                   />
                 )}
                 {classDetail.assignments.length > 0 && (

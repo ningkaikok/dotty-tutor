@@ -274,7 +274,7 @@ class TutorTurnPlanTests(unittest.TestCase):
 
         self.assertEqual(plan["errorStrategy"]["reason"], "unknown")
         self.assertEqual(plan["errorStrategy"]["id"], "scaffolded-transfer")
-        self.assertEqual(plan["errorStrategy"]["source"], "fallback")
+        self.assertEqual(plan["errorStrategy"]["source"], "unknown")
 
     def test_model_evidence_must_overlap_current_student_input(self) -> None:
         fabricated = normalize_misconception({

@@ -231,6 +231,21 @@ class VariationPracticeTests(unittest.TestCase):
         item = created.json()
         self.assertEqual(item["strategy"], "condition-reading")
         self.assertEqual(item["questionPayload"]["question"]["variationTarget"], "reading")
+        self.assertEqual(item["attributionSource"], "ai")
+
+    def test_generation_uses_self_then_unknown_without_rejecting(self) -> None:
+        mistake = self.mistakes.get("mistake-1") or {}
+        service = VariationService(generator=fake_generator)
+        generated = service.generate(mistake, 1)
+        self.assertEqual(generated["attributionSource"], "self")
+        mistake["errorReason"] = None
+        mistake["aiErrorReason"] = None
+        unknown = service.generate(mistake, 1)
+        self.assertEqual(unknown["attributionSource"], "unknown")
+        self.assertEqual(unknown["strategy"], "scaffolded-transfer")
+        mistake["errorReason"] = "concept"
+        mistake["aiErrorReason"] = "unknown"
+        self.assertEqual(service.generate(mistake, 1)["attributionSource"], "self")
 
     def test_incorrect_answer_can_be_resubmitted_without_generating_a_second_question(self) -> None:
         self._advance_thread_to_verify()

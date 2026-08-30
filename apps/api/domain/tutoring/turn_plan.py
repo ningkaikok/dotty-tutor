@@ -225,7 +225,7 @@ def resolve_error_strategy(
         return ai_error_reason, "ai"
     if error_reason in ERROR_STRATEGIES:
         return error_reason, "self"
-    return "unknown", "fallback"
+    return "unknown", "unknown"
 
 
 def select_teaching_action(

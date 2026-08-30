@@ -56,6 +56,10 @@ export interface AssignmentPlan {
     coverage: Array<{ planningTopicKey: string; topic: string; questionCount: number }>;
     mastery: Array<Record<string, unknown>>;
     errorStats: Array<Record<string, unknown>>;
+    personalized?: boolean;
+    sourcePlanId?: string;
+    sourcePublicationId?: string;
+    lessons?: Array<Record<string, unknown>>;
   };
   warnings: Array<{ code: string; severity: string; message: string }>;
   assignmentId: string | null;

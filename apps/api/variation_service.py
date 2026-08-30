@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from domain.tutoring.turn_plan import ERROR_STRATEGIES
+from domain.tutoring.turn_plan import ERROR_STRATEGIES, resolve_error_strategy
 
 VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]]
 
@@ -28,13 +28,10 @@ class VariationService:
         self.generator = generator
 
     def generate(self, mistake: dict[str, Any], sequence: int) -> dict[str, Any]:
-        # aiErrorReason is written only after the tutoring misconception passes
-        # its evidence/confidence gate, so it takes precedence over self-report.
-        reason = mistake.get("aiErrorReason")
-        if reason not in ERROR_STRATEGIES:
-            reason = mistake.get("errorReason")
-        if not reason or reason not in ERROR_STRATEGIES:
-            raise ValueError("请先确认错误原因，再生成变式验证题")
+        reason, attribution_source = resolve_error_strategy(
+            mistake.get("errorReason"),
+            ai_error_reason=mistake.get("aiErrorReason"),
+        )
         strategy, objective = ERROR_STRATEGIES[reason]
         level = LEVELS[min(max(sequence - 1, 0), len(LEVELS) - 1)]
         original = mistake["questionPayload"]["question"]
@@ -67,11 +64,13 @@ class VariationService:
         question["variationStrategyVersion"] = STRATEGY_VERSION
         question["variationObjective"] = objective
         question["variationTarget"] = reason
+        question["variationAttributionSource"] = attribution_source
         question["variationLevel"] = level
         return {
             "strategy": strategy,
             "strategyVersion": STRATEGY_VERSION,
             "target": reason,
+            "attributionSource": attribution_source,
             "objective": objective,
             "level": level,
             "questionPayload": payload,

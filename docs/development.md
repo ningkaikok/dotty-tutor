@@ -252,6 +252,9 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema。已有数据库不能只依赖 `create_all()`：切换包含
 schema 变更的版本时，应先备份，再按变更使用 `scripts/migrate_mastery_v2.py`、
 `scripts/migrate_class_assignments.py` 或 `scripts/migrate_assignment_plans.py` 执行 dry-run、apply 和 verify。
+
+变式归因字段升级使用 `python scripts/migrate_variation_attribution.py --database-url DATABASE_URL --dry-run`，
+实际写入改用 `--apply`，完成后用 `--verify` 检查旧记录是否全部为 `unknown` 或合法的 `ai`/`self`。
 项目尚无通用 Alembic 迁移历史，因此真实生产数据接入前仍需补齐可回滚的版本化迁移；本地测试库和 `data/`
 资源可以在不需要保留数据时清空，但这不是当前版本的唯一升级方式。
 

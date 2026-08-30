@@ -292,7 +292,13 @@ class MistakeStore:
                     grade_band=confirmation.get("gradeBand", "初中"),
                     chapter=confirmation["chapter"],
                     knowledge_point=confirmation["knowledgePoint"],
-                    error_reason=confirmation["errorReason"],
+                    # Omitted and explicit null both mean “keep the existing
+                    # self-assessment”; only a concrete enum replaces it.
+                    error_reason=(
+                        confirmation["errorReason"]
+                        if confirmation.get("errorReason") is not None
+                        else current.get("errorReason")
+                    ),
                     notes=confirmation.get("notes", ""),
                     status="unmastered",
                     updated_at=timestamp,

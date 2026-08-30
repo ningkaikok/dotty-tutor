@@ -47,6 +47,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/classes/{classId}/members` | 添加或更新一个 `learnerId` 的班级成员 |
 | `POST` | `/api/classes/{classId}/assignment-plans` | 根据班级和一份已发布互动试卷生成并保存分析草稿；只读聚合证据，不创建 assignment |
 | `GET` | `/api/classes/{classId}/assignment-plans/{planId}` | 恢复作业计划草稿、目标、证据引用、覆盖度和提醒 |
+| `POST` | `/api/classes/{classId}/assignment-plans/{planId}/personalized` | 根据仍有效且有班级个性化证据的草稿，一次生成 1–5 道新题并返回可确认的最终 plan；模型回退、坏答案或质量门禁失败均失败关闭 |
 | `POST` | `/api/classes/{classId}/assignments` | 确认计划后指派已发布互动试卷；必须携带 `planId`、`publicationId`、`sourceFingerprint` 和 `confirmWarnings`，同一计划重复确认幂等 |
 | `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
 | `POST` | `/api/classes/{classId}/assignments/{assignmentId}/reviews` | 追加教师复核、推翻判定或知识点掌握度覆盖；原始作答和 AI 判题不被改写 |
@@ -349,3 +350,15 @@ concept | reading | calculation | missing_step | unknown | careless
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
 具体数据模型和交付顺序见[AI 错题陪练产品规划](mistake-coach-plan.md)。
+### 个性化作业和归因快照补充
+
+个性化作业生成的是全班共用的一份新试卷，不按学生拆分；模型只接收学科、学段、聚合掌握度/错因、目标、无身份
+`evidenceRefs` 和来源题示例，不包含 learnerId、姓名、原始答案或聊天内容。返回的最终 plan 的 `publicationId`
+不同于来源试卷，确认指派时继续使用现有 assignments API，并提交最终 plan 的 publicationId 与 sourceFingerprint。
+重复请求复用最终 plan，不重复模型调用或创建试卷；来源指纹过期或没有 mastery/mistake 证据返回 `409`。
+
+每道变式题会固化 `variationStrategyVersion`、目标、教学目标、难度和 `attributionSource`（`ai`、`self` 或 `unknown`）。
+采信顺序统一为门禁后的 AI 归因、学生自评、unknown；列表和 Evidence API 使用题目快照，不会按当前错题重新计算。
+错题确认中的 `errorReason` 省略或为 `null` 都表示“不修改已有学生自评”，不是清除；首次没有已有值仍保存为 `null`，非法枚举返回 `422`。
+旧变式无法反推来源，统一迁移为 `unknown`：`python scripts/migrate_variation_attribution.py --database-url DATABASE_URL --dry-run`，
+实际写入使用 `--apply`，完成后使用 `--verify`。

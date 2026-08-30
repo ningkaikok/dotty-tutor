@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Column,
     Float,
     Index,
@@ -38,6 +39,7 @@ variation_exercises = Table(
     Column("mistake_id", String(64), nullable=False),
     Column("learner_id", String(128), nullable=False),
     Column("strategy", String(32), nullable=False),
+    Column("attribution_source", String(16), nullable=False, default="unknown"),
     Column("level", String(32), nullable=False),
     Column("sequence", Integer, nullable=False),
     Column("question_payload_json", json_document, nullable=False),
@@ -48,6 +50,10 @@ variation_exercises = Table(
     Column("feedback", Text, nullable=False, default=""),
     Column("created_at", Float, nullable=False),
     Column("answered_at", Float),
+    CheckConstraint(
+        "attribution_source IN ('ai', 'self', 'unknown')",
+        name="ck_variation_exercises_attribution_source",
+    ),
 )
 
 # A variation row is the current projection used by the practice UI.  Every
@@ -121,6 +127,17 @@ class VariationStore:
             if self._initialized:
                 return
             variation_metadata.create_all(self.engine)
+            # SQLAlchemy create_all does not alter an existing table. This
+            # small compatibility step keeps old SQLite databases readable;
+            # deployments should also run the checked-in migration script.
+            from sqlalchemy import inspect, text
+            columns = {item["name"] for item in inspect(self.engine).get_columns("variation_exercises")}
+            if "attribution_source" not in columns:
+                with self.engine.begin() as connection:
+                    statement = (
+                        "ALTER TABLE variation_exercises ADD COLUMN attribution_source VARCHAR(16) NOT NULL DEFAULT 'unknown'"
+                    )
+                    connection.execute(text(statement))
             self._initialized = True
 
     def create(
@@ -132,6 +149,7 @@ class VariationStore:
         level: str,
         question_payload: dict[str, Any],
         model_run: dict[str, Any],
+        attribution_source: str = "unknown",
     ) -> dict[str, Any]:
         self._ensure_initialized()
         sequence = self.count_for_mistake(mistake_id) + 1
@@ -143,6 +161,7 @@ class VariationStore:
                 mistake_id=mistake_id,
                 learner_id=learner_id,
                 strategy=strategy,
+                attribution_source=attribution_source if attribution_source in {"ai", "self", "unknown"} else "unknown",
                 level=level,
                 sequence=sequence,
                 question_payload_json=question_payload,
@@ -326,6 +345,7 @@ class VariationStore:
             "mistakeId": row["mistake_id"],
             "learnerId": row["learner_id"],
             "strategy": row["strategy"],
+            "attributionSource": row.get("attribution_source") or "unknown",
             "level": row["level"],
             "sequence": row["sequence"],
             "questionPayload": row["question_payload_json"],

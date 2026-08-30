@@ -171,6 +171,24 @@ class MistakeCaptureApiTests(unittest.TestCase):
         self.assertEqual(confirmed["status"], "unmastered")
         self.assertIsNone(confirmed["errorReason"])
 
+    def test_confirmation_preserves_existing_self_assessment_when_omitted_or_null(self) -> None:
+        response = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation.png", b"image-fixture", "image/png")},
+        )
+        mistake_id = response.json()["mistakeId"]
+        base = {
+            "prompt": "解方程 2x + 3 = 11",
+            "chapter": "一元一次方程",
+            "knowledgePoint": "移项",
+            "errorReason": "calculation",
+        }
+        self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=base).status_code, 200)
+        omitted = {key: value for key, value in base.items() if key != "errorReason"}
+        self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=omitted).json()["errorReason"], "calculation")
+        explicit_null = {**omitted, "errorReason": None}
+        self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=explicit_null).json()["errorReason"], "calculation")
+
     def test_confirmation_succeeds_with_empty_chapter_and_knowledge_point(self) -> None:
         """章节/知识点不再强制：AI 已预填时，学生可以直接保存而不修改分类。"""
         response = self.client.post(
