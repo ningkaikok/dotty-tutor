@@ -661,6 +661,32 @@ def limited_question_sources(
     return blocks or [("", source, MARKDOWN_IMAGE_PATTERN.findall(source))]
 
 
+def looks_like_multi_question_document(source: str) -> bool:
+    """判断是否不应把整份 OCR 文本作为一道题交给模型。
+
+    OCR 题号分隔符损坏时 ``split_question_sources`` 会返回空列表，调用方随即回退成
+    "整页当作一道题"。这个兜底对真正的单题文本是合理的，但对一整张试卷是灾难：模型会
+    把答题说明、几十道题和参考答案拼成一道看起来合法的题，而且下游没有任何环节能发现。
+    因此在回退之前先判断文档形态，是多题文档就让调用方在来源边界报错。
+
+    判据刻意保守：只有出现两个以上编号候选，**并且**存在题型章节标题、考试说明标记或
+    正文长到不可能是单题时才成立。宁可漏判一次（退回旧的兜底行为），也不要把合法的
+    单题文本误判成试卷而阻断正常导入。
+    """
+    area = ANSWER_SECTION_PATTERN.split(str(source or ""), maxsplit=1)[0]
+    candidates = re.findall(
+        r"(?m)^\s*(?:第\s*)?\d{1,3}\s*(?:[：:]|[，,、.．])\s*\S",
+        area,
+    )
+    if len(candidates) < 2:
+        return False
+    return bool(
+        QUESTION_SECTION_PATTERN.search(area)
+        or _has_any_marker(area, EXAM_INSTRUCTION_MARKERS)
+        or len(area) >= 1200
+    )
+
+
 def select_complete_question_source(
     source: str,
     asset_dir: Path | None = None,

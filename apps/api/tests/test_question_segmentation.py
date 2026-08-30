@@ -15,6 +15,7 @@ from domain.questions.pipeline import (
 from domain.questions.source import (
     QUESTION_SEGMENTATION_VERSION,
     is_likely_exam_instruction,
+    looks_like_multi_question_document,
     split_question_sources,
 )
 
@@ -63,6 +64,24 @@ class QuestionSegmentationTests(unittest.TestCase):
         """
         blocks = split_question_sources(source)
         self.assertEqual([number for number, _, _ in blocks], ["1", "2", "3"])
+
+    def test_flags_multi_question_source_before_whole_document_fallback(self) -> None:
+        """题号损坏的整卷不能走“整页当作一道题”的兜底。
+
+        切分失败时调用方会回退成把整份文本当成一道题。对单题文本这是合理的，但一整张
+        试卷会被拼成一道看似合法的题送进模型，下游没有任何环节能发现。
+        """
+        source = """
+        ## 一、选择题
+        1：第一题。
+        2：第二题。
+        """ + ("补充 OCR 文本。" * 200)
+        self.assertTrue(looks_like_multi_question_document(source))
+
+    def test_single_question_source_still_allows_whole_document_fallback(self) -> None:
+        """判据必须保守：误判会把正常的单题导入直接阻断。"""
+        self.assertFalse(looks_like_multi_question_document("1. 计算 $1+1$ 的值。"))
+        self.assertFalse(looks_like_multi_question_document(""))
 
     def test_accepts_markdown_heading_prefix_from_ocr_export(self) -> None:
         source = """

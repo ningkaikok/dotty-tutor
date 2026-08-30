@@ -35,6 +35,39 @@ class TextbookProcessingTests(unittest.TestCase):
             self.assertEqual(restored_path, source_path)
             self.assertEqual(fingerprint, hashlib.sha256(content).hexdigest())
 
+    def test_mis_segmented_exam_paper_fails_instead_of_becoming_one_question(self) -> None:
+        """题号切分失败时，整卷必须在来源边界报错，而不是回退成一道题。
+
+        单元测试只能证明判据函数本身正确；这条覆盖的是接线：防护确实被
+        ``_load_batch_sources`` 调用，并且在回退分支之前生效。
+        """
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "source.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
+            job = {"uploadId": "bad-ocr", "directory": root}
+            batch = {"id": "batch-001", "startPage": 1, "endPage": 5}
+            # 题号后面跟的是全角冒号，切分器不认；正文又长又带章节标题，
+            # 因此判据成立，应当报错而不是把整页当成一道题。
+            broken_source = "## 一、选择题\n1：第一题。\n2：第二题。\n" + ("补充 OCR 文本。" * 200)
+            service = TextbookProcessingService(
+                store=object(), upload_registry=object(), ocr_runtime=object(),
+            )
+
+            with patch(
+                "application.services.textbook_processing.resolve_routed_ocr_source",
+                return_value=(broken_source, {}),
+            ):
+                with self.assertRaises(HTTPException) as raised:
+                    service._load_batch_sources(
+                        upload_id="bad-ocr",
+                        job=job,
+                        batch=batch,
+                        result={"sourceFingerprint": "deadbeef"},
+                    )
+
+            self.assertEqual(raised.exception.status_code, 422)
+            self.assertIn("题号切分失败", raised.exception.detail)
+
     def test_full_paper_summary_is_bounded_and_resumes_processed_batches(self) -> None:
         """A retry skips persisted successes while recording later batch failures."""
         payload_one = {"question": {"id": "q1", "sourceQuestionKey": "batch-001-q-1"}}

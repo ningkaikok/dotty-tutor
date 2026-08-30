@@ -160,7 +160,9 @@ api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
-  → domain/questions/source.py（按题号切分 Markdown、图注/坐标归属和审计）
+  → domain/questions/source.py（按题号切分 Markdown、图注/坐标归属和审计；
+     切分失败且 `looks_like_multi_question_document()` 判定为多题文档时，由调用方报 422，
+     不走"整页当作一道题"的兜底）
   → domain/questions/quality.py（导入质量报告：题数、题号、页面和图片归属）
   → application/services/question_processing.py（生成、审校、确定性修复和质量门禁）
   → persistence/textbook_store.py（题目和上传任务）
