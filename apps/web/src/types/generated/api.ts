@@ -1354,19 +1354,22 @@ export interface components {
         };
         /** MistakeConfirmation */
         MistakeConfirmation: {
-            /** Chapter */
-            chapter: string;
             /**
-             * Errorreason
-             * @enum {string}
+             * Chapter
+             * @default
              */
-            errorReason: "concept" | "reading" | "calculation" | "missing_step" | "unknown" | "careless";
+            chapter: string;
+            /** Errorreason */
+            errorReason?: ("concept" | "reading" | "calculation" | "missing_step" | "unknown" | "careless") | null;
             /**
              * Gradeband
              * @default 初中
              */
             gradeBand: string;
-            /** Knowledgepoint */
+            /**
+             * Knowledgepoint
+             * @default
+             */
             knowledgePoint: string;
             /**
              * Notes
