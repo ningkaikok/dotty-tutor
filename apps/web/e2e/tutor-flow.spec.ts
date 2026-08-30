@@ -739,7 +739,16 @@ test.describe("产品入口", () => {
         { learnerId: "local-demo", displayName: "小安", sessionId: "session-teacher", attemptedCount: 1, questionCount: 1, progress: 1, status: "completed", averageMastery: 0.6 },
         { learnerId: "learner-b", displayName: "小北", sessionId: null, attemptedCount: 0, questionCount: 1, progress: 0, status: "not_started", averageMastery: null },
       ],
-      knowledgePoints: [{ knowledgePointId: "kp-teacher", knowledgePoint: "一次函数", observedStudentCount: 1, averageScore: 0.6, distribution: { notStarted: 1, needsSupport: 0, developing: 1, mastered: 0 } }],
+      knowledgePoints: [{
+        knowledgePointId: "kp-teacher",
+        knowledgePoint: "一次函数",
+        observedStudentCount: 1,
+        overriddenStudentCount: 0,
+        averageScore: 0.6,
+        distribution: { notStarted: 1, needsSupport: 0, developing: 1, mastered: 0 },
+        evidence: [{ learnerId: "local-demo", displayName: "小安", questionId: "teacher-question", assessment: "incorrect", reviewStatus: "unreviewed", correctedAssessment: null }],
+      }],
+      reviewMetrics: { judgedCount: 1, reviewedCount: 0, overturnedCount: 0, reviewRate: 0, overturnRate: null, overrideCount: 0 },
       metricDefinition: "掌握度只统计已有作答证据的学生；未开始不等于掌握度为 0。",
     } }));
     await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));

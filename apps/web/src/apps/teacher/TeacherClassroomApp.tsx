@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { addClassMember, createAssignment, createClass, loadClass, loadClassDashboard, loadClasses } from "../../api/classroom";
+import { addClassMember, createAssignment, createClass, loadClass, loadClassDashboard, loadClasses, recordTeacherReview } from "../../api/classroom";
 import { loadPublishedPublications } from "../../api/publications";
 import type { ClassDashboard, ClassDetail, ClassSummary } from "../../types/classroom";
 import type { PublicationSummary } from "../../types/publication";
@@ -10,7 +10,7 @@ import { AssignmentPlanReview } from "./AssignmentPlanReview";
 import { useAssignmentPlanning } from "./useAssignmentPlanning";
 
 /** 同一时刻只允许一个写操作在飞；用动作名而不是布尔量，避免三个表单互相禁用。 */
-type PendingAction = "" | "class" | "member" | "assignment";
+type PendingAction = "" | "class" | "member" | "assignment" | "review";
 
 const STUDENT_STATUS_LABELS: Record<string, string> = {
   completed: "已完成",
@@ -49,6 +49,9 @@ export function TeacherClassroomApp() {
   // 看板失败必须和"还没布置作业"区分开。合成一个状态会让加载失败看起来像没有数据，
   // 老师只会看到一片空白，无从判断是该布置作业还是该重试。
   const [dashboardError, setDashboardError] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewPendingKey, setReviewPendingKey] = useState("");
+  const [overrideScores, setOverrideScores] = useState<Record<string, string>>({});
   const planning = useAssignmentPlanning(selectedClassId);
   const clearPlanning = planning.clear;
 
@@ -56,6 +59,15 @@ export function TeacherClassroomApp() {
     () => publications.find((item) => item.publicationId === publicationId),
     [publicationId, publications],
   );
+  // 兼容旧的演示数据和缓存响应：复核指标属于增量字段，缺失时按尚未记录处理。
+  const reviewMetrics = dashboard?.reviewMetrics ?? {
+    judgedCount: 0,
+    reviewedCount: 0,
+    overturnedCount: 0,
+    reviewRate: null,
+    overturnRate: null,
+    overrideCount: 0,
+  };
 
   const refreshClasses = async () => {
     const items = await loadClasses();
@@ -165,6 +177,30 @@ export function TeacherClassroomApp() {
       setError(requestError instanceof Error ? requestError.message : "布置作业失败");
     } finally {
       setPending("");
+    }
+  };
+
+  const saveTeacherReview = async (input: {
+    learnerId: string;
+    questionId?: string;
+    knowledgePointId?: string;
+    action: "reviewed" | "overturned" | "mastery_override";
+    masteryScore?: number;
+    correctedAssessment?: "correct" | "partial" | "incorrect";
+  }, key: string) => {
+    if (!selectedClassId || !dashboard?.assignment.assignmentId) return;
+    setPending("review");
+    setReviewPendingKey(key);
+    setReviewMessage("");
+    try {
+      await recordTeacherReview(selectedClassId, dashboard.assignment.assignmentId, input);
+      await refreshDashboard(selectedClassId, dashboard.assignment.assignmentId);
+      setReviewMessage("教师判断已追加保存，原始 AI 判定仍保留。");
+    } catch (requestError) {
+      setReviewMessage(requestError instanceof Error ? requestError.message : "保存教师判断失败");
+    } finally {
+      setPending("");
+      setReviewPendingKey("");
     }
   };
 
@@ -359,6 +395,13 @@ export function TeacherClassroomApp() {
                     <div><span>完成率</span><strong>{formatRate(dashboard.summary.completionRate)}</strong></div>
                   </div>
                   <p className="dashboard-definition" role="note">{dashboard.metricDefinition}</p>
+                  <div className="dashboard-review-metrics" role="status">
+                    <span>AI 判定 {reviewMetrics.judgedCount} 条</span>
+                    <span>已复核 {reviewMetrics.reviewedCount} 条（{formatRate(reviewMetrics.reviewRate)}）</span>
+                    <span>推翻 {reviewMetrics.overturnedCount} 条（{formatRate(reviewMetrics.overturnRate)}）</span>
+                    <span>掌握度覆盖 {reviewMetrics.overrideCount} 条</span>
+                  </div>
+                  {reviewMessage && <p className="teacher-review-message" role="status">{reviewMessage}</p>}
                   <div className="dashboard-table-wrapper">
                     <table className="dashboard-table">
                       <caption>学生完成情况</caption>
@@ -387,7 +430,9 @@ export function TeacherClassroomApp() {
                     </table>
                   </div>
                   <div className="knowledge-point-grid">
-                    {dashboard.knowledgePoints.map((point) => (
+                    {dashboard.knowledgePoints.map((point) => {
+                      const evidenceItems = point.evidence ?? [];
+                      return (
                       <article key={point.knowledgePointId}>
                         <div>
                           <strong>{point.knowledgePoint}</strong>
@@ -399,8 +444,68 @@ export function TeacherClassroomApp() {
                           <div><dt>发展中</dt><dd>{point.distribution.developing}</dd></div>
                           <div><dt>已掌握</dt><dd>{point.distribution.mastered}</dd></div>
                         </dl>
+                        <div className="dashboard-evidence-list">
+                          <strong>作答证据与教师复核</strong>
+                          {evidenceItems.length === 0 && <small>暂无作答证据</small>}
+                          {evidenceItems.map((evidence) => {
+                            const reviewKey = `${point.knowledgePointId}:${evidence.learnerId}:${evidence.questionId}`;
+                            const overrideKey = `${point.knowledgePointId}:${evidence.learnerId}`;
+                            return (
+                              <div className="dashboard-evidence-row" key={reviewKey} aria-busy={reviewPendingKey === reviewKey}>
+                                <span>
+                                  {evidence.displayName} · {evidence.questionId} · {evidence.assessment}
+                                  {evidence.reviewStatus === "overturned" && ` → ${evidence.correctedAssessment}`}
+                                </span>
+                                <div>
+                                  <button
+                                    className="secondary-button"
+                                    disabled={pending === "review"}
+                                    onClick={() => void saveTeacherReview({
+                                      learnerId: evidence.learnerId,
+                                      questionId: evidence.questionId,
+                                      knowledgePointId: point.knowledgePointId,
+                                      action: "reviewed",
+                                    }, `${reviewKey}:review`)}
+                                  >复核</button>
+                                  <button
+                                    className="secondary-button"
+                                    disabled={pending === "review"}
+                                    onClick={() => void saveTeacherReview({
+                                      learnerId: evidence.learnerId,
+                                      questionId: evidence.questionId,
+                                      knowledgePointId: point.knowledgePointId,
+                                      action: "overturned",
+                                      correctedAssessment: "correct",
+                                    }, `${reviewKey}:overturn`)}
+                                  >判错了</button>
+                                  <select
+                                    aria-label={`${evidence.displayName} 的掌握度覆盖`}
+                                    value={overrideScores[overrideKey] ?? ""}
+                                    onChange={(event) => setOverrideScores((current) => ({ ...current, [overrideKey]: event.target.value }))}
+                                  >
+                                    <option value="">覆盖掌握度…</option>
+                                    <option value="0.2">需帮助</option>
+                                    <option value="0.55">发展中</option>
+                                    <option value="0.85">已掌握</option>
+                                  </select>
+                                  <button
+                                    className="secondary-button"
+                                    disabled={pending === "review" || !overrideScores[overrideKey]}
+                                    onClick={() => void saveTeacherReview({
+                                      learnerId: evidence.learnerId,
+                                      knowledgePointId: point.knowledgePointId,
+                                      action: "mastery_override",
+                                      masteryScore: Number(overrideScores[overrideKey]),
+                                    }, `${reviewKey}:override`)}
+                                  >保存掌握度</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </article>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
               )}

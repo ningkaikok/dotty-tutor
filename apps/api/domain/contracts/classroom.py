@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -29,3 +31,15 @@ class AssignmentCreate(BaseModel):
 
 class AssignmentPlanCreate(BaseModel):
     publicationId: str = Field(min_length=1, max_length=64)
+
+
+class TeacherReviewCreate(BaseModel):
+    """Append one teacher decision without changing the original learning evidence."""
+
+    learnerId: str = Field(min_length=1, max_length=128)
+    questionId: str | None = Field(default=None, max_length=128)
+    knowledgePointId: str | None = Field(default=None, max_length=64)
+    action: Literal["reviewed", "overturned", "mastery_override"]
+    masteryScore: float | None = Field(default=None, ge=0, le=1)
+    correctedAssessment: Literal["correct", "partial", "incorrect"] | None = None
+    note: str | None = Field(default=None, max_length=500)

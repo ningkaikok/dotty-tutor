@@ -49,6 +49,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/classes/{classId}/assignment-plans/{planId}` | 恢复作业计划草稿、目标、证据引用、覆盖度和提醒 |
 | `POST` | `/api/classes/{classId}/assignments` | 确认计划后指派已发布互动试卷；必须携带 `planId`、`publicationId`、`sourceFingerprint` 和 `confirmWarnings`，同一计划重复确认幂等 |
 | `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
+| `POST` | `/api/classes/{classId}/assignments/{assignmentId}/reviews` | 追加教师复核、推翻判定或知识点掌握度覆盖；原始作答和 AI 判题不被改写 |
 | `GET` | `/api/assignments?learnerId=local-demo` | 返回学生所属班级的作业及服务端派生进度 |
 
 生成模型、统一审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
@@ -127,6 +128,13 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 班级看板的完成率按“该学生是否作答了作业中的全部题目”计算。知识点分布只统计有作答证据的学生，
 分为未开始、需帮助（score < 0.4）、发展中（0.4 ≤ score < 0.7）和已掌握（score ≥ 0.7）；
 没有证据的学生显示为“未开始”，不会被当成掌握度为 0。`assignment_id` 已加入学习会话，旧的自由练习会话允许为空。
+
+教师复核请求的 `action` 为 `reviewed`、`overturned` 或 `mastery_override`。前两者需要 `questionId`，
+推翻还需要 `correctedAssessment`；掌握度覆盖需要 `knowledgePointId` 和 0 到 1 的 `masteryScore`。
+事件写入 `teacher_review_events` 后只追加不更新，dashboard 返回原始 `assessment`、最新复核状态、覆盖后的有效分数，
+以及按作业计算的 `judgedCount`、`reviewedCount`、`overturnedCount`、`reviewRate` 和 `overturnRate`。
+新数据库会随 schema 初始化创建该表；已有数据库必须运行
+`python scripts/migrate_teacher_review_events.py --dry-run|--apply|--verify`。
 
 作业计划的 `result` 包含班级掌握度、`selfReported`/`aiAttributed`/`effective` 三套错因统计、试卷覆盖度、
 确定性目标和 `fallback` 状态。计划输入快照不保存姓名、learnerId、原始答案或聊天内容；发送给模型的内容只含

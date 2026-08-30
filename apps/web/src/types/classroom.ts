@@ -98,6 +98,15 @@ export interface KnowledgePointDashboard {
     developing: number;
     mastered: number;
   };
+  overriddenStudentCount: number;
+  evidence: Array<{
+    learnerId: string;
+    displayName: string;
+    questionId: string;
+    assessment: "correct" | "partial" | "incorrect";
+    reviewStatus: "unreviewed" | "reviewed" | "overturned";
+    correctedAssessment: "correct" | "partial" | "incorrect" | null;
+  }>;
 }
 
 export interface ClassDashboard {
@@ -111,5 +120,13 @@ export interface ClassDashboard {
   };
   students: DashboardStudent[];
   knowledgePoints: KnowledgePointDashboard[];
+  reviewMetrics: {
+    judgedCount: number;
+    reviewedCount: number;
+    overturnedCount: number;
+    reviewRate: number | null;
+    overturnRate: number | null;
+    overrideCount: number;
+  };
   metricDefinition: string;
 }

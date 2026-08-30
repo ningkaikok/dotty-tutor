@@ -82,6 +82,7 @@ class PersistenceDomainTests(unittest.TestCase):
                         "lesson_publications",
                         "knowledge_points",
                         "mastery_states",
+                        "teacher_review_events",
                         "mistake_items",
                         "question_revisions",
                         "review_tasks",

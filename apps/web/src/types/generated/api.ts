@@ -107,6 +107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/classes/{class_id}/assignments/{assignment_id}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Teacher Review */
+        post: operations["record_teacher_review_api_classes__class_id__assignments__assignment_id__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes/{class_id}/dashboard": {
         parameters: {
             query?: never;
@@ -1789,6 +1806,29 @@ export interface components {
             /** Targetuploadid */
             targetUploadId?: string | null;
         };
+        /**
+         * TeacherReviewCreate
+         * @description Append one teacher decision without changing the original learning evidence.
+         */
+        TeacherReviewCreate: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "reviewed" | "overturned" | "mastery_override";
+            /** Correctedassessment */
+            correctedAssessment?: ("correct" | "partial" | "incorrect") | null;
+            /** Knowledgepointid */
+            knowledgePointId?: string | null;
+            /** Learnerid */
+            learnerId: string;
+            /** Masteryscore */
+            masteryScore?: number | null;
+            /** Note */
+            note?: string | null;
+            /** Questionid */
+            questionId?: string | null;
+        };
         /** TtsRequest */
         TtsRequest: {
             /**
@@ -2091,6 +2131,44 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["AssignmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_teacher_review_api_classes__class_id__assignments__assignment_id__reviews_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assignment_id: string;
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeacherReviewCreate"];
             };
         };
         responses: {

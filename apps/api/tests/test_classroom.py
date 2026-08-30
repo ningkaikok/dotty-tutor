@@ -116,6 +116,66 @@ class ClassroomWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(outsider.status_code, 404)
 
+    def test_teacher_review_is_append_only_and_overrides_dashboard_projection(self) -> None:
+        class_id = self.client.post("/api/classes", json={"name": "复核班"}).json()["classId"]
+        self.client.post(f"/api/classes/{class_id}/members", json={"learnerId": "learner-a", "displayName": "小安"})
+        plan = self.create_plan(class_id)
+        assignment_id = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={
+                "planId": plan["planId"],
+                "publicationId": "paper-classroom",
+                "sourceFingerprint": plan["sourceFingerprint"],
+                "confirmWarnings": True,
+            },
+        ).json()["assignmentId"]
+        session_id = self.client.post(
+            "/api/learning/sessions",
+            json={"learnerId": "learner-a", "publicationId": "paper-classroom", "assignmentId": assignment_id},
+        ).json()["sessionId"]
+        self.client.post(
+            f"/api/learning/sessions/{session_id}/attempts",
+            json={"questionId": "q-classroom-1", "assessment": "incorrect", "createdAt": 2},
+        )
+        before = self.client.get(f"/api/classes/{class_id}/dashboard?assignmentId={assignment_id}").json()
+        point_id = before["knowledgePoints"][0]["knowledgePointId"]
+        reviewed = self.client.post(
+            f"/api/classes/{class_id}/assignments/{assignment_id}/reviews",
+            json={"learnerId": "learner-a", "questionId": "q-classroom-1", "knowledgePointId": point_id, "action": "reviewed"},
+        )
+        self.assertEqual(reviewed.status_code, 200)
+        overturned = self.client.post(
+            f"/api/classes/{class_id}/assignments/{assignment_id}/reviews",
+            json={
+                "learnerId": "learner-a",
+                "questionId": "q-classroom-1",
+                "knowledgePointId": point_id,
+                "action": "overturned",
+                "correctedAssessment": "correct",
+                "note": "教师确认答案应判对",
+            },
+        )
+        self.assertEqual(overturned.status_code, 200)
+        override = self.client.post(
+            f"/api/classes/{class_id}/assignments/{assignment_id}/reviews",
+            json={"learnerId": "learner-a", "knowledgePointId": point_id, "action": "mastery_override", "masteryScore": 0.9},
+        )
+        self.assertEqual(override.status_code, 200)
+        after = self.client.get(f"/api/classes/{class_id}/dashboard?assignmentId={assignment_id}").json()
+        self.assertEqual(after["reviewMetrics"], {
+            "judgedCount": 1,
+            "reviewedCount": 1,
+            "overturnedCount": 1,
+            "reviewRate": 1.0,
+            "overturnRate": 1.0,
+            "overrideCount": 1,
+        })
+        self.assertEqual(after["knowledgePoints"][0]["distribution"]["mastered"], 1)
+        self.assertEqual(after["knowledgePoints"][0]["overriddenStudentCount"], 1)
+        self.assertEqual(after["knowledgePoints"][0]["evidence"][0]["assessment"], "incorrect")
+        self.assertEqual(after["knowledgePoints"][0]["evidence"][0]["reviewStatus"], "overturned")
+        self.assertEqual(after["knowledgePoints"][0]["evidence"][0]["correctedAssessment"], "correct")
+
     def test_legacy_assignment_payload_is_rejected(self) -> None:
         class_id = self.client.post("/api/classes", json={"name": "初二数学三班"}).json()["classId"]
         response = self.client.post(
