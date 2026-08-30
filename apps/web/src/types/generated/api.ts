@@ -677,6 +677,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reports/learning-cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learning Cost Report
+         * @description Return learning outcomes alongside global model proxy metrics.
+         *
+         *     Learning is a cumulative learner snapshot; model calls are a global
+         *     rolling window and are intentionally not attributed to that learner.
+         */
+        get: operations["get_learning_cost_report_api_reports_learning_cost_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/review-models": {
         parameters: {
             query?: never;
@@ -1374,19 +1397,22 @@ export interface components {
         };
         /** MistakeConfirmation */
         MistakeConfirmation: {
-            /** Chapter */
-            chapter: string;
             /**
-             * Errorreason
-             * @enum {string}
+             * Chapter
+             * @default
              */
-            errorReason: "concept" | "reading" | "calculation" | "missing_step" | "unknown" | "careless";
+            chapter: string;
+            /** Errorreason */
+            errorReason?: ("concept" | "reading" | "calculation" | "missing_step" | "unknown" | "careless") | null;
             /**
              * Gradeband
              * @default 初中
              */
             gradeBand: string;
-            /** Knowledgepoint */
+            /**
+             * Knowledgepoint
+             * @default
+             */
             knowledgePoint: string;
             /**
              * Notes
@@ -2992,6 +3018,40 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    get_learning_cost_report_api_reports_learning_cost_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                learnerId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

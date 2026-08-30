@@ -1,36 +1,78 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
-import { loadPublishedPublications } from "../../api/publications";
-import type { PublicationSummary } from "../../types/index";
+import { StudentNav } from "./StudentNav";
+import { useStudentTodayQueue } from "./useStudentTodayQueue";
 import "./student.css";
 
+interface QueueRow {
+  key: string;
+  title: string;
+  description: string;
+  badge: string;
+  actionLabel: string;
+  /** 可见文案只有“开始/继续”，读屏时一串同名按钮无法区分，因此无障碍名称由 actionLabel + title 组合。 */
+  onAction: () => void;
+}
+
 /**
- * Student-facing navigation shell.
+ * 学生首页：一条有序的今日任务队列，而不是三张等权重的功能卡片。
  *
- * The page intentionally owns no upload, OCR, or model settings. Those
- * production concerns live under /studio; students only consume published
- * material and open their personal practice records here.
+ * 班级、作业指派这些后端概念还不存在，队列完全由 useStudentTodayQueue 从三个
+ * 已有的只读接口派生。顺序是产品判断（先清阻塞项，再做有时效的复习，再订正，
+ * 最后才是练习），页面本身只负责渲染，不做任何业务判断。
  */
 export function StudentLearningApp() {
   const navigate = useNavigate();
-  const [publications, setPublications] = useState<PublicationSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, loading, error, allFailed } = useStudentTodayQueue();
 
-  useEffect(() => {
-    const controller = new AbortController();
-    loadPublishedPublications(controller.signal)
-      .then(setPublications)
-      .catch((requestError) => {
-        if (!controller.signal.aborted) {
-          setError(requestError instanceof Error ? requestError.message : "试卷目录加载失败");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, []);
+  const rows: QueueRow[] = [];
+
+  if (pendingConfirmCount > 0) {
+    rows.push({
+      key: "confirm",
+      title: "确认新录入的错题",
+      description: "先确认识别结果，这些错题才能进入陪练订正。",
+      badge: `${pendingConfirmCount} 道`,
+      actionLabel: "去确认",
+      onAction: () => navigate("/mistakes"),
+    });
+  }
+
+  if (dueReviewCount > 0) {
+    rows.push({
+      key: "review",
+      title: "今日复习",
+      description: "复习是有时效的，过期就失去间隔重复的效果，尽快完成。",
+      badge: `${dueReviewCount} 道`,
+      actionLabel: "开始复习",
+      onAction: () => navigate("/mistakes/progress"),
+    });
+  }
+
+  if (unmasteredCount > 0) {
+    rows.push({
+      key: "correct",
+      title: "订正错题",
+      description: "这些错题还没订正，完成之后才会进入复习计划。",
+      badge: `${unmasteredCount} 道`,
+      actionLabel: "去订正",
+      onAction: () => navigate("/mistakes"),
+    });
+  }
+
+  // 练习刻意不计入“今天有 N 件事”。作业指派的后端概念还不存在，已发布试卷会一直
+  // 挂在目录里（做完也不会消失），把它们算进待办会让计数永远降不下来，队列也就退化
+  // 成了列表。等 class/assignment 落地、能判断“这套卷子是今天布置的”之后，练习才应该
+  // 升进上面的队列。
+  const practiceRows: QueueRow[] = papers.map((paper) => ({
+    key: `paper-${paper.publicationId}`,
+    title: paper.title,
+    description: paper.started ? "继续上次没做完的练习。" : "还没有开始过这套练习。",
+    badge: `${paper.lessonCount} 题`,
+    actionLabel: paper.started ? "继续" : "开始",
+    onAction: () => navigate(`/learn/papers/${paper.publicationId}`),
+  }));
+
+  const taskCount = rows.length;
 
   return (
     <main className="student-shell">
@@ -44,68 +86,94 @@ export function StudentLearningApp() {
         <span className="demo-badge">STUDENT DEMO</span>
       </header>
 
+      <StudentNav />
+
       <section className="student-hero">
-        <span className="eyebrow">LEARN · PRACTICE · MASTER</span>
-        <h1>直接开始学习</h1>
-        <p>这里没有教材上传、OCR 或模型配置。学生只需完成互动练习、订正错题并按计划复习。</p>
+        <span className="eyebrow">今日</span>
+        <h1>
+          {loading
+            ? "正在整理今天的任务…"
+            // 全部请求失败时不能说“没有待办”：那是读不到数据的假象，会让学生
+            // 以为今天已经做完。
+            : allFailed
+              ? "暂时读不到今天的任务"
+              : taskCount > 0 ? `今天有 ${taskCount} 件事` : "今天没有待办任务"}
+        </h1>
+        <p>
+          {loading
+            ? "正在读取错题、复习计划和练习进度。"
+            : allFailed
+              ? "错题、复习和练习都没有加载成功。请检查网络后刷新页面重试。"
+              : taskCount > 0
+                ? "按顺序处理完这条队列，今天的学习任务就完成了。"
+                : "没有待确认的错题，也没有到期的复习。可以做下面的练习，或者今天就到这里。"}
+        </p>
       </section>
 
-      <section className="student-action-grid" aria-label="学生学习功能">
-        <article className="student-action-card paper-card">
-          <div className="student-card-heading">
-            <span className="student-card-icon" aria-hidden="true">卷</span>
-            <span className="student-card-status">已可用</span>
-          </div>
-          <h2>互动试卷</h2>
-          <p>查看内容生产端审核并发布的互动试卷，完成题目、分层提示与讲解。</p>
-          {loading && <div className="student-empty-note">正在加载已发布试卷…</div>}
-          {!loading && !publications.length && <div className="student-empty-note">暂无已发布试卷，请先在内容生产端发布。</div>}
-          {error && <div className="student-empty-note">{error}</div>}
-          <div className="student-paper-list">
-            {publications.map((paper) => (
-              <button key={paper.publicationId} onClick={() => navigate(`/learn/papers/${paper.publicationId}`)}>
-                <strong>{paper.title}</strong>
-                <span>{paper.lessonCount} 道题 · 继续学习 →</span>
-              </button>
-            ))}
-          </div>
-        </article>
+      {error && <p className="student-empty-note" role="alert">部分内容未能加载：{error}</p>}
 
-        <article className="student-action-card mistake-card">
-          <div className="student-card-heading">
-            <span className="student-card-icon" aria-hidden="true">错</span>
-            <span className="student-card-status">已可用</span>
-          </div>
-          <h2>我的错题本</h2>
-          <p>互动试卷中的错题会自动记录；纸质作业仍可拍照补录，再通过多轮陪练找到真正卡点。</p>
-          <ul>
-            <li>在线错题自动收集</li>
-            <li>纸质错题拍照补录</li>
-            <li>一题一线程的分步陪练</li>
-          </ul>
-          <button onClick={() => navigate("/mistakes")}>打开我的错题本</button>
-        </article>
+      {loading && (
+        <ol className="student-today-queue" aria-label="今日任务队列" aria-busy="true">
+          {[0, 1, 2].map((index) => (
+            <li key={index} className="today-queue-row today-queue-skeleton" aria-hidden="true">
+              <span className="today-queue-index" />
+              <div className="today-queue-body">
+                <span className="today-queue-skeleton-line title" />
+                <span className="today-queue-skeleton-line" />
+              </div>
+              <span className="today-queue-badge" />
+              <span className="today-queue-action" />
+            </li>
+          ))}
+        </ol>
+      )}
 
-        <article className="student-action-card review-card">
-          <div className="student-card-heading">
-            <span className="student-card-icon" aria-hidden="true">复</span>
-            <span className="student-card-status">已可用</span>
-          </div>
-          <h2>掌握与复习</h2>
-          <p>查看错题掌握率、待复习任务和知识点进度，按 1、3、7 天节奏巩固。</p>
-          <ul>
-            <li>今日复习任务</li>
-            <li>进阶本与验证记录</li>
-            <li>知识点学习进度</li>
-          </ul>
-          <button onClick={() => navigate("/mistakes/progress")}>查看学习进度</button>
-        </article>
-      </section>
+      {!loading && taskCount > 0 && (
+        <ol className="student-today-queue" aria-label="今日任务队列">
+          {rows.map((row, index) => (
+            <li key={row.key} className="today-queue-row">
+              <span className="today-queue-index" aria-hidden="true">{index + 1}</span>
+              <div className="today-queue-body">
+                <h3>{row.title}</h3>
+                <p>{row.description}</p>
+              </div>
+              <span className="today-queue-badge">{row.badge}</span>
+              <button
+                className="today-queue-action"
+                aria-label={`${row.actionLabel}：${row.title}`}
+                onClick={row.onAction}
+              >{row.actionLabel}</button>
+            </li>
+          ))}
+        </ol>
+      )}
 
-      <aside className="student-boundary-note">
-        <strong>为什么这里不能上传 PDF？</strong>
-        <span>教材识别和题目生成属于内容生产流程。学生端只展示已审核、可作答的内容，避免把复杂配置暴露给学习者。</span>
-      </aside>
+      {!loading && !allFailed && (
+        <section className="student-practice-section" aria-labelledby="student-practice-heading">
+          <h2 id="student-practice-heading">练习</h2>
+          {practiceRows.length ? (
+            <ol className="student-today-queue" aria-label="练习">
+              {practiceRows.map((row) => (
+                <li key={row.key} className="today-queue-row">
+                  <span className="today-queue-index" aria-hidden="true">卷</span>
+                  <div className="today-queue-body">
+                    <h3>{row.title}</h3>
+                    <p>{row.description}</p>
+                  </div>
+                  <span className="today-queue-badge">{row.badge}</span>
+                  <button
+                    className="today-queue-action"
+                    aria-label={`${row.actionLabel}：${row.title}`}
+                    onClick={row.onAction}
+                  >{row.actionLabel}</button>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="student-empty-note">老师还没有发布新的练习，练习任务会自动出现在这里。</p>
+          )}
+        </section>
+      )}
     </main>
   );
 }

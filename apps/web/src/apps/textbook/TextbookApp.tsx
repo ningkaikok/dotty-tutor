@@ -14,6 +14,7 @@ import { PracticeWorkspace } from "../../components/PracticeWorkspace";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import { TextbookImport } from "../../TextbookImport";
+import { PublicationStatusBar } from "./PublicationStatusBar";
 import type {
   BackgroundJob,
   CanvasAction,
@@ -410,79 +411,66 @@ export function TextbookApp() {
         <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
         </span>
-        {textbookImport.uploadId && !textbookImport.fullPaper && !publication && (
-          <button
-            className="ghost compact"
-            disabled={fullPaperRunning || fullPaperJob?.status === "succeeded"}
-            onClick={() => void generateWholePaper()}
-          >
-            {fullPaperJob?.status === "succeeded" ? "整套试卷已生成" : fullPaperJob?.status === "failed" ? "重试生成整套试卷" : "生成整套试卷"}
-          </button>
-        )}
-        {fullPaperRunning && (
-          <button className="ghost compact" onClick={() => void cancelWholePaper()}>
-            {fullPaperJob?.cancelRequested ? "正在取消…" : "取消整套生成"}
-          </button>
-        )}
-        {!publication && (
-          <button className="ghost compact" disabled={publicationBusy || fullPaperRunning} onClick={() => void submitForReview()}>
-            {publicationBusy ? "提交中…" : "提交试卷审核"}
-          </button>
-        )}
-        {publication?.status === "in_review" && (
-          <>
-            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={() => void regenerateWholePaper()}>
-              {publicationBusy || loadingQuestion ? "生成新版中…" : "整套重新审核"}
-            </button>
-            <button className="lesson-button" disabled={publicationBusy} onClick={() => void publish()}>
-              {publicationBusy ? "发布中…" : `发布试卷 v${publication.version || 1}`}
-            </button>
-          </>
-        )}
-        {publication?.status === "published" && (
-          <>
-            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={() => void regenerateWholePaper()}>
-              {publicationBusy || loadingQuestion ? "生成新版中…" : "生成审核新版"}
-            </button>
-            <span className="active-model live">已发布 v{publication.version || 1}</span>
-          </>
-        )}
       </header>
 
-      {publicationError && <p className="import-error" role="alert">{publicationError}</p>}
-      {publicationNotice && <p className="publication-notice" role="status">{publicationNotice}</p>}
+      <PublicationStatusBar
+        publication={publication}
+        publicationBusy={publicationBusy}
+        loadingQuestion={loadingQuestion}
+        fullPaperRunning={fullPaperRunning}
+        fullPaperJobStatus={fullPaperJob?.status}
+        fullPaperJobCancelRequested={fullPaperJob?.cancelRequested}
+        hasUploadId={Boolean(textbookImport.uploadId)}
+        hasFullPaper={Boolean(textbookImport.fullPaper)}
+        onGenerateWholePaper={() => void generateWholePaper()}
+        onCancelWholePaper={() => void cancelWholePaper()}
+        onSubmitForReview={() => void submitForReview()}
+        onRegenerateWholePaper={() => void regenerateWholePaper()}
+        onPublish={() => void publish()}
+      />
 
-      {(lastRun || publicationRun) && (() => {
-        const run = lastRun || publicationRun;
-        return run ? (
-          <p className="publication-notice" role="status">
-            审计：{run.operation} · run_id {run.runId.slice(0, 12)} · {run.status}
-            {run.config?.model && typeof run.config.model === "object" ? " · 已冻结模型配置" : ""}
+      {/* 通知栈自身带外边距，没有任何通知时不渲染，避免在顶栏和来源条之间留下空白。 */}
+      {(publicationError || fullPaperError || publicationNotice || lastRun || publicationRun
+        || fullPaperJob || fullPaperSummary) && (
+      <section className="studio-notice-stack">
+        {publicationError && <p className="studio-notice studio-notice-alert" role="alert">{publicationError}</p>}
+        {fullPaperError && (
+          <p className="studio-notice studio-notice-alert" role="alert">{fullPaperError}</p>
+        )}
+        {publicationNotice && <p className="studio-notice studio-notice-muted" role="status">{publicationNotice}</p>}
+
+        {(lastRun || publicationRun) && (() => {
+          const run = lastRun || publicationRun;
+          return run ? (
+            <p className="studio-notice studio-notice-muted" role="status">
+              审计：{run.operation} · run_id {run.runId.slice(0, 12)} · {run.status}
+              {run.config?.model && typeof run.config.model === "object" ? " · 已冻结模型配置" : ""}
+            </p>
+          ) : null;
+        })()}
+
+        {(fullPaperJob || fullPaperSummary) && (
+          <p className="studio-notice studio-notice-muted" aria-live="polite">
+            <strong>整套试卷</strong>
+            {fullPaperJob && <span> · {fullPaperJob.message}</span>}
+            {fullPaperSummary && (
+              <span>
+                · 已处理 {fullPaperSummary.processedBatches}/{fullPaperSummary.totalBatches} 批次，
+                成功 {fullPaperSummary.succeededBatches}，失败 {fullPaperSummary.failedBatches}，
+                跳过 {fullPaperSummary.skippedBatches}，隔离 {fullPaperSummary.quarantinedQuestions} 道题，
+                共 {fullPaperSummary.questionCount} 道题
+                {fullPaperSummary.limitReached ? `（已达到 ${fullPaperSummary.questionLimit || FULL_PAPER_QUESTION_LIMIT} 题安全上限）` : ""}
+              </span>
+            )}
           </p>
-        ) : null;
-      })()}
+        )}
+      </section>
+      )}
 
       <section className="source-strip">
         <span>扫描页</span><strong>{textbookImport.filename}</strong><b>→</b>
         <span>识别完成</span><strong>{textbookImport.extraction.questionCount} 道题 · {textbookImport.extraction.guideCardCount} 张引导卡</strong>
       </section>
-
-      {(fullPaperJob || fullPaperSummary || fullPaperError) && (
-        <section className="publication-notice" aria-live="polite">
-          <strong>整套试卷</strong>
-          {fullPaperJob && <span> · {fullPaperJob.message}</span>}
-          {fullPaperSummary && (
-            <span>
-              · 已处理 {fullPaperSummary.processedBatches}/{fullPaperSummary.totalBatches} 批次，
-              成功 {fullPaperSummary.succeededBatches}，失败 {fullPaperSummary.failedBatches}，
-              跳过 {fullPaperSummary.skippedBatches}，隔离 {fullPaperSummary.quarantinedQuestions} 道题，
-              共 {fullPaperSummary.questionCount} 道题
-              {fullPaperSummary.limitReached ? `（已达到 ${fullPaperSummary.questionLimit || FULL_PAPER_QUESTION_LIMIT} 题安全上限）` : ""}
-            </span>
-          )}
-          {fullPaperError && <span className="import-error"> · {fullPaperError}</span>}
-        </section>
-      )}
 
       <LessonPlayer payload={payload} onActionChange={setCanvasAction} />
 

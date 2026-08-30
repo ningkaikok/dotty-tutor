@@ -1,0 +1,20 @@
+.metrics-scope-note { margin: 0 0 20px; padding: 13px 15px; border: 1px solid #d5dfd8; border-radius: 13px; color: #4d6257; background: #edf5ef; font-size: 12px; line-height: 1.65; }
+.metrics-summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
+.metrics-summary-card { min-width: 0; padding: 15px; border: 1px solid #e0e3de; border-radius: 14px; background: #fff; }
+.metrics-summary-card span, .metrics-summary-card strong { display: block; }
+.metrics-summary-card span { color: #6d776f; font-size: 11px; }
+.metrics-summary-card strong { margin-top: 8px; color: #183f31; font: 700 20px/1.1 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.metrics-learning-section { margin-bottom: 28px; padding: 19px; border: 1px solid #e0e3de; border-radius: 17px; background: #fbfcf9; }
+.metrics-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.metrics-section-heading h3 { margin: 4px 0 0; font-size: 19px; }
+.metrics-section-heading .muted { max-width: 420px; margin: 2px 0 0; text-align: right; }
+.metrics-funnel-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.metrics-funnel-card { padding: 13px; border-radius: 12px; background: #eef4ef; }
+.metrics-funnel-card span, .metrics-funnel-card strong, .metrics-funnel-card small { display: block; }
+.metrics-funnel-card span { color: #5e7065; font-size: 11px; }
+.metrics-funnel-card strong { margin: 8px 0 4px; color: #183f31; font-size: 22px; }
+.metrics-funnel-card small { color: #77837b; font-size: 10px; }
+.metrics-effect-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; color: #5d6d63; font-size: 12px; }
+.metrics-effect-row strong { color: #183f31; }
+@media (max-width: 900px) { .metrics-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .metrics-funnel-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .metrics-summary-grid, .metrics-funnel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metrics-section-heading { display: block; } .metrics-section-heading .muted { margin-top: 8px; text-align: left; } }

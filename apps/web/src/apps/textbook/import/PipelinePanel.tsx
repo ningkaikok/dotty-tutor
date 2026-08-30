@@ -45,7 +45,7 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
 
   return (
     <aside className="pipeline-panel panel">
-      <span className="eyebrow">PROCESS</span>
+      <span className="eyebrow">处理链路</span>
       <h2>{result ? (phase === "done" ? "教材已拆分并结构化" : "预览已完成，整本处理中") : "即将执行的处理链路"}</h2>
       <ol className="pipeline-list">
         {(result?.stages.map((stage) => stage.label) ?? pipeline).map((label, index) => {

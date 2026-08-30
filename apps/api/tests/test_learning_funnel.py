@@ -142,6 +142,31 @@ class LearningFunnelTests(unittest.TestCase):
         self.assertEqual(snapshot["review"]["completedTasks"], 1)
         self.assertEqual(snapshot["review"]["completionRate"], 1.0)
 
+    def test_legacy_answered_projection_is_added_only_without_attempt(self) -> None:
+        from persistence.variation_store import variation_exercises
+
+        legacy = self.variations.create(
+            mistake_id="legacy", learner_id="local-demo", strategy="calculation",
+            level="foundation", question_payload={"question": {"id": "legacy-q"}}, model_run={},
+        )
+        migrated = self.variations.create(
+            mistake_id="migrated", learner_id="local-demo", strategy="calculation",
+            level="foundation", question_payload={"question": {"id": "migrated-q"}}, model_run={},
+        )
+        with self.engine.begin() as connection:
+            connection.execute(
+                variation_exercises.update()
+                .where(variation_exercises.c.variation_id == legacy["variationId"])
+                .values(status="answered", assessment="correct", response_json={"legacy": True}, feedback=""),
+            )
+        self.variations.answer(
+            migrated["variationId"], response={"interactionResult": {}},
+            attempt_id="migrated-attempt", assessment="correct", feedback="",
+        )
+        snapshot = build_funnel_snapshot(self.engine, "local-demo")
+        self.assertEqual(snapshot["verification"]["answeredVariations"], 2)
+        self.assertEqual(snapshot["verification"]["correctVariations"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

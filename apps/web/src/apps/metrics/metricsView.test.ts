@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { failureRate, formatDuration, toRowViews } from "./metricsView";
-import type { ModelCallMetricRow } from "../../api/metrics";
+import { failureRate, formatDuration, formatRate, formatTokens, toRowViews, toSummaryView } from "./metricsView";
+import type { ModelCallMetricRow, ModelCallMetricsSummary } from "../../api/metrics";
 
 function row(overrides: Partial<ModelCallMetricRow>): ModelCallMetricRow {
   return {
@@ -31,6 +31,32 @@ describe("formatDuration", () => {
   it("毫秒与秒自动切换", () => {
     expect(formatDuration(850)).toBe("850ms");
     expect(formatDuration(1500)).toBe("1.5s");
+    expect(formatDuration(null)).toBe("暂无数据");
+  });
+});
+
+describe("report formatting", () => {
+  it("保留空值语义并按比例格式化", () => {
+    expect(formatRate(null)).toBe("暂无数据");
+    expect(formatRate(0.375)).toBe("37.5%");
+    expect(formatTokens(null)).toBe("暂无数据");
+    const summary: ModelCallMetricsSummary = {
+      logicalCalls: 4,
+      failures: 1,
+      failureRate: 0.25,
+      avgDurationMs: null,
+      totalPromptTokens: null,
+      totalOutputTokens: 200,
+      tokenMeasuredCalls: 2,
+      tokenCoverageRate: 0.5,
+    };
+    expect(toSummaryView(summary)).toMatchObject({
+      failureRateLabel: "25.0%",
+      durationLabel: "暂无数据",
+      promptTokensLabel: "暂无数据",
+      tokenCoverageLabel: "50.0%",
+      partialTokenLabel: "2 / 4 次调用",
+    });
   });
 });
 

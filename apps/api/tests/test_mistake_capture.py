@@ -151,6 +151,47 @@ class MistakeCaptureApiTests(unittest.TestCase):
         )
         self.assertEqual(invalid.status_code, 422)
 
+    def test_confirmation_succeeds_without_error_reason(self) -> None:
+        """错因归因迁移到陪练首轮：确认时不传 errorReason 也必须能保存。"""
+        response = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation.png", b"image-fixture", "image/png")},
+        )
+        mistake_id = response.json()["mistakeId"]
+        confirmed_response = self.client.patch(
+            f"/api/mistakes/{mistake_id}",
+            json={
+                "prompt": "解方程 2x + 3 = 11",
+                "chapter": "一元一次方程",
+                "knowledgePoint": "移项",
+            },
+        )
+        self.assertEqual(confirmed_response.status_code, 200)
+        confirmed = confirmed_response.json()
+        self.assertEqual(confirmed["status"], "unmastered")
+        self.assertIsNone(confirmed["errorReason"])
+
+    def test_confirmation_succeeds_with_empty_chapter_and_knowledge_point(self) -> None:
+        """章节/知识点不再强制：AI 已预填时，学生可以直接保存而不修改分类。"""
+        response = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation.png", b"image-fixture", "image/png")},
+        )
+        mistake_id = response.json()["mistakeId"]
+        confirmed_response = self.client.patch(
+            f"/api/mistakes/{mistake_id}",
+            json={
+                "prompt": "解方程 2x + 3 = 11",
+                "chapter": "",
+                "knowledgePoint": "",
+            },
+        )
+        self.assertEqual(confirmed_response.status_code, 200)
+        confirmed = confirmed_response.json()
+        self.assertEqual(confirmed["status"], "unmastered")
+        self.assertEqual(confirmed["chapter"], "")
+        self.assertEqual(confirmed["knowledgePoint"], "")
+
     def test_archive_keeps_learning_evidence_clears_thread_and_restore_starts_new_thread(self) -> None:
         """归档是错题软删除；陪练上下文清理，但验证证据必须可追溯。"""
         engine = create_engine(f"sqlite:///{self.directory.name}/archive.sqlite3", future=True)

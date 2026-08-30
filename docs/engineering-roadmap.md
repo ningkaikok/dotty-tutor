@@ -28,6 +28,11 @@
 已删除或改名的取值映射到最近的现存值。本项目用 PostgreSQL JSONB 存学习证据，枚举一改，
 历史行就会反序列化失败；几行代码可以避免一次数据迁移。
 
+补充（2026-08-30）：`mistake_items.error_reason` 现在允许为 `NULL`，因为错因自评已从确认表单迁到
+陪练首轮，学生可以跳过。**`NULL`（未回答）与 `unknown`（完全不会）是两种不同状态**，
+后续把该字段拆成“学生自评 / AI 判断”双字段时不要把二者合并，否则会丢掉
+`turn_plan.py` 选择出题策略所依赖的差异信号。
+
 **优先级重排（2026-08-21）**：这一轮用真实教材反复复验渲染/OCR 切分修复时，走的是“人工翻页发现坏样本 →
 定位根因 → 修 → 验证”的手工循环，成本很高，且每次只覆盖当次偶然点开的那道题。这个循环本身就是
 `test/offline-ai-evaluation`（脱敏金标准集）和 `feature/badcase-replay-loop`（Badcase 回放）要解决的
@@ -156,11 +161,8 @@
    不进入确定性重放链路；内置三条讲解样本语料（分层引导卡模板产物）。**真实运行已完成**（2026-08-25，ollama/qwen2.5:7b ×3 样本全成功）：
 clarity 均分 3.67、targeting 4.00、factual 5.00，置信度 0.9-0.95；报告落
 output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分数漂移。
-6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
-   **进行中**：业务漏斗已上线（`GET /api/funnel`），验证证据链第一版和同知识点再错率已落地；成本/token 维度的数据源也已就绪——
-   模型调用边界指标表（`model_call_metrics`）随每次调用记录 runtime/task/provider/model/
-   耗时/token/失败，聚合经 `GET /api/metrics/model-calls?days=N` 查询。漏斗与成本的
-   联合展示仍待前端页面；当前再错率限定为同一学生、同一发布版本内有后续作答的知识点路径。
+6. [x] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
+   已完成：`GET /api/reports/learning-cost?learnerId=local-demo&days=N` 联合返回学习者累计漏斗和全局滚动窗口的模型调用代理指标；报告包含失败率、加权平均耗时、Token 总量/覆盖率和原有分组明细。旧数据库中没有 `variation_attempts` 的历史已回答投影会补计且不重复。前端 `/studio/metrics` 已展示联合报告。边界为无货币价格、无学生级模型成本归因、无因果推断；当前再错率限定为同一学生、同一发布版本内有后续作答的知识点路径。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
    CI 中在 `apps/api` 下跑 `uv run ruff check .`、在 `apps/web` 下跑 `pnpm run lint`）。
    规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，

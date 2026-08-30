@@ -22,6 +22,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    and_,
     case,
     func,
     select,
@@ -117,3 +118,63 @@ class MetricsStore:
             }
             for row in rows
         ]
+
+    def aggregate_report(self, *, days: int | None = None) -> dict[str, Any]:
+        """Return report-level model-call metrics without inventing money costs.
+
+        ``model_call_metrics`` is a logical runtime-call ledger.  A missing token
+        value means that the provider did not expose usage, not that the call used
+        zero tokens, so totals and coverage are kept explicit in the response.
+        """
+        self._ensure_initialized()
+        conditions = []
+        if days is not None and days > 0:
+            cutoff = time.time() - days * 86400
+            conditions.append(model_call_metrics.c.created_at >= cutoff)
+        token_measured = and_(
+            model_call_metrics.c.prompt_tokens.is_not(None),
+            model_call_metrics.c.output_tokens.is_not(None),
+        )
+        statement = select(
+            func.count().label("logical_calls"),
+            func.sum(case((model_call_metrics.c.status == "failed", 1), else_=0)).label("failures"),
+            func.avg(model_call_metrics.c.duration_ms).label("avg_duration_ms"),
+            func.sum(model_call_metrics.c.prompt_tokens).label("prompt_tokens"),
+            func.sum(model_call_metrics.c.output_tokens).label("output_tokens"),
+            func.sum(case((token_measured, 1), else_=0)).label("token_measured_calls"),
+        ).select_from(model_call_metrics)
+        if conditions:
+            statement = statement.where(*conditions)
+        with self.engine.connect() as connection:
+            row = connection.execute(statement).mappings().one()
+
+        logical_calls = int(row["logical_calls"] or 0)
+        failures = int(row["failures"] or 0)
+        token_measured_calls = int(row["token_measured_calls"] or 0)
+        return {
+            "summary": {
+                "logicalCalls": logical_calls,
+                "failures": failures,
+                "failureRate": _ratio(failures, logical_calls),
+                "avgDurationMs": _number_or_none(row["avg_duration_ms"]),
+                "totalPromptTokens": _integer_or_none(row["prompt_tokens"]),
+                "totalOutputTokens": _integer_or_none(row["output_tokens"]),
+                "tokenMeasuredCalls": token_measured_calls,
+                "tokenCoverageRate": _ratio(token_measured_calls, logical_calls),
+            },
+            "items": self.aggregate(days=days),
+        }
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 3)
+
+
+def _number_or_none(value: Any) -> float | None:
+    return round(float(value), 1) if value is not None else None
+
+
+def _integer_or_none(value: Any) -> int | None:
+    return int(value) if value is not None else None

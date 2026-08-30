@@ -24,6 +24,18 @@
 - 路由、公式渲染、数据库访问、PDF 解析、OCR、浏览器测试不得重复实现已有基础设施。
 - 不为单一调用创建 Repository、Manager、Factory 等空包装；只有出现第二个实现或明确测试替身时再抽象接口。
 
+### React 测试分流规则
+
+- 纯函数、数据归一化、视图模型转换和状态机边界优先使用 Vitest；这类测试不得为了
+  跑浏览器而放进 E2E。
+- React 组件的 DOM 行为使用 Vitest + React Testing Library；只有在需要真实路由、多个
+  页面协作或浏览器布局时才提升到 Playwright。组件测试按文件选择 `jsdom`，纯逻辑测试继续
+  使用 `node`，避免全局引入不必要的 DOM 环境。
+- Playwright E2E 只保留用户可见的跨组件流程、真实浏览器交互和端到端 API 契约；稳定的关键
+  页面可以使用 `toHaveScreenshot` 做少量视觉回归，截图基线必须固定数据、禁用动画并经过人工审查。
+- Playwright Planner、Generator、Healer 等 AI 辅助工具不是默认测试运行时；只有确实需要 AI
+  辅助编写或修复测试时才临时引入，生成结果必须纳入普通代码审查和 CI 测试。
+
 ### 文档同步规则
 
 新增顶层模块 / API 响应字段 / 端点时，**同一 PR 内**必须同步三份描述性文档，roadmap 只记优先级
