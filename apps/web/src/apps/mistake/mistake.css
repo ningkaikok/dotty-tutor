@@ -122,6 +122,12 @@
 .tutor-stage-list li.active span { background: #1b9a72; color: #fff; }
 .tutor-stage-list li.complete { color: #4d7d6c; }
 .tutor-stage-list li.complete span { background: #d9f0e7; color: #168060; }
+.tutor-attribution { margin: 14px 20px 0; padding: 14px 16px; border: 1px solid #cfe2d8; border-radius: 15px; color: #314b3e; background: #f4faf6; }
+.tutor-attribution p { margin: 0; line-height: 1.6; }
+.tutor-attribution-confirmed { color: #176d54; background: #eaf7f1; }
+.tutor-attribution-labels { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tutor-attribution-label { display: inline-flex; align-items: baseline; gap: 5px; padding: 6px 9px; border-radius: 999px; color: #245c47; background: #e0f2e9; font-size: 12px; font-weight: 750; }
+.tutor-attribution-label small { color: #618073; font-size: 10px; font-weight: 700; }
 .tutor-messages { min-height: 330px; max-height: 52vh; overflow: auto; padding: 22px; display: flex; flex-direction: column; gap: 14px; }
 .tutor-message { max-width: 84%; padding: 12px 14px; border-radius: 16px; }
 .tutor-message strong { display: block; margin-bottom: 5px; font-size: 11px; color: #738078; }

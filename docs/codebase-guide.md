@@ -88,6 +88,9 @@ dotty-tutor/
 │   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切、确认和陪练
+│   │   ├── errorReasons.ts     # 错因标签与描述的单一来源
+│   │   ├── attribution.ts      # 学生自评与最新可信 AI 归因的纯函数
+│   │   └── components/MistakeAttribution.tsx # 错因双归因对照展示
 │   ├── components/             # 跨教材题型复用的作答组件与富文本渲染
 │   │   └── EvaluationEvidence.tsx # 学生可见的确定性判题证据折叠展示
 │   ├── answerAssembly.ts       # 多小问及画线等交互答案的统一组装
@@ -199,7 +202,9 @@ api/routers/mistake_routes.py
 `misconception.category` 交给 `turn_plan.normalize_misconception()` 复用证据/置信度门禁；
 `tutoring_routes.py` 只在门禁通过后写入 `ai_error_reason` 与置信度。`build_tutor_turn_plan()`
 按 AI → 学生自评 → `unknown` 兜底选择变式策略，并在 `errorStrategy.source` 记录采信来源；
-兜底的 `unknown` 只用于策略选择，跳过自评不会写入数据库。前端对照展示不属于当前提交。
+兜底的 `unknown` 只用于策略选择，跳过自评不会写入数据库。陪练在自评完成或跳过后，
+由 `attribution.ts` 从线程消息取最后一条可信 AI 归因，并由 `MistakeAttribution.tsx` 与学生自评并列展示；
+错题本也复用 `errorReasons.ts` 区分显示两种标签。
 
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
 直接替换为确定性识别器，也避免导入 ASGI 应用。

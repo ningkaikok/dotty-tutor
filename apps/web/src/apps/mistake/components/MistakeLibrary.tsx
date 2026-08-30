@@ -2,6 +2,7 @@ import { RichText } from "../../../RichText";
 import { useState } from "react";
 import type { MistakeItem } from "../../../types/index";
 import { displayedPrompt } from "../../../questionPresentation";
+import { errorReasonLabel } from "../errorReasons";
 
 interface MistakeLibraryProps {
   items: MistakeItem[];
@@ -12,15 +13,6 @@ interface MistakeLibraryProps {
   onTutor: (item: MistakeItem) => void;
   onArchive: (item: MistakeItem) => void;
 }
-
-const ERROR_LABELS: Record<string, string> = {
-  concept: "概念不清",
-  reading: "审题错误",
-  calculation: "计算失误",
-  missing_step: "步骤遗漏",
-  unknown: "完全不会",
-  careless: "粗心大意",
-};
 
 export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
@@ -71,41 +63,49 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
         </section>
       ) : (
         <section className="mistake-list" aria-label="错题列表">
-          {visibleItems.map((item) => (
-            <article key={item.mistakeId} className="mistake-list-item">
-              {item.sourceImageUrl && !brokenImages[item.mistakeId] ? (
-                <img
-                  src={item.sourceImageUrl}
-                  alt="错题原图"
-                  loading="lazy"
-                  onError={() => setBrokenImages((current) => ({ ...current, [item.mistakeId]: true }))}
-                />
-              ) : (
-                <div className="mistake-paper-source" aria-label="来自互动试卷">
-                  <strong>互动试卷</strong>
-                  <span>自动记录</span>
-                </div>
-              )}
-              <div className="mistake-list-content">
-                <div className="mistake-list-meta">
-                  <span className={`mistake-status ${item.status}`}>
-                    {item.status === "pending_confirmation" ? "待确认" : item.status === "mastered" ? "已掌握" : "待掌握"}
-                  </span>
-                  <span>{item.gradeBand} · {item.subject}</span>
-                  {item.errorReason && <span>{ERROR_LABELS[item.errorReason]}</span>}
-                </div>
-                <RichText text={displayedPrompt(item.questionPayload.question)} className="mistake-list-prompt" />
-                <small>{item.chapter} · {item.knowledgePoint}</small>
-              </div>
-              <div className="mistake-list-actions">
-                {item.status !== "pending_confirmation" && (
-                  <button className="primary" onClick={() => onTutor(item)}>{item.status === "mastered" ? "查看验证记录" : "开始陪练"}</button>
+          {visibleItems.map((item) => {
+            // 后端只在通过门禁时写入 AI 归因，unknown 是"没有可用分类"的兜底值，
+            // 两者都不该当成 Dotty 的判断展示出来。
+            const aiReason = item.aiErrorReason && item.aiErrorReason !== "unknown" ? item.aiErrorReason : undefined;
+            return (
+              <article key={item.mistakeId} className="mistake-list-item">
+                {item.sourceImageUrl && !brokenImages[item.mistakeId] ? (
+                  <img
+                    src={item.sourceImageUrl}
+                    alt="错题原图"
+                    loading="lazy"
+                    onError={() => setBrokenImages((current) => ({ ...current, [item.mistakeId]: true }))}
+                  />
+                ) : (
+                  <div className="mistake-paper-source" aria-label="来自互动试卷">
+                    <strong>互动试卷</strong>
+                    <span>自动记录</span>
+                  </div>
                 )}
-                <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
-                <button className="danger" onClick={() => onArchive(item)}>归档</button>
-              </div>
-            </article>
-          ))}
+                <div className="mistake-list-content">
+                  <div className="mistake-list-meta">
+                    <span className={`mistake-status ${item.status}`}>
+                      {item.status === "pending_confirmation" ? "待确认" : item.status === "mastered" ? "已掌握" : "待掌握"}
+                    </span>
+                    <span>{item.gradeBand} · {item.subject}</span>
+                    {item.errorReason && (
+                      <span>{aiReason ? `自评：${errorReasonLabel(item.errorReason)}` : errorReasonLabel(item.errorReason)}</span>
+                    )}
+                    {aiReason && <span>Dotty：{errorReasonLabel(aiReason)}</span>}
+                  </div>
+                  <RichText text={displayedPrompt(item.questionPayload.question)} className="mistake-list-prompt" />
+                  <small>{item.chapter} · {item.knowledgePoint}</small>
+                </div>
+                <div className="mistake-list-actions">
+                  {item.status !== "pending_confirmation" && (
+                    <button className="primary" onClick={() => onTutor(item)}>{item.status === "mastered" ? "查看验证记录" : "开始陪练"}</button>
+                  )}
+                  <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
+                  <button className="danger" onClick={() => onArchive(item)}>归档</button>
+                </div>
+              </article>
+            );
+          })}
         </section>
       )}
     </>

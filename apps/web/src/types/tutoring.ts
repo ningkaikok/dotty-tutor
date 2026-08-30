@@ -1,4 +1,5 @@
 import type { CanvasAction } from "./question";
+import type { MistakeErrorReason } from "./mistake";
 import type { ModelRun } from "./runtime";
 
 /**
@@ -153,6 +154,7 @@ export interface TutorStudentIntent {
 }
 
 export interface TutorMisconception {
+  category: MistakeErrorReason;
   hypothesis: string;
   evidence: string;
   evidenceMatched: boolean;

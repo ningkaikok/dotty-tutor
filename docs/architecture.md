@@ -204,7 +204,8 @@ flowchart TB
 `category` 与证据、置信度一起经过既有门禁。陪练路由只在 `needsConfirmation=false` 时把
 `category`/`confidence` 写入 `ai_error_reason`/`ai_error_reason_confidence`，否则保留既有 AI 判断。
 变式策略优先使用本轮通过门禁的 AI 归因，其次使用学生自评，最后仅在策略选择时回退 `unknown`；
-该来源记录在 `errorStrategy.source`，便于回放审计。每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
+该来源记录在 `errorStrategy.source`，便于回放审计。前端在学生完成或跳过自评后，才把线程中最后一条可信 AI 归因与学生自评并列展示；
+两者都没有时不渲染对照区块。每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
 答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
 快照、答案和确定性判题证据，不参与首次掌握连续计数；复习作答的响应和后续读取都会带上 `evaluationEvidence`；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
