@@ -29,6 +29,7 @@ from domain.questions.source import (
     MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
     MAX_QUESTIONS_PER_BATCH,
     limited_question_sources,
+    looks_like_multi_question_document,
     question_key,
     split_question_sources,
 )
@@ -204,6 +205,14 @@ class TextbookProcessingService:
             f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
         )
         blocks = split_question_sources(lesson_source, asset_dir=asset_dir)
+        if not blocks and looks_like_multi_question_document(lesson_source):
+            # 切分失败时下面会回退成“整页当作一道题”。对真正的单题文本这是合理兜底，
+            # 但对一整张试卷会把说明、几十道题和答案拼成一道看似合法的题，且下游没有
+            # 任何环节能发现。这里在来源边界直接失败，让问题停在可定位的地方。
+            raise HTTPException(
+                status_code=422,
+                detail="OCR 题号切分失败：检测到多个题目候选，已阻止整页作为一道题生成，请刷新 OCR 后重试",
+            )
         question_sources = limited_question_sources(lesson_source, question_limit, asset_dir=asset_dir)
         excluded = {str(number).strip() for number in (exclude_question_numbers or set()) if str(number).strip()}
         if excluded:
