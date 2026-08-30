@@ -5,6 +5,9 @@ import { loadPublishedPublications } from "../../api/publications";
 import type { ClassDashboard, ClassDetail, ClassSummary } from "../../types/classroom";
 import type { PublicationSummary } from "../../types/publication";
 import "./teacher.css";
+import { AssignmentComposer } from "./AssignmentComposer";
+import { AssignmentPlanReview } from "./AssignmentPlanReview";
+import { useAssignmentPlanning } from "./useAssignmentPlanning";
 
 /** 同一时刻只允许一个写操作在飞；用动作名而不是布尔量，避免三个表单互相禁用。 */
 type PendingAction = "" | "class" | "member" | "assignment";
@@ -46,6 +49,8 @@ export function TeacherClassroomApp() {
   // 看板失败必须和"还没布置作业"区分开。合成一个状态会让加载失败看起来像没有数据，
   // 老师只会看到一片空白，无从判断是该布置作业还是该重试。
   const [dashboardError, setDashboardError] = useState("");
+  const planning = useAssignmentPlanning(selectedClassId);
+  const clearPlanning = planning.clear;
 
   const selectedPublication = useMemo(
     () => publications.find((item) => item.publicationId === publicationId),
@@ -85,13 +90,14 @@ export function TeacherClassroomApp() {
     setDashboard(null);
     setDashboardError("");
     setSelectedAssignmentId("");
+    clearPlanning();
     loadClass(selectedClassId)
       .then((detail) => {
         setClassDetail(detail);
         return detail.assignments.length ? refreshDashboard(selectedClassId, "") : undefined;
       })
       .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "班级数据加载失败"));
-  }, [selectedClassId]);
+  }, [clearPlanning, selectedClassId]);
 
   const selectAssignment = (assignmentId: string) => {
     setSelectedAssignmentId(assignmentId);
@@ -130,15 +136,23 @@ export function TeacherClassroomApp() {
     }
   };
 
-  const saveAssignment = async () => {
-    if (!selectedClassId || !publicationId) return;
+  const analyzeAssignment = async () => {
+    if (!selectedClassId || !publicationId || !classDetail?.members.length) return;
+    await planning.analyze(publicationId);
+  };
+
+  const saveAssignment = async (confirmWarnings: boolean) => {
+    if (!selectedClassId || !publicationId || !planning.plan) return;
     setPending("assignment");
     setError("");
     try {
       const created = await createAssignment(selectedClassId, {
+        planId: planning.plan.planId,
         publicationId,
         title: assignmentTitle.trim() || selectedPublication?.title,
         dueAt: dueDate ? new Date(`${dueDate}T23:59:59`).getTime() / 1000 : null,
+        sourceFingerprint: planning.plan.sourceFingerprint,
+        confirmWarnings,
       });
       setAssignmentTitle("");
       setDueDate("");
@@ -146,6 +160,7 @@ export function TeacherClassroomApp() {
       // 刚布置的这次就是老师想看的那次，直接切过去，不要停在默认作业上。
       setSelectedAssignmentId(created.assignmentId);
       await refreshDashboard(selectedClassId, created.assignmentId);
+      planning.clear();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "布置作业失败");
     } finally {
@@ -277,37 +292,28 @@ export function TeacherClassroomApp() {
                   </div>
                   <span>{classDetail.assignments.length} 次</span>
                 </div>
-                <div className="teacher-form assignment-form">
-                  <label>
-                    已发布试卷
-                    <select value={publicationId} onChange={(event) => setPublicationId(event.target.value)}>
-                      <option value="">请选择</option>
-                      {publications.map((item) => (
-                        <option key={item.publicationId} value={item.publicationId}>{item.title}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    作业名称
-                    <input
-                      value={assignmentTitle}
-                      onChange={(event) => setAssignmentTitle(event.target.value)}
-                      placeholder="默认使用试卷名称"
-                    />
-                  </label>
-                  <label>
-                    截止日期
-                    <input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-                  </label>
-                  <button
-                    onClick={saveAssignment}
-                    disabled={pending === "assignment" || !publicationId || !classDetail.members.length}
-                  >
-                    {pending === "assignment" ? "布置中…" : "布置给全班"}
-                  </button>
-                </div>
+                <AssignmentComposer
+                  publications={publications}
+                  publicationId={publicationId}
+                  title={assignmentTitle}
+                  dueDate={dueDate}
+                  disabled={planning.planning || pending === "assignment" || !classDetail.members.length}
+                  onPublicationChange={(value) => { setPublicationId(value); planning.clear(); }}
+                  onTitleChange={setAssignmentTitle}
+                  onDueDateChange={setDueDate}
+                  onAnalyze={() => void analyzeAssignment()}
+                />
                 {!classDetail.members.length && (
                   <small className="teacher-field-hint">班级还没有学生，先添加成员才能布置作业。</small>
+                )}
+                {planning.error && <p className="teacher-notice error-text" role="alert">{planning.error}</p>}
+                {planning.plan && (
+                  <AssignmentPlanReview
+                    plan={planning.plan}
+                    confirming={pending === "assignment"}
+                    onConfirm={(confirmWarnings) => void saveAssignment(confirmWarnings)}
+                    onRegenerate={() => void analyzeAssignment()}
+                  />
                 )}
                 {classDetail.assignments.length > 0 && (
                   <ul className="assignment-list">

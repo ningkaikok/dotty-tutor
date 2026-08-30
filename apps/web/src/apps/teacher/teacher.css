@@ -31,6 +31,18 @@
 .compact-form { margin-top: 20px; padding-top: 18px; border-top: 1px solid #e3e7e2; }
 .member-form { grid-template-columns: 1fr 1fr auto; margin-top: 15px; }
 .assignment-form { grid-template-columns: 1.4fr 1fr .75fr auto; }
+.assignment-plan-review { margin-top: 18px; padding: 16px; border: 1px solid #d8e1da; border-radius: 14px; background: #fbfcf8; }
+.assignment-plan-review h3 { margin: 4px 0 0; color: #20352c; }
+.assignment-goal-list { display: grid; gap: 10px; margin: 14px 0; padding-left: 22px; }
+.assignment-goal-list li { padding-left: 4px; }
+.assignment-goal-list strong, .assignment-goal-list span, .assignment-goal-list small { display: block; }
+.assignment-goal-list span { margin-top: 3px; color: #30483d; }
+.assignment-goal-list small { margin-top: 3px; color: #748078; }
+.assignment-plan-coverage { display: flex; flex-wrap: wrap; gap: 7px; }
+.assignment-plan-coverage span { padding: 5px 8px; border-radius: 999px; background: #edf3ed; color: #52645a; font-size: 12px; }
+.teacher-plan-warning { margin: 8px 0; padding: 8px 10px; border-radius: 8px; background: #fff6dd; color: #765c21; font-size: 12px; }
+.assignment-plan-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+.secondary-button { border: 1px solid #cbd3cd; color: #30483d; background: transparent; }
 .assignment-list { display: grid; gap: 7px; margin: 16px 0 0; padding: 0; list-style: none; }
 .assignment-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 11px; background: #f2f5f1; color: #4a5a51; font-size: 12px; }
 .assignment-list span { color: #748078; white-space: nowrap; }

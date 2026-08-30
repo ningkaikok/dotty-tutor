@@ -1,6 +1,7 @@
 import { parse } from "./client";
 import type {
   AssignmentSummary,
+  AssignmentPlan,
   ClassDashboard,
   ClassDetail,
   ClassSummary,
@@ -34,13 +35,25 @@ export async function addClassMember(classId: string, input: { learnerId: string
 
 export async function createAssignment(
   classId: string,
-  input: { publicationId: string; title?: string; dueAt?: number | null },
+  input: { planId: string; publicationId: string; title?: string; dueAt?: number | null; sourceFingerprint: string; confirmWarnings: boolean },
 ): Promise<AssignmentSummary> {
   return parse<AssignmentSummary>(await fetch(`/api/classes/${encodeURIComponent(classId)}/assignments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   }));
+}
+
+export async function createAssignmentPlan(classId: string, publicationId: string): Promise<AssignmentPlan> {
+  return parse<AssignmentPlan>(await fetch(`/api/classes/${encodeURIComponent(classId)}/assignment-plans`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ publicationId }),
+  }));
+}
+
+export async function loadAssignmentPlan(classId: string, planId: string): Promise<AssignmentPlan> {
+  return parse<AssignmentPlan>(await fetch(`/api/classes/${encodeURIComponent(classId)}/assignment-plans/${encodeURIComponent(planId)}`, { cache: "no-store" }));
 }
 
 export async function loadStudentAssignments(learnerId: string): Promise<StudentAssignment[]> {

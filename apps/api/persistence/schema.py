@@ -138,11 +138,31 @@ assignments = Table(
     Column("assignment_id", String(64), primary_key=True),
     Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), nullable=False),
     Column("publication_id", String(64), ForeignKey("lesson_publications.publication_id"), nullable=False),
+    # A confirmed plan is the idempotency boundary for teacher assignment creation.
+    Column("assignment_plan_id", String(64), ForeignKey("assignment_plans.plan_id"), nullable=True),
     Column("title", String(200), nullable=False),
     Column("due_at", Float),
     Column("status", String(32), nullable=False, default="active"),
     Column("created_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
+)
+
+assignment_plans = Table(
+    "assignment_plans", metadata,
+    Column("plan_id", String(64), primary_key=True),
+    Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), nullable=False),
+    Column("publication_id", String(64), ForeignKey("lesson_publications.publication_id"), nullable=False),
+    Column("publication_version", Integer, nullable=False),
+    Column("source_fingerprint", String(128), nullable=False),
+    Column("status", String(32), nullable=False, default="draft"),
+    Column("input_snapshot_json", json_document, nullable=False),
+    Column("result_json", json_document, nullable=False),
+    Column("warnings_json", json_document, nullable=False, default=list),
+    Column("run_id", String(64), nullable=True),
+    Column("assignment_id", String(64), nullable=True),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+    Column("confirmed_at", Float),
 )
 
 knowledge_points = Table(
@@ -240,6 +260,8 @@ Index("idx_lesson_publications_revision", lesson_publications.c.revision_of, les
 Index("idx_class_memberships_learner", class_memberships.c.learner_id, class_memberships.c.class_id)
 Index("idx_assignments_class", assignments.c.class_id, assignments.c.created_at.desc())
 Index("idx_assignments_publication", assignments.c.publication_id, assignments.c.created_at.desc())
+Index("idx_assignments_plan", assignments.c.assignment_plan_id, assignments.c.created_at.desc())
+Index("idx_assignment_plans_class", assignment_plans.c.class_id, assignment_plans.c.created_at.desc())
 Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
 Index("idx_learning_sessions_assignment", learning_sessions.c.assignment_id, learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
 Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())

@@ -117,7 +117,7 @@ flowchart TB
 | --- | --- | --- |
 | 产品路由 | `apps/web/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习、教师和内容生产三个角色入口 |
-| 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx` | 管理班级成员、已发布试卷指派和班级学习看板 |
+| 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，确认后指派已发布试卷并查看看板 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
@@ -157,7 +157,8 @@ flowchart TB
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `apps/api/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
-| 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业指派和教师看板接口 |
+| 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业计划、确认式作业指派和教师看板接口 |
+| 作业计划服务 | `apps/api/application/services/assignment_planning.py`、`apps/api/domain/assignment_planning.py` | 脱敏聚合、三套错因统计、确定性目标排序、模型受约束表达和 stale/fallback 校验 |
 | 试卷发布路由 | `apps/api/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
 | 可编程课程契约 | `apps/api/domain/contracts/lesson.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
@@ -170,7 +171,8 @@ flowchart TB
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
 | 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
-| 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和作业指派；按 assignment 关联学习会话，聚合单次作业的完成状态与知识点分布 |
+| 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和 plan-backed 作业指派；按 assignment 关联学习会话，聚合单次作业的完成状态与知识点分布 |
+| 作业计划存储 | `apps/api/persistence/assignment_planning_store.py`、`schema.py` | 保存脱敏输入快照、结构化结果、提醒和 sourceFingerprint；确认计划与创建 assignment 使用同一事务 |
 | 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
@@ -553,12 +555,20 @@ POST /api/tts
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
 - `learning_classes`、`class_memberships` 和 `assignments` 保存本地班级、学生名单和不可变发布版本指派；
+  `assignment_plans` 保存教师确认前的脱敏分析草稿，`assignments.assignment_plan_id` 将正式作业绑定到唯一确认计划；
   `learning_sessions.assignment_id` 将学生学习会话绑定到具体作业，旧的自由练习会话允许为空。
 - `learning_sessions.publication_id` 绑定整份互动试卷；`knowledge_points` 使用发布版本和规范化名称生成稳定
   `knowledge_point_id`，`exercise_attempts` 保存服务端解析出的题目归属，`mastery_states` 以
   `(learner_id, knowledge_point_id)` 为键保存 `raw_score`、`score`、`evidence_confidence`、`evidence_count`、
   `algorithm_version` 和 `computed_at` 等掌握度投影。重复作答仍保留在日志中，但派生时每个发布版本的每道题只
   取最新作答，因此离线乱序不会污染结果。
+
+作业布置链路是 `POST /api/classes/{classId}/assignment-plans` → 教师审阅 →
+`POST /api/classes/{classId}/assignments`。计划输入按班级成员聚合，掌握度按
+`normalized_name` 形成临时 planningTopicKey；无证据学生计入 `notObserved`，不参与平均分。
+模型只能表达/排序已存在的目标和 evidenceRef，非法 JSON、超时或虚构引用会回退确定性规则，且不会
+直接创建 assignment。确认请求必须带 `planId`、`sourceFingerprint` 和提醒确认值；标题、截止日期可在
+确认前修改，不会改变分析指纹。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、学生自评 `error_reason`、通过门禁的 AI
   `ai_error_reason`/`ai_error_reason_confidence` 和确认状态；跳过自评不写入 `unknown`。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。

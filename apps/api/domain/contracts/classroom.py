@@ -17,6 +17,15 @@ class ClassMemberCreate(BaseModel):
 
 
 class AssignmentCreate(BaseModel):
+    # Direct assignment creation is intentionally impossible; confirmation of
+    # an analyzed plan is the only write path.
+    planId: str = Field(min_length=1, max_length=64)
     publicationId: str = Field(min_length=1, max_length=64)
     title: str | None = Field(default=None, max_length=200)
     dueAt: float | None = Field(default=None, ge=0)
+    sourceFingerprint: str = Field(min_length=32, max_length=128)
+    confirmWarnings: bool = False
+
+
+class AssignmentPlanCreate(BaseModel):
+    publicationId: str = Field(min_length=1, max_length=64)

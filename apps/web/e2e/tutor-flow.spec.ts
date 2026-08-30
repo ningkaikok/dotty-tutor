@@ -750,6 +750,50 @@ test.describe("产品入口", () => {
     await expect(page.locator(".dashboard-card")).toHaveScreenshot("teacher-dashboard.png", { animations: "disabled", caret: "hide" });
   });
 
+  test("教师先审阅班级分析计划，再创建一次新作业", async ({ page }) => {
+    await mockApi(page);
+    const publication = {
+      publicationId: "paper-plan-teacher", title: "一次函数练习", status: "published",
+      lessonIds: ["teacher-question"], lessonCount: 1, version: 1, createdAt: 1, updatedAt: 1,
+    };
+    const assignment = {
+      assignmentId: "assignment-plan-teacher", classId: "class-plan-teacher", publicationId: publication.publicationId,
+      title: publication.title, publicationTitle: publication.title, dueAt: null, status: "active",
+      lessonIds: publication.lessonIds, questionCount: 1, createdAt: 1, updatedAt: 1,
+    };
+    let created = false;
+    const assignmentRequests: string[] = [];
+    await page.route("**/api/classes", async (route) => await route.fulfill({ json: {
+      items: [{ classId: "class-plan-teacher", name: "计划班", subject: "数学", gradeBand: "初中", memberCount: 1, createdAt: 1, updatedAt: 1 }],
+    } }));
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.route("**/api/classes/class-plan-teacher", async (route) => await route.fulfill({ json: {
+      classId: "class-plan-teacher", name: "计划班", subject: "数学", gradeBand: "初中", memberCount: 1,
+      members: [{ learnerId: "local-demo", displayName: "小安", joinedAt: 1 }], assignments: created ? [assignment] : [], createdAt: 1, updatedAt: 1,
+    } }));
+    await page.route("**/api/classes/class-plan-teacher/assignment-plans", async (route) => await route.fulfill({ json: {
+      planId: "plan-teacher", classId: "class-plan-teacher", publicationId: publication.publicationId, publicationVersion: 1,
+      sourceFingerprint: "b".repeat(64), status: "draft", warnings: [], assignmentId: null, createdAt: 1, updatedAt: 1,
+      result: { plannerVersion: "assignment-planner-v1", fallback: true, fallbackReason: "offline", goals: [{ planningTopicKey: "一次函数", topic: "一次函数", priority: 1, objective: "巩固一次函数", reason: "有覆盖", evidenceRefs: ["coverage:一次函数"] }], coverage: [{ planningTopicKey: "一次函数", topic: "一次函数", questionCount: 1 }], mastery: [], errorStats: [] },
+    } }));
+    await page.route("**/api/classes/class-plan-teacher/assignments", async (route) => {
+      assignmentRequests.push(route.request().method());
+      created = true;
+      await route.fulfill({ json: assignment });
+    });
+    await page.route("**/api/classes/class-plan-teacher/dashboard*", async (route) => await route.fulfill({ json: {
+      class: { classId: "class-plan-teacher", name: "计划班", subject: "数学", gradeBand: "初中" }, assignment,
+      summary: { memberCount: 1, startedCount: 0, completedCount: 0, completionRate: 0 }, students: [], knowledgePoints: [], metricDefinition: "未开始不等于掌握度为 0。",
+    } }));
+    await page.goto("/teacher");
+    await page.getByRole("button", { name: "分析并生成计划" }).click();
+    await expect(page.getByRole("heading", { name: "请审阅后确认" })).toBeVisible();
+    expect(assignmentRequests).toHaveLength(0);
+    await page.getByRole("button", { name: "确认并布置作业" }).click();
+    await expect(page.getByText("一次函数练习").last()).toBeVisible();
+    expect(assignmentRequests).toEqual(["POST"]);
+  });
+
   test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
     await mockApi(page);
     await mockMistakeApi(page);

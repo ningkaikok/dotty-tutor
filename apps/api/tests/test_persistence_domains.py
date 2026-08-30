@@ -73,6 +73,7 @@ class PersistenceDomainTests(unittest.TestCase):
                         "background_jobs",
                         "batch_questions",
                         "assignments",
+                        "assignment_plans",
                         "class_memberships",
                         "exercise_attempts",
                         "learning_classes",

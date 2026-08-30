@@ -45,7 +45,9 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/classes` | 创建班级；当前不包含登录、角色权限或租户字段 |
 | `GET` | `/api/classes/{classId}` | 读取班级、成员和已布置作业 |
 | `POST` | `/api/classes/{classId}/members` | 添加或更新一个 `learnerId` 的班级成员 |
-| `POST` | `/api/classes/{classId}/assignments` | 将已发布互动试卷指派给全班，可设置标题和截止时间 |
+| `POST` | `/api/classes/{classId}/assignment-plans` | 根据班级和一份已发布互动试卷生成并保存分析草稿；只读聚合证据，不创建 assignment |
+| `GET` | `/api/classes/{classId}/assignment-plans/{planId}` | 恢复作业计划草稿、目标、证据引用、覆盖度和提醒 |
+| `POST` | `/api/classes/{classId}/assignments` | 确认计划后指派已发布互动试卷；必须携带 `planId`、`publicationId`、`sourceFingerprint` 和 `confirmWarnings`，同一计划重复确认幂等 |
 | `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
 | `GET` | `/api/assignments?learnerId=local-demo` | 返回学生所属班级的作业及服务端派生进度 |
 
@@ -125,6 +127,14 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 班级看板的完成率按“该学生是否作答了作业中的全部题目”计算。知识点分布只统计有作答证据的学生，
 分为未开始、需帮助（score < 0.4）、发展中（0.4 ≤ score < 0.7）和已掌握（score ≥ 0.7）；
 没有证据的学生显示为“未开始”，不会被当成掌握度为 0。`assignment_id` 已加入学习会话，旧的自由练习会话允许为空。
+
+作业计划的 `result` 包含班级掌握度、`selfReported`/`aiAttributed`/`effective` 三套错因统计、试卷覆盖度、
+确定性目标和 `fallback` 状态。计划输入快照不保存姓名、learnerId、原始答案或聊天内容；发送给模型的内容只含
+聚合统计和无身份 `evidenceRef`。跨 publication 的掌握度只能以 `normalized_name` 形成临时
+`planningTopicKey`，不能直接按 `knowledgePointId` 聚合。计划确认时若班级证据、成员或发布版本改变，返回 `409`
+要求重新生成；存在提醒且未确认也返回 `409`。历史 assignment 的 `assignmentPlanId` 可以为 `null`。
+
+旧的无计划直创建路径已拒绝：缺少必需的 `planId` 或 `sourceFingerprint` 返回 `422`。
 
 mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确为 `1`、部分正确为 `0.55`、错误为 `0`；
 不同题证据数的置信度上限依次为 1/2/3/4/5 道题的 `0.6/0.7/0.8/0.9/1.0`。`rawScore` 是最新题证据平均分，
