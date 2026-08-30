@@ -98,6 +98,7 @@ docker compose up --build --detach
 - [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
 - [产品路线图](docs/product-roadmap.md)
 - [技术路线图](docs/engineering-roadmap.md)
+- [学科组试用方案](docs/pilot-plan.md)
 - [AI 运行治理与后台任务演进计划](docs/runtime-governance-plan.md)
 - [后端架构学习指南](docs/backend-learning-guide.md)
 - [前端架构学习指南](docs/frontend-learning-guide.md)
