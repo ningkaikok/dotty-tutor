@@ -188,13 +188,13 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
 | `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、归类和运行信息 |
-| `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节、知识点和错误原因 |
+| `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
 
 导入使用 `multipart/form-data`：`file` 必填；`sourceText`、`originalAnswer` 和 `learnerId` 可选。
-浏览器会先完成裁切，再上传裁切后的文件。确认请求中的 `errorReason` 必须是：
+浏览器会先完成裁切，再上传裁切后的文件。确认请求中的 `errorReason` 可省略；传值时必须是：
 
 ```text
 concept | reading | calculation | missing_step | unknown | careless

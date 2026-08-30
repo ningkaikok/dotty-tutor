@@ -69,9 +69,13 @@ dotty-tutor/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
 │   ├── apps/student/           # 学生学习空间，不包含生产配置
+│   │   ├── StudentNav.tsx      # 学生端持久导航（今日/错题/复习），只出现在列表级页面
+│   │   ├── useStudentTodayQueue.ts # 今日队列数据：并发组合已发布试卷、错题和复习进度
+│   │   ├── PaperQuestionProgress.tsx # 题号进度条：当前题、已答对和待修正的唯一展示位
 │   │   ├── PaperLearningProgress.tsx # 互动试卷掌握证据展示
 │   │   └── usePublishedLearningSession.ts # 会话恢复、离线队列和掌握度投影
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
+│   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
 │   ├── apps/mistake/           # 错题本、录入、裁切和确认
 │   ├── components/             # 跨教材题型复用的作答组件
@@ -194,13 +198,27 @@ flowchart LR
 - `useTextbookImport.ts` 负责多文件队列、每项断点上传、独立轮询、模型切换和错误状态；页面只负责组合列表与右侧结果。
 - `fileValidation.ts` 只包含纯校验和常量。
 - `RuntimeSettings`、`TextbookLibrary`、`UploadPanel`、`PipelinePanel` 各自负责一个视觉区域。
+  其中 `RuntimeSettings` 收在默认折叠的抽屉里：模型与 OCR 属于低频设置，不应把首屏让给它们而把上传挤到下方。
+- `PublicationStatusBar` 只渲染发布状态机（草稿→审核中→已发布）和该状态下可用的动作，自身不持有 state；
+  发布相关按钮从顶栏移出后，顶栏只保留导航与当前教材/模型标识。
 
 互动试卷沿用相同分层：`TextbookApp.tsx` 组合内容预览，`usePaperPublication.ts` 负责显式发布状态流；
 `PublishedPaperApp.tsx` 组合学生作答，`usePublishedLearningSession.ts` 负责刷新恢复、数据库重建后的旧会话
-替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据。
+替换、离线批量补传和掌握度投影；`PaperLearningProgress.tsx` 只展示确定性学习证据，
+`PaperQuestionProgress.tsx` 是题号与完成态的唯一展示位（顶栏和题目标题不再重复题号）。
+答对后不立即切题：先让"回答正确"反馈可见 1.2 秒再自动推进，学生也可以点"继续下一题"跳过等待。
 内容生产端使用 `PracticeWorkspace` 展示重新生成、审核和诊断信息，学生端使用
 `StudentQuestionWorkspace` 表达作答、求助和反馈；两者只复用无副作用的 `QuestionAnswer` 与课程渲染器。
 这种边界避免为了复用视觉外壳而把作者权限和内部术语带入学生任务流。
+
+学生首页 `/learn` 是一条今日任务队列（待确认错题 → 今日复习 → 待订正错题），数据由
+`useStudentTodayQueue.ts` 从三个已有只读接口派生，**不新增端点**。已发布试卷刻意排在队列之外的
+"练习"区：作业指派（`class` + `assignment`）尚未落地，试卷做完也不会从目录消失，算进待办会让
+计数永远降不下来。等作业指派落地、能判断"这套卷子是今天布置的"之后，练习才应该升进队列。
+
+错因归因不在确认页收集，而在陪练首轮由学生自评（见 `MistakeTutor.tsx`）：确认页的必填项只剩题干，
+分类信息收在折叠抽屉里。跳过自评时**不写入任何值**——`unknown`（完全不会）是一种真实的学生自评，
+与"没有回答"含义不同，混为一谈会污染 `turn_plan.py` 的出题策略。
 
 学生的非正确作答由 `api/routers/learning_routes.py` 编排写入 `MistakeStore`。稳定错题 ID 使用学生、试卷和题目
 共同生成，因此在线提交、离线补传和重复请求都只更新同一条记录；纸质错题仍走 OCR 与人工确认链路。
