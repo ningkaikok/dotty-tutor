@@ -62,13 +62,13 @@ export async function loadPublicationWorkspace(sourceUploadId: string): Promise<
   ));
 }
 
-export async function loadPublishedPublications(): Promise<PublicationSummary[]> {
+export async function loadPublishedPublications(signal?: AbortSignal): Promise<PublicationSummary[]> {
   const result = await parse<{ items: PublicationSummary[] }>(
-    await fetch("/api/publications?status=published", { cache: "no-store" }),
+    await fetch("/api/publications?status=published", { cache: "no-store", signal }),
   );
   return result.items;
 }
 
-export async function loadPublishedPublication(publicationId: string): Promise<PublicationDetail> {
-  return parse<PublicationDetail>(await fetch(`/api/publications/${publicationId}`, { cache: "no-store" }));
+export async function loadPublishedPublication(publicationId: string, signal?: AbortSignal): Promise<PublicationDetail> {
+  return parse<PublicationDetail>(await fetch(`/api/publications/${publicationId}`, { cache: "no-store", signal }));
 }

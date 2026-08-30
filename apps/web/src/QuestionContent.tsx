@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { MathContentBlock, QuestionContentBlock, TextContentBlock } from "./types/index";
 import MathText from "./MathText";
+import { RichText } from "./RichText";
 
 type InlineBlock = TextContentBlock | MathContentBlock;
 
@@ -16,7 +17,7 @@ interface QuestionContentProps {
 
 function InlineContent({ blocks }: { blocks: InlineBlock[] }) {
   return <>{blocks.map((block) => block.type === "text"
-    ? <MathText key={block.id} text={block.text} />
+    ? <RichText key={block.id} text={block.text} />
     : <MathText key={block.id} text={block.display ? `$$${block.latex}$$` : `$${block.latex}$`} />)}</>;
 }
 

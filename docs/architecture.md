@@ -127,10 +127,10 @@ flowchart TB
 | 课程播放器 | `apps/web/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `apps/web/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 内容预览工作区 | `apps/web/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |
-| 题型作答 | `apps/web/src/components/QuestionAnswer.tsx` | 选择、多选、判断、填空、数值和画线输入 |
+| 题型作答 | `apps/web/src/components/QuestionAnswer.tsx`、`apps/web/src/answerAssembly.ts` | 选择、多选、判断、填空、数值、画线和多小问输入及答案组装 |
 | 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `apps/web/src/api/`、`apps/web/src/types/` | 按产品域组织请求和类型 |
-| 内容渲染 | `QuestionContent.tsx`、`MathText.tsx` | 文字、LaTeX、题图和选项 |
+| 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `apps/api/app.py`、`apps/api/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
 | 教材 HTTP 边界 | `apps/api/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
@@ -390,7 +390,7 @@ flowchart TD
 - 页码范围、OCR Provider、缓存键和图片引用；
 - `sourceArtifactUrl`、`promptArtifactUrl`，方便在内容生产端查看原文和送给模型的提示。
 
-题目切分规则有独立版本号（当前为 `question-segmentation-v2`）。已生成的 `source.md`、`model-prompt.md` 和题目
+题目切分规则有独立版本号（当前为 `question-segmentation-v4`）。已生成的 `source.md`、`model-prompt.md` 和题目
 revision 是不可变证据；规则修复不会偷偷改写历史产物，必须通过“刷新 OCR/重新生成”创建新 revision。这能区分
 “代码已修复但页面仍展示旧结果”和“新运行再次误切”两类问题，也便于回放同一份 OCR 输入。
 
@@ -480,20 +480,33 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。
+- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox`，且 Markdown、结构化图注都没有
+  明确归属时，`source.py` 才使用同页垂直区间和栏位证据尝试绑定图片。置信度不足或候选接近时保持未绑定，
+  在 `imageAttributionAudit` 中记录候选、分数和 `needs_review`，整卷质量报告会阻断继续生成，避免把相邻题目的图静默贴错。
+
+### 多小问答案边界
+
+模型输出中的 `subQuestions` 是可选结构；每个小问有稳定 `id`、题型、独立 prompt 和 `evaluation.mode`。
+`deterministic` 小问携带自己的 `answerSpec`/答案字段并复用统一判题器，`tutor` 小问只保留学生作答和陪练上下文。
+质量门禁拒绝“检测到多小问但缺少结构”以及父题答案与小问答案并存的载荷。前端按小问维护答案映射，后端返回
+逐小问状态；`evaluationSummary.masteryEligible` 是本轮可解释摘要，掌握度投影不信任客户端字段，而是从已发布题目
+契约重新判断 tutor-only 边界。确定性小问的正确和错误都保留为学习证据，含 tutor 小问的整题不进入 mastery。
 - 前端快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题（`FULL_PAPER_QUESTION_LIMIT`）。
 
 ## 学生作答与 Help
 
-前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果：
+前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果；多小问额外提交
+`interactionResult.subQuestionAnswers`：
 
 1. 多选题比较 `selectedOptions` 与 `correctAnswers` 的完整集合。
 2. 填空题逐空比较文本、数值或公式答案，可配置 `tolerance` 和 `unit`。
 3. 数值题使用 `answerSpec` 做数值容差或等价文本核对。
 4. 判断题优先使用明确答案做确定性判题。
 5. 画线题比较 `requiredConnections` 与学生连接集合。
-6. 其他题先检查学生等式是否与题干或标准步骤冲突。
-7. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
-8. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
+6. 多小问逐项判定；开放性小问只生成陪练反馈，不产生客观正确分。
+7. 其他题先检查学生等式是否与题干或标准步骤冲突。
+8. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
+9. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
 判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
 并把 `incorrect` / `partial` 作答幂等写入个人错题本。前端在学习证据卡显示当前知识点分数与累计作答，

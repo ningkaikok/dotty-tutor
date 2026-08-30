@@ -18,10 +18,18 @@ export function StudentLearningApp() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadPublishedPublications()
+    const controller = new AbortController();
+    loadPublishedPublications(controller.signal)
       .then(setPublications)
-      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "试卷目录加载失败"))
-      .finally(() => setLoading(false));
+      .catch((requestError) => {
+        if (!controller.signal.aborted) {
+          setError(requestError instanceof Error ? requestError.message : "试卷目录加载失败");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
   }, []);
 
   return (

@@ -162,7 +162,7 @@ class QuestionSegmentationTests(unittest.TestCase):
         )
         self.assertEqual(quality["status"], "needs_review")
         self.assertTrue(any("考试说明" in error for error in quality["errors"]))
-        self.assertEqual(quality["validatorVersion"], "p0-v5")
+        self.assertEqual(quality["validatorVersion"], "p0-v6")
 
     def test_real_exam_notice_never_enters_prompt_artifact(self) -> None:
         """回放真实 OCR 形态，防止修复只停留在切分函数而再次污染模型提示词。"""
@@ -511,6 +511,86 @@ class StructuredCaptionAttributionTests(unittest.TestCase):
             ["images/547a74e3345f6b60c9a10d2801e2a69d036e7f200357915dfd4b4818a7871bbe.jpg"],
         )
         self.assertEqual(images_by_number["8"], [])
+
+
+class BboxImageAttributionTests(unittest.TestCase):
+    """纯版面图片归属只在有足够坐标证据时生效。"""
+
+    @staticmethod
+    def _write_content_list(directory: Path, payload: list[dict]) -> None:
+        (directory / "source.content_list.json").write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def test_assigns_uncaptioned_images_by_page_interval_and_column(self) -> None:
+        source = "1. 第一题题干。\n\n2. 第二题题干。"
+        content_list = [
+            {"type": "text", "text": "1. 第一题题干。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题题干。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/q1.png", "bbox": [90, 250, 260, 420], "page_idx": 0},
+            {"type": "image", "img_path": "images/q2.png", "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": ["images/q1.png"], "2": ["images/q2.png"],
+        })
+        self.assertEqual([item["status"] for item in audit], ["assigned", "assigned"])
+
+    def test_abstains_when_bbox_is_invalid_or_question_column_is_ambiguous(self) -> None:
+        source = "1. 左栏题目。\n\n2. 右栏题目。"
+        content_list = [
+            {"type": "text", "text": "1. 左栏题目。", "bbox": [40, 100, 180, 130], "page_idx": 0},
+            {"type": "text", "text": "2. 右栏题目。", "bbox": [420, 100, 560, 130], "page_idx": 0},
+            {"type": "image", "img_path": "images/ambiguous.png", "bbox": [250, 180, 350, 240], "page_idx": 0},
+            {"type": "image", "img_path": "images/broken.png", "bbox": [0, 10, 0, 10], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {"1": [], "2": []})
+        self.assertEqual(audit[0]["status"], "needs_review")
+        self.assertIsNone(audit[0]["selectedQuestionNumber"])
+
+    def test_falls_back_per_image_and_uses_same_column_boundary(self) -> None:
+        source = "1. 左栏题目。\n\n2. 右栏题目。"
+        content_list = [
+            {"type": "text", "text": "1. 左栏题目。", "bbox": [40, 100, 180, 130], "page_idx": 0},
+            {"type": "text", "text": "2. 右栏题目。", "bbox": [420, 100, 560, 130], "page_idx": 0},
+            {"type": "image", "img_path": "images/left.png", "bbox": [45, 180, 175, 300], "page_idx": 0},
+            {"type": "image", "img_path": "images/right.png", "bbox": [425, 180, 555, 300], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": ["images/left.png"], "2": ["images/right.png"],
+        })
+        self.assertEqual([item["status"] for item in audit], ["assigned", "assigned"])
+
+    def test_captioned_image_does_not_block_unrelated_bbox_fallback(self) -> None:
+        source = "1. 第一题。\n![](images/captioned.png)\n\n2. 第二题。"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/captioned.png", "image_caption": ["第1题图"], "bbox": [0, 0, 1, 1], "page_idx": 0},
+            {"type": "image", "img_path": "images/uncaptioned.png", "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": ["images/captioned.png"], "2": ["images/uncaptioned.png"],
+        })
 
 # 真实 MinerU content_list.json / middle.json 片段（同一本教材
 # 4ce09635dafb42ada0343477f6424441，第 1-5 页，本机 .mineru-venv 实际解析后摘取，

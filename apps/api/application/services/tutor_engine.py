@@ -90,6 +90,7 @@ class TutorEngine:
                     "misconception": normalize_misconception(None),
                     # 客观判定事实随回复进入计划与消息动作；字段已保证不含标准答案。
                     "evaluationEvidence": structured.get("evaluationEvidence"),
+                    "evaluationSummary": structured.get("evaluationSummary"),
                 },
                 nextHintLevel=min(request.hintLevel + 1, 3),
                 canvasAction="show-base",

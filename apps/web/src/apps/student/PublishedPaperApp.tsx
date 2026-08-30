@@ -4,11 +4,13 @@ import {
   loadPublishedPublication,
 } from "../../api/publications";
 import { requestHelp } from "../../api/tutoring";
+import { assembleSubQuestionText, hasMeaningfulSubQuestionAnswer } from "../../answerAssembly";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import type {
   ExerciseAttemptRecord,
   PublicationDetail,
+  SubQuestionAnswer,
   TutorReply,
 } from "../../types/index";
 import { PaperLearningProgress } from "./PaperLearningProgress";
@@ -24,6 +26,7 @@ interface StudentQuestionDraft {
   blankAnswers: Record<string, string>;
   numericAnswer: string;
   drawConnections: Array<[string, string]>;
+  subQuestionAnswers: Record<string, SubQuestionAnswer>;
 }
 
 /**
@@ -41,6 +44,7 @@ export function PublishedPaperApp() {
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
   const [numericAnswer, setNumericAnswer] = useState("");
   const [drawConnections, setDrawConnections] = useState<Array<[string, string]>>([]);
+  const [subQuestionAnswers, setSubQuestionAnswers] = useState<Record<string, SubQuestionAnswer>>({});
   const [hintLevel, setHintLevel] = useState(0);
   const [showExplanation, setShowExplanation] = useState(false);
   const [mistakeNotice, setMistakeNotice] = useState("");
@@ -84,6 +88,7 @@ export function PublishedPaperApp() {
     const blanks = attempt ? structured.blankAnswers : draft?.blankAnswers;
     const numeric = attempt ? structured.numericAnswer : draft?.numericAnswer;
     const connections = attempt ? structured.connections : draft?.drawConnections;
+    const subAnswers = attempt ? structured.subQuestionAnswers : draft?.subQuestionAnswers;
     const nextStudentInput = attempt
       ? (typeof response.text === "string" ? response.text : "")
       : (draft?.studentInput ?? "");
@@ -95,11 +100,15 @@ export function PublishedPaperApp() {
     const nextDrawConnections = Array.isArray(connections)
       ? connections.filter((item): item is [string, string] => Array.isArray(item) && item.length === 2 && item.every((value) => typeof value === "string"))
       : [];
+    const nextSubQuestionAnswers = subAnswers && typeof subAnswers === "object" && !Array.isArray(subAnswers)
+      ? Object.fromEntries(Object.entries(subAnswers).filter(([, value]) => value && typeof value === "object")) as Record<string, SubQuestionAnswer>
+      : {};
     setStudentInput(nextStudentInput);
     setSelectedOptions(nextSelectedOptions);
     setBlankAnswers(nextBlankAnswers);
     setNumericAnswer(nextNumericAnswer);
     setDrawConnections(nextDrawConnections);
+    setSubQuestionAnswers(nextSubQuestionAnswers);
     setHintLevel(attempt?.hintLevel ?? 0);
     if (currentQuestionId) {
       setDrafts((current) => ({
@@ -110,6 +119,7 @@ export function PublishedPaperApp() {
           blankAnswers: nextBlankAnswers,
           numericAnswer: nextNumericAnswer,
           drawConnections: nextDrawConnections,
+          subQuestionAnswers: nextSubQuestionAnswers,
         },
       }));
     }
@@ -125,6 +135,7 @@ export function PublishedPaperApp() {
         blankAnswers: current[currentQuestionId]?.blankAnswers ?? {},
         numericAnswer: current[currentQuestionId]?.numericAnswer ?? "",
         drawConnections: current[currentQuestionId]?.drawConnections ?? [],
+        subQuestionAnswers: current[currentQuestionId]?.subQuestionAnswers ?? {},
         ...patch,
       },
     }));
@@ -132,9 +143,15 @@ export function PublishedPaperApp() {
 
   useEffect(() => {
     if (!publicationId) return;
-    loadPublishedPublication(publicationId)
+    const controller = new AbortController();
+    loadPublishedPublication(publicationId, controller.signal)
       .then(setPublication)
-      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "试卷加载失败"));
+      .catch((requestError) => {
+        if (!controller.signal.aborted) {
+          setError(requestError instanceof Error ? requestError.message : "试卷加载失败");
+        }
+      });
+    return () => controller.abort();
   }, [publicationId]);
 
   useEffect(() => {
@@ -149,6 +166,7 @@ export function PublishedPaperApp() {
     setBlankAnswers({});
     setNumericAnswer("");
     setDrawConnections([]);
+    setSubQuestionAnswers({});
     setHintLevel(0);
     setReply(null);
     setShowExplanation(false);
@@ -164,7 +182,7 @@ export function PublishedPaperApp() {
     // 首次加载会话是异步的，题目可能已经先渲染。只有当前控件为空时才回填，
     // 防止学生正在编辑时后台同步覆盖输入。
     if (!latestAttempt || studentInput || selectedOptions.length || Object.keys(blankAnswers).length
-      || numericAnswer || drawConnections.length) return;
+      || numericAnswer || drawConnections.length || Object.keys(subQuestionAnswers).length) return;
     restoreAttempt(latestAttempt);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attempts, payload?.question.id]);
@@ -182,19 +200,23 @@ export function PublishedPaperApp() {
     const questionId = payload.question.id;
     const requestId = ++interactionRequestId.current;
     const questionType = payload.question.questionType;
-    const interactionResult = questionType === "fill-blank"
+    const interactionResult = payload.question.subQuestions?.length
+      ? { subQuestionAnswers }
+      : questionType === "fill-blank"
       ? { blankAnswers }
       : questionType === "numeric"
         ? { numericAnswer }
         : questionType === "multi-select" || questionType === "choice" || questionType === "true-false"
           ? { selectedOptions }
           : questionType === "draw-line" ? { connections: drawConnections } : undefined;
+    const subQuestionText = assembleSubQuestionText(payload.question, subQuestionAnswers);
     const submittedInput = studentInput
+      || subQuestionText
       || (questionType === "fill-blank" ? Object.values(blankAnswers).join("；") : "")
       || (questionType === "numeric" ? numericAnswer : "")
       || (selectedOptions.length ? `我选择${selectedOptions.join("、")}` : "")
       || (questionType === "draw-line" ? "我完成了画线作答" : "");
-    if (mode === "answer" && !submittedInput.trim() && !drawConnections.length) {
+    if (mode === "answer" && !submittedInput.trim() && !drawConnections.length && !hasMeaningfulSubQuestionAnswer(subQuestionAnswers)) {
       setError("请先完成作答");
       return;
     }
@@ -310,6 +332,7 @@ export function PublishedPaperApp() {
         blankAnswers={blankAnswers}
         numericAnswer={numericAnswer}
         drawConnections={drawConnections}
+        subQuestionAnswers={subQuestionAnswers}
         studentInput={studentInput}
         error={error}
         reply={reply}
@@ -334,6 +357,14 @@ export function PublishedPaperApp() {
           stopSpeech();
           setDrawConnections(connections);
           updateDraft({ drawConnections: connections });
+        }}
+        onSubQuestionChange={(id, answer) => {
+          stopSpeech();
+          const next = { ...subQuestionAnswers, [id]: answer };
+          setSubQuestionAnswers(next);
+          updateDraft({ subQuestionAnswers: next });
+          setReply(null);
+          setError("");
         }}
         onStudentInputChange={(value) => {
           stopSpeech();
