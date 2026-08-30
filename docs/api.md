@@ -317,7 +317,7 @@ concept | reading | calculation | missing_step | unknown | careless
 | --- | --- | --- |
 | `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 1/3/7 天复习任务和服务器时间 |
 | `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
-| `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案并保存确定性判题结果 |
+| `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案，响应返回并持久化确定性判题结果及客观判题证据 |
 | `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率、变式验证正确率、复习完成率、同知识点再错率和知识点聚合 |
 | `GET` | `/api/funnel?learnerId=local-demo` | 学习效果漏斗快照：导入→确认→陪练→验证→复习各阶段计数与比率（分母为零时比率为 null） |
 

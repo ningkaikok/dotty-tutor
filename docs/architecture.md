@@ -203,7 +203,7 @@ flowchart TB
 每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
 答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
-快照和答案，不参与首次掌握连续计数；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
+快照、答案和确定性判题证据，不参与首次掌握连续计数；复习作答的响应和后续读取都会带上 `evaluationEvidence`；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
 `/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
 ## 有状态单题陪练

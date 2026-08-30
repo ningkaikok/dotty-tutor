@@ -190,6 +190,9 @@ api/routers/mistake_routes.py
   → api/routers/tutoring_routes.py（线程 HTTP 边界）
   → application/services/stateful_tutor.py（判题、提示和状态转换）
   → persistence/tutoring_store.py（线程与消息）
+  → persistence/variation_store.py（验证题与追加式 EvaluationEvidence）
+  → api/routers/review_routes.py（复习判题与进度 HTTP 边界）
+  → persistence/review_store.py（review_tasks 快照、答案与 evaluation_evidence_json）
 ```
 
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
@@ -311,8 +314,8 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 扩展错题复习任务
 
-阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，
-Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
+阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，复习作答的
+确定性判题证据由 `review_tasks.evaluation_evidence_json` 持久化，Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。
 2. 复用 `QuestionPayload`、确定性判题和掌握度证据，不让模型直接修改状态。

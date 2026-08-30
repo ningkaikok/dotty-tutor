@@ -135,6 +135,7 @@ def build_review_router(
             response={"content": request.content, "interactionResult": request.interactionResult},
             assessment=result["assessment"],
             feedback=result["reply"],
+            evaluation_evidence=result.get("evaluationEvidence"),
         )
         if not saved:
             raise HTTPException(status_code=409, detail="这项复习任务已经提交过")

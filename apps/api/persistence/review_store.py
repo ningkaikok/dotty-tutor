@@ -39,6 +39,7 @@ review_tasks = Table(
     Column("question_payload_json", json_document),
     Column("model_run_json", json_document, nullable=False, default=dict),
     Column("response_json", json_document, nullable=False, default=dict),
+    Column("evaluation_evidence_json", json_document, nullable=False, default=dict),
     Column("assessment", String(32)),
     Column("feedback", Text, nullable=False, default=""),
     Column("created_at", Float, nullable=False),
@@ -166,8 +167,10 @@ class ReviewStore:
         response: dict[str, Any],
         assessment: str,
         feedback: str,
+        evaluation_evidence: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         self._ensure_initialized()
+        evidence = evaluation_evidence or {}
         with self.engine.begin() as connection:
             result = connection.execute(
                 review_tasks.update()
@@ -178,6 +181,7 @@ class ReviewStore:
                 .values(
                     status="completed",
                     response_json=response,
+                    evaluation_evidence_json=evidence,
                     assessment=assessment,
                     feedback=feedback,
                     completed_at=time.time(),
@@ -197,6 +201,7 @@ class ReviewStore:
             "questionPayload": row["question_payload_json"],
             "modelRun": row["model_run_json"] or {},
             "response": row["response_json"] or {},
+            "evaluationEvidence": row["evaluation_evidence_json"] or {},
             "assessment": row["assessment"],
             "feedback": row["feedback"],
             "createdAt": row["created_at"],
