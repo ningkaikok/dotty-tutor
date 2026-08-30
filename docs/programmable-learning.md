@@ -127,11 +127,11 @@ sequenceDiagram
   participant API as FastAPI Learning Router
   participant DB as PostgreSQL
 
-  UI->>API: POST /api/learning/sessions
-  API->>DB: 为 publicationId 创建学习会话
+  UI->>API: POST /api/learning/sessions<br/>publicationId + optional assignmentId
+  API->>DB: 校验作业归属后创建学习会话
   UI->>API: POST /api/help
   API-->>UI: 判定与下一步提示
-  UI->>API: POST /sessions/{id}/attempts
+  UI->>API: POST /api/learning/sessions/{sessionId}/attempts
   API->>DB: 保存作答并更新知识点掌握度
   API-->>UI: 返回最新 mastery
   UI->>UI: 更新当前知识点学习证据卡
@@ -141,8 +141,9 @@ sequenceDiagram
 `POST /api/learning/sessions/{sessionId}/sync` 批量补传；服务端以主键保证重复提交幂等。记录同时保存
 浏览器生成的原始 `createdAt`，因此离线补传仍按实际作答时间排序。学习会话查询同时返回按时间排列的
 `attempts` 作答快照；学生端按 `questionId` 回填最近一次选择、填空、数值或画线答案，刷新和切题不会
-丢失已提交状态。学习会话绑定整份互动试卷的 `publicationId`，不是单道课程；浏览器中的旧会话若因本地数据库重建而失效，学生 Hook 会创建替代会话
-并重新绑定尚未送达的记录。
+丢失已提交状态。学习会话绑定整份互动试卷的 `publicationId`，不是单道课程；从作业进入时还会保存可选的
+`assignmentId`，服务端校验该作业的班级和发布版本归属。浏览器中的旧会话若因本地数据库重建而失效，学生 Hook
+会创建替代会话并重新绑定尚未送达的记录。
 
 互动试卷的推进由 `usePublishedPaperProgress` 派生，不依赖服务端增加“当前题号”字段：
 

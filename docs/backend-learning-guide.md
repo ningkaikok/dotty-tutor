@@ -47,7 +47,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
   participant UI as React
-  participant Route as api/routers/textbook_routes.py
+  participant Route as apps/api/routers/textbook_routes.py
   participant Registry as infrastructure/files/upload_registry.py
   participant Service as application/services/textbook_processing.py
   participant Worker as application/job_worker.py
@@ -75,7 +75,7 @@ sequenceDiagram
 
 这里有三个刻意保留的边界：
 
-- `api/routers/textbook_routes.py` 只理解 HTTP 和文件传输。
+- `apps/api/routers/textbook_routes.py` 只理解 HTTP 和文件传输。
 - `application/services/textbook_processing.py` 理解“完成教材处理”的步骤顺序。
 - `textbook_ocr_pipeline.py` 读取页面信号并决定“文字层、MinerU、缓存或局部升级”。
 - `application/services/question_processing.py` 只处理一组已提取题目，因此可以被 HTTP 或 Worker 直接复用。
@@ -184,9 +184,9 @@ Provider 和流水线版本组成缓存键，因此重新生成题目不会重�
 错题链路适合学习“状态机比无限聊天更可靠”：
 
 ```text
-api/routers/mistake_routes.py      录入与确认错题
+apps/api/routers/mistake_routes.py  录入与确认错题
 application/services/stateful_tutor.py  diagnose → explain → practice → verify
-api/routers/tutoring_routes.py     HTTP 边界
+apps/api/routers/tutoring_routes.py HTTP 边界
 persistence/tutoring_store.py      线程、摘要和有限消息历史
 ```
 
