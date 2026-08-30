@@ -39,6 +39,7 @@ dotty-tutor/
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
+│   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
@@ -53,7 +54,7 @@ dotty-tutor/
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
 │   │   ├── mistake_recognition.py # 复用教材流水线的错题识别适配
-│   │   ├── variation_service.py # 错题变式验证题生成和题型门禁
+│   │   ├── variation_service.py # 错题变式验证题生成、归因采信和题型门禁
 │   │   ├── answer_evaluator.py # 结构化题型与多小问的确定性答案判定
 │   │   ├── publication_revision.py # 不可变试卷新版编排
 │   │   ├── run_audit.py        # 运行快照与题目修订审计
@@ -67,7 +68,7 @@ dotty-tutor/
 │   │       ├── textbook_store.py # 教材导入、题目批次和教材库
 │   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
 │   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
-│   │       ├── assignment_planning_store.py # 脱敏作业计划草稿、快照与确认事务
+│   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
 │   │       └── schema.py        # 教材/学习及其他领域表声明
 │   ├── web/                    # React 前端与 Playwright 用户路径
@@ -91,6 +92,7 @@ dotty-tutor/
 ├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
 ├── scripts/migrate_assignment_plans.py # 作业计划表与 assignment_plan_id 迁移
 ├── scripts/migrate_teacher_review_events.py # 教师复核事件表迁移
+├── scripts/migrate_variation_attribution.py # 变式归因来源字段迁移与校验
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
@@ -194,7 +196,7 @@ apps/api/routers/mistake_routes.py
 错因双归因沿着同一条链路流动：`mistake_items.error_reason` 是学生自评，陪练模型把带证据的
 `misconception.category` 交给 `turn_plan.normalize_misconception()` 复用证据/置信度门禁；
 `tutoring_routes.py` 只在门禁通过后写入 `ai_error_reason` 与置信度。`build_tutor_turn_plan()`
-按 AI → 学生自评 → `unknown` 兜底选择变式策略，并在 `errorStrategy.source` 记录采信来源；
+按 AI → 学生自评 → `unknown` 兜底选择变式策略，并在变式题快照 `variationAttributionSource` 记录采信来源；
 兜底的 `unknown` 只用于策略选择，跳过自评不会写入数据库。陪练在自评完成或跳过后，
 由 `attribution.ts` 从线程消息取最后一条可信 AI 归因，并由 `MistakeAttribution.tsx` 与学生自评并列展示；
 错题本也复用 `errorReasons.ts` 区分显示两种标签。
@@ -246,6 +248,8 @@ flowchart LR
 `normalized_name` 生成临时 `planningTopicKey`，不跨 publication 直接合并知识点 ID；模型若不可用或
 输出越界则回退确定性目标。`AssignmentPlanReview` 确认后才调用 assignments API，Planning Store 在同一
 事务中校验计划、发布版本、sourceFingerprint 和提醒确认，并以 `assignment_plan_id` 保证重复确认幂等。
+选择生成个性化作业时，`createPersonalizedAssignment` 进入 `PersonalizedAssignmentService`，复用同一份脱敏
+计划上下文，一次生成全班共享新题；成功后创建不同 publication 和可确认 final plan，失败不产生可指派成功状态。
 
 错因归因不在确认页收集，而在陪练首轮由学生自评（见 `MistakeTutor.tsx`）：确认页的必填项只剩题干，
 分类信息收在折叠抽屉里。跳过自评时**不写入任何值**——`unknown`（完全不会）是一种真实的学生自评，

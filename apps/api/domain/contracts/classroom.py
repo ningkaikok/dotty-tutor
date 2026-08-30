@@ -33,6 +33,10 @@ class AssignmentPlanCreate(BaseModel):
     publicationId: str = Field(min_length=1, max_length=64)
 
 
+class PersonalizedAssignmentCreate(BaseModel):
+    questionCount: int = Field(ge=1, le=5)
+
+
 class TeacherReviewCreate(BaseModel):
     """Append one teacher decision without changing the original learning evidence."""
 

@@ -90,6 +90,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/classes/{class_id}/assignment-plans/{plan_id}/personalized": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Personalized Assignment */
+        post: operations["generate_personalized_assignment_api_classes__class_id__assignment_plans__plan_id__personalized_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes/{class_id}/assignments": {
         parameters: {
             query?: never;
@@ -1675,6 +1692,11 @@ export interface components {
             /** Totalchunks */
             totalChunks: number;
         };
+        /** PersonalizedAssignmentCreate */
+        PersonalizedAssignmentCreate: {
+            /** Questioncount */
+            questionCount: number;
+        };
         /** PublicationCreate */
         PublicationCreate: {
             /** Lessonids */
@@ -2096,6 +2118,44 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_personalized_assignment_api_classes__class_id__assignment_plans__plan_id__personalized_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalizedAssignmentCreate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

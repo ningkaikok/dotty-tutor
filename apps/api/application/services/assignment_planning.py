@@ -144,6 +144,47 @@ class AssignmentPlanningService:
             return None
         return plan
 
+    def personalized_context(self, *, class_id: str, plan_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Return only aggregate, identity-free context for lesson generation."""
+        plan = self.get_plan(class_id=class_id, plan_id=plan_id)
+        if not plan:
+            raise LookupError("作业计划不存在或不属于当前班级")
+        if plan.get("status") != "draft":
+            raise ValueError("只有未确认的分析计划可以生成个性化作业")
+        publication, snapshot, facts = self._facts(class_id, plan["publicationId"])
+        if source_fingerprint(snapshot) != plan["sourceFingerprint"]:
+            raise ValueError("作业计划已失效，请重新分析")
+        result = plan.get("result") or {}
+        mastery = [item for item in result.get("mastery", []) if int(item.get("evidenceCount", 0) or 0) > 0]
+        errors = [item for item in result.get("errorStats", []) if int(item.get("total", 0) or 0) > 0]
+        if not mastery and not errors:
+            raise ValueError("当前计划没有可用于个性化生成的班级证据")
+        goals = [
+            {key: goal.get(key) for key in ("planningTopicKey", "topic", "objective", "evidenceRefs")}
+            for goal in result.get("goals", [])
+            if goal.get("planningTopicKey") in facts["coverage"]
+        ]
+        if not goals:
+            raise ValueError("当前计划没有可生成题目的目标")
+        source_examples = []
+        for lesson in publication.get("lessons", []):
+            question = (lesson.get("questionPayload") or {}).get("question") or {}
+            source_examples.append({
+                "planningTopicKey": next((key for key, value in facts["coverage"].items() if value.get("topic") == question.get("knowledgePoint")), ""),
+                "prompt": str(question.get("prompt") or "")[:800],
+                "questionType": str(question.get("questionType") or "")[:30],
+            })
+        return plan, {
+            "sourcePlanId": plan["planId"],
+            "sourcePublicationId": plan["publicationId"],
+            "subject": self.store.get_class(class_id).get("subject", "数学"),
+            "gradeBand": self.store.get_class(class_id).get("gradeBand", "初中"),
+            "goals": goals,
+            "mastery": mastery,
+            "errors": errors,
+            "sourceExamples": source_examples,
+        }
+
     def current_fingerprint(self, *, class_id: str, publication_id: str) -> str:
         _, snapshot, _ = self._facts(class_id, publication_id)
         return source_fingerprint(snapshot)

@@ -5,9 +5,11 @@ interface Props {
   confirming: boolean;
   onConfirm: (confirmWarnings: boolean) => void;
   onRegenerate: () => void;
+  onPersonalize?: () => void;
+  personalizing?: boolean;
 }
 
-export function AssignmentPlanReview({ plan, confirming, onConfirm, onRegenerate }: Props) {
+export function AssignmentPlanReview({ plan, confirming, onConfirm, onRegenerate, onPersonalize, personalizing }: Props) {
   return (
     <section className="assignment-plan-review" aria-label="作业计划审阅">
       <div className="teacher-section-heading">
@@ -24,6 +26,7 @@ export function AssignmentPlanReview({ plan, confirming, onConfirm, onRegenerate
       </div>
       <div className="assignment-plan-actions">
         <button className="secondary-button" onClick={onRegenerate} disabled={confirming}>重新分析</button>
+        {onPersonalize && !plan.result.personalized && <button className="secondary-button" onClick={onPersonalize} disabled={confirming || personalizing}>{personalizing ? "生成中…" : "生成个性化作业"}</button>}
         <button onClick={() => onConfirm(plan.warnings.length > 0)} disabled={confirming}>{confirming ? "布置中…" : "确认并布置作业"}</button>
       </div>
     </section>

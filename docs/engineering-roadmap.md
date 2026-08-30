@@ -216,10 +216,15 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
    实现约束沿用第 8 条：教师判定作为**追加**的更高优先级证据写入，不覆盖也不删除原始作答、
    判题证据和 `evaluatorVersion`；掌握度重算读取教师证据时必须记录采信来源，
    与错因双归因的“AI → 学生自评 → unknown”同一套模式。
-   > 依赖：产品侧的教师 override 入口（见 [`product-roadmap.md`](product-roadmap.md) P1 老师视图）。
-   > 埋点与入口必须同一批做——只有入口没有埋点，等于把最有价值的标注扔掉。
+   > 已完成：产品侧教师 override 入口、追加事件和 dashboard 复核率/推翻率已经同批落地；原始证据不被覆盖。
 
 ## T2：模型、OCR 与上下文优化
+
+### 班级个性化作业生成（MVP，2026-08-31 已完成）
+
+已增加独立的批量 lesson-generation 契约和 `POST /api/classes/{classId}/assignment-plans/{planId}/personalized`。
+它只使用脱敏班级聚合证据，为全班生成一份新试卷；通过 planningTopicKey、确定性答案、来源差异、质量门禁和失败关闭后，
+写入独立 publication 与可确认的 final plan，并以来源 plan 结果保证重复请求不重复模型调用。个人化分层 recipient、登录/权限和多租户不在本 MVP 范围。
 
 ### 模型能力目录
 

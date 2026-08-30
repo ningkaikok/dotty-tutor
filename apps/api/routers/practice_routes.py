@@ -48,6 +48,7 @@ def build_practice_router(
                 "strategy": question.get("variationStrategy") or variation["strategy"],
                 "strategyVersion": question.get("variationStrategyVersion"),
                 "target": question.get("variationTarget") or mistake.get("errorReason"),
+                "attributionSource": variation.get("attributionSource") or "unknown",
                 "objective": question.get("variationObjective"),
                 "level": question.get("variationLevel") or variation["level"],
                 "attempts": variation_store.list_attempts(variation["variationId"]),
@@ -102,6 +103,7 @@ def build_practice_router(
             level=generated["level"],
             question_payload=generated["questionPayload"],
             model_run=generated["modelRun"],
+            attribution_source=generated.get("attributionSource", "unknown"),
         )
         log_event(
             "variation.created",

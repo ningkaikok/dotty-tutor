@@ -146,7 +146,7 @@ flowchart TB
 | --- | --- | --- |
 | 产品路由 | `apps/web/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习、教师和内容生产三个角色入口 |
-| 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，确认后指派已发布试卷并查看看板 |
+| 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，按需生成全班共享的新试卷，确认后指派并查看看板 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
@@ -186,8 +186,9 @@ flowchart TB
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `apps/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
-| 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业计划、确认式作业指派和教师看板接口 |
+| 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业计划、个性化作业生成、确认式作业指派和教师看板接口 |
 | 作业计划服务 | `apps/api/application/services/assignment_planning.py`、`apps/api/domain/assignment_planning.py` | 脱敏聚合、三套错因统计、确定性目标排序、模型受约束表达和 stale/fallback 校验 |
+| 个性化作业服务 | `apps/api/application/services/personalized_assignment.py`、`apps/api/application/services/lesson_generation.py` | 复用计划只读上下文，一次批量生成新题，校验题目/答案/来源差异，写入新 publication 并提供幂等最终 plan |
 | 试卷发布路由 | `apps/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
 | 可编程课程契约 | `apps/api/domain/contracts/lesson.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
@@ -211,7 +212,7 @@ flowchart TB
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
-| 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
+| 验证持久化 | `apps/api/persistence/variation_store.py`、`scripts/migrate_variation_attribution.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |
 | 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
@@ -618,3 +619,10 @@ POST /api/tts
 当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
 统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
 不再维护外部架构图，避免与代码脱节。
+### 班级个性化作业 MVP
+
+`POST /api/classes/{classId}/assignment-plans/{planId}/personalized` 复用 `AssignmentPlanningService` 的只读聚合上下文，
+只把学科、学段、班级聚合 mastery/错因、目标、无身份 evidenceRefs 和来源题示例交给独立的 lesson-generation 契约。
+模型必须一次返回 1–5 道带 `planningTopicKey + LESSON_SCHEMA` 的新题；服务端拒绝回退、复制来源题、不可确定判题、答案不完整或质量门禁失败。
+通过后保存带 `sourcePlanId`、`sourcePublicationId`、`planningTopicKey`、证据引用和 schema/prompt 版本的 lesson，创建不同于来源的 published publication，
+再保存一个可继续确认的 final plan。来源 plan 记录 final plan ID，重复请求不重复模型调用或 publication；确认阶段仍进入现有 `assignments` 事务。

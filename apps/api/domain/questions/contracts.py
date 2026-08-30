@@ -251,6 +251,33 @@ LESSON_SCHEMA = {
     ],
 }
 
+# The planner owns the topic/evidence boundary; lesson generation only fills
+# one new lesson per returned topic. Keeping this as a separate contract avoids
+# accidentally exposing learner-level planning fields to the model.
+PERSONALIZED_ASSIGNMENT_SCHEMA_VERSION = "personalized-assignment-schema-v1"
+PERSONALIZED_ASSIGNMENT_PROMPT_VERSION = "personalized-assignment-v1"
+PERSONALIZED_ASSIGNMENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "planningTopicKey": {"type": "string", "minLength": 1, "maxLength": 160},
+                    "lesson": LESSON_SCHEMA,
+                },
+                "required": ["planningTopicKey", "lesson"],
+            },
+        },
+    },
+    "required": ["questions"],
+}
+
 HELP_SCHEMA = {
     "type": "object",
     "additionalProperties": False,

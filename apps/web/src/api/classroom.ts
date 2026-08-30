@@ -56,6 +56,21 @@ export async function loadAssignmentPlan(classId: string, planId: string): Promi
   return parse<AssignmentPlan>(await fetch(`/api/classes/${encodeURIComponent(classId)}/assignment-plans/${encodeURIComponent(planId)}`, { cache: "no-store" }));
 }
 
+export async function createPersonalizedAssignment(
+  classId: string,
+  planId: string,
+  questionCount: number,
+): Promise<AssignmentPlan> {
+  return parse<AssignmentPlan>(await fetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignment-plans/${encodeURIComponent(planId)}/personalized`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questionCount }),
+    },
+  ));
+}
+
 export async function loadStudentAssignments(learnerId: string): Promise<StudentAssignment[]> {
   const payload = await parse<{ learnerId: string; items: StudentAssignment[] }>(
     await fetch(`/api/assignments?learnerId=${encodeURIComponent(learnerId)}`, { cache: "no-store" }),

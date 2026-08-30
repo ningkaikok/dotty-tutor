@@ -9,17 +9,19 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from application.services.assignment_planning import AssignmentPlanningService
+from application.services.personalized_assignment import PersonalizedAssignmentError
 from domain.contracts.classroom import (
     AssignmentCreate,
     AssignmentPlanCreate,
     ClassCreate,
     ClassMemberCreate,
+    PersonalizedAssignmentCreate,
     TeacherReviewCreate,
 )
 from persistence.assignment_planning_store import AssignmentPlanningStore
 
 
-def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningService | None = None) -> APIRouter:
+def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningService | None = None, personalized_service: Any | None = None) -> APIRouter:
     router = APIRouter(prefix="/api")
     planner = planning_service or AssignmentPlanningService(
         store=store,
@@ -67,9 +69,17 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
                 existing_assignment = store.get_assignment_by_plan(request.planId)
                 if existing_assignment:
                     return existing_assignment
-            current_fingerprint = planner.current_fingerprint(
-                class_id=class_id, publication_id=request.publicationId,
-            )
+            if existing_plan and (existing_plan.get("result") or {}).get("personalized"):
+                source_publication_id = (existing_plan.get("result") or {}).get("sourcePublicationId")
+                if not isinstance(source_publication_id, str):
+                    raise ValueError("个性化作业来源试卷缺失")
+                current_fingerprint = planner.current_fingerprint(
+                    class_id=class_id, publication_id=source_publication_id,
+                )
+            else:
+                current_fingerprint = planner.current_fingerprint(
+                    class_id=class_id, publication_id=request.publicationId,
+                )
             planner.planning_store.confirm_and_create_assignment(
                 plan_id=request.planId,
                 class_id=class_id,
@@ -103,6 +113,23 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
         if not result:
             raise HTTPException(status_code=404, detail="作业计划不存在")
         return result
+
+    @router.post("/classes/{class_id}/assignment-plans/{plan_id}/personalized")
+    def generate_personalized_assignment(
+        class_id: str, plan_id: str, request: PersonalizedAssignmentCreate,
+    ) -> dict[str, Any]:
+        if personalized_service is None:
+            raise HTTPException(status_code=503, detail="个性化作业生成未配置")
+        try:
+            return personalized_service.generate(
+                class_id=class_id, plan_id=plan_id, question_count=request.questionCount,
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except PersonalizedAssignmentError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @router.get("/classes/{class_id}/dashboard")
     def class_dashboard(class_id: str, assignmentId: str | None = None) -> dict[str, Any]:
