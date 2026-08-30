@@ -83,6 +83,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
           phase={state.phase}
           processingTask={state.processingTask}
           activeStage={state.processingStageIndex}
+          activeFilename={state.activeUpload?.file.name ?? ""}
           onContinue={onContinue}
         />
       </section>

@@ -80,19 +80,6 @@ export function PracticeWorkspace({
               课后练习 · 已生成 {questionIndex + 1}/{questionCount} 题
             </span>
             <div className="question-navigation">
-              {textbookImport.uploadId && (
-                <>
-                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate}>
-                    {loadingQuestion ? "自动修复中…" : "修复本题"}
-                  </button>
-                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerateBatch} title="保留整批重生成；默认复用 OCR 缓存">
-                    重新生成本批次
-                  </button>
-                  <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerateBatchWithOcr} title="重新识别本批次页面，再生成全部题目">
-                    刷新 OCR 重生成
-                  </button>
-                </>
-              )}
               <button className="ghost compact" disabled={questionIndex === 0 || loadingQuestion} onClick={onPrevious}>上一题</button>
               <button
                 className="ghost compact"
@@ -103,6 +90,28 @@ export function PracticeWorkspace({
               </button>
             </div>
           </div>
+          {textbookImport.uploadId && (
+            // 三个按钮是同一个动作的三种范围，代价依次递增：单题 → 整批（复用 OCR
+            // 缓存）→ 整批 + 重新识别页面。之前唯一的区别信息藏在 title 里，触屏和
+            // 读屏用户完全拿不到；这里把它变成可见的分组标签和说明文字，同时用分隔线
+            // 把最贵的“刷新 OCR 重生成”和前两个隔开，避免误点。三个回调的行为不变。
+            <fieldset className="regenerate-scope-group">
+              <legend>重新生成</legend>
+              <div className="regenerate-scope-actions">
+                <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerate} title="只重新生成当前这一道题">
+                  {loadingQuestion ? "自动修复中…" : "修复本题"}
+                </button>
+                <button className="ghost compact" disabled={loadingQuestion} onClick={onRegenerateBatch} title="保留整批重生成；默认复用 OCR 缓存">
+                  重新生成本批次
+                </button>
+                <span className="regenerate-scope-divider" aria-hidden="true" />
+                <button className="ghost compact regenerate-scope-expensive" disabled={loadingQuestion} onClick={onRegenerateBatchWithOcr} title="重新识别本批次页面，再生成全部题目">
+                  刷新 OCR 重生成
+                </button>
+              </div>
+              <p className="regenerate-scope-hint">范围从左到右依次增大：修复本题只重做这一道；重新生成本批次会重做整批题目但复用已有 OCR 结果；刷新 OCR 重生成连页面识别一起重做，耗时最长、代价最高。</p>
+            </fieldset>
+          )}
           <div className="question-source-meta">
             {payload.question.questionNumber && (
               <b title="教材原始题号，仅供核对来源；与上方“已生成”序号是两套独立编号">

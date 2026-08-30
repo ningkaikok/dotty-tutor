@@ -1005,7 +1005,9 @@ test.describe("教材辅导核心交互", () => {
       mimeType: "image/png",
       buffer: Buffer.from("fixture"),
     });
-    await expect(page.getByText("playwright-fixture.png")).toBeVisible();
+    // 文件名现在合理地出现两处：左侧识别队列，以及右侧结果面板的“当前显示：”归属行。
+    // 这条断言要验证的是“文件进了识别队列”，因此收窄到队列内，不再全页匹配。
+    await expect(page.locator(".upload-list").getByText("playwright-fixture.png")).toBeVisible();
     await page.getByRole("button", { name: /开始识别/ }).click();
     await page.getByRole("button", { name: "进入动态教材 →" }).click();
 

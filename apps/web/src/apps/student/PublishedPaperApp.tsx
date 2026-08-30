@@ -63,6 +63,8 @@ export function PublishedPaperApp() {
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
   const initializedPaperRef = useRef("");
+  const explanationSectionRef = useRef<HTMLElement>(null);
+  const wasShowingExplanationRef = useRef(false);
   const { queueAttempt, syncMessage, mastery, attempts, sessionReady } = usePublishedLearningSession(publication?.publicationId);
   const paperProgress = usePublishedPaperProgress(publication, attempts);
 
@@ -301,6 +303,27 @@ export function PublishedPaperApp() {
     return () => window.clearTimeout(timer);
   }, [pendingAdvanceIndex]);
 
+  useEffect(() => {
+    // 只在 showExplanation 由 false 变为 true 的那一次滚动；讲解区在页面最
+    // 底部，学生请求提示或答错后大概率不会主动往下滚，注意到它出现。用
+    // ref 记录上一次的值来判断跳变，避免它已经可见时（例如重新渲染）反复
+    // 触发滚动，也避免每次渲染都滚一次。
+    if (showExplanation && !wasShowingExplanationRef.current) {
+      const prefersReducedMotion = (() => {
+        try {
+          return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+        } catch {
+          return false;
+        }
+      })();
+      explanationSectionRef.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "nearest",
+      });
+    }
+    wasShowingExplanationRef.current = showExplanation;
+  }, [showExplanation]);
+
   const selectOption = (label: string, answerText: string) => {
     // 选项变化表示学生重新进入作答，不应继续播放上一轮提示。
     stopSpeech();
@@ -408,7 +431,7 @@ export function PublishedPaperApp() {
         onOpenMistakes={() => navigate("/mistakes")}
       />}
       {showExplanation && (
-        <section className="student-explanation-section" aria-label="分步讲解">
+        <section ref={explanationSectionRef} className="student-explanation-section" aria-label="分步讲解">
           <div className="student-explanation-heading">
             <span className="eyebrow">按需讲解</span>
             <h2>换一种方式理解这道题</h2>
