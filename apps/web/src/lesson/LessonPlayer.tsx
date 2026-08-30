@@ -117,7 +117,7 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
         </div>
       </article>
       <aside className="explanation-card panel" aria-live="polite">
-        <span className="eyebrow">STEP {step + 1} / {playableBlocks.length}</span>
+        <span className="eyebrow">第 {step + 1}/{playableBlocks.length} 步</span>
         <h2>{current.title}</h2>
         <p><MathText text={blockNarration(current)} /></p>
         {!studentMode && (

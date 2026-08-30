@@ -42,6 +42,20 @@ body::before {
 .source-strip strong { color: #24372f; font-weight: 600; }
 .source-strip b { color: #b0aea6; }
 
+.publication-status-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; padding: 14px 20px; border-radius: 16px; }
+.publication-stages { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.publication-stages li { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; color: #8a938c; background: #f1f3ef; font-size: 12px; font-weight: 700; }
+.publication-stages li:not(:last-child)::after { content: "→"; margin-left: 8px; color: #c7cdc6; font-weight: 400; }
+.publication-stages li.done { color: #197b5e; background: #e5f1eb; }
+.publication-stages li.current { color: #183f31; background: #dff3e8; box-shadow: 0 0 0 1px rgba(24, 63, 49, 0.18); }
+.publication-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
+.studio-notice-stack { display: grid; gap: 8px; margin: -4px 0 18px; }
+.studio-notice { margin: 0; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
+.studio-notice-alert { color: #9d3d35; background: #fff2f0; border: 1px solid #e5b2ab; }
+.studio-notice-muted { color: #647069; background: rgba(251, 250, 246, 0.7); border: 1px solid rgba(34, 57, 47, 0.1); }
+.studio-notice-muted strong { color: #24372f; }
+
 .import-shell { position: relative; width: min(1080px, calc(100% - 40px)); margin: 34px auto; }
 .import-header { display: flex; align-items: center; gap: 12px; }
 .import-header strong { display: block; font-size: 18px; }
@@ -99,7 +113,17 @@ body::before {
   .metrics-window { margin-top: 14px; }
   .metrics-body { padding: 4px 16px 20px; }
 }
-.model-switcher { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, .7fr); gap: 10px 22px; align-items: center; margin-bottom: 18px; padding: 20px 24px; border-radius: 20px; }
+/* 通用折叠抽屉：低频设置收起来，把首屏让给主任务。studio 运行时设置和错题分类信息共用。 */
+.collapse-drawer { display: block; margin-bottom: 18px; border-radius: 20px; }
+.collapse-drawer[open] { padding-bottom: 4px; }
+.collapse-drawer-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 24px; list-style: none; color: #35463d; font-size: 13px; font-weight: 600; cursor: pointer; }
+.collapse-drawer-summary::-webkit-details-marker { display: none; }
+.collapse-drawer-summary span { overflow: hidden; min-width: 0; text-overflow: ellipsis; white-space: nowrap; }
+.collapse-drawer-summary:hover { color: #183f31; }
+.collapse-drawer-summary:focus-visible { outline: 2px solid #1b9a72; outline-offset: 2px; border-radius: 10px; }
+.collapse-drawer-summary .drawer-caret { flex: 0 0 auto; width: 8px; height: 8px; border-right: 2px solid #6f7a73; border-bottom: 2px solid #6f7a73; transform: rotate(-45deg); transition: transform .15s ease; }
+.collapse-drawer[open] .collapse-drawer-summary .drawer-caret { transform: rotate(45deg); }
+.model-switcher { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, .7fr); gap: 10px 22px; align-items: center; padding: 4px 24px 24px; border-top: 1px solid rgba(34, 57, 47, 0.1); }
 .model-switcher strong, .model-switcher small { display: block; }
 .model-switcher strong { margin: 5px 0; font-size: 17px; }
 .model-switcher small { color: #6f7a73; font-size: 12px; }
@@ -187,7 +211,6 @@ body::before {
 .import-button, .continue-button { width: 100%; padding: 14px 18px; border: 0; border-radius: 13px; color: white; background: #183f31; font-weight: 700; box-shadow: 0 10px 22px rgba(24, 63, 49, .15); }
 .import-button:disabled { color: #929a95; background: #e2e4df; box-shadow: none; cursor: not-allowed; }
 .import-error { margin: 10px 0 0; color: #b0443c; font-size: 13px; }
-.publication-notice { margin: 10px 0 0; color: #176d54; font-size: 13px; }
 .pipeline-panel { display: flex; flex-direction: column; }
 .pipeline-panel h2 { margin: 12px 0 24px; font-size: 24px; }
 .pipeline-list { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }

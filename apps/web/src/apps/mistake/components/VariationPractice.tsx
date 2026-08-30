@@ -23,7 +23,7 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
   if (!state.active) {
     return (
       <section className="variation-practice">
-        <span className="eyebrow">MASTERY CHECK</span>
+        <span className="eyebrow">掌握验证</span>
         <h3>先做一道掌握验证题</h3>
         <p>系统会根据错误原因生成一道新题。答错可以修改后重新提交，答对一次即可完成掌握验证。</p>
         {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
@@ -42,7 +42,7 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
     <section className="variation-practice">
       <header>
         <div>
-          <span className="eyebrow">MASTERY CHECK · 单题验证</span>
+          <span className="eyebrow">掌握验证 · 单题</span>
           <h3>{LEVEL_LABELS[state.active.level]}</h3>
         </div>
         <span className="variation-count">答对 1 次即可完成</span>

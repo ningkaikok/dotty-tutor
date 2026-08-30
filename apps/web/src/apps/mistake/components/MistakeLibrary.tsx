@@ -11,7 +11,6 @@ interface MistakeLibraryProps {
   onOpen: (item: MistakeItem) => void;
   onTutor: (item: MistakeItem) => void;
   onArchive: (item: MistakeItem) => void;
-  onProgress: () => void;
 }
 
 const ERROR_LABELS: Record<string, string> = {
@@ -23,7 +22,7 @@ const ERROR_LABELS: Record<string, string> = {
   careless: "粗心大意",
 };
 
-export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive, onProgress }: MistakeLibraryProps) {
+export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
@@ -37,12 +36,10 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
     <>
       <section className="mistake-library-hero">
         <div>
-          <span className="eyebrow">PERSONAL MISTAKE BOOK</span>
           <h1>我的错题本</h1>
           <p>在线作答的错题会自动进入这里；只有纸质作业需要拍照并确认识别结果。</p>
         </div>
         <div className="mistake-hero-actions">
-          <button onClick={onProgress}>查看学习进度</button>
           <button className="mistake-primary-action compact" onClick={onCapture}>录入纸质错题</button>
         </div>
       </section>

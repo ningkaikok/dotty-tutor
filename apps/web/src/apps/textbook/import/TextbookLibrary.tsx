@@ -16,7 +16,7 @@ export function TextbookLibrary({ items, loadingId, deletingId, onOpen, onDelete
     <section className="library-panel panel">
       <div className="library-heading">
         <div>
-          <span className="eyebrow">TEXTBOOK LIBRARY</span>
+          <span className="eyebrow">教材库</span>
           <strong>已持久化教材</strong>
           <small>PDF、处理状态和生成题目已保存在本机，重启后仍可继续。</small>
         </div>

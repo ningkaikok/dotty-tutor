@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMatch, useNavigate } from "react-router";
 import { archiveMistake, loadMistake, loadMistakes } from "../../api/mistakes";
+import { StudentNav } from "../student/StudentNav";
 import type { MistakeItem } from "../../types/index";
 import { MistakeCapture } from "./components/MistakeCapture";
 import { MistakeConfirm } from "./components/MistakeConfirm";
@@ -81,11 +82,10 @@ export function MistakeCoachApp() {
   return (
     <main className="mistake-shell">
       <header className="mistake-header">
-        <button className="route-back-button" onClick={returnsToStudentHome ? () => navigate("/learn") : returnToLibrary}>
-          {returnsToStudentHome ? "← 返回学生空间" : "← 返回我的错题本"}
-        </button>
+        {returnsToStudentHome
+          ? <StudentNav />
+          : <button className="route-back-button" onClick={returnToLibrary}>← 返回我的错题本</button>}
         <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
-        <span className="phase-badge">{screen.name === "tutor" || screen.name === "progress" ? "PHASE 04" : "PHASE 02"}</span>
       </header>
 
       {screen.name === "library" && (
@@ -94,7 +94,6 @@ export function MistakeCoachApp() {
           loading={loading}
           error={error}
           onCapture={() => open("/mistakes/capture")}
-          onProgress={() => open("/mistakes/progress")}
           onOpen={(item) => {
             setSelected(item);
             open(`/mistakes/${item.mistakeId}/confirm`);

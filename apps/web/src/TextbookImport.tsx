@@ -35,7 +35,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
       </header>
 
       <section className="import-intro">
-        <span className="eyebrow">CONTENT STUDIO · 教材数字化</span>
+        <span className="eyebrow">教材数字化</span>
         <h1>上传教材页或整本 PDF</h1>
         <p>此处面向内容生产者。可同时加入多个 PDF；每个文件独立断点上传、识别和展示进度，最多并行处理 3 个任务。</p>
       </section>

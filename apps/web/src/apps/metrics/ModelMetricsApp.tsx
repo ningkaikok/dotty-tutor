@@ -49,7 +49,7 @@ export function ModelMetricsApp() {
       <section className="panel metrics-panel" aria-label="模型调用指标">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">CONTENT STUDIO · 只读聚合</span>
+            <span className="eyebrow">只读聚合</span>
             <h2>模型调用指标</h2>
             <p className="muted">
               按 runtime / task / provider / model 分组的调用边界聚合；只读，不包含任何学生数据。
