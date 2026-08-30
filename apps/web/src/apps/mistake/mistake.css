@@ -158,6 +158,14 @@
    与判定标题拉开一点距离，用浅色分隔线代替单独的卡片。 */
 .variation-mastery-note { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(23, 60, 49, .18); }
 .variation-mastery-note p { margin: 4px 0 0; font-size: 12px; }
+.evaluation-evidence { margin-top: 10px; padding: 10px 12px; border: 1px solid #dce8e0; border-radius: 11px; color: #53665b; background: #f8fbf8; font-size: 12px; }
+.evaluation-evidence summary { color: #27755d; cursor: pointer; font-weight: 700; }
+.evaluation-evidence-body { margin-top: 8px; line-height: 1.6; }
+.evaluation-evidence-body p { margin: 0; }
+.evaluation-evidence-body small { display: block; margin-top: 7px; color: #89958e; font-size: 10px; }
+.evaluation-evidence-parts { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.evaluation-evidence-parts li { display: flex; justify-content: space-between; gap: 12px; }
+.evaluation-evidence-parts strong { color: #27755d; font-size: 11px; }
 .variation-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .progress-page { padding-bottom: 40px; }
 .progress-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }

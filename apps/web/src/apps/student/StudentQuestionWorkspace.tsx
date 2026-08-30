@@ -1,4 +1,5 @@
 import { QuestionAnswer } from "../../components/QuestionAnswer";
+import { EvaluationEvidence } from "../../components/EvaluationEvidence";
 import { RichText } from "../../RichText";
 import type { ExerciseAttemptInput, QuestionPayload, SubQuestionAnswer, TutorReply } from "../../types/index";
 
@@ -165,6 +166,8 @@ export function StudentQuestionWorkspace({
           )}
         </section>
       )}
+
+      <EvaluationEvidence evidence={reply?.guideContext.evaluationEvidence as Record<string, unknown> | undefined} question={payload.question} />
 
       {autoAdvancing && (
         <div className="student-auto-advance">

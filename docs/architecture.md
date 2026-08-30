@@ -127,6 +127,7 @@ flowchart TB
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `apps/web/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
+| 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
 | 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
 | 教材导入组件 | `apps/web/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |

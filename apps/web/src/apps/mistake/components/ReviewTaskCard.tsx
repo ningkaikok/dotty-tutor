@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
+import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { RichText } from "../../../RichText";
 import type { ReviewTask, StructuredAnswerInput } from "../../../types/index";
 import { buildStructuredAnswer } from "../structuredAnswer";
@@ -78,10 +79,13 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
         </>
       )}
       {task.status === "completed" && (
-        <div className={`review-result ${task.assessment}`}>
-          <strong>{task.assessment === "correct" ? "复习正确" : "本次仍需巩固"}</strong>
-          <p><RichText text={task.feedback} /></p>
-        </div>
+        <>
+          <div className={`review-result ${task.assessment}`}>
+            <strong>{task.assessment === "correct" ? "复习正确" : "本次仍需巩固"}</strong>
+            <p><RichText text={task.feedback} /></p>
+          </div>
+          <EvaluationEvidence evidence={task.evaluationEvidence as Record<string, unknown> | undefined} question={question} />
+        </>
       )}
     </article>
   );

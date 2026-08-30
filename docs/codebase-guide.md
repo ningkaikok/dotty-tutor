@@ -87,8 +87,9 @@ dotty-tutor/
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
-│   ├── apps/mistake/           # 错题本、录入、裁切和确认
+│   ├── apps/mistake/           # 错题本、录入、裁切、确认和陪练
 │   ├── components/             # 跨教材题型复用的作答组件与富文本渲染
+│   │   └── EvaluationEvidence.tsx # 学生可见的确定性判题证据折叠展示
 │   ├── answerAssembly.ts       # 多小问及画线等交互答案的统一组装
 │   ├── richTextParser.ts       # 普通文本与显式数学片段的安全分词
 │   ├── lesson/                 # 课程文档和内容块渲染器

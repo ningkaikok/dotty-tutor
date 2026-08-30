@@ -4,6 +4,7 @@ import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { RichText } from "../../../RichText";
 import { displayedPrompt } from "../../../questionPresentation";
 import type { MistakeErrorReason, MistakeItem, TutorStage } from "../../../types/index";
+import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { VariationPractice } from "./VariationPractice";
 
@@ -37,6 +38,15 @@ function assessmentLabel(message: { assessment?: string; action: Record<string, 
   if (message.assessment !== "correct") return "继续思考";
   const plan = message.action.tutorTurnPlan as { audit?: { assessmentAuthority?: string } } | undefined;
   return plan?.audit?.assessmentAuthority === "deterministic" ? "答案正确" : "理解方向正确";
+}
+
+function messageEvidence(action: Record<string, unknown>): Record<string, unknown> | undefined {
+  const plan = action.tutorTurnPlan;
+  if (typeof plan !== "object" || plan === null || Array.isArray(plan)) return undefined;
+  const evidence = (plan as Record<string, unknown>).evaluationEvidence;
+  return typeof evidence === "object" && evidence !== null && !Array.isArray(evidence)
+    ? evidence as Record<string, unknown>
+    : undefined;
 }
 
 export function MistakeTutor({ item }: MistakeTutorProps) {
@@ -184,6 +194,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
                       {assessmentLabel(message)}
                     </small>
                   )}
+                  {message.role === "assistant" && <EvaluationEvidence evidence={messageEvidence(message.action)} question={question} />}
                 </div>
               ))}
               <div ref={messagesEnd} />
