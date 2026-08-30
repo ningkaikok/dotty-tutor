@@ -14,6 +14,7 @@ from domain.contracts.classroom import (
     AssignmentPlanCreate,
     ClassCreate,
     ClassMemberCreate,
+    TeacherReviewCreate,
 )
 from persistence.assignment_planning_store import AssignmentPlanningStore
 
@@ -109,6 +110,31 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
             return store.class_dashboard(class_id, assignment_id=assignmentId)
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @router.post("/classes/{class_id}/assignments/{assignment_id}/reviews")
+    def record_teacher_review(
+        class_id: str,
+        assignment_id: str,
+        request: TeacherReviewCreate,
+    ) -> dict[str, Any]:
+        try:
+            return store.record_teacher_review(
+                event_id=uuid.uuid4().hex,
+                class_id=class_id,
+                assignment_id=assignment_id,
+                learner_id=request.learnerId,
+                question_id=request.questionId,
+                knowledge_point_id=request.knowledgePointId,
+                action=request.action,
+                mastery_score=request.masteryScore,
+                corrected_assessment=request.correctedAssessment,
+                note=request.note,
+                created_at=time.time(),
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @router.get("/assignments")
     def list_student_assignments(learnerId: str = "local-demo") -> dict[str, Any]:

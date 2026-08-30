@@ -18,6 +18,7 @@ from persistence.schema import (
     learning_sessions,
     lesson_documents,
     lesson_publications,
+    teacher_review_events,
 )
 
 
@@ -270,6 +271,98 @@ class ClassroomStore(DatabaseStore):
             raise LookupError("作业不存在或学生不属于该班级")
         return dict(row)
 
+    def record_teacher_review(
+        self,
+        *,
+        event_id: str,
+        class_id: str,
+        assignment_id: str,
+        learner_id: str,
+        question_id: str | None,
+        knowledge_point_id: str | None,
+        action: str,
+        mastery_score: float | None,
+        corrected_assessment: str | None,
+        note: str | None,
+        created_at: float,
+    ) -> dict[str, Any]:
+        """Append a teacher decision after validating its assignment scope.
+
+        Teacher decisions are evidence with higher precedence in the dashboard, not an
+        update to ``exercise_attempts`` or ``mastery_states``. This keeps the original
+        AI/learner record replayable and makes every correction available for badcase review.
+        """
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            assignment = connection.execute(
+                select(assignments, lesson_publications.c.lesson_ids_json)
+                .select_from(assignments.join(
+                    lesson_publications,
+                    assignments.c.publication_id == lesson_publications.c.publication_id,
+                ))
+                .where(
+                    assignments.c.assignment_id == assignment_id,
+                    assignments.c.class_id == class_id,
+                )
+            ).mappings().first()
+            if not assignment:
+                raise LookupError("作业不存在或不属于该班级")
+            member = connection.execute(
+                select(class_memberships.c.learner_id).where(
+                    class_memberships.c.class_id == class_id,
+                    class_memberships.c.learner_id == learner_id,
+                )
+            ).first()
+            if not member:
+                raise LookupError("学生不属于该班级")
+            lesson_ids = decode_json(assignment["lesson_ids_json"]) or []
+            lessons = connection.execute(
+                select(lesson_documents.c.question_json, lesson_documents.c.knowledge_points_json, lesson_documents.c.title)
+                .where(lesson_documents.c.lesson_id.in_(lesson_ids or ["__none__"]))
+            ).mappings().all()
+            points = self._publication_points(self._assignment_from_row(assignment), lessons)
+            point_ids = {point["knowledgePointId"] for point in points}
+            question_ids = {
+                (decode_json(lesson["question_json"]) or {}).get("question", {}).get("id")
+                for lesson in lessons
+            }
+            if action == "mastery_override" and (not knowledge_point_id or mastery_score is None):
+                raise ValueError("掌握度覆盖必须指定知识点和分数")
+            if action in {"reviewed", "overturned"} and not question_id:
+                raise ValueError("题目复核必须指定题目")
+            if question_id and question_id not in question_ids:
+                raise LookupError("题目不属于该作业")
+            if knowledge_point_id and knowledge_point_id not in point_ids:
+                raise LookupError("知识点不属于该作业")
+            if action == "overturned" and not corrected_assessment:
+                raise ValueError("推翻判题必须提供修正后的判定")
+            connection.execute(teacher_review_events.insert().values(
+                event_id=event_id,
+                class_id=class_id,
+                assignment_id=assignment_id,
+                learner_id=learner_id,
+                question_id=question_id,
+                knowledge_point_id=knowledge_point_id,
+                action=action,
+                mastery_score=mastery_score,
+                corrected_assessment=corrected_assessment,
+                note=note,
+                created_at=created_at,
+            ))
+        return {
+            "eventId": event_id,
+            "classId": class_id,
+            "assignmentId": assignment_id,
+            "learnerId": learner_id,
+            "questionId": question_id,
+            "knowledgePointId": knowledge_point_id,
+            "action": action,
+            "masteryScore": mastery_score,
+            "correctedAssessment": corrected_assessment,
+            "note": note,
+            "createdAt": created_at,
+        }
+
     def class_dashboard(self, class_id: str, *, assignment_id: str | None = None, now: float | None = None) -> dict[str, Any]:
         self._ensure_initialized()
         current_time = now if now is not None else time.time()
@@ -304,7 +397,12 @@ class ClassroomStore(DatabaseStore):
             ).mappings().all()
             session_ids = [session["session_id"] for session in sessions]
             attempt_rows = connection.execute(
-                select(exercise_attempts.c.session_id, exercise_attempts.c.question_id)
+                select(
+                    exercise_attempts.c.session_id,
+                    exercise_attempts.c.question_id,
+                    exercise_attempts.c.knowledge_point_id,
+                    exercise_attempts.c.assessment,
+                )
                 .where(exercise_attempts.c.session_id.in_(session_ids or ["__none__"]))
             ).mappings().all()
             lesson_rows = connection.execute(
@@ -317,6 +415,14 @@ class ClassroomStore(DatabaseStore):
                 select(mastery_states)
                 .where(mastery_states.c.learner_id.in_(learner_ids or ["__none__"]))
             ).mappings().all()
+            review_rows = connection.execute(
+                select(teacher_review_events)
+                .where(
+                    teacher_review_events.c.assignment_id == assignment["assignmentId"],
+                    teacher_review_events.c.learner_id.in_(learner_ids or ["__none__"]),
+                )
+                .order_by(teacher_review_events.c.created_at.asc(), teacher_review_events.c.event_id.asc())
+            ).mappings().all()
         points = self._publication_points(assignment, lesson_rows)
         point_ids = {point["knowledgePointId"] for point in points}
         state_by_learner = {
@@ -324,21 +430,43 @@ class ClassroomStore(DatabaseStore):
             for state in states
             if state["knowledge_point_id"] in point_ids
         }
+        session_learner = {session["session_id"]: session["learner_id"] for session in sessions}
         attempted_by_learner: dict[str, set[str]] = {}
+        attempts_by_point: dict[str, list[dict[str, Any]]] = {}
         session_by_learner: dict[str, Any] = {}
         for session in sessions:
             previous = session_by_learner.get(session["learner_id"])
             if previous is None or session["updated_at"] > previous["updated_at"]:
                 session_by_learner[session["learner_id"]] = session
         for row in attempt_rows:
-            learner_id = next((session["learner_id"] for session in sessions if session["session_id"] == row["session_id"]), None)
+            learner_id = session_learner.get(row["session_id"])
             if learner_id:
                 attempted_by_learner.setdefault(learner_id, set()).add(row["question_id"])
+                if row["knowledge_point_id"] in point_ids:
+                    attempts_by_point.setdefault(row["knowledge_point_id"], []).append({
+                        "learnerId": learner_id,
+                        "questionId": row["question_id"],
+                        "assessment": row["assessment"],
+                    })
+        latest_overrides: dict[tuple[str, str], Any] = {}
+        latest_question_reviews: dict[tuple[str, str], Any] = {}
+        for review in review_rows:
+            if review["action"] == "mastery_override" and review["knowledge_point_id"]:
+                latest_overrides[(review["learner_id"], review["knowledge_point_id"])] = review
+            if review["question_id"] and review["action"] in {"reviewed", "overturned"}:
+                latest_question_reviews[(review["learner_id"], review["question_id"])] = review
+
+        effective_scores: dict[tuple[str, str], tuple[float, str]] = {}
+        for (learner_id, knowledge_point_id_value), state in state_by_learner.items():
+            if state.get("evidence_count", 0):
+                effective_scores[(learner_id, knowledge_point_id_value)] = (float(state["score"]), "ai")
+        for key, review in latest_overrides.items():
+            effective_scores[key] = (float(review["mastery_score"]), "teacher")
         students = []
         for member in members:
             learner_id = member["learner_id"]
             attempted_count = len(attempted_by_learner.get(learner_id, set()))
-            scores = [float(state["score"]) for (student_id, _), state in state_by_learner.items() if student_id == learner_id and state.get("evidence_count", 0)]
+            scores = [score for (student_id, _), (score, _) in effective_scores.items() if student_id == learner_id]
             students.append({
                 "learnerId": learner_id,
                 "displayName": member["display_name"],
@@ -352,29 +480,53 @@ class ClassroomStore(DatabaseStore):
 
         knowledge_point_views = []
         for point in points:
-            state_values = [
-                state_by_learner[(member["learner_id"], point["knowledgePointId"])]
+            point_scores = [
+                (member["learner_id"], effective_scores[(member["learner_id"], point["knowledgePointId"])])
                 for member in members
-                if (member["learner_id"], point["knowledgePointId"]) in state_by_learner
-                and state_by_learner[(member["learner_id"], point["knowledgePointId"])].get("evidence_count", 0)
+                if (member["learner_id"], point["knowledgePointId"]) in effective_scores
             ]
-            distribution = {"notStarted": len(members) - len(state_values), "needsSupport": 0, "developing": 0, "mastered": 0}
-            for state in state_values:
-                score = float(state["score"])
+            distribution = {"notStarted": len(members) - len(point_scores), "needsSupport": 0, "developing": 0, "mastered": 0}
+            for _, (score, _) in point_scores:
                 if score >= 0.7:
                     distribution["mastered"] += 1
                 elif score >= 0.4:
                     distribution["developing"] += 1
                 else:
                     distribution["needsSupport"] += 1
+            evidence = []
+            for attempt in attempts_by_point.get(point["knowledgePointId"], []):
+                review = latest_question_reviews.get((attempt["learnerId"], attempt["questionId"]))
+                member = next(item for item in members if item["learner_id"] == attempt["learnerId"])
+                evidence.append({
+                    **attempt,
+                    "displayName": member["display_name"],
+                    "reviewStatus": review["action"] if review else "unreviewed",
+                    "correctedAssessment": review["corrected_assessment"] if review else None,
+                })
             knowledge_point_views.append({
                 **point,
-                "observedStudentCount": len(state_values),
-                "averageScore": round(sum(float(state["score"]) for state in state_values) / len(state_values), 4) if state_values else None,
+                "observedStudentCount": len(point_scores),
+                "overriddenStudentCount": sum(source == "teacher" for _, (_, source) in point_scores),
+                "averageScore": round(sum(score for _, (score, _) in point_scores) / len(point_scores), 4) if point_scores else None,
                 "distribution": distribution,
+                "evidence": evidence,
             })
         completed_count = sum(student["status"] == "completed" for student in students)
         started_count = sum(student["status"] != "not_started" for student in students)
+        judged = {
+            (session_learner.get(row["session_id"]), row["question_id"])
+            for row in attempt_rows
+            if session_learner.get(row["session_id"])
+        }
+        reviewed = {
+            (review["learner_id"], review["question_id"])
+            for review in review_rows
+            if review["question_id"] and review["action"] in {"reviewed", "overturned"}
+        }
+        overturned = {
+            key for key, review in latest_question_reviews.items()
+            if review["action"] == "overturned"
+        }
         return {
             "class": {
                 "classId": class_row["class_id"],
@@ -391,6 +543,14 @@ class ClassroomStore(DatabaseStore):
             },
             "students": students,
             "knowledgePoints": knowledge_point_views,
+            "reviewMetrics": {
+                "judgedCount": len(judged),
+                "reviewedCount": len(reviewed & judged),
+                "overturnedCount": len(overturned & judged),
+                "reviewRate": round(len(reviewed & judged) / len(judged), 4) if judged else None,
+                "overturnRate": round(len(overturned & judged) / len(reviewed & judged), 4) if reviewed & judged else None,
+                "overrideCount": len(latest_overrides),
+            },
             "metricDefinition": "掌握度只统计已有作答证据的学生；未开始不等于掌握度为 0。",
         }
 

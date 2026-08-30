@@ -67,3 +67,26 @@ export async function loadClassDashboard(classId: string, assignmentId?: string)
   const query = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
   return parse<ClassDashboard>(await fetch(`/api/classes/${encodeURIComponent(classId)}/dashboard${query}`, { cache: "no-store" }));
 }
+
+export async function recordTeacherReview(
+  classId: string,
+  assignmentId: string,
+  input: {
+    learnerId: string;
+    questionId?: string;
+    knowledgePointId?: string;
+    action: "reviewed" | "overturned" | "mastery_override";
+    masteryScore?: number;
+    correctedAssessment?: "correct" | "partial" | "incorrect";
+    note?: string;
+  },
+): Promise<void> {
+  await parse(await fetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/reviews`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  ));
+}

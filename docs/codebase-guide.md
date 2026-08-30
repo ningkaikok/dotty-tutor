@@ -66,7 +66,7 @@ dotty-tutor/
 │   │       ├── base.py         # 引擎、初始化、健康检查和通用 Upsert
 │   │       ├── textbook_store.py # 教材导入、题目批次和教材库
 │   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
-│   │       ├── classroom_store.py # 班级、成员、作业指派和教师看板聚合
+│   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
 │   │       ├── assignment_planning_store.py # 脱敏作业计划草稿、快照与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
 │   │       └── schema.py        # 教材/学习及其他领域表声明
@@ -90,6 +90,7 @@ dotty-tutor/
 ├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
 ├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
 ├── scripts/migrate_assignment_plans.py # 作业计划表与 assignment_plan_id 迁移
+├── scripts/migrate_teacher_review_events.py # 教师复核事件表迁移
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境

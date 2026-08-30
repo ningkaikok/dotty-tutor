@@ -53,6 +53,9 @@
 .dashboard-summary-grid span { color: #64756a; font-size: 11px; }
 .dashboard-summary-grid strong { margin-top: 7px; color: #183f31; font-size: 23px; }
 .dashboard-definition { margin: 0 0 16px; padding: 11px 13px; border-radius: 11px; color: #5c7063; background: #f3f6f1; font-size: 12px; line-height: 1.6; }
+.dashboard-review-metrics { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 16px; }
+.dashboard-review-metrics span { padding: 6px 9px; border-radius: 999px; color: #486055; background: #edf3ed; font-size: 11px; }
+.teacher-review-message { margin: -4px 0 14px; color: #28634e; font-size: 12px; }
 .dashboard-table-wrapper { overflow-x: auto; }
 .dashboard-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dashboard-table caption { margin-bottom: 8px; color: #415349; text-align: left; font-weight: 700; }
@@ -71,6 +74,14 @@
 .knowledge-point-grid dl div { padding: 8px; border-radius: 9px; background: #f3f5f1; }
 .knowledge-point-grid dt { color: #748078; font-size: 10px; }
 .knowledge-point-grid dd { margin: 5px 0 0; color: #183f31; font-size: 18px; font-weight: 700; }
+.dashboard-evidence-list { display: grid; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5e8e4; }
+.dashboard-evidence-list > strong { color: #42574b; font-size: 11px; }
+.dashboard-evidence-list > small { color: #7a877e; font-size: 11px; }
+.dashboard-evidence-row { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 8px; border-radius: 9px; background: #f5f7f4; color: #596a60; font-size: 11px; }
+.dashboard-evidence-row[aria-busy="true"] { opacity: .65; }
+.dashboard-evidence-row > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.dashboard-evidence-row button, .dashboard-evidence-row select { padding: 5px 7px; border-radius: 7px; font: inherit; font-size: 10px; }
+.dashboard-evidence-row select { border: 1px solid #cbd3cd; color: #30483d; background: #fff; }
 .teacher-empty-note { padding: 18px; border-radius: 15px; color: #68766e; background: #f1f3ef; font-size: 13px; }
 /* 首次进入时的引导：右侧不能是一片空白，必须说明从哪一步开始。 */
 .teacher-onboarding h2 { margin: 0 0 8px; font-size: 20px; }

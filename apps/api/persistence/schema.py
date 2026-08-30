@@ -247,6 +247,29 @@ mastery_states = Table(
     Column("last_practiced_at", Float),
 )
 
+teacher_review_events = Table(
+    "teacher_review_events", metadata,
+    Column("event_id", String(64), primary_key=True),
+    Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), nullable=False),
+    Column("assignment_id", String(64), ForeignKey("assignments.assignment_id", ondelete="CASCADE"), nullable=False),
+    Column("learner_id", String(128), nullable=False),
+    Column("question_id", String(128)),
+    Column("knowledge_point_id", String(64), ForeignKey("knowledge_points.knowledge_point_id"), nullable=True),
+    Column("action", String(32), nullable=False),
+    Column("mastery_score", Float),
+    Column("corrected_assessment", String(32)),
+    Column("note", Text),
+    Column("created_at", Float, nullable=False),
+    CheckConstraint(
+        "action IN ('reviewed', 'overturned', 'mastery_override')",
+        name="ck_teacher_review_events_action",
+    ),
+    CheckConstraint(
+        "mastery_score IS NULL OR (mastery_score >= 0 AND mastery_score <= 1)",
+        name="ck_teacher_review_events_mastery_score",
+    ),
+)
+
 Index("idx_upload_jobs_updated", upload_jobs.c.updated_at.desc())
 Index("uq_background_jobs_idempotency", background_jobs.c.idempotency_key, unique=True)
 Index("idx_background_jobs_claim", background_jobs.c.status, background_jobs.c.lease_expires_at, background_jobs.c.created_at)
@@ -268,3 +291,5 @@ Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_
 Index("uq_knowledge_points_publication_name", knowledge_points.c.publication_id, knowledge_points.c.normalized_name, unique=True)
 Index("idx_exercise_attempts_publication_question", exercise_attempts.c.publication_id, exercise_attempts.c.question_id, exercise_attempts.c.created_at.desc())
 Index("uq_mastery_states_learner_knowledge_point", mastery_states.c.learner_id, mastery_states.c.knowledge_point_id, unique=True)
+Index("idx_teacher_review_events_assignment", teacher_review_events.c.assignment_id, teacher_review_events.c.created_at.desc())
+Index("idx_teacher_review_events_evidence", teacher_review_events.c.assignment_id, teacher_review_events.c.learner_id, teacher_review_events.c.question_id, teacher_review_events.c.created_at.desc())
