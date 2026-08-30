@@ -41,6 +41,7 @@ export interface MistakeConfirmation {
   gradeBand: string;
   chapter: string;
   knowledgePoint: string;
-  errorReason: MistakeErrorReason;
+  // 错因归因迁移到陪练首轮自评（见 MistakeTutor），确认页保存时可以不填。
+  errorReason?: MistakeErrorReason;
   notes: string;
 }

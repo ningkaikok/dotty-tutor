@@ -2,9 +2,7 @@ import type { MasteryState } from "../../types/index";
 
 interface PaperLearningProgressProps {
   knowledgePointId: string;
-  knowledgePoint: string;
   mastery: MasteryState[];
-  syncMessage: string;
 }
 
 /**
@@ -15,20 +13,20 @@ interface PaperLearningProgressProps {
  */
 export function PaperLearningProgress({
   knowledgePointId,
-  knowledgePoint,
   mastery,
-  syncMessage,
 }: PaperLearningProgressProps) {
   const current = mastery.find((item) => item.knowledgePointId === knowledgePointId);
   const score = Math.round((current?.score ?? 0) * 100);
-  const totalAttempts = mastery.reduce((sum, item) => sum + item.attemptCount, 0);
+  const correctCount = current?.correctCount ?? 0;
+  // 答对数不可能超过证据数。字段缺失时 evidenceCount 会回退成 0，直接展示会得到
+  // “已答对 1 道，共 0 道”这种自相矛盾的句子，因此取两者较大值兜底。
+  const evidenceCount = Math.max(current?.evidenceCount ?? 0, correctCount);
 
   return (
     <section className="paper-learning-progress panel" aria-label="互动试卷学习进度">
       <div>
-        <span className="eyebrow">LEARNING EVIDENCE</span>
-        <strong>{knowledgePoint}</strong>
-        <small>{syncMessage}</small>
+        <span className="eyebrow">本题掌握度</span>
+        <small>已答对 {correctCount} 道，共 {evidenceCount} 道</small>
       </div>
       <div className="paper-mastery-score">
         <span>掌握度</span>
@@ -37,12 +35,6 @@ export function PaperLearningProgress({
           <i style={{ width: `${score}%` }} />
         </div>
       </div>
-      <dl>
-        <div><dt>不同题证据</dt><dd>{current?.evidenceCount ?? 0} 道</dd></div>
-        <div><dt>答对证据</dt><dd>{current?.correctCount ?? 0} 道</dd></div>
-        <div><dt>置信度</dt><dd>{Math.round((current?.evidenceConfidence ?? 0) * 100)}%</dd></div>
-        <div><dt>不同题总数</dt><dd>{totalAttempts} 道</dd></div>
-      </dl>
     </section>
   );
 }

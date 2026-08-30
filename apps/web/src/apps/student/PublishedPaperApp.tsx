@@ -14,6 +14,7 @@ import type {
   TutorReply,
 } from "../../types/index";
 import { PaperLearningProgress } from "./PaperLearningProgress";
+import { PaperQuestionProgress } from "./PaperQuestionProgress";
 import { StudentPaperCompleted } from "./StudentPaperCompleted";
 import { StudentQuestionWorkspace } from "./StudentQuestionWorkspace";
 import { usePublishedLearningSession } from "./usePublishedLearningSession";
@@ -49,6 +50,10 @@ export function PublishedPaperApp() {
   const [showExplanation, setShowExplanation] = useState(false);
   const [mistakeNotice, setMistakeNotice] = useState("");
   const [reply, setReply] = useState<TutorReply | null>(null);
+  // 答对后不立即切题：这道题的“回答正确”反馈要能被学生看到，切题延后到反馈
+  // 显示满 1.2 秒之后。非 null 时既驱动自动推进的定时器，也让工作台展示
+  // “继续下一题”按钮，允许学生跳过等待手动推进。
+  const [pendingAdvanceIndex, setPendingAdvanceIndex] = useState<number | null>(null);
   // 未提交的选择也属于学生当前作答上下文。按题目 ID 保存，允许学生先浏览后提交，
   // 再返回时不会因为切题 effect 而丢掉刚才填写的内容。
   const [drafts, setDrafts] = useState<Record<string, StudentQuestionDraft>>({});
@@ -172,6 +177,9 @@ export function PublishedPaperApp() {
     setShowExplanation(false);
     setMistakeNotice("");
     setLoading(false);
+    // 切题（无论是自动推进还是手动跳题）都清掉待推进标记，避免旧的定时器
+    // 在新题上再次触发一次多余的 changeQuestion。
+    setPendingAdvanceIndex(null);
     restoreAttempt(latestAttempt, latestAttempt ? undefined : drafts[currentQuestionId]);
   // 题目切换时恢复该题最后一次提交的结构化答案；模型回复不从历史猜测，避免把旧题
   // 的讲解误显示到新题上。attempts 变化单独由下面的 effect 处理。
@@ -255,8 +263,9 @@ export function PublishedPaperApp() {
         if (response.guideContext.assessment === "correct") {
           // 先完成本地快照/离线排队，再推进；nextIncompleteIndex 用刚提交的题目
           // 作为“已完成”覆盖值，避免 React 尚未完成下一轮渲染时又回到当前题。
+          // 不在此处立即切题：交给下面的定时器 effect，让“回答正确”反馈先可见。
           const nextIndex = paperProgress.nextIncompleteIndex(questionIndex, questionId);
-          if (nextIndex !== null) changeQuestion(nextIndex);
+          if (nextIndex !== null) setPendingAdvanceIndex(nextIndex);
         } else {
           setShowExplanation(true);
           setMistakeNotice(attemptResult.status === "saved" && attemptResult.autoMistake
@@ -279,6 +288,19 @@ export function PublishedPaperApp() {
     setQuestionIndex(nextIndex);
   };
 
+  useEffect(() => {
+    if (pendingAdvanceIndex === null) return;
+    // 答对是学习闭环里最该被看见的时刻：延迟 1.2 秒再切题，让“回答正确”的反馈
+    // 有机会被学生读到，而不是在同一帧就被切题 effect 的 setReply(null) 清空。
+    const timer = window.setTimeout(() => {
+      changeQuestion(pendingAdvanceIndex);
+      setPendingAdvanceIndex(null);
+    }, 1200);
+    // 组件卸载或提前切题（例如学生点了“继续下一题”）都必须清理，否则定时器
+    // 会在稍后对一道无关的题目重复触发 changeQuestion。
+    return () => window.clearTimeout(timer);
+  }, [pendingAdvanceIndex]);
+
   const selectOption = (label: string, answerText: string) => {
     // 选项变化表示学生重新进入作答，不应继续播放上一轮提示。
     stopSpeech();
@@ -294,7 +316,7 @@ export function PublishedPaperApp() {
     setError("");
   };
 
-  if (error && !publication) return <main className="center-state"><strong>无法打开互动试卷</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回学生空间</button></main>;
+  if (error && !publication) return <main className="center-state"><strong>无法打开互动试卷</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回今日</button></main>;
   // 会话恢复完成前不开放输入。否则学生可能已经在第 1 题作答，随后历史 attempts
   // 才把页面定位到另一道未完成题，造成草稿看似丢失。
   if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开互动试卷…</span></main>;
@@ -302,17 +324,20 @@ export function PublishedPaperApp() {
   return (
     <main className="app-shell">
       <header className="topbar student-paper-topbar">
-        <button className="product-home-button" onClick={() => navigate("/learn")}>← 返回学生空间</button>
+        <button className="product-home-button" onClick={() => navigate("/learn")}>← 返回今日</button>
         <div className="brand-mark">D</div>
         <div><strong>Dotty</strong><span>{publication.title}</span></div>
-        <span className="active-model live paper-count-badge">第 {questionIndex + 1}/{publication.lessons.length} 题</span>
         <span className="active-model live paper-sync-badge">{syncMessage}</span>
       </header>
+      <PaperQuestionProgress
+        lessons={publication.lessons}
+        currentIndex={questionIndex}
+        latestAttempts={paperProgress.latestAttempts}
+        onJump={changeQuestion}
+      />
       <PaperLearningProgress
         knowledgePointId={publication.lessons[questionIndex].knowledgePointId}
-        knowledgePoint={payload.question.knowledgePoint}
         mastery={mastery}
-        syncMessage={syncMessage}
       />
       {paperProgress.completed && !reviewCompleted ? (
         <StudentPaperCompleted
@@ -339,6 +364,13 @@ export function PublishedPaperApp() {
         mistakeNotice={mistakeNotice}
         hasSubmitted={Boolean(latestAttempt)}
         lastAssessment={latestAttempt?.assessment}
+        autoAdvancing={pendingAdvanceIndex !== null}
+        onAdvanceNow={() => {
+          if (pendingAdvanceIndex !== null) {
+            changeQuestion(pendingAdvanceIndex);
+            setPendingAdvanceIndex(null);
+          }
+        }}
         onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}
         onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}

@@ -52,7 +52,7 @@ export function MistakeCapture({ onCreated }: MistakeCaptureProps) {
   return (
     <section className="mistake-capture-page">
       <div className="mistake-section-heading">
-        <span className="eyebrow">STEP 01 · CAPTURE</span>
+        <span className="eyebrow">第 1 步 · 拍照</span>
         <h1>拍下这道错题</h1>
         <p>尽量保持图片清晰、平整，只保留一道完整题目和必要题图。</p>
       </div>

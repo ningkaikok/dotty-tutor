@@ -661,15 +661,21 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "选择你的使用入口" })).toBeVisible();
     await page.getByRole("button", { name: "进入学生学习空间" }).click();
     await expect(page).toHaveURL(/\/learn$/);
-    await expect(page.getByRole("heading", { name: "直接开始学习" })).toBeVisible();
-    await expect(page.locator(".paper-card")).toContainText("已可用");
-    await expect(page.getByText("暂无已发布试卷，请先在内容生产端发布。")).toBeVisible();
+    // 首屏是今日任务队列，不再是三张功能卡片。没有任何待办时标题必须明说，
+    // 而不是留一个空列表让学生猜是不是没加载出来。
+    await expect(page.getByRole("heading", { name: "今天没有待办任务" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "练习", exact: true })).toBeVisible();
+    await expect(page.getByText("老师还没有发布新的练习，练习任务会自动出现在这里。")).toBeVisible();
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "打开我的错题本" }).click();
+    // 持久导航取代了随上下文变化的“返回 XX”按钮，并且当前项要能被读屏识别。
+    const nav = page.getByRole("navigation", { name: "学习导航" });
+    await expect(nav.getByRole("link", { name: "今日" })).toHaveAttribute("aria-current", "page");
+    await nav.getByRole("link", { name: "错题" }).click();
     await expect(page).toHaveURL(/\/mistakes$/);
     await expect(page.getByRole("heading", { name: "我的错题本", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "← 返回学生空间" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "学习导航" })
+      .getByRole("link", { name: "错题" })).toHaveAttribute("aria-current", "page");
 
     await page.goto("/studio");
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
@@ -855,13 +861,17 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: "识别并进入确认" }).click();
 
     await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/confirm$/);
-    await expect(page.getByRole("heading", { name: "确认题目与错误原因" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "确认题目" })).toBeVisible();
     await expect(page.getByLabel("题干与公式")).toHaveValue("解方程 $x + 1 = 3$");
-    await page.getByRole("radio", { name: /计算失误/ }).check();
+    // 错因归因已迁移到陪练首轮自评，确认页不再出现这组选项；题干是唯一必填项，
+    // 分类信息默认收在抽屉里：AI 已填好，学生不展开也能直接保存。
+    await expect(page.getByRole("radio", { name: /计算失误/ })).toHaveCount(0);
+    await expect(page.getByLabel("知识点")).toBeHidden();
+    await page.getByText(/^分类：/).click();
+    await expect(page.getByLabel("知识点")).toBeVisible();
     await page.getByRole("button", { name: "确认并保存到错题本" }).click();
 
     await expect(page).toHaveURL(/\/mistakes$/);
-    await expect(page.getByText("计算失误", { exact: true })).toBeVisible();
     await expect(page.getByText("待掌握", { exact: true }).first()).toBeVisible();
   });
 
@@ -916,7 +926,8 @@ test.describe("产品入口", () => {
     await expect(page.getByText("已掌握", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();
 
-    await page.getByRole("button", { name: "查看学习进度" }).click();
+    // 复习入口已收敛到持久导航，错题本 hero 不再重复一个同目的地按钮。
+    await page.getByRole("navigation", { name: "学习导航" }).getByRole("link", { name: "复习" }).click();
     await expect(page.getByRole("heading", { name: "掌握与复习" })).toBeVisible();
     await expect(page.getByText("100%").first()).toBeVisible();
     await page.getByRole("button", { name: "开始复习" }).click();

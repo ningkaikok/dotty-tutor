@@ -10,7 +10,6 @@ export function MistakeProgress() {
   return (
     <section className="progress-page">
       <div className="mistake-section-heading">
-        <span className="eyebrow">LEARNING PROGRESS</span>
         <h1>掌握与复习</h1>
         <p>掌握不是一次答对，而是在不同时间仍能独立解决同类问题。</p>
       </div>

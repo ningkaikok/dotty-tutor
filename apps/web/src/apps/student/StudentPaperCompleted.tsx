@@ -8,7 +8,6 @@ interface StudentPaperCompletedProps {
 export function StudentPaperCompleted({ questionCount, onReview, onBack }: StudentPaperCompletedProps) {
   return (
     <section className="student-paper-completed panel" aria-label="互动试卷已完成">
-      <span className="eyebrow">LEARNING COMPLETE</span>
       <h1>这套试卷已经完成</h1>
       <p>你已完成 {questionCount} 道题，答案和学习记录已经保存。可以返回学生空间查看错题，或回看已完成的题目。</p>
       <div className="student-completed-actions">

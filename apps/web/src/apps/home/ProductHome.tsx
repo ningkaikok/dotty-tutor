@@ -15,7 +15,6 @@ export function ProductHome() {
       </header>
 
       <section className="product-home-hero">
-        <span className="eyebrow">CHOOSE YOUR WORKSPACE</span>
         <h1>选择你的使用入口</h1>
         <p>学生直接完成已发布试卷、订正错题和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
       </section>

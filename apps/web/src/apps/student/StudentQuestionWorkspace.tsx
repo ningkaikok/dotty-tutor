@@ -18,6 +18,9 @@ interface StudentQuestionWorkspaceProps {
   mistakeNotice: string;
   hasSubmitted: boolean;
   lastAssessment?: ExerciseAttemptInput["assessment"];
+  /** 答对后到自动切题之间的等待窗口；为真时禁止重复提交，并露出手动推进按钮。 */
+  autoAdvancing: boolean;
+  onAdvanceNow: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSelectOption: (label: string, answerText: string) => void;
@@ -53,6 +56,8 @@ export function StudentQuestionWorkspace({
   mistakeNotice,
   hasSubmitted,
   lastAssessment,
+  autoAdvancing,
+  onAdvanceNow,
   onPrevious,
   onNext,
   onSelectOption,
@@ -80,7 +85,6 @@ export function StudentQuestionWorkspace({
     <section className="student-paper-panel panel" aria-label={`第 ${questionIndex + 1} 题`}>
       <header className="student-question-header">
         <div>
-          <span className="eyebrow">互动试卷 · 第 {questionIndex + 1}/{questionCount} 题</span>
           <h1>{question.knowledgePoint}</h1>
         </div>
         <nav className="student-question-nav" aria-label="题目切换">
@@ -127,12 +131,12 @@ export function StudentQuestionWorkspace({
           />
         )}
         <div className="student-answer-actions">
-          <button className="student-help-button" disabled={loading} onClick={onHelp}>
+          <button className="student-help-button" disabled={loading || autoAdvancing} onClick={onHelp}>
             {loading ? "正在分析…" : "我需要提示"}
           </button>
           <button
             className="student-submit-button"
-            disabled={loading || (!studentInput.trim() && !hasStructuredAnswer)}
+            disabled={loading || autoAdvancing || (!studentInput.trim() && !hasStructuredAnswer)}
             onClick={onSubmit}
           >
             {loading ? "正在批改…" : isDrawLine
@@ -160,6 +164,12 @@ export function StudentQuestionWorkspace({
             </ol>
           )}
         </section>
+      )}
+
+      {autoAdvancing && (
+        <div className="student-auto-advance">
+          <button className="student-submit-button" onClick={onAdvanceNow}>继续下一题 →</button>
+        </div>
       )}
 
       {!reply && lastAssessment && (
