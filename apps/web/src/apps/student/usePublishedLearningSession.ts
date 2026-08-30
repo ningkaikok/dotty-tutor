@@ -35,8 +35,8 @@ function writePending(items: PendingAttempt[]) {
   localStorage.setItem(PENDING_KEY, JSON.stringify(items));
 }
 
-async function openOrRecoverSession(publicationId: string) {
-  const sessionKey = `dotty-learning-session:${publicationId}`;
+async function openOrRecoverSession(publicationId: string, assignmentId?: string) {
+  const sessionKey = `dotty-learning-session:${assignmentId || publicationId}`;
   const existingSessionId = localStorage.getItem(sessionKey);
   if (existingSessionId) {
     try {
@@ -46,7 +46,7 @@ async function openOrRecoverSession(publicationId: string) {
       localStorage.removeItem(sessionKey);
     }
   }
-  const session = await createLearningSession({ learnerId: DEMO_LEARNER_ID, publicationId });
+  const session = await createLearningSession({ learnerId: DEMO_LEARNER_ID, publicationId, assignmentId });
   localStorage.setItem(sessionKey, session.sessionId);
   return { session, replacedSessionId: existingSessionId ?? "" };
 }
@@ -84,8 +84,8 @@ async function flushPending(activeSessionId: string, replacedSessionId = ""): Pr
  * 状态机独立于页面，防止内容工作台预览状态再次与真实学生遥测耦合。attemptId 是幂等键：
  * 本地队列可重复发送，但服务端只累计一次掌握度。
  */
-export function usePublishedLearningSession(publicationId: string | undefined) {
-  const sessionRequestRef = useRef<{ publicationId: string; promise: ReturnType<typeof openOrRecoverSession> } | null>(null);
+export function usePublishedLearningSession(publicationId: string | undefined, assignmentId?: string) {
+  const sessionRequestRef = useRef<{ sessionKey: string; promise: ReturnType<typeof openOrRecoverSession> } | null>(null);
   const [sessionId, setSessionId] = useState("");
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
   const [mastery, setMastery] = useState<MasteryState[]>([]);
@@ -109,11 +109,12 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
     setAttempts([]);
     setSessionReady(false);
     setSyncMessage("正在连接学习记录…");
-    const existingRequest = sessionRequestRef.current?.publicationId === publicationId
+    const sessionKey = `${publicationId}:${assignmentId || "practice"}`;
+    const existingRequest = sessionRequestRef.current?.sessionKey === sessionKey
       ? sessionRequestRef.current.promise
       : null;
-    const sessionRequest = existingRequest ?? openOrRecoverSession(publicationId);
-    if (!existingRequest) sessionRequestRef.current = { publicationId, promise: sessionRequest };
+    const sessionRequest = existingRequest ?? openOrRecoverSession(publicationId, assignmentId);
+    if (!existingRequest) sessionRequestRef.current = { sessionKey, promise: sessionRequest };
     void sessionRequest.then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
@@ -138,7 +139,7 @@ export function usePublishedLearningSession(publicationId: string | undefined) {
       }
     });
     return () => { cancelled = true; };
-  }, [publicationId]);
+  }, [assignmentId, publicationId]);
 
   const queueAttempt = useCallback(async (attempt: ExerciseAttemptInput): Promise<AttemptQueueResult> => {
     // 先更新本地快照，再等待网络。这样切题或刷新前，学生刚提交的答案不会因为

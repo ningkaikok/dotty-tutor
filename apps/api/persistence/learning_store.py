@@ -299,6 +299,7 @@ class LearningStore(DatabaseStore):
         session_id: str,
         learner_id: str,
         publication_id: str,
+        assignment_id: str | None = None,
         started_at: float,
     ) -> dict[str, Any]:
         self._ensure_initialized()
@@ -307,6 +308,7 @@ class LearningStore(DatabaseStore):
                 session_id=session_id,
                 learner_id=learner_id,
                 publication_id=publication_id,
+                assignment_id=assignment_id,
                 started_at=started_at,
                 updated_at=started_at,
             ))
@@ -314,6 +316,7 @@ class LearningStore(DatabaseStore):
             "sessionId": session_id,
             "learnerId": learner_id,
             "publicationId": publication_id,
+            "assignmentId": assignment_id,
             "startedAt": started_at,
         }
 
@@ -597,6 +600,7 @@ class LearningStore(DatabaseStore):
             "sessionId": session["session_id"],
             "learnerId": session["learner_id"],
             "publicationId": session["publication_id"],
+            "assignmentId": session.get("assignment_id"),
             "startedAt": session["started_at"],
             "updatedAt": session["updated_at"],
             "attempts": [{

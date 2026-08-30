@@ -10,6 +10,7 @@ const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").
 const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
 const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((module) => ({ default: module.TextbookApp })));
 const ModelMetricsApp = lazy(() => import("./apps/metrics/ModelMetricsApp").then((module) => ({ default: module.ModelMetricsApp })));
+const TeacherClassroomApp = lazy(() => import("./apps/teacher/TeacherClassroomApp").then((module) => ({ default: module.TeacherClassroomApp })));
 
 function PageTitle() {
   const { pathname } = useLocation();
@@ -19,8 +20,10 @@ function PageTitle() {
       ? "内容生产工作台 · Dotty Tutor"
       : pathname.startsWith("/learn")
         ? "学生学习空间 · Dotty Tutor"
-        : pathname.startsWith("/mistakes")
+      : pathname.startsWith("/mistakes")
           ? "AI 错题陪练 · Dotty Tutor"
+          : pathname.startsWith("/teacher")
+            ? "教师工作台 · Dotty Tutor"
           : "Dotty Tutor · 个人 AI 学习工具";
   }, [pathname]);
 
@@ -39,6 +42,7 @@ function AppRoutes() {
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
+          <Route path="teacher/*" element={<TeacherClassroomApp />} />
           <Route path="studio/*" element={<TextbookApp />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />
           <Route path="*" element={<Navigate to="/" replace />} />

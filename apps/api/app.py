@@ -18,6 +18,7 @@ from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from publication_revision import PublicationRevisionService
+from routers.classroom_routes import build_classroom_router
 from routers.learning_routes import build_learning_router
 from routers.mistake_routes import build_mistake_router
 from routers.practice_routes import build_practice_router
@@ -46,6 +47,7 @@ app.include_router(build_runtime_router(
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
 app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
+app.include_router(build_classroom_router(store=store))
 publication_revision_service = PublicationRevisionService(
     store=store,
     processing_service=processing_service,

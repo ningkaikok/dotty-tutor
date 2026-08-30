@@ -22,9 +22,25 @@ interface QueueRow {
  */
 export function StudentLearningApp() {
   const navigate = useNavigate();
-  const { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, loading, error, allFailed } = useStudentTodayQueue();
+  const { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, assignments, loading, error, allFailed } = useStudentTodayQueue();
 
   const rows: QueueRow[] = [];
+
+  assignments.forEach((assignment) => {
+    const statusLabel = assignment.learnerStatus === "completed"
+      ? "已完成"
+      : assignment.learnerStatus === "overdue"
+        ? "已逾期"
+        : assignment.learnerStatus === "in_progress" ? "进行中" : "待开始";
+    rows.push({
+      key: `assignment-${assignment.assignmentId}`,
+      title: assignment.title,
+      description: `${statusLabel} · ${assignment.className || "班级作业"}${assignment.dueAt ? ` · 截止 ${new Date(assignment.dueAt * 1000).toLocaleDateString("zh-CN")}` : ""}`,
+      badge: `${assignment.attemptedCount}/${assignment.questionCount} 题`,
+      actionLabel: assignment.learnerStatus === "completed" ? "回看" : assignment.learnerStatus === "in_progress" ? "继续" : "开始",
+      onAction: () => navigate(`/learn/papers/${assignment.publicationId}?assignmentId=${encodeURIComponent(assignment.assignmentId)}`),
+    });
+  });
 
   if (pendingConfirmCount > 0) {
     rows.push({

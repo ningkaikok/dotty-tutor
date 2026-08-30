@@ -58,6 +58,7 @@ class LearningSessionCreate(BaseModel):
     learnerId: str = Field(default=DEMO_LEARNER_ID, min_length=1, max_length=128)
     # Sessions always target an immutable published paper, never an individual lesson.
     publicationId: str = Field(min_length=1, max_length=128)
+    assignmentId: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ExerciseAttemptCreate(BaseModel):

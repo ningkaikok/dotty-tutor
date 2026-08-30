@@ -1,7 +1,7 @@
 # 系统架构与调用流程
 
 本文描述 Dotty Tutor 当前 MVP 的组件边界、核心调用链、持久化方式和运行限制。产品按角色拆为学生学习
-空间和内容生产工作台；AI 错题陪练属于学生空间。各流程共用 OCR、题目生成和数据库基础设施，但保持页面、
+空间、教师工作台和内容生产工作台；AI 错题陪练属于学生空间。各流程共用 OCR、题目生成和数据库基础设施，但保持页面、
 路由和业务存储分离。
 
 ## 总体架构
@@ -13,9 +13,11 @@ TTS 都由后端编排，浏览器不直接接触模型密钥或本地模型进�
 flowchart LR
   User["学生 / 教师"] --> Home["产品首页 /"]
   Home --> Student["学生学习空间 /learn"]
+  Home --> Teacher["教师工作台 /teacher"]
   Home --> Studio["内容生产工作台 /studio"]
   Student --> Mistakes["AI 错题陪练 /mistakes"]
   Student --> Papers["已发布互动试卷"]
+  Teacher --> Classroom["班级、作业与掌握度看板"]
   Studio --> Web["React + Vite :59174"]
   Student --> Web
   Mistakes --> Web
@@ -27,6 +29,7 @@ flowchart LR
     JobStore --> Worker["独立 Python Worker"]
     Worker --> Processing["PDF 完成与批次处理"]
     API --> Learning["课程与学习记录"]
+    API --> ClassroomAPI["班级与作业指派"]
     Pipeline --> OCR["OCR Runtime"]
     Pipeline --> Model["Model Runtime"]
     Pipeline --> Review["Review Runtime"]
@@ -36,6 +39,7 @@ flowchart LR
     Processing --> Review
     Processing --> Store
     Learning --> Store
+    ClassroomAPI --> Store
     API --> TTS["TTS Router"]
     API --> MistakeStore["MistakeStore"]
     API --> Tutor["StatefulTutor"]
@@ -112,11 +116,13 @@ flowchart TB
 | 组件 | 主要文件 | 责任边界 |
 | --- | --- | --- |
 | 产品路由 | `apps/web/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
-| 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习与内容生产两个角色入口 |
+| 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习、教师和内容生产三个角色入口 |
+| 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx` | 管理班级成员、已发布试卷指派和班级学习看板 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
 | 学生学习会话 Hook | `apps/web/src/apps/student/usePublishedLearningSession.ts` | 恢复失效会话、持久化离线队列、批量补传和幂等重试 |
+| 学生作业队列 | `apps/web/src/apps/student/useStudentTodayQueue.ts` | 读取服务端作业指派，并把已发布试卷保留为自由练习 |
 | 内容生产编排 | `apps/web/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、发布状态和互动预览状态编排；预览不写学习记录 |
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
@@ -150,6 +156,7 @@ flowchart TB
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
 | 课程与学习路由 | `apps/api/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
+| 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业指派和教师看板接口 |
 | 试卷发布路由 | `apps/api/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
 | 可编程课程契约 | `apps/api/domain/contracts/lesson.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
@@ -162,6 +169,7 @@ flowchart TB
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
 | 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
+| 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和作业指派；按 assignment 关联学习会话，聚合单次作业的完成状态与知识点分布 |
 | 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
@@ -536,6 +544,8 @@ POST /api/tts
 - `batch_questions.payload_json` 保存结构化题目和审校信息。
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
+- `learning_classes`、`class_memberships` 和 `assignments` 保存本地班级、学生名单和不可变发布版本指派；
+  `learning_sessions.assignment_id` 将学生学习会话绑定到具体作业，旧的自由练习会话允许为空。
 - `learning_sessions.publication_id` 绑定整份互动试卷；`knowledge_points` 使用发布版本和规范化名称生成稳定
   `knowledge_point_id`，`exercise_attempts` 保存服务端解析出的题目归属，`mastery_states` 以
   `(learner_id, knowledge_point_id)` 为键保存 `raw_score`、`score`、`evidence_confidence`、`evidence_count`、

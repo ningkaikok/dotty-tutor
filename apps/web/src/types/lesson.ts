@@ -82,6 +82,7 @@ export interface LearningSession {
   sessionId: string;
   learnerId: string;
   publicationId: string;
+  assignmentId?: string | null;
   startedAt: number;
   /**
    * 服务端按题目保存的作答快照。学生端恢复试卷时只需要这个只读证据，

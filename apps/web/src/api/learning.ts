@@ -8,7 +8,7 @@ export interface ExerciseAttemptResult {
   autoMistake?: MistakeItem | null;
 }
 
-export async function createLearningSession(input: { learnerId: string; publicationId: string }): Promise<LearningSession> {
+export async function createLearningSession(input: { learnerId: string; publicationId: string; assignmentId?: string }): Promise<LearningSession> {
   return parse<LearningSession>(await fetch("/api/learning/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

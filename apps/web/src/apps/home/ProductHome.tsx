@@ -2,12 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 
 const HOME_ENTRY_KEY = "dotty-home-entry";
-type HomeEntry = "student" | "studio";
+type HomeEntry = "student" | "studio" | "teacher";
 
 function readLastEntry(): HomeEntry | null {
   try {
     const value = localStorage.getItem(HOME_ENTRY_KEY);
-    return value === "student" || value === "studio" ? value : null;
+    return value === "student" || value === "studio" || value === "teacher" ? value : null;
   } catch {
     // 隐私模式或站点数据被禁用时 localStorage 访问会直接抛异常；当作“没有记录”
     // 处理即可，不能让首页因此白屏。
@@ -38,6 +38,10 @@ export function ProductHome() {
   const enterStudio = () => {
     rememberEntry("studio");
     navigate("/studio");
+  };
+  const enterTeacher = () => {
+    rememberEntry("teacher");
+    navigate("/teacher");
   };
 
   return (
@@ -87,6 +91,13 @@ export function ProductHome() {
             <li>多题型交互与分步讲解预览</li>
           </ul>
           <button onClick={enterStudio}>进入内容生产工作台</button>
+        </article>
+        <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>
+          <div className="entry-card-heading"><span className="entry-index">03</span><span className="entry-status">教师入口</span>{lastEntry === "teacher" && <span className="entry-last-badge">上次从这里进入</span>}</div>
+          <h2>班级学习进展</h2>
+          <p>创建班级、布置已发布试卷，并按学生和知识点查看完成与掌握情况。</p>
+          <ul><li>班级成员与作业管理</li><li>学生作业完成进度</li><li>知识点掌握分布看板</li></ul>
+          <button onClick={enterTeacher}>进入教师工作台</button>
         </article>
       </section>
     </main>

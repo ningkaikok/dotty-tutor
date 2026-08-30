@@ -346,6 +346,9 @@ async function mockApi(page: Page, result = importResult) {
   await page.route("**/api/reports/learning-cost?*", async (route) => {
     await route.fulfill({ json: learningCostReportFixture });
   });
+  await page.route("**/api/assignments?*", async (route) => {
+    await route.fulfill({ json: { learnerId: "local-demo", items: [] } });
+  });
   await page.route("**/api/ocr", async (route) => {
     await route.fulfill({
       json: {
@@ -694,6 +697,57 @@ test.describe("产品入口", () => {
       animations: "disabled",
       caret: "hide",
     });
+  });
+
+  test("教师可以查看班级作业完成情况与知识点分布", async ({ page }) => {
+    await mockApi(page);
+    const publication = {
+      publicationId: "paper-teacher",
+      title: "一次函数练习",
+      status: "published",
+      lessonIds: ["teacher-question"],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    const assignment = {
+      assignmentId: "assignment-teacher",
+      classId: "class-teacher",
+      publicationId: publication.publicationId,
+      title: publication.title,
+      publicationTitle: publication.title,
+      dueAt: 4_000_000_000,
+      status: "active",
+      lessonIds: publication.lessonIds,
+      questionCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    await page.route("**/api/classes", async (route) => await route.fulfill({ json: {
+      items: [{ classId: "class-teacher", name: "初二数学一班", subject: "数学", gradeBand: "初中", memberCount: 2, createdAt: 1, updatedAt: 1 }],
+    } }));
+    await page.route("**/api/classes/class-teacher", async (route) => await route.fulfill({ json: {
+      classId: "class-teacher", name: "初二数学一班", subject: "数学", gradeBand: "初中", memberCount: 2,
+      members: [{ learnerId: "local-demo", displayName: "小安", joinedAt: 1 }, { learnerId: "learner-b", displayName: "小北", joinedAt: 1 }],
+      assignments: [assignment], createdAt: 1, updatedAt: 1,
+    } }));
+    await page.route("**/api/classes/class-teacher/dashboard*", async (route) => await route.fulfill({ json: {
+      class: { classId: "class-teacher", name: "初二数学一班", subject: "数学", gradeBand: "初中" },
+      assignment,
+      summary: { memberCount: 2, startedCount: 1, completedCount: 1, completionRate: 0.5 },
+      students: [
+        { learnerId: "local-demo", displayName: "小安", sessionId: "session-teacher", attemptedCount: 1, questionCount: 1, progress: 1, status: "completed", averageMastery: 0.6 },
+        { learnerId: "learner-b", displayName: "小北", sessionId: null, attemptedCount: 0, questionCount: 1, progress: 0, status: "not_started", averageMastery: null },
+      ],
+      knowledgePoints: [{ knowledgePointId: "kp-teacher", knowledgePoint: "一次函数", observedStudentCount: 1, averageScore: 0.6, distribution: { notStarted: 1, needsSupport: 0, developing: 1, mastered: 0 } }],
+      metricDefinition: "掌握度只统计已有作答证据的学生；未开始不等于掌握度为 0。",
+    } }));
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.goto("/teacher");
+    await expect(page.getByRole("heading", { name: "班级学习进展" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "一次函数练习" })).toBeVisible();
+    await expect(page.getByText("未开始不等于掌握度为 0")).toBeVisible();
+    await expect(page.locator(".dashboard-card")).toHaveScreenshot("teacher-dashboard.png", { animations: "disabled", caret: "hide" });
   });
 
   test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {

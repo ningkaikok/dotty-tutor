@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { loadPublishedPublications } from "../../api/publications";
+import { loadStudentAssignments } from "../../api/classroom";
 import { loadMistakes } from "../../api/mistakes";
 import { loadLearningProgress } from "../../api/reviews";
 import type { PublicationSummary } from "../../types/index";
+import type { StudentAssignment } from "../../types/classroom";
 
 export interface TodayQueuePaper extends PublicationSummary {
   /**
@@ -19,11 +21,12 @@ export interface StudentTodayQueue {
   dueReviewCount: number;
   unmasteredCount: number;
   papers: TodayQueuePaper[];
+  assignments: StudentAssignment[];
   loading: boolean;
-  /** 三路请求里失败的部分才会在这里留言；能拿到的数据仍然照常展示。 */
+  /** 四路请求里失败的部分才会在这里留言；能拿到的数据仍然照常展示。 */
   error: string;
   /**
-   * 三路全部失败。此时“没有待办”是读不到数据的假象，不是真的做完了——
+   * 四路全部失败。此时“没有待办”是读不到数据的假象，不是真的做完了——
    * 页面必须据此换一套文案，否则会让学生以为今天的任务已经清空。
    */
   allFailed: boolean;
@@ -42,16 +45,15 @@ function hasStartedSession(publicationId: string): boolean {
 /**
  * 派生学生首页“今天要做什么”的数据快照。
  *
- * 班级和作业指派的后端表还不存在，这里刻意不发明新接口：只组合三个已有的
- * 只读接口（已发布试卷、错题、复习进度），任何一路失败都不应该拖垮另外
- * 两路——因此用 allSettled 语义（Promise.all 分别 catch）而不是让一次失败
- * 直接让整页失败。
+ * 作业指派是学生任务的权威来源；已发布试卷仍作为自由练习单独展示。任何一路失败都不应该拖垮
+ * 其他内容，因此用 allSettled 语义（Promise.all 分别 catch）而不是让一次失败直接让整页失败。
  */
 export function useStudentTodayQueue(): StudentTodayQueue {
   const [pendingConfirmCount, setPendingConfirmCount] = useState(0);
   const [dueReviewCount, setDueReviewCount] = useState(0);
   const [unmasteredCount, setUnmasteredCount] = useState(0);
   const [papers, setPapers] = useState<TodayQueuePaper[]>([]);
+  const [assignments, setAssignments] = useState<StudentAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [allFailed, setAllFailed] = useState(false);
@@ -63,6 +65,14 @@ export function useStudentTodayQueue(): StudentTodayQueue {
     const controller = new AbortController();
 
     const errors: string[] = [];
+
+    const assignmentsRequest = loadStudentAssignments("local-demo")
+      .then((items) => {
+        if (!cancelled) setAssignments(items);
+      })
+      .catch((requestError) => {
+        errors.push(requestError instanceof Error ? requestError.message : "作业加载失败");
+      });
 
     const publicationsRequest = loadPublishedPublications(controller.signal)
       .then((items) => {
@@ -93,11 +103,11 @@ export function useStudentTodayQueue(): StudentTodayQueue {
         errors.push(requestError instanceof Error ? requestError.message : "复习进度加载失败");
       });
 
-    void Promise.all([publicationsRequest, mistakesRequest, progressRequest]).then(() => {
+    void Promise.all([assignmentsRequest, publicationsRequest, mistakesRequest, progressRequest]).then(() => {
       if (cancelled) return;
       // 三路常常因为同一个后端不可用而失败，报错文案会完全重复；去重后只说一次。
       setError([...new Set(errors)].join("；"));
-      setAllFailed(errors.length === 3);
+      setAllFailed(errors.length === 4);
       setLoading(false);
     });
 
@@ -107,5 +117,5 @@ export function useStudentTodayQueue(): StudentTodayQueue {
     };
   }, []);
 
-  return { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, loading, error, allFailed };
+  return { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, assignments, loading, error, allFailed };
 }
