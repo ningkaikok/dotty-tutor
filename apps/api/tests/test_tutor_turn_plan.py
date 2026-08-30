@@ -10,6 +10,7 @@ from domain.tutoring.turn_plan import (
     build_tutor_turn_plan,
     infer_student_intent,
     normalize_misconception,
+    resolve_error_strategy,
     select_teaching_action,
     teaching_strategy_context,
 )
@@ -176,6 +177,104 @@ class TutorTurnPlanTests(unittest.TestCase):
         })
         self.assertTrue(missing_evidence["needsConfirmation"])
         self.assertTrue(low_confidence["needsConfirmation"])
+
+    def test_misconception_category_is_normalized(self) -> None:
+        base = {
+            "hypothesis": "学生混淆了概念",
+            "evidence": "学生说这个概念不明白",
+            "confidence": 0.9,
+            "needsConfirmation": False,
+        }
+        legal = normalize_misconception({**base, "category": "concept"})
+        illegal = normalize_misconception({**base, "category": "not-a-category"})
+        missing = normalize_misconception(base)
+
+        self.assertEqual(legal["category"], "concept")
+        self.assertEqual(illegal["category"], "unknown")
+        self.assertEqual(missing["category"], "unknown")
+        self.assertFalse(illegal["needsConfirmation"])
+        self.assertFalse(missing["needsConfirmation"])
+
+    def test_strategy_prefers_gated_ai_attribution(self) -> None:
+        plan = build_tutor_turn_plan(
+            error_reason="concept",
+            current_stage="explain",
+            mode="help",
+            assessment="partial",
+            reply_source="model-generated",
+            misconception={
+                "hypothesis": "学生漏掉了计算步骤",
+                "evidence": "学生说这里少了一步计算",
+                "confidence": 0.9,
+                "needsConfirmation": False,
+                "category": "missing_step",
+            },
+        )
+
+        self.assertEqual(plan["errorStrategy"]["reason"], "missing_step")
+        self.assertEqual(plan["errorStrategy"]["id"], "step-completion")
+        self.assertEqual(plan["errorStrategy"]["source"], "ai")
+
+    def test_strategy_falls_back_to_self_assessment_when_ai_is_unconfirmed(self) -> None:
+        plan = build_tutor_turn_plan(
+            error_reason="reading",
+            current_stage="explain",
+            mode="help",
+            assessment="partial",
+            reply_source="model-generated",
+            misconception={
+                "hypothesis": "学生可能漏看条件",
+                "evidence": "学生说不确定",
+                "confidence": 0.4,
+                "needsConfirmation": True,
+                "category": "calculation",
+            },
+        )
+
+        self.assertEqual(plan["errorStrategy"]["reason"], "reading")
+        self.assertEqual(plan["errorStrategy"]["source"], "self")
+
+    def test_unknown_or_illegal_gated_category_keeps_self_assessment(self) -> None:
+        base = {
+            "hypothesis": "学生可能混淆了当前步骤",
+            "evidence": "学生说不知道为什么要这样比较",
+            "evidenceMatched": True,
+            "confidence": 0.9,
+            "needsConfirmation": False,
+        }
+        for category in ("unknown", "not-a-category"):
+            with self.subTest(category=category):
+                reason, source = resolve_error_strategy(
+                    "calculation",
+                    misconception={**base, "category": category},
+                )
+                self.assertEqual((reason, source), ("calculation", "self"))
+
+    def test_persisted_ai_attribution_precedes_self_assessment(self) -> None:
+        reason, source = resolve_error_strategy(
+            "concept",
+            ai_error_reason="reading",
+        )
+        self.assertEqual((reason, source), ("reading", "ai"))
+
+        context = teaching_strategy_context(
+            "concept", "explain", ai_error_reason="reading"
+        )
+        self.assertIn("condition-reading", context)
+        self.assertNotIn("concept-foundation", context)
+
+    def test_strategy_falls_back_to_unknown_when_both_attributions_are_empty(self) -> None:
+        plan = build_tutor_turn_plan(
+            error_reason=None,
+            current_stage="diagnose",
+            mode="help",
+            assessment="partial",
+            reply_source="model-generated",
+        )
+
+        self.assertEqual(plan["errorStrategy"]["reason"], "unknown")
+        self.assertEqual(plan["errorStrategy"]["id"], "scaffolded-transfer")
+        self.assertEqual(plan["errorStrategy"]["source"], "fallback")
 
     def test_model_evidence_must_overlap_current_student_input(self) -> None:
         fabricated = normalize_misconception({

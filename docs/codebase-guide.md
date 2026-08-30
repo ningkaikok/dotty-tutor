@@ -195,6 +195,12 @@ api/routers/mistake_routes.py
   → persistence/review_store.py（review_tasks 快照、答案与 evaluation_evidence_json）
 ```
 
+错因双归因沿着同一条链路流动：`mistake_items.error_reason` 是学生自评，陪练模型把带证据的
+`misconception.category` 交给 `turn_plan.normalize_misconception()` 复用证据/置信度门禁；
+`tutoring_routes.py` 只在门禁通过后写入 `ai_error_reason` 与置信度。`build_tutor_turn_plan()`
+按 AI → 学生自评 → `unknown` 兜底选择变式策略，并在 `errorStrategy.source` 记录采信来源；
+兜底的 `unknown` 只用于策略选择，跳过自评不会写入数据库。前端对照展示不属于当前提交。
+
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
 直接替换为确定性识别器，也避免导入 ASGI 应用。
 

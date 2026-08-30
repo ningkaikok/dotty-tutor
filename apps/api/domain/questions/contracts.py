@@ -270,9 +270,13 @@ HELP_SCHEMA = {
                 "evidence": {"type": "string", "maxLength": 240},
                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                 "needsConfirmation": {"type": "boolean"},
+                "category": {
+                    "type": "string",
+                    "enum": ["concept", "reading", "calculation", "missing_step", "unknown", "careless"],
+                },
             },
             # Codex strict schema 要求 required 覆盖 properties 中的每一个字段。
-            "required": ["hypothesis", "evidence", "confidence", "needsConfirmation"],
+            "required": ["hypothesis", "evidence", "confidence", "needsConfirmation", "category"],
         },
     },
     "required": [

@@ -27,6 +27,9 @@ export interface MistakeItem {
   chapter: string;
   knowledgePoint: string;
   errorReason?: MistakeErrorReason;
+  /** AI attribution is present only after the tutoring evidence gate passes. */
+  aiErrorReason?: MistakeErrorReason;
+  aiErrorReasonConfidence?: number;
   notes: string;
   status: MistakeStatus;
   createdAt: number;

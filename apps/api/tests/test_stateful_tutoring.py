@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
 from application.services.stateful_tutor import StatefulTutor
+from domain.contracts.tutoring import TutorMessageRequest
+from domain.questions.contracts import TutorReply
 from persistence.mistake_store import MistakeStore
 from persistence.tutoring_store import TutoringStore
 from routers.tutoring_routes import build_tutoring_router
@@ -23,6 +25,39 @@ GUIDE_CARD = {
     "question": "哪个数在 1 的右侧？",
     "canvasAction": "show-base",
 }
+
+
+class _GeneratedRuntime:
+    def __init__(self, generated: dict) -> None:
+        self.selection = SimpleNamespace(provider="codex", model="test-model")
+        self.generated = generated
+        self.prompts: list[str] = []
+
+    def generate_json(self, prompt: str, schema: dict, max_tokens: int = 450):
+        self.prompts.append(prompt)
+        return self.generated, {
+            "requestedProvider": "codex",
+            "provider": "codex",
+            "model": "test-model",
+            "fallback": False,
+        }
+
+
+class _PlanlessTutor:
+    def reply(self, *, thread: dict, **_: object) -> dict:
+        return {
+            "reply": TutorReply(
+                reply="请先说说你卡住的步骤。",
+                guideContext={"assessment": "partial"},
+                nextHintLevel=0,
+                canvasAction="show-base",
+                source="stored-guide-card",
+            ),
+            "stage": thread["stage"],
+            "action": {"assessment": "partial", "tutorTurnPlan": {}},
+            "summary": thread.get("summary", ""),
+            "inputMode": "text",
+        }
 
 
 class StatefulTutoringTests(unittest.TestCase):
@@ -222,6 +257,150 @@ class StatefulTutoringTests(unittest.TestCase):
         self.assertEqual(response.json()["thread"]["stage"], "practice")
         self.assertIn("变式练习", response.json()["reply"]["reply"])
         self.assertNotIn("卡在", response.json()["reply"]["reply"])
+
+    def test_gated_ai_attribution_is_persisted_and_unconfirmed_round_preserves_it(self) -> None:
+        self._mistake()
+        runtime = _GeneratedRuntime({
+            "assessment": "partial",
+            "reply": "我们先核对这一步。",
+            "stuckAt": "计算步骤不完整",
+            "knowledge": ["数的比较"],
+            "hint": "写出中间计算步骤。",
+            "question": "你漏写了哪一步？",
+            "canvasAction": "show-base",
+            "misconception": {
+                "hypothesis": "学生漏掉了计算步骤",
+                "evidence": "我不知道为什么要这样比较",
+                "confidence": 0.9,
+                "needsConfirmation": False,
+                "category": "missing_step",
+            },
+        })
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=StatefulTutor(runtime=runtime),
+        ))
+        client = TestClient(app)
+        try:
+            thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+            first = client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+                "content": "我不知道为什么要这样比较",
+                "mode": "help",
+            })
+            self.assertEqual(first.status_code, 200)
+            stored = self.mistakes.get("mistake-1")
+            self.assertEqual(stored["aiErrorReason"], "missing_step")
+            self.assertEqual(stored["aiErrorReasonConfidence"], 0.9)
+            self.assertEqual(stored["errorReason"], "concept")
+
+            runtime.generated["misconception"] = {
+                "hypothesis": "学生可能漏看了条件",
+                "evidence": "我不知道为什么要这样比较",
+                "confidence": 0.4,
+                "needsConfirmation": False,
+                "category": "reading",
+            }
+            second = client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+                "content": "我不知道为什么要这样比较",
+                "mode": "help",
+            })
+            self.assertEqual(second.status_code, 200)
+            preserved = self.mistakes.get("mistake-1")
+            self.assertEqual(preserved["aiErrorReason"], "missing_step")
+            self.assertEqual(preserved["aiErrorReasonConfidence"], 0.9)
+        finally:
+            client.close()
+
+    def test_unknown_ai_attribution_uses_self_strategy_and_is_not_persisted(self) -> None:
+        self._mistake()
+        runtime = _GeneratedRuntime({
+            "assessment": "partial",
+            "reply": "我们先核对这一步。",
+            "stuckAt": "计算步骤不完整",
+            "knowledge": ["数的比较"],
+            "hint": "写出中间计算步骤。",
+            "question": "你漏写了哪一步？",
+            "canvasAction": "show-base",
+            "misconception": {
+                "hypothesis": "学生可能没有理解这一步",
+                "evidence": "我不知道为什么要这样比较",
+                "confidence": 0.9,
+                "needsConfirmation": False,
+                "category": "unknown",
+            },
+        })
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=StatefulTutor(runtime=runtime),
+        ))
+        client = TestClient(app)
+        try:
+            thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+            response = client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+                "content": "我不知道为什么要这样比较",
+                "mode": "help",
+            })
+            self.assertEqual(response.status_code, 200)
+            plan = response.json()["action"]["tutorTurnPlan"]
+            self.assertEqual(plan["errorStrategy"]["reason"], "concept")
+            self.assertEqual(plan["errorStrategy"]["source"], "self")
+            stored = self.mistakes.get("mistake-1")
+            self.assertIsNone(stored["aiErrorReason"])
+            self.assertIsNone(stored["aiErrorReasonConfidence"])
+        finally:
+            client.close()
+
+    def test_generation_prompt_uses_persisted_ai_attribution_before_self_assessment(self) -> None:
+        self._mistake()
+        self.mistakes.update_ai_error_reason(
+            "mistake-1", category="reading", confidence=0.9
+        )
+        runtime = _GeneratedRuntime({
+            "assessment": "partial",
+            "reply": "我们先重新提取题目条件。",
+            "stuckAt": "条件提取不完整",
+            "knowledge": ["数的比较"],
+            "hint": "圈出题目中的比较对象。",
+            "question": "题目要求比较哪些数？",
+            "canvasAction": "show-base",
+            "misconception": {},
+        })
+        thread = self.threads.create_or_get("mistake-1")
+        StatefulTutor(runtime=runtime).reply(
+            mistake=self.mistakes.get("mistake-1") or {},
+            thread=thread,
+            recent_messages=[],
+            request=TutorMessageRequest(content="给我一点提示", mode="help"),
+        )
+        self.assertEqual(len(runtime.prompts), 1)
+        self.assertIn("condition-reading", runtime.prompts[0])
+        self.assertNotIn("concept-foundation", runtime.prompts[0])
+
+    def test_missing_misconception_in_plan_does_not_write_ai_attribution(self) -> None:
+        self._mistake()
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=_PlanlessTutor(),
+        ))
+        client = TestClient(app)
+        try:
+            thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+            response = client.post(f"/api/tutor/threads/{thread_id}/messages", json={
+                "content": "我还是不明白",
+                "mode": "help",
+            })
+            self.assertEqual(response.status_code, 200)
+            stored = self.mistakes.get("mistake-1")
+            self.assertIsNone(stored["aiErrorReason"])
+            self.assertIsNone(stored["aiErrorReasonConfidence"])
+        finally:
+            client.close()
 
 
 if __name__ == "__main__":

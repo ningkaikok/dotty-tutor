@@ -28,7 +28,11 @@ class VariationService:
         self.generator = generator
 
     def generate(self, mistake: dict[str, Any], sequence: int) -> dict[str, Any]:
-        reason = mistake.get("errorReason")
+        # aiErrorReason is written only after the tutoring misconception passes
+        # its evidence/confidence gate, so it takes precedence over self-report.
+        reason = mistake.get("aiErrorReason")
+        if reason not in ERROR_STRATEGIES:
+            reason = mistake.get("errorReason")
         if not reason or reason not in ERROR_STRATEGIES:
             raise ValueError("请先确认错误原因，再生成变式验证题")
         strategy, objective = ERROR_STRATEGIES[reason]

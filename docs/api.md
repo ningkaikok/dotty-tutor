@@ -236,14 +236,15 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | --- | --- | --- |
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
-| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、归类和运行信息 |
+| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、两路归因和运行信息 |
 | `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
 
 互动试卷自动记录的错题先进入 `pending_confirmation`，不会根据一次错答自动填写 `errorReason`；学生确认错误原因后才进入
-`unmastered` 并允许开始陪练。纸质错题沿用相同确认契约。
+`unmastered` 并允许开始陪练。纸质错题沿用相同确认契约。错题响应中的 `errorReason` 是学生自评归因；
+`aiErrorReason` 与 `aiErrorReasonConfidence` 是陪练轮次中通过证据/置信度门禁后的 AI 判断，未通过门禁时保持原值不变。
 
 导入使用 `multipart/form-data`：`file` 必填；`sourceText`、`originalAnswer` 和 `learnerId` 可选。
 浏览器会先完成裁切，再上传裁切后的文件。确认请求中的 `errorReason` 可省略；传值时必须是：
@@ -251,6 +252,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
 ```text
 concept | reading | calculation | missing_step | unknown | careless
 ```
+
+`unknown` 作为 `errorReason` 时表示学生明确自评为“完全不会”，不等于跳过自评；跳过自评不会写入任何值。
 
 `pending_confirmation` 表示 AI 结果尚未由学生确认；确认后进入 `unmastered`。当前匿名演示仍使用
 `local-demo`，不能据此实现多用户隔离。

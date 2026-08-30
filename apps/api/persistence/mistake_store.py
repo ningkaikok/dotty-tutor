@@ -54,7 +54,10 @@ mistake_items = Table(
     Column("grade_band", String(80), nullable=False, default="初中"),
     Column("chapter", Text, nullable=False),
     Column("knowledge_point", Text, nullable=False),
+    # error_reason 保留为学生自评归因；AI 判断单独写入下方字段。
     Column("error_reason", String(32)),
+    Column("ai_error_reason", String(32)),
+    Column("ai_error_reason_confidence", Float),
     Column("notes", Text, nullable=False, default=""),
     Column("status", String(32), nullable=False, default="pending_confirmation"),
     Column("created_at", Float, nullable=False),
@@ -126,6 +129,8 @@ class MistakeStore:
             "chapter": item["chapter"],
             "knowledge_point": item["knowledgePoint"],
             "error_reason": item.get("errorReason"),
+            "ai_error_reason": item.get("aiErrorReason"),
+            "ai_error_reason_confidence": item.get("aiErrorReasonConfidence"),
             "notes": item.get("notes", ""),
             "status": item.get("status", "pending_confirmation"),
             "created_at": item["createdAt"],
@@ -221,6 +226,39 @@ class MistakeStore:
                 select(mistake_items).where(mistake_items.c.mistake_id == mistake_id)
             ).mappings().first()
         return self._serialize(row) if row else None
+
+    def update_ai_error_reason(
+        self,
+        mistake_id: str,
+        *,
+        category: str,
+        confidence: float,
+        updated_at: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Persist an informative gated AI attribution without changing self-assessment.
+
+        ``unknown`` is the normalization value for a model response without a
+        usable category, so keeping it would make “not classified” look like a
+        real historical attribution on the next turn.
+        """
+        self._ensure_initialized()
+        current = self.get(mistake_id)
+        if not current:
+            return None
+        if category == "unknown":
+            return current
+        timestamp = updated_at or time.time()
+        with self.engine.begin() as connection:
+            connection.execute(
+                mistake_items.update()
+                .where(mistake_items.c.mistake_id == mistake_id)
+                .values(
+                    ai_error_reason=category,
+                    ai_error_reason_confidence=confidence,
+                    updated_at=timestamp,
+                )
+            )
+        return self.get(mistake_id)
 
     def list(self, learner_id: str, *, include_archived: bool = False) -> list[dict[str, Any]]:
         self._ensure_initialized()
@@ -333,6 +371,8 @@ class MistakeStore:
             "chapter": row["chapter"],
             "knowledgePoint": row["knowledge_point"],
             "errorReason": row["error_reason"],
+            "aiErrorReason": row["ai_error_reason"],
+            "aiErrorReasonConfidence": row["ai_error_reason_confidence"],
             "notes": row["notes"],
             "status": row["status"],
             "createdAt": row["created_at"],
