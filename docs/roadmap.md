@@ -21,7 +21,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | --- | --- | --- | --- |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
-| T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测与 Judge/Badcase 回放第一版已完成；陪练日志与学习效果报告待完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | MathText 与 subQuestions 已完成；图片纯位置归属等待真实 Badcase 信号 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 教学法 | 分类型复习间隔、定量/定性双门槛、推进由掌握度算出、错因双归因（四条一组，依赖 T0） | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
@@ -91,7 +91,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 运行快照、内容生产事件、Job Store 和单 Worker 已落地；详细设计与 PR 边界见
 [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)，剩余工作并入
-[engineering-roadmap](engineering-roadmap.md) T1 执行队列：陪练结构化日志、学习效果报告和统一
+[engineering-roadmap](engineering-roadmap.md) T1 执行队列：陪练结构化日志和统一
 `ModelRequest` / `ModelResult`；脱敏离线评测集与 Badcase/Judge 回放第一版已落地。
 
 Redis、OpenTelemetry、LangGraph 和 MCP 都属于按信号升级项，不是完成上述计划的前置依赖。

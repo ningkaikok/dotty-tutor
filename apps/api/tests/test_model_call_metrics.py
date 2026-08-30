@@ -11,6 +11,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from application.services.learning_funnel import (
@@ -19,6 +20,7 @@ from application.services.learning_funnel import (
 from infrastructure.runtime.model_runtime import ModelRuntime, ModelSelection
 from persistence.app_store import AppStore
 from persistence.metrics_store import MetricsStore
+from routers.runtime_routes import build_runtime_router
 
 
 class MetricsStoreRoundtripTests(unittest.TestCase):
@@ -66,6 +68,54 @@ class MetricsStoreRoundtripTests(unittest.TestCase):
             row = connection.execute(select(model_call_metrics)).mappings().one()
         serialized = json.dumps(dict(row), default=str)
         self.assertNotIn("secret", serialized)
+
+    def test_aggregate_report_exposes_weighted_summary_and_token_coverage(self) -> None:
+        base = {
+            "runtime": "generation", "task": "lesson-generation", "provider": "ollama",
+            "model": "qwen2.5:7b", "prompt_chars": 100,
+        }
+        self.metrics.record({**base, "duration_ms": 120, "status": "succeeded",
+                             "prompt_tokens": 20, "output_tokens": 50})
+        self.metrics.record({**base, "duration_ms": 80, "status": "failed"})
+        report = self.metrics.aggregate_report(days=1)
+        summary = report["summary"]
+        self.assertEqual(summary["logicalCalls"], 2)
+        self.assertEqual(summary["failures"], 1)
+        self.assertEqual(summary["failureRate"], 0.5)
+        self.assertEqual(summary["avgDurationMs"], 100.0)
+        self.assertEqual(summary["totalPromptTokens"], 20)
+        self.assertEqual(summary["totalOutputTokens"], 50)
+        self.assertEqual(summary["tokenMeasuredCalls"], 1)
+        self.assertEqual(summary["tokenCoverageRate"], 0.5)
+        self.assertEqual(len(report["items"]), 1)
+
+    def test_empty_report_does_not_present_zero_as_observed_metric(self) -> None:
+        summary = self.metrics.aggregate_report(days=1)["summary"]
+        self.assertEqual(summary["logicalCalls"], 0)
+        self.assertEqual(summary["failures"], 0)
+        self.assertIsNone(summary["failureRate"])
+        self.assertIsNone(summary["avgDurationMs"])
+        self.assertIsNone(summary["totalPromptTokens"])
+        self.assertIsNone(summary["totalOutputTokens"])
+        self.assertIsNone(summary["tokenCoverageRate"])
+
+    def test_learning_cost_report_has_explicit_scopes_and_clamped_window(self) -> None:
+        router = build_runtime_router(
+            store=SimpleNamespace(engine=self.metrics.engine),
+            question_payload=lambda: {},
+            tutor_runtime=SimpleNamespace(catalog=lambda: {}),
+            metrics_store=self.metrics,
+        )
+        endpoint = next(route.endpoint for route in router.routes if route.path == "/api/reports/learning-cost")
+        report = endpoint(learnerId="learner-1", days=999)
+        self.assertEqual(report["learnerId"], "learner-1")
+        self.assertEqual(report["days"], 90)
+        self.assertEqual(report["scope"], {
+            "learning": "learner_cumulative",
+            "modelCalls": "global_rolling_window",
+            "costUnit": "proxy_only",
+        })
+        self.assertIn("不提供学生级成本归因", " ".join(report["limitations"]))
 
 
 class RuntimeHookTests(unittest.TestCase):

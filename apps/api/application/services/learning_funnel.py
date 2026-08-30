@@ -64,6 +64,7 @@ def build_funnel_snapshot(engine: Engine, learner_id: str) -> dict[str, Any]:
                 tutor_threads.c.learner_id == learner_id
             )
         ).scalar_one() if has_tutoring else 0
+        has_variation_exercises = "variation_exercises" in tables
         if has_variation_attempts:
             answered_variations = connection.execute(
                 select(func.count()).select_from(variation_attempts).where(
@@ -78,7 +79,27 @@ def build_funnel_snapshot(engine: Engine, learner_id: str) -> dict[str, Any]:
                     )
                 )
             ).scalar_one()
-        elif "variation_exercises" in tables:
+            # A deployed database can have the append-only table while still
+            # containing historical projection rows written before that table
+            # existed.  Count those legacy rows only when no attempt exists for
+            # the same variation, so a migrated variation is never double-counted.
+            if has_variation_exercises:
+                no_attempt = ~select(variation_attempts.c.attempt_id).where(
+                    variation_attempts.c.variation_id == variation_exercises.c.variation_id
+                ).exists()
+                legacy_answered = and_(
+                    variation_exercises.c.learner_id == learner_id,
+                    variation_exercises.c.status == "answered",
+                    no_attempt,
+                )
+                answered_variations += connection.execute(
+                    select(func.count()).select_from(variation_exercises).where(legacy_answered)
+                ).scalar_one()
+                legacy_correct = and_(legacy_answered, variation_exercises.c.assessment == "correct")
+                correct_variations += connection.execute(
+                    select(func.count()).select_from(variation_exercises).where(legacy_correct)
+                ).scalar_one()
+        elif has_variation_exercises:
             # Existing local databases may predate variation_attempts.  Use the
             # latest projection as a compatibility fallback until new answers
             # populate the append-only table; never rewrite that history here.

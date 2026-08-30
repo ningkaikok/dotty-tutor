@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import os
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable
@@ -11,6 +12,8 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from application.services.learning_funnel import build_funnel_snapshot
+from domain.constants import DEMO_LEARNER_ID
 from domain.questions.contracts import (
     ModelSelectionRequest,
     OcrSelectionRequest,
@@ -142,6 +145,37 @@ def build_runtime_router(
             raise HTTPException(status_code=503, detail="指标存储未注入")
         window = max(1, min(days, 90))
         return {"days": window, "items": metrics_store.aggregate(days=window)}
+
+    @router.get("/api/reports/learning-cost")
+    def get_learning_cost_report(
+        learnerId: str = DEMO_LEARNER_ID,
+        days: int = 7,
+    ) -> dict[str, Any]:
+        """Return learning outcomes alongside global model proxy metrics.
+
+        Learning is a cumulative learner snapshot; model calls are a global
+        rolling window and are intentionally not attributed to that learner.
+        """
+        if metrics_store is None:
+            raise HTTPException(status_code=503, detail="指标存储未注入")
+        window = max(1, min(days, 90))
+        return {
+            "learnerId": learnerId,
+            "days": window,
+            "generatedAt": time.time(),
+            "scope": {
+                "learning": "learner_cumulative",
+                "modelCalls": "global_rolling_window",
+                "costUnit": "proxy_only",
+            },
+            "learning": build_funnel_snapshot(store.engine, learnerId),
+            "modelCost": metrics_store.aggregate_report(days=window),
+            "limitations": [
+                "调用数是逻辑 Runtime 调用，不等于 Provider 实际重试次数",
+                "模型指标是全局窗口数据，不提供学生级成本归因",
+                "成本仅表示调用、耗时和 Token 代理指标，不表示货币成本或学习效果因果关系",
+            ],
+        }
 
     @router.get("/api/tutor-models")
     def get_tutor_models() -> dict[str, Any]:

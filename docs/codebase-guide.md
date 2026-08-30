@@ -41,6 +41,7 @@ dotty-tutor/
 │   │   ├── question_processing.py  # 批次生成、审校和质量门禁
 │   │   ├── stateful_tutor.py      # 有状态陪练编排
 │   │   ├── learning_funnel.py     # 学习效果漏斗聚合（GET /api/funnel）
+│   │   ├── metrics_store.py       # 模型调用追加指标与报告级聚合
 │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
 │   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
