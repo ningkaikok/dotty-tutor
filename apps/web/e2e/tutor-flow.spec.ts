@@ -40,6 +40,44 @@ const quality = {
   validatedAt: 0,
 };
 
+const learningCostReportFixture = {
+  learnerId: "local-demo",
+  days: 7,
+  generatedAt: 1,
+  scope: { learning: "learner_cumulative", modelCalls: "global_rolling_window", costUnit: "proxy_only" },
+  learning: {
+    learnerId: "local-demo",
+    mistakes: { imported: 8, confirmed: 6, confirmationRate: 0.75 },
+    tutoring: { confirmedMistakes: 5, threadsStarted: 4 },
+    verification: { answeredVariations: 3, correctVariations: 2, passRate: 2 / 3 },
+    review: { scheduledTasks: 2, completedTasks: 1, completionRate: 0.5 },
+    learningEffect: { sameKnowledgePointReerrorCount: 1, sameKnowledgePointReerrorDenominator: 4, sameKnowledgePointReerrorRate: 0.25 },
+  },
+  modelCost: {
+    summary: {
+      logicalCalls: 12,
+      failures: 1,
+      failureRate: 1 / 12,
+      avgDurationMs: 1250,
+      totalPromptTokens: 3000,
+      totalOutputTokens: 1200,
+      tokenMeasuredCalls: 10,
+      tokenCoverageRate: 10 / 12,
+    },
+    items: [{
+      runtime: "tutor",
+      task: "hint",
+      provider: "mock",
+      model: "test-model",
+      calls: 12,
+      failures: 1,
+      avgDurationMs: 1250,
+      totalOutputTokens: 1200,
+    }],
+  },
+  limitations: [],
+};
+
 function lessonSteps(topic: string) {
   return [{
     id: `${topic}-step-1`,
@@ -304,6 +342,9 @@ async function mockApi(page: Page, result = importResult) {
         }],
       },
     });
+  });
+  await page.route("**/api/reports/learning-cost?*", async (route) => {
+    await route.fulfill({ json: learningCostReportFixture });
   });
   await page.route("**/api/ocr", async (route) => {
     await route.fulfill({
@@ -634,6 +675,19 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await expect(page.getByText("内容生产工作台")).toBeVisible();
 
+  });
+
+  test("内容生产端可以查看学习效果与模型成本报告", async ({ page }) => {
+    await mockApi(page);
+    await page.goto("/studio/metrics");
+
+    await expect(page.getByRole("heading", { name: "学习效果与模型成本报告" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "学习效果漏斗" })).toBeVisible();
+    await expect(page.getByText("模型调用边界指标（最近 7 天）")).toBeVisible();
+    await expect(page.locator(".metrics-panel")).toHaveScreenshot("learning-cost-report.png", {
+      animations: "disabled",
+      caret: "hide",
+    });
   });
 
   test("学生可以打开已发布互动试卷并同步作答", async ({ page }) => {
