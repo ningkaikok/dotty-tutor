@@ -8,5 +8,6 @@ from pydantic import BaseModel, Field
 
 
 class VariationAnswerRequest(BaseModel):
+    attemptId: str | None = Field(default=None, min_length=1, max_length=64)
     content: str = Field(default="", max_length=2_000)
     interactionResult: dict[str, Any] = Field(default_factory=dict)

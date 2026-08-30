@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from typing import Any, Callable
 
 # 固定评分 rubric：每个维度 1-5 分，附判分说明。修改任何文案都必须递增版本号。
@@ -100,18 +101,91 @@ def run_judge(
     explanation: str,
 ) -> dict[str, Any] | None:
     """调用独立审核模型执行一次评审；失败返回 None（由调用方决定是否重试）。"""
+    return run_judge_detailed(
+        generate_json_as=generate_json_as,
+        provider=provider,
+        model=model,
+        question_context=question_context,
+        explanation=explanation,
+    )["outcome"]
+
+
+def run_judge_detailed(
+    *,
+    generate_json_as: Callable[..., tuple[dict[str, Any], dict[str, Any]]],
+    provider: str,
+    model: str,
+    question_context: str,
+    explanation: str,
+) -> dict[str, Any]:
+    """执行一次评审并保留可比较的非内容元数据。
+
+    评测报告需要回答“模型是否变好、是否变慢、是否更费调用”，但不能把学生输入或
+    模型原始输出写进报告。这里仅返回调用次数、耗时、失败类型和已校验的评分；
+    ``run_judge`` 继续只返回评分，保持线上调用方的旧契约不变。
+    """
     prompt = build_judge_prompt(question_context, explanation)
+    started = time.perf_counter()
+    logical_calls = 1
     try:
-        result, _run = generate_json_as(
+        result, run = generate_json_as(
             provider, model, prompt, JUDGE_SCHEMA, max_tokens=400
         )
-    except Exception:
-        return None
-    if not isinstance(result, dict):
-        return None
-    # generate_json_as 返回的是 Schema 校验后的 JSON 对象本身。
-    scores = result.get("scores")
-    if not isinstance(scores, dict):
-        return None
+    except Exception as error:  # noqa: BLE001
+        runtime_run = getattr(error, "runtime_run", None)
+        runtime_run = runtime_run if isinstance(runtime_run, dict) else {}
+        return {
+            "outcome": None,
+            "run": runtime_run or None,
+            "logicalCalls": logical_calls,
+            # ``calls`` is retained as an internal compatibility alias; reports use
+            # the unambiguous ``logicalCalls`` field.
+            "calls": logical_calls,
+            "providerAttempts": _provider_attempts(runtime_run),
+            "usage": _usage(runtime_run),
+            "schemaFallback": _schema_fallback(runtime_run),
+            "durationMs": _duration_ms(runtime_run, started),
+            "errorType": type(error).__name__,
+        }
     normalized = parse_judge_response(json.dumps(result, ensure_ascii=False))
-    return normalized
+    safe_run = run if isinstance(run, dict) else {}
+    return {
+        "outcome": normalized,
+        "run": safe_run or None,
+        "logicalCalls": logical_calls,
+        "calls": logical_calls,
+        "providerAttempts": _provider_attempts(safe_run),
+        "usage": _usage(safe_run),
+        "schemaFallback": _schema_fallback(safe_run),
+        "durationMs": _duration_ms(safe_run, started),
+        "errorType": None if normalized is not None else "invalid_judge_result",
+    }
+
+
+def _provider_attempts(run: dict[str, Any]) -> int:
+    value = run.get("providerAttempts", 1)
+    return value if isinstance(value, int) and value > 0 else 1
+
+
+def _usage(run: dict[str, Any]) -> dict[str, int | None]:
+    usage = run.get("usage")
+    if not isinstance(usage, dict):
+        return {"promptTokens": None, "outputTokens": None}
+    return {
+        "promptTokens": usage.get("promptTokens"),
+        "outputTokens": usage.get("outputTokens"),
+    }
+
+
+def _schema_fallback(run: dict[str, Any]) -> dict[str, Any]:
+    value = run.get("schemaFallback")
+    if isinstance(value, dict):
+        return {"used": bool(value.get("used")), "reason": value.get("reason")}
+    return {"used": False, "reason": None}
+
+
+def _duration_ms(run: dict[str, Any], started: float) -> float:
+    value = run.get("durationMs")
+    if isinstance(value, (int, float)) and value >= 0:
+        return round(float(value), 1)
+    return round((time.perf_counter() - started) * 1000, 1)

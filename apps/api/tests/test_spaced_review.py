@@ -87,6 +87,7 @@ class SpacedReviewTests(unittest.TestCase):
             "modelRun": {},
             "chapter": "有理数",
             "knowledgePoint": "基础运算",
+            "errorReason": "calculation",
             "status": "unmastered",
             "createdAt": now,
             "updatedAt": now,

@@ -43,3 +43,22 @@ class CodexCommandTests(unittest.TestCase):
 
         self.assertEqual((content_runtime.selection.provider, content_runtime.selection.model), ("ollama", "qwen2.5:3b"))
         self.assertEqual((tutor_runtime.selection.provider, tutor_runtime.selection.model), ("codex", "gpt-5.6-sol"))
+
+    def test_explicit_review_run_contains_real_provider_metadata(self) -> None:
+        runtime = ModelRuntime()
+        payload = {"ok": True}
+        usage = {
+            "prompt_tokens": 12,
+            "output_tokens": 7,
+            "providerAttempts": 2,
+            "schemaFallback": {"used": True, "reason": "RuntimeError"},
+        }
+        with patch.object(runtime, "_ollama_json", return_value=(payload, usage)):
+            result, run = runtime.generate_json_as(
+                "ollama", "qwen", "prompt", {"type": "object"}, max_tokens=10
+            )
+        self.assertEqual(result, payload)
+        self.assertEqual(run["providerAttempts"], 2)
+        self.assertEqual(run["usage"], {"promptTokens": 12, "outputTokens": 7})
+        self.assertEqual(run["schemaFallback"]["used"], True)
+        self.assertGreaterEqual(run["durationMs"], 0)

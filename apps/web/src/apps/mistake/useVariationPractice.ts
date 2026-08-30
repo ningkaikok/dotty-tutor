@@ -86,7 +86,10 @@ export function useVariationPractice(
     setSubmitting(true);
     setError("");
     try {
-      const answered = await answerVariation(active.variationId, answer);
+      const attemptId = typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const answered = await answerVariation(active.variationId, { ...answer, attemptId });
       setItems((current) => current.map((item) => item.variationId === answered.variationId ? answered : item));
       if (answered.tutorStage) onStageChange?.(answered.tutorStage);
     } catch (requestError) {

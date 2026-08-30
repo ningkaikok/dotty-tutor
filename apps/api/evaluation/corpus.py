@@ -12,6 +12,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from typing import Any
+
 from tests.test_question_segmentation import (
     _REAL_CAPTION_ATTRIBUTION_OCR_EXCERPT,
     _REAL_CONTENT_LIST_JSON_EXCERPT,
@@ -21,6 +25,48 @@ from tests.test_question_segmentation import (
 
 # 语料结构版本：期望字段的语义变化时递增，报告里记录以便对比历史结果。
 CORPUS_VERSION = "1"
+
+# 讲解 Judge 语料独立版本化。题目切分语料的版本变化不应让讲解评分报告
+# 在没有实际变更讲解样本时失去可比性。
+EXPLANATION_CORPUS_VERSION = "explanation-samples-v1"
+
+EXPLANATION_SAMPLES: list[dict[str, str]] = [
+    {
+        "id": "guide-cards-perpendicular-bisector",
+        "questionContext": "PA=PB，M 是 AB 中点，求证 PM 垂直 AB。",
+        "explanation": (
+            "还没有把“到两点距离相等”转化为可以证明的几何关系。"
+            "先连接 PA、PB，再利用 M 是 AB 的中点。"
+            "比较三角形 PAM 和 PBM，你能找到哪三组相等的边？"
+        ),
+    },
+    {
+        "id": "guide-cards-ssr-congruence",
+        "questionContext": "接上题，已证 PA=PB、AM=BM，继续求证 PM⊥AB。",
+        "explanation": (
+            "已经找到相等的边，但还没有使用全等三角形。"
+            "PA = PB、AM = BM，另外 PM 是两个三角形的公共边。"
+            "两个三角形全等后，∠PMA 和 ∠PMB 有什么关系？"
+        ),
+    },
+    {
+        "id": "guide-cards-adjacent-supplementary",
+        "questionContext": "接上题，已证 ∠PMA=∠PMB，求证 PM⊥AB。",
+        "explanation": (
+            "已经证明两个邻角相等，还差最后的垂直关系。"
+            "∠PMA 与 ∠PMB 相等，并且它们组成一个平角。"
+            "两个相等的邻补角分别是多少度？这说明 PM 与 AB 有什么关系？"
+        ),
+    },
+]
+
+
+def sample_set_hash(samples: list[dict[str, Any]]) -> str:
+    """为评测样本的身份和内容生成稳定哈希，不把样本原文写入运行报告。"""
+    canonical = json.dumps(
+        samples, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 # 真实 OCR 原文摘录（教材 56503d0642c54d728a7672e9cb77dd57，batch-001，第 3-9 题），
 # 原存于 test_question_processing.py；question-segmentation-v3 修复后该测试改用合成

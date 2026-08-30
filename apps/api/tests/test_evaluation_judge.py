@@ -17,6 +17,7 @@ from evaluation.judge import (
     build_judge_prompt,
     parse_judge_response,
     run_judge,
+    run_judge_detailed,
 )
 
 
@@ -111,6 +112,22 @@ class RunJudgeTests(unittest.TestCase):
             question_context="上下文", explanation="讲解",
         )
         self.assertIsNone(result)
+
+    def test_detailed_run_keeps_only_comparable_metadata(self) -> None:
+        payload = {
+            "scores": {"clarity": 5, "targeting": 4, "factual": 5},
+            "rationale": "针对明确卡点。",
+            "confidence": 0.9,
+        }
+        result = run_judge_detailed(
+            generate_json_as=self._fake(payload),
+            provider="ollama", model="qwen2.5:7b",
+            question_context="上下文", explanation="讲解",
+        )
+        self.assertEqual(result["calls"], 1)
+        self.assertGreaterEqual(result["durationMs"], 0)
+        self.assertIsNone(result["errorType"])
+        self.assertEqual(result["outcome"]["scores"]["factual"], 5)
 
 
 if __name__ == "__main__":

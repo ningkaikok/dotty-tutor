@@ -157,6 +157,7 @@ flowchart TB
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择和 TTS 路由 |
 | 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
+| 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
@@ -170,7 +171,7 @@ flowchart TB
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
-| 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、可修正答案和确定性判题结果 |
+| 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
 | 间隔复习 | `apps/api/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
 ## 错题录入与确认
@@ -189,10 +190,11 @@ flowchart TB
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张应用组合 `AppStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
 辅导线程。完成陪练后，独立的 `VariationStore` 保存唯一验证题和结构化作答，避免自由对话被误算为掌握证据。
-答错时允许更新同一道题的证据；答对一次时 `MistakeStore` 只负责执行明确的
-`unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
+每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
+答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
-快照和答案，不参与首次掌握连续计数；`/api/progress` 只从错题状态与复习证据实时聚合统计。
+快照和答案，不参与首次掌握连续计数；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
+`/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
 ## 有状态单题陪练
 
@@ -311,7 +313,10 @@ erDiagram
 - **Run Events**：使用 `run_id` 串联 OCR 路由、局部重试、生成、审校、隔离、发布和结束事件。
 - **PostgreSQL Job Store（已完成）**：使用独立任务表和单个 Worker 执行 PDF/OCR/批量生成，HTTP 返回
   `202 + jobId`；支持幂等、取消、有限重试和租约恢复，不预先引入 Redis。
-- **离线评测**：通过脱敏固定样本测量公式损坏、切题偏差、质量门禁、审核纠错、陪练判定和耗时。
+- **离线评测**：`evaluation.replay` 无模型重放确定性语料；`evaluation.judge_cli` 按需调用独立审核模型。
+  Judge 报告固定记录语料版本、样本哈希、审核模型/Prompt 版本、每样本成功率/耗时/逻辑调用数/Provider
+  实际尝试数/token/Schema 降级，以及聚合 `judgeMetrics`。`evaluation.compare` 对确定性报告做结构回归，
+  对 Judge 报告只比较配置一致时的共同成功样本配对评分；评分变化不自动阻断。测试不依赖真实模型调用。
 - **轻量 Model Gateway**：在现有 Runtime 上统一请求与结果字段，显式记录实际 Provider、Model、回退和
   错误，而不是新增独立服务。
 
@@ -538,6 +543,7 @@ POST /api/tts
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
+- `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。

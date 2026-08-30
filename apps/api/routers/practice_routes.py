@@ -29,6 +29,40 @@ def build_practice_router(
             raise HTTPException(status_code=404, detail="错题不存在")
         return {"items": variation_store.list_for_mistake(mistake_id)}
 
+    @router.get("/api/mistakes/{mistake_id}/evidence")
+    def get_mistake_evidence(
+        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+    ) -> dict[str, Any]:
+        """Return the explainable evidence chain for one mistake."""
+        mistake = mistake_store.get(mistake_id)
+        if not mistake:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        if mistake["learnerId"] != learnerId:
+            raise HTTPException(status_code=403, detail="不能访问其他学生的错题")
+        variations = []
+        for variation in variation_store.list_for_mistake(mistake_id):
+            question = (variation.get("questionPayload") or {}).get("question") or {}
+            variations.append({
+                "variationId": variation["variationId"],
+                "sequence": variation["sequence"],
+                "strategy": question.get("variationStrategy") or variation["strategy"],
+                "strategyVersion": question.get("variationStrategyVersion"),
+                "target": question.get("variationTarget") or mistake.get("errorReason"),
+                "objective": question.get("variationObjective"),
+                "level": question.get("variationLevel") or variation["level"],
+                "attempts": variation_store.list_attempts(variation["variationId"]),
+            })
+        reviews = review_store.list_for_mistake(mistake_id)
+        return {
+            "mistakeId": mistake_id,
+            "learnerId": learnerId,
+            "errorReason": mistake.get("errorReason"),
+            "status": mistake["status"],
+            "masteryTransition": "unmastered → mastered" if mistake["status"] == "mastered" else "unmastered",
+            "variations": variations,
+            "reviewTasks": reviews,
+        }
+
     @router.post("/api/mistakes/{mistake_id}/variations")
     def create_variation(
         mistake_id: str, learnerId: str = DEMO_LEARNER_ID
@@ -86,7 +120,16 @@ def build_practice_router(
         item = variation_store.get(variation_id)
         if not item:
             raise HTTPException(status_code=404, detail="变式题不存在")
+        existing_attempt = variation_store.get_attempt(request.attemptId) if request.attemptId else None
+        if existing_attempt and existing_attempt["variationId"] != variation_id:
+            raise HTTPException(status_code=409, detail="attemptId 已用于其他变式题")
         if item["status"] == "answered" and item["assessment"] == "correct":
+            if existing_attempt and existing_attempt["variationId"] == variation_id:
+                item["attemptId"] = existing_attempt["attemptId"]
+                item["evaluationEvidence"] = existing_attempt["evaluationEvidence"]
+                item["mastery"] = variation_store.mastery_summary(item["mistakeId"])
+                item["reviewTasks"] = review_store.list_for_mistake(item["mistakeId"])
+                return item
             raise HTTPException(status_code=409, detail="这道验证题已经答对")
         if not has_meaningful_answer(request.content, request.interactionResult):
             raise HTTPException(status_code=422, detail="请先输入或选择答案")
@@ -106,9 +149,11 @@ def build_practice_router(
         }
         saved = variation_store.answer(
             variation_id,
+            attempt_id=request.attemptId,
             response=response,
             assessment=result["assessment"],
             feedback=result["reply"],
+            evaluation_evidence=result.get("evaluationEvidence"),
         )
         if not saved:
             raise HTTPException(status_code=409, detail="这道验证题已经答对")

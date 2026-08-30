@@ -225,6 +225,9 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
 
+互动试卷自动记录的错题先进入 `pending_confirmation`，不会根据一次错答自动填写 `errorReason`；学生确认错误原因后才进入
+`unmastered` 并允许开始陪练。纸质错题沿用相同确认契约。
+
 导入使用 `multipart/form-data`：`file` 必填；`sourceText`、`originalAnswer` 和 `learnerId` 可选。
 浏览器会先完成裁切，再上传裁切后的文件。确认请求中的 `errorReason` 必须是：
 
@@ -277,16 +280,19 @@ concept | reading | calculation | missing_step | unknown | careless
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/mistakes/{mistakeId}/variations` | 按生成顺序读取该错题的验证题和作答结果 |
+| `GET` | `/api/mistakes/{mistakeId}/evidence` | 读取单道错题的错误原因、变式策略、每次验证作答证据和 1/3/7 天复习任务 |
 | `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `practice`/`verify` 后生成或复用该错题唯一的验证题 |
 | `POST` | `/api/variations/{variationId}/answer` | 提交结构化答案并完成确定性判题；答错可对同一道题重新提交 |
 
-答案请求沿用 `{ "content": "...", "interactionResult": {...} }` 契约。答对后的验证题不能再次提交，重复提交
-返回 `409`；答错或部分正确的题目可以修改后再次提交。生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
+答案请求沿用 `{ "attemptId": "...", "content": "...", "interactionResult": {...} }` 契约，`attemptId` 用于网络重试幂等。
+每次新提交都会追加一条不可变验证证据；答错后改对不会覆盖此前答案。答对后的验证题不能再次提交，新的请求返回 `409`；
+同一 `attemptId` 重试会返回原次结果。答错或部分正确的题目可以修改后再次提交。生成结果不是选择、多选、填空或数值题，或者直接复制原题时返回 `422`。模型决定新题内容，
 正确性仍由答案结构和确定性判题器决定。
 
-作答响应额外包含 `mastery.correctStreak`、`requiredCorrect`、`answeredCount` 和 `mastered`。唯一验证题
+每道变式题会固化 `variationStrategyVersion`、目标、教学目标和难度。作答响应额外包含 `mastery.correctStreak`、`requiredCorrect`、`answeredCount` 和 `mastered`，以及本次 `evaluationEvidence`。
+唯一验证题
 判定为 `correct` 后，服务把错题状态从 `unmastered` 更新为 `mastered`；在此之前的错误结果保留在同一题上
-并允许修正。次数由已保存的验证题推导，不接受客户端传入。
+并允许修正。Evidence API 返回 `unmastered → mastered` 状态变化和每次验证证据，不接受客户端传入掌握结论。
 
 ## 间隔复习与学习进度
 
@@ -295,7 +301,7 @@ concept | reading | calculation | missing_step | unknown | careless
 | `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 1/3/7 天复习任务和服务器时间 |
 | `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
 | `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案并保存确定性判题结果 |
-| `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率和知识点聚合 |
+| `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率、变式验证正确率、复习完成率、同知识点再错率和知识点聚合 |
 | `GET` | `/api/funnel?learnerId=local-demo` | 学习效果漏斗快照：导入→确认→陪练→验证→复习各阶段计数与比率（分母为零时比率为 null） |
 
 错题首次变为 `mastered` 时，以第二次正确作答时间为基准，幂等创建三个任务。相同错题和间隔有唯一

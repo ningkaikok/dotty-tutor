@@ -405,7 +405,8 @@ class LearningRouteTests(unittest.TestCase):
             repeated = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)
 
             self.assertEqual(first.status_code, 200)
-            self.assertEqual(first.json()["autoMistake"]["status"], "unmastered")
+            self.assertEqual(first.json()["autoMistake"]["status"], "pending_confirmation")
+            self.assertIsNone(first.json()["autoMistake"]["errorReason"])
             self.assertEqual(first.json()["autoMistake"]["contentType"], "application/vnd.dotty.publication+json")
             self.assertEqual(repeated.json()["autoMistake"]["mistakeId"], first.json()["autoMistake"]["mistakeId"])
             self.assertEqual(len(mistake_store.list("student-1")), 1)

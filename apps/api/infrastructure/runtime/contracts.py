@@ -95,9 +95,15 @@ class RuntimeExecutionError(RuntimeError):
         super().__init__(message)
         self.snapshot = snapshot
         self.cause = cause
+        # Provider adapters may attach a content-free execution summary so callers
+        # can report failed attempts without exposing prompts or model responses.
+        self.runtime_run: dict[str, Any] | None = None
 
     def as_run(self) -> dict[str, Any]:
-        return {"config": self.snapshot.to_dict(), "error": str(self)[:500]}
+        run = {"config": self.snapshot.to_dict(), "error": str(self)[:500]}
+        if self.runtime_run:
+            run.update(self.runtime_run)
+        return run
 
 
 def attach_runtime_config(run: dict[str, Any], snapshot: RuntimeConfigSnapshot) -> dict[str, Any]:
