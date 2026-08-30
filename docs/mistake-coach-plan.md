@@ -92,7 +92,7 @@ diagnose → explain → practice → verify → mastered
 - `apps/api/application/services/tutor_engine.py`：从单次 Help 扩展为带线程状态的策略引擎。
 - `apps/api/persistence/`：按错题、消息和复习任务拆分 Store，不继续堆积单文件职责。
 - `apps/web/src/components/PracticeWorkspace.tsx`：抽出可在错题陪练中复用的题目与答案区域。
-- `apps/api/api/routers/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
+- `apps/api/routers/learning_routes.py`：保留掌握度逻辑，增加验证次数和复习计划。
 
 ### 学生入口不直接复用
 
@@ -124,7 +124,7 @@ apps/api/
   mistake_*.py            # 错题录入、归类和仓储
   tutoring_*.py           # 线程契约、路由和消息仓储
   application/services/stateful_tutor.py # 状态机与有限上下文
-  api/routers/learning_routes.py         # 教材学习掌握度；错题验证和复习使用独立路由
+  routers/learning_routes.py             # 教材学习掌握度；错题验证和复习使用独立路由
 ```
 
 计划新增的核心数据模型：
@@ -264,7 +264,7 @@ test/mistake-coach-e2e
 
 - 同时覆盖全部学段、学科和教材版本。
 - 每道题实时生成讲解视频。
-- 微信登录、支付、教师后台和班级管理。
+- 微信登录、支付、生产级教师后台（登录、权限、多租户）和复杂班级协作；当前单机单库的教师班级、作业和掌握度看板不在此限制内。
 - 复杂手写公式识别和任意画板语义理解。
 - 多智能体协作、微服务拆分或 Kubernetes。
 - 无人工确认地自动生成整本教材知识树。

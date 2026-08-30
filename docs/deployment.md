@@ -92,9 +92,10 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - 数据库连接串和云服务密钥只放在服务器密钥文件或部署平台 Secrets 中。
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
-- 当前版本只支持全新空数据库；首次访问各领域 Store 时按当前 SQLAlchemy schema 创建 PostgreSQL 表。
-  不提供原地数据库升级。切换版本前请备份并重建空库，再按当前导入流程重新建立数据；本地测试还应清空仓库内
-  `data/` 资源。
+- 全新数据库首次访问各领域 Store 时按当前 SQLAlchemy schema 创建 PostgreSQL 表；已有数据库切换版本时，
+  先备份，再执行对应的 `scripts/migrate_*.py` dry-run、apply 和 verify。当前尚无通用 Alembic 迁移历史，
+  真实生产数据接入前仍需补齐可回滚的版本化迁移。本地测试若不需要保留数据，可以清空仓库内 `data/` 资源，
+  但不应把“重建空库”当作生产升级步骤。
 
 ## 启动前检查
 

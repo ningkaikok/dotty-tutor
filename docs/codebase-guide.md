@@ -24,94 +24,80 @@ dotty-tutor/
 ├── package.json                # pnpm 工作区根清单（packageManager 固定 pnpm 版本）
 ├── pnpm-workspace.yaml         # 工作区声明：当前仅 apps/web
 ├── pnpm-lock.yaml              # JS 依赖精确锁
-├── pyrightconfig.json          # Python 静态类型基线配置（basic，未接门禁）
+├── pyrightconfig.json          # Python 静态类型基线配置（basic，CI 已接门禁）
 ├── apps/
 │   ├── api/                    # FastAPI、领域编排、适配器和测试
 │   │   ├── pyproject.toml      # 依赖唯一来源与工具配置（ruff/pyright）
 │   │   ├── uv.lock             # Python 依赖精确锁（uv sync --frozen）
 │   │   ├── Dockerfile          # API/Worker 镜像
-│   ├── app.py                  # ASGI 组合根；只装配，不写业务逻辑
-│   ├── app_factory.py          # 中间件、安全头、CORS、请求日志
-│   ├── api/routers/             # HTTP 协议边界；按产品域拆分 APIRouter
-│   │   ├── textbook_routes.py  # 教材 HTTP、分块接收和文件响应
-│   │   ├── tutoring_routes.py  # 错题陪练线程 API
-│   │   └── ...                 # 学习、发布、运行时和错题路由
-│   ├── application/services/   # 可由 HTTP 或 Worker 调用的业务编排
-│   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
-│   │   ├── question_processing.py  # 批次生成、审校和质量门禁
-│   │   ├── stateful_tutor.py      # 有状态陪练编排
-│   │   ├── learning_funnel.py     # 学习效果漏斗聚合（GET /api/funnel）
-│   │   ├── metrics_store.py       # 模型调用追加指标与报告级聚合
-│   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
-│   ├── ocr_pipeline.py          # 页面探测、路由和内容寻址缓存纯函数
-│   ├── ocr_quality.py           # 页面/题块质量门禁和有限重试策略
-│   ├── ocr_preflight.py        # 正式 OCR 前的页面预检分类和脏页摘要
-│   ├── textbook_ocr.py         # 手工文本/MinerU/pypdf 的回退策略
-│   ├── domain/contracts/       # 跨业务域的稳定请求/响应契约
-│   ├── domain/questions/       # 题目来源、导入质量、规范化、Schema 和质量纯函数
-│   ├── domain/learning/        # 知识点身份规范化与 mastery-v2 派生算法
-│   ├── domain/tutoring/        # 判题、陪练策略和状态机纯函数
-│   ├── mistake_recognition.py  # 复用教材流水线的错题识别适配
-│   ├── variation_service.py    # 错题变式验证题生成与确定性题型门禁
-│   ├── answer_evaluator.py     # 结构化题型与多小问的确定性答案判定
-│   ├── publication_revision.py # 不可变试卷新版编排
-│   ├── run_audit.py            # 运行快照与题目修订审计
-│   ├── worker.py               # 独立后台 Worker 入口（PostgreSQL Job Store）
-│   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器；capabilities.py 为能力目录与健康记录
-│   ├── evaluation/             # 脱敏语料、Badcase 登记簿、确定性重放和 Judge 比较工具
-│   │   ├── corpus.py           # 版本化确定性/讲解样本与样本集哈希
-│   │   ├── replay.py           # 无模型、无数据库的确定性重放
-│   │   ├── judge.py            # 独立审核模型 rubric 与输出校验
-│   │   ├── judge_cli.py        # Judge 报告、运行指标和 --check 门禁
-│   │   └── compare.py          # 确定性回归与 Judge 配对比较
-│   ├── infrastructure/files/   # 上传注册和文件边界
-│   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
-│   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
-│   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
-│   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
-│   │   ├── classroom_store.py  # 班级、成员、作业指派和教师看板聚合
-│   │   ├── assignment_planning_store.py # 脱敏作业计划草稿、快照与确认事务
-│   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
-│   ├── domain/assignment_planning.py # 跨 publication 聚合、错因统计和确定性目标排序
+│   │   ├── app.py              # ASGI 组合根；只装配，不写业务逻辑
+│   │   ├── app_factory.py      # 中间件、安全头、CORS、请求日志
+│   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
+│   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
+│   │   │   ├── tutoring_routes.py # 错题陪练线程 API
+│   │   │   └── ...             # 学习、发布、运行时和错题路由
+│   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
+│   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
+│   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
+│   │   │   ├── stateful_tutor.py # 有状态陪练编排
+│   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
+│   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
+│   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
+│   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
+│   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要
+│   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
+│   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
+│   │   │   ├── contracts/      # 稳定请求/响应契约
+│   │   │   ├── questions/      # 题目来源、Schema 和质量纯函数
+│   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
+│   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数
+│   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
+│   │   ├── mistake_recognition.py # 复用教材流水线的错题识别适配
+│   │   ├── variation_service.py # 错题变式验证题生成和题型门禁
+│   │   ├── answer_evaluator.py # 结构化题型与多小问的确定性答案判定
+│   │   ├── publication_revision.py # 不可变试卷新版编排
+│   │   ├── run_audit.py        # 运行快照与题目修订审计
+│   │   ├── worker.py            # 独立后台 Worker 入口（PostgreSQL Job Store）
+│   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
+│   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
+│   │   │   └── files/          # 上传注册和文件边界
+│   │   ├── evaluation/         # 脱敏语料、Badcase、重放和 Judge 工具
+│   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
+│   │       ├── base.py         # 引擎、初始化、健康检查和通用 Upsert
+│   │       ├── textbook_store.py # 教材导入、题目批次和教材库
+│   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
+│   │       ├── classroom_store.py # 班级、成员、作业指派和教师看板聚合
+│   │       ├── assignment_planning_store.py # 脱敏作业计划草稿、快照与确认事务
+│   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
+│   │       └── schema.py        # 教材/学习及其他领域表声明
+│   ├── web/                    # React 前端与 Playwright 用户路径
+│   │   ├── src/
+│   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
+│   │   │   ├── apps/home/      # 角色入口选择
+│   │   │   ├── apps/student/   # 学生学习空间，不包含生产配置
+│   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
+│   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
+│   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
+│   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告
+│   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
+│   │   │   ├── answerAssembly.ts # 多小问及画线等交互答案的统一组装
+│   │   │   ├── richTextParser.ts # 普通文本与显式数学片段的安全分词
+│   │   │   ├── lesson/         # 课程文档和内容块渲染器
+│   │   │   ├── api/            # 按产品域拆分的 API
+│   │   │   └── types/          # 按领域拆分的稳定类型
+│   │   ├── Dockerfile          # Web 构建镜像（corepack 固定 pnpm 版本）
+│   │   └── e2e/                # Playwright 用户路径
 ├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
 ├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
 ├── scripts/migrate_assignment_plans.py # 作业计划表与 assignment_plan_id 迁移
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
-├── apps/web/src/
-│   ├── App.tsx                 # React Router 顶层路由和懒加载
-│   ├── apps/home/              # 角色入口选择
-│   ├── apps/student/           # 学生学习空间，不包含生产配置
-│   │   ├── StudentNav.tsx      # 学生端持久导航（今日/错题/复习），只出现在列表级页面
-│   │   ├── useStudentTodayQueue.ts # 今日队列数据：作业指派、已发布练习、错题和复习进度
-│   │   ├── PaperQuestionProgress.tsx # 题号进度条：当前题、已答对和待修正的唯一展示位
-│   │   ├── PaperLearningProgress.tsx # 互动试卷掌握证据展示
-│   │   └── usePublishedLearningSession.ts # 会话恢复、离线队列和掌握度投影
-│   ├── apps/teacher/           # 班级、作业计划审阅、指派和教师掌握度看板
-│   │   ├── useAssignmentPlanning.ts # 计划生成/恢复状态
-│   │   ├── AssignmentComposer.tsx # 试卷、标题和截止日期输入
-│   │   └── AssignmentPlanReview.tsx # 目标、证据、覆盖度和提醒审阅
-│   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
-│   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
-│   │   └── import/             # 导入状态机、校验和展示组件
-│   ├── apps/mistake/           # 错题本、录入、裁切、确认和陪练
-│   │   ├── errorReasons.ts     # 错因标签与描述的单一来源
-│   │   ├── attribution.ts      # 学生自评与最新可信 AI 归因的纯函数
-│   │   └── components/MistakeAttribution.tsx # 错因双归因对照展示
-│   ├── components/             # 跨教材题型复用的作答组件与富文本渲染
-│   │   └── EvaluationEvidence.tsx # 学生可见的确定性判题证据折叠展示
-│   ├── answerAssembly.ts       # 多小问及画线等交互答案的统一组装
-│   ├── richTextParser.ts       # 普通文本与显式数学片段的安全分词
-│   ├── lesson/                 # 课程文档和内容块渲染器
-│   ├── api/                    # 按教材、错题、辅导和运行时拆分的 API
-│   ├── types/                  # 按领域拆分的稳定类型
-├── apps/web/Dockerfile         # Web 构建镜像（corepack 固定 pnpm 版本）
-├── apps/web/e2e/               # Playwright 用户路径
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
 ```
 
-API 和类型按领域分别位于 `api/` 与 `types/` 目录。规范代码必须进入
-`api/routers`、`application/services`、`domain`、`infrastructure` 或 `persistence`；跨领域组合只在明确的应用入口完成。
+前端 API 和类型按领域分别位于 `apps/web/src/api/` 与 `apps/web/src/types/` 目录。后端规范代码必须进入
+`apps/api/routers`、`apps/api/application/services`、`apps/api/domain`、`apps/api/infrastructure` 或
+`apps/api/persistence`；跨领域组合只在明确的应用入口完成。
 
 ### P0～P3 后端分层边界
 
@@ -119,7 +105,7 @@ API 和类型按领域分别位于 `api/` 与 `types/` 目录。规范代码必�
 
 | 优先级 | 范围 | 验收标准 |
 | --- | --- | --- |
-| P0 | `api/routers`、`application/services`、`domain/*`、`infrastructure/*`、`persistence/` 包边界 | `app.py` 只装配；规范新代码不依赖旧根路径 |
+| P0 | `apps/api/routers`、`apps/api/application/services`、`apps/api/domain/*`、`apps/api/infrastructure/*`、`apps/api/persistence/` 包边界 | `app.py` 只装配；规范新代码不依赖旧根路径 |
 | P1 | 路由与协议层 | 路由只做 HTTP 校验、依赖注入和响应映射，长流程委托 Service |
 | P2 | 应用服务与领域规则 | 题目、陪练、教材处理可脱离 FastAPI 复用和单元测试 |
 | P3 | Runtime、文件和 Store 基础设施 | 外部 Provider、文件系统和数据库边界可替换，当前入口清晰可测试 |
@@ -170,7 +156,7 @@ flowchart LR
 ### 教材链路
 
 ```text
-api/routers/textbook_routes.py（HTTP、上传状态）
+apps/api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
@@ -193,14 +179,14 @@ api/routers/textbook_routes.py（HTTP、上传状态）
 ### 错题链路
 
 ```text
-api/routers/mistake_routes.py
+apps/api/routers/mistake_routes.py
   → mistake_recognition.py（复用 OCR 与课程生成）
   → persistence/mistake_store.py（独立 mistake_items 表）
-  → api/routers/tutoring_routes.py（线程 HTTP 边界）
+  → apps/api/routers/tutoring_routes.py（线程 HTTP 边界）
   → application/services/stateful_tutor.py（判题、提示和状态转换）
   → persistence/tutoring_store.py（线程与消息）
   → persistence/variation_store.py（验证题与追加式 EvaluationEvidence）
-  → api/routers/review_routes.py（复习判题与进度 HTTP 边界）
+  → apps/api/routers/review_routes.py（复习判题与进度 HTTP 边界）
   → persistence/review_store.py（review_tasks 快照、答案与 evaluation_evidence_json）
 ```
 
@@ -264,7 +250,7 @@ flowchart LR
 分类信息收在折叠抽屉里。跳过自评时**不写入任何值**——`unknown`（完全不会）是一种真实的学生自评，
 与"没有回答"含义不同，混为一谈会污染 `turn_plan.py` 的出题策略。
 
-学生的非正确作答由 `api/routers/learning_routes.py` 编排写入 `MistakeStore`。稳定错题 ID 使用学生、试卷和题目
+学生的非正确作答由 `apps/api/routers/learning_routes.py` 编排写入 `MistakeStore`。稳定错题 ID 使用学生、试卷和题目
 共同生成，因此在线提交、离线补传和重复请求都只更新同一条记录；纸质错题仍走 OCR 与人工确认链路。
 
 错题页面新增复杂状态机时也遵循同样边界，不要把 API 请求重新塞回列表或表单组件。
@@ -362,11 +348,12 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 | 学习目标 | 建议阅读顺序 | 重点观察 |
 | --- | --- | --- |
-| PDF 如何变成题目 | `useTextbookImport.ts` → `api/routers/textbook_routes.py` → `application/services/textbook_processing.py` → `application/services/question_processing.py` → `domain/questions/pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
+| PDF 如何变成题目 | `useTextbookImport.ts` → `apps/api/routers/textbook_routes.py` → `application/services/textbook_processing.py` → `application/services/question_processing.py` → `domain/questions/pipeline.py` | 可恢复上传、服务编排、模型输出门禁 |
 | 长任务将如何后台化 | `runtime-governance-plan.md` → `infrastructure/files/upload_registry.py` → `persistence/schema.py` → `application/services/textbook_processing.py` | 运行快照、Job Store、租约、幂等与 Worker 边界 |
-| 试卷如何安全发布新版 | `usePaperPublication.ts` → `api/routers/publication_routes.py` → `publication_revision.py` → `persistence/learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
-| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
-| 错题如何多轮陪练 | `useMistakeTutor.ts` → `api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
+| 试卷如何安全发布新版 | `usePaperPublication.ts` → `apps/api/routers/publication_routes.py` → `publication_revision.py` → `persistence/learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
+| 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `apps/api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
+| 教师如何生成并指派个性化作业 | `TeacherClassroomApp.tsx` → `useAssignmentPlanning.ts` → `apps/api/routers/classroom_routes.py` → `application/services/assignment_planning.py` → `persistence/assignment_planning_store.py` | 脱敏班级证据、确定性回退、教师审阅、确认式幂等指派 |
+| 错题如何多轮陪练 | `useMistakeTutor.ts` → `apps/api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长
 文件开始通读整个仓库。

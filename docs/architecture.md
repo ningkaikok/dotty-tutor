@@ -18,8 +18,10 @@ flowchart LR
   Student --> Mistakes["AI 错题陪练 /mistakes"]
   Student --> Papers["已发布互动试卷"]
   Teacher --> Classroom["班级、作业与掌握度看板"]
+  Teacher --> TeacherWeb["教师工作台 UI /teacher"]
   Studio --> Web["React + Vite :59174"]
   Student --> Web
+  TeacherWeb --> Web
   Mistakes --> Web
   Web -->|"/api/*"| API["FastAPI :8010"]
 
@@ -30,6 +32,10 @@ flowchart LR
     Worker --> Processing["PDF 完成与批次处理"]
     API --> Learning["课程与学习记录"]
     API --> ClassroomAPI["班级与作业指派"]
+    ClassroomAPI --> ClassroomStore["ClassroomStore"]
+    ClassroomAPI --> Planning["AssignmentPlanningService"]
+    Planning --> PlanningStore["AssignmentPlanningStore"]
+    API --> Metrics["学习效果 / 模型成本报告"]
     Pipeline --> OCR["OCR Runtime"]
     Pipeline --> Model["Model Runtime"]
     Pipeline --> Review["Review Runtime"]
@@ -40,6 +46,9 @@ flowchart LR
     Processing --> Store
     Learning --> Store
     ClassroomAPI --> Store
+    ClassroomStore --> PostgreSQL
+    PlanningStore --> PostgreSQL
+    Metrics --> MetricsStore["MetricsStore"]
     API --> TTS["TTS Router"]
     API --> MistakeStore["MistakeStore"]
     API --> Tutor["StatefulTutor"]
@@ -56,6 +65,7 @@ flowchart LR
   JobStore --> PostgreSQL
   MistakeStore --> PostgreSQL
   ThreadStore --> PostgreSQL
+  MetricsStore --> PostgreSQL
   MistakeStore --> MistakeFiles["错题原图 / 题图"]
   Store --> Files["PDF / Markdown / 题图"]
   TTS --> Azure["Azure Speech"]
@@ -68,7 +78,7 @@ Ollama、MinerU 和 Qwen3-TTS 是可选的独立进程；Azure Speech 是可选�
 
 当前前端使用 React Router 的声明式浏览器路由，并按产品入口动态加载代码。路由匹配、动态参数、
 前进后退和未知路径回退不再由项目自行维护。Vite 开发服务器与生产 Nginx 都会把
-`/learn`、`/studio`、`/mistakes` 等直接访问回退到 `index.html`。
+`/learn`、`/studio`、`/studio/metrics`、`/teacher`、`/mistakes` 等直接访问回退到 `index.html`。
 
 
 ## 技术栈与工程化总览
@@ -85,26 +95,45 @@ flowchart TB
     ApiApp["apps/api：FastAPI + Python 3.12+<br/>pyproject.toml / uv.lock"]
   end
 
-  subgraph WebToolchain["前端工具链"]
-    direction LR
-    ESLintW["ESLint（react-hooks）"] --- VitestW["Vitest 单测"] --- PWE2E["Playwright E2E"]
-  end
-  subgraph ApiToolchain["后端工具链"]
-    direction LR
-    RuffC["Ruff check"] --- PyrB["Pyright basic 基线"] --- UT["unittest 全量"]
-  end
-  subgraph Gate["CI 质量门禁（PR 必过）"]
-    direction LR
-    G1["ruff"] --> G2["eslint"] --> G3["vitest"] --> G4["tsc --noEmit"] --> G5["check:api 类型漂移"] --> G6["unittest"] --> G7["docker 构建+健康检查"]
-  end
-
   Root --- WebApp
   Root --- ApiApp
-  WebApp -.->|开发与测试| WebToolchain
-  ApiApp -.->|开发与测试| ApiToolchain
-  WebToolchain --> Gate
-  ApiToolchain --> Gate
+
+  subgraph BackendChecks["后端检查（并行）"]
+    direction LR
+    Ruff["Ruff check"]
+    Pyright["Pyright basic"]
+    Unittest["unittest 全量"]
+  end
+  subgraph FrontendChecks["前端检查（并行）"]
+    direction LR
+    ESLint["ESLint（react-hooks）"]
+    Vitest["Vitest 单测"]
+    Tsc["tsc --noEmit"]
+    ApiCheck["check:api 类型漂移"]
+    Build["Vite build"]
+  end
+  E2E["Playwright E2E（独立门禁）"]
+  CodeQL["CodeQL（独立工作流）"]
+  Docker["Docker 构建 + 健康检查"]
+
+  WebApp -.-> FrontendChecks
+  ApiApp -.-> BackendChecks
+  Ruff --> BackendDone["后端检查通过"]
+  Pyright --> BackendDone
+  Unittest --> BackendDone
+  ESLint --> FrontendDone["前端检查通过"]
+  Vitest --> FrontendDone
+  Tsc --> FrontendDone
+  ApiCheck --> FrontendDone
+  Build --> FrontendDone
+  BackendDone --> Docker
+  FrontendDone --> Docker
+  Docker --> PRGate["PR 质量门禁"]
+  E2E --> PRGate
+  CodeQL --> PRGate
 ```
+
+图中同一检查组内的任务可并行执行；Docker 只有在后端和前端检查通过后才运行，E2E 与 CodeQL 分别作为独立门禁。
 
 包管理约定（单一来源）：JS 侧 pnpm（锁文件 `pnpm-lock.yaml`），Python 侧 uv
 （依赖声明在 `apps/api/pyproject.toml`，锁文件 `apps/api/uv.lock`）。Docker 与 CI 均使用
@@ -140,14 +169,14 @@ flowchart TB
 | 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
 | ASGI 组合根 | `apps/api/app.py`、`apps/api/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
-| 教材 HTTP 边界 | `apps/api/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
+| 教材 HTTP 边界 | `apps/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
 | 教材处理服务 | `apps/api/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
 | 后台任务用例 | `apps/api/application/textbook_jobs.py` | 把任务 payload 还原为应用服务调用；不复制 OCR 或生成业务流程 |
 | Worker 循环 | `apps/api/application/job_worker.py`、`apps/api/worker.py` | 原子领取任务、续租、取消检查、有限重试和最终状态收敛 |
 | Job Store | `apps/api/persistence/job_store.py` | 持久化任务、幂等键、租约、运行快照、错误和结果；PostgreSQL 负责并发领取 |
 | 应用错误契约 | `apps/api/application/errors.py` | 将业务失败映射为稳定错误码、可重试标记和请求 ID |
 | 批次题目处理 | `apps/api/application/services/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
-| 教材库路由 | `apps/api/api/routers/library_routes.py` | 教材列表、恢复和软删除 |
+| 教材库路由 | `apps/api/routers/library_routes.py` | 教材列表、恢复和软删除 |
 | 教材 OCR 编排 | `apps/api/textbook_ocr_pipeline.py` | 页面探测、连续页段路由、局部 Provider 升级、矢量图页面渲染、结果缓存和审计记录 |
 | OCR 路由与缓存 | `apps/api/ocr_pipeline.py` | 页面信号、Provider 选择、内容寻址缓存键和原子缓存文件 |
 | OCR 来源质量 | `apps/api/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
@@ -156,15 +185,15 @@ flowchart TB
 | 导入质量报告 | `apps/api/domain/questions/quality.py` | 在整本生成前汇总题数、题号序列、未识别页和图片归属冲突，决定是否允许继续 |
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
-| 课程与学习路由 | `apps/api/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
+| 课程与学习路由 | `apps/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
 | 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业计划、确认式作业指派和教师看板接口 |
 | 作业计划服务 | `apps/api/application/services/assignment_planning.py`、`apps/api/domain/assignment_planning.py` | 脱敏聚合、三套错因统计、确定性目标排序、模型受约束表达和 stale/fallback 校验 |
-| 试卷发布路由 | `apps/api/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
+| 试卷发布路由 | `apps/api/routers/publication_routes.py` | 试卷创建、送审、发布、归档和学生可见目录 |
 | 可编程课程契约 | `apps/api/domain/contracts/lesson.py` | `LessonDocument`、内容块和学习数据请求校验 |
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
 | 题目流水线 | `apps/api/domain/questions/pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
-| 运行时路由 | `apps/api/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、TTS 和学习效果/模型成本联合报告 |
+| 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、TTS 和学习效果/模型成本联合报告 |
 | 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
@@ -176,15 +205,15 @@ flowchart TB
 | 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
-| 错题路由与契约 | `apps/api/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
+| 错题路由与契约 | `apps/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
-| 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
+| 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py` | 保存唯一验证题快照、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |
-| 间隔复习 | `apps/api/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
+| 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
 ## 错题录入与确认
 

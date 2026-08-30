@@ -222,6 +222,8 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 | <http://localhost:59174/learn> | 学生学习空间，不显示教材上传和模型配置 |
 | `http://localhost:59174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
 | <http://localhost:59174/studio> | 教材导入、OCR、内容生成与互动预览 |
+| <http://localhost:59174/studio/metrics> | 学习效果与模型成本联合报告 |
+| <http://localhost:59174/teacher> | 班级、作业计划审阅、作业指派和掌握度看板 |
 | <http://localhost:59174/mistakes> | AI 错题本、图片录入和确认 |
 | <http://localhost:59174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |
 | `http://localhost:59174/mistakes/{id}/confirm` | 修正题干、知识点和错误原因 |
@@ -234,23 +236,24 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 - 修改顶层页面或 URL：`apps/web/src/App.tsx` 与对应 `apps/web/src/apps/*`。
 - 修改教材上传交互：`apps/web/src/apps/textbook/import/`，不要把状态机重新写回页面组件。上传区支持一次加入多个
   PDF/图片；每个条目独立显示分块上传、OCR 处理和失败状态，最多三个任务并行，点击条目查看右侧结果。
-- 修改教材 API/PDF 批次：`apps/api/api/routers/textbook_routes.py`；长流程在 `apps/api/application/services/textbook_processing.py`。
+- 修改教材 API/PDF 批次：`apps/api/routers/textbook_routes.py`；长流程在 `apps/api/application/services/textbook_processing.py`。
 - 内容生产端“修复本题”调用 `POST /api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate`，默认只重跑当前题并复用 OCR 缓存；需要重新识别页面时使用批次接口的 `refreshOcr=true`。
 - 修改教材页面路由/缓存：`apps/api/textbook_ocr_pipeline.py`；调整启发式和门禁分别查看
   `domain/questions/` 下的 OCR 纯函数；MinerU 子进程和矢量 PDF 页面渲染细节仍在 `infrastructure/runtime/ocr_runtime.py`。
   Docker 后端镜像通过 `poppler-utils` 提供 `pdftoppm`，本机开发也需要 Poppler 才能启用矢量页渲染兜底。
 - 修改模型题目结构：`application/services/lesson_generation.py`、`domain/questions/contracts.py` 和 `domain/questions/pipeline.py`。
-- 修改错题功能：`apps/api/mistake_*.py` 与 `apps/web/src/apps/mistake/`。
-- 修改多轮状态：`apps/api/application/services/stateful_tutor.py`、`api/routers/tutoring_routes.py`、`persistence/tutoring_store.py` 和
+- 修改错题功能：`apps/api/mistake_recognition.py`、`apps/api/routers/mistake_routes.py` 与 `apps/web/src/apps/mistake/`。
+- 修改多轮状态：`apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py`、`apps/api/persistence/tutoring_store.py` 和
   `apps/web/src/apps/mistake/useMistakeTutor.ts`。
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
-数据库只支持全新空库启动。首次访问各领域 Store 时会根据
-`apps/api/persistence/schema.py` 及领域 Store 中的当前 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema；
-项目不提供原地数据库升级，也不再维护编号 SQL 迁移链。已有本地测试库和 `data/` 资源应在切换当前基线前清空，
-例如复习任务新增字段后，旧的 `review_tasks` 表也必须随空库重建，
-生产环境需要通过备份后重建空库并重新导入当前数据。
+全新数据库首次访问各领域 Store 时，会根据 `apps/api/persistence/schema.py` 及领域 Store 中的当前
+SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema。已有数据库不能只依赖 `create_all()`：切换包含
+schema 变更的版本时，应先备份，再按变更使用 `scripts/migrate_mastery_v2.py`、
+`scripts/migrate_class_assignments.py` 或 `scripts/migrate_assignment_plans.py` 执行 dry-run、apply 和 verify。
+项目尚无通用 Alembic 迁移历史，因此真实生产数据接入前仍需补齐可回滚的版本化迁移；本地测试库和 `data/`
+资源可以在不需要保留数据时清空，但这不是当前版本的唯一升级方式。
 
 ## 更新 Playwright 视觉快照
 

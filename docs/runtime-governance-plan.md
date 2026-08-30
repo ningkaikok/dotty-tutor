@@ -24,7 +24,7 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 | 能力 | 当前基础 | 下一步 |
 | --- | --- | --- |
 | 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock；运行摘要记录耗时、token、Provider 尝试次数和 Schema 降级 | 继续按真实运行补齐跨任务成本分析 |
-| OCR | 页面路由、局部升级、质量门禁和内容寻址缓存 | 把长流程交给可恢复 Worker |
+| OCR | 页面路由、局部升级、质量门禁、内容寻址缓存，以及由 PostgreSQL Job Store + Worker 执行的 PDF/批次流程 | 继续补齐批次熔断、部分成功和依赖自检 |
 | 状态 | `upload_jobs` 保存教材进度，`background_jobs` 保存后台执行状态 | 为整套重新审核等后续长任务复用同一 Job Store |
 | 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情 | 将 `run_id` 继续贯穿陪练与后续 Worker 任务 |
 | 质量 | 单元测试、Playwright、结构质量门禁、脱敏离线语料、Badcase 回放和 Judge 报告 | 用真实运行持续扩充样本并建立学习效果报告 |
