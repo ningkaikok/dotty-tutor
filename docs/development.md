@@ -251,6 +251,26 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 项目不提供原地数据库升级，也不再维护编号 SQL 迁移链。已有本地测试库和 `data/` 资源应在切换当前基线前清空，
 生产环境需要通过备份后重建空库并重新导入当前数据。
 
+## 更新 Playwright 视觉快照
+
+`e2e/tutor-flow.spec.ts-snapshots/` 下每个快照有 darwin 和 linux 两份，CI 在 `ubuntu-latest` 上
+比对的是 linux 那份。两份**不能互相复制**：字体度量不同，卡片高度会差十几像素。
+
+- **darwin**：本机直接跑
+  ```bash
+  pnpm --filter dotty-tutor-web exec playwright test --grep "<用例名>" --update-snapshots
+  ```
+- **linux**：不要用官方 `mcr.microsoft.com/playwright` 镜像生成。该镜像的字体环境与 CI 的
+  `npx playwright install --with-deps chromium` 不一致，生成出来的快照仍然对不上。正确做法是
+  推一次让 CI 跑，然后从 `playwright-report` artifact 里取 `*-actual.png` 作为基线：
+  ```bash
+  gh run download <run-id> -n playwright-report -D /tmp/ci-e2e
+  cp "/tmp/ci-e2e/test-results/<用例目录>/<快照名>-actual.png" \
+     apps/web/e2e/tutor-flow.spec.ts-snapshots/<快照名>-chromium-linux.png
+  ```
+  采用前先打开 `-actual.png` 确认内容正确（这是人工确认的一步，不能省），并核对同一 run 里
+  多次重试的 `-actual.png` 哈希一致，避免把一次随机渲染固化成基线。
+
 ## 常用环境变量
 
 | 变量 | 默认值 | 用途 |

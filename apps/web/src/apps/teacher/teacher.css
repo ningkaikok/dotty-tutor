@@ -60,5 +60,23 @@
 .knowledge-point-grid dt { color: #748078; font-size: 10px; }
 .knowledge-point-grid dd { margin: 5px 0 0; color: #183f31; font-size: 18px; font-weight: 700; }
 .teacher-empty-note { padding: 18px; border-radius: 15px; color: #68766e; background: #f1f3ef; font-size: 13px; }
+/* 首次进入时的引导：右侧不能是一片空白，必须说明从哪一步开始。 */
+.teacher-onboarding h2 { margin: 0 0 8px; font-size: 20px; }
+.teacher-onboarding > p { margin: 0 0 16px; color: #56645c; font-size: 14px; line-height: 1.7; }
+.teacher-onboarding-steps { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; counter-reset: onboarding; }
+.teacher-onboarding-steps li { display: grid; grid-template-columns: 26px 1fr; gap: 4px 12px; align-items: baseline; counter-increment: onboarding; }
+.teacher-onboarding-steps li::before { content: counter(onboarding); display: grid; place-items: center; grid-row: 1 / span 2; width: 26px; height: 26px; border-radius: 50%; color: #fff; background: #183f31; font-size: 12px; font-weight: 700; }
+.teacher-onboarding-steps strong { font-size: 14px; }
+.teacher-onboarding-steps span { color: #667a6f; font-size: 13px; line-height: 1.6; }
+
+/* 表单下方的口径说明：这些字段需要老师和别处的数据对齐，不能只靠 placeholder。 */
+.teacher-field-hint { display: block; margin-top: 10px; color: #6f7d74; font-size: 12px; line-height: 1.6; }
+.teacher-field-hint code { padding: 1px 5px; border-radius: 5px; background: #eaefe9; font-size: 11px; }
+
+.dashboard-assignment-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: #56645c; font-size: 12px; font-weight: 600; }
+.dashboard-assignment-picker select { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid #cbd3cd; border-radius: 9px; color: #20352c; background: #f7f7f2; font-size: 13px; font-weight: 500; }
+
+.teacher-retry { margin-left: 10px; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; color: inherit; background: transparent; font-size: 12px; font-weight: 700; }
+
 @media (max-width: 900px) { .teacher-layout { grid-template-columns: 1fr; } .teacher-sidebar { position: static; } .assignment-form { grid-template-columns: 1fr 1fr; } .assignment-form button { grid-column: 2; } }
 @media (max-width: 620px) { .teacher-shell { width: min(100% - 24px, 1180px); } .member-form, .assignment-form { grid-template-columns: 1fr; } .assignment-form button { grid-column: auto; } .dashboard-summary-grid { grid-template-columns: repeat(2, 1fr); } .knowledge-point-grid dl { grid-template-columns: repeat(2, 1fr); } }
