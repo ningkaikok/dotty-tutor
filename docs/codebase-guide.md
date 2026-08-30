@@ -69,17 +69,21 @@ dotty-tutor/
 │   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
 │   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
 │   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
+│   │   ├── classroom_store.py  # 班级、成员、作业指派和教师看板聚合
 │   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
 ├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
+├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
+├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── apps/web/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
 │   ├── apps/home/              # 角色入口选择
 │   ├── apps/student/           # 学生学习空间，不包含生产配置
 │   │   ├── StudentNav.tsx      # 学生端持久导航（今日/错题/复习），只出现在列表级页面
-│   │   ├── useStudentTodayQueue.ts # 今日队列数据：并发组合已发布试卷、错题和复习进度
+│   │   ├── useStudentTodayQueue.ts # 今日队列数据：作业指派、已发布练习、错题和复习进度
 │   │   ├── PaperQuestionProgress.tsx # 题号进度条：当前题、已答对和待修正的唯一展示位
 │   │   ├── PaperLearningProgress.tsx # 互动试卷掌握证据展示
 │   │   └── usePublishedLearningSession.ts # 会话恢复、离线队列和掌握度投影
+│   ├── apps/teacher/           # 班级、作业指派和教师掌握度看板
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
@@ -222,10 +226,10 @@ flowchart LR
 统一通过 `RichText` 渲染普通文字与显式 `$...$` 数学片段，避免把普通文本整段送入公式解析器。
 这种边界避免为了复用视觉外壳而把作者权限和内部术语带入学生任务流。
 
-学生首页 `/learn` 是一条今日任务队列（待确认错题 → 今日复习 → 待订正错题），数据由
-`useStudentTodayQueue.ts` 从三个已有只读接口派生，**不新增端点**。已发布试卷刻意排在队列之外的
-"练习"区：作业指派（`class` + `assignment`）尚未落地，试卷做完也不会从目录消失，算进待办会让
-计数永远降不下来。等作业指派落地、能判断"这套卷子是今天布置的"之后，练习才应该升进队列。
+学生首页 `/learn` 是一条今日任务队列（班级作业 → 待确认错题 → 今日复习 → 待订正错题），数据由
+`useStudentTodayQueue.ts` 并发读取作业指派、已发布练习、错题和复习进度。作业通过
+`assignmentId` 打开学习会话，已发布试卷仍保留在队列下方作为自由练习。教师从 `/teacher` 管理本地班级、
+成员和作业；`classroom_store.py` 按单次作业聚合学生完成状态和发布版本内知识点分布。
 
 错因归因不在确认页收集，而在陪练首轮由学生自评（见 `MistakeTutor.tsx`）：确认页的必填项只剩题干，
 分类信息收在折叠抽屉里。跳过自评时**不写入任何值**——`unknown`（完全不会）是一种真实的学生自评，

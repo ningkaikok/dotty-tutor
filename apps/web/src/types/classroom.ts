@@ -1,0 +1,83 @@
+export type AssignmentLearnerStatus = "not_started" | "in_progress" | "completed" | "overdue";
+
+export interface ClassSummary {
+  classId: string;
+  name: string;
+  subject: string;
+  gradeBand: string;
+  memberCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ClassMember {
+  learnerId: string;
+  displayName: string;
+  joinedAt: number;
+}
+
+export interface AssignmentSummary {
+  assignmentId: string;
+  classId: string;
+  publicationId: string;
+  title: string;
+  publicationTitle: string;
+  className?: string | null;
+  dueAt: number | null;
+  status: "active" | "archived";
+  lessonIds: string[];
+  questionCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ClassDetail extends ClassSummary {
+  members: ClassMember[];
+  assignments: AssignmentSummary[];
+}
+
+export interface StudentAssignment extends AssignmentSummary {
+  learnerId: string;
+  sessionId: string | null;
+  attemptedCount: number;
+  progress: number;
+  learnerStatus: AssignmentLearnerStatus;
+}
+
+export interface DashboardStudent {
+  learnerId: string;
+  displayName: string;
+  sessionId: string | null;
+  attemptedCount: number;
+  questionCount: number;
+  progress: number;
+  status: AssignmentLearnerStatus;
+  averageMastery: number | null;
+}
+
+export interface KnowledgePointDashboard {
+  knowledgePointId: string;
+  knowledgePoint: string;
+  observedStudentCount: number;
+  averageScore: number | null;
+  distribution: {
+    notStarted: number;
+    needsSupport: number;
+    developing: number;
+    mastered: number;
+  };
+}
+
+export interface ClassDashboard {
+  class: Pick<ClassSummary, "classId" | "name" | "subject" | "gradeBand">;
+  assignment: AssignmentSummary;
+  summary: {
+    memberCount: number;
+    startedCount: number;
+    completedCount: number;
+    completionRate: number | null;
+  };
+  students: DashboardStudent[];
+  knowledgePoints: KnowledgePointDashboard[];
+  metricDefinition: string;
+}

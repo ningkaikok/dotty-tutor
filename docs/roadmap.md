@@ -20,7 +20,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
-| P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
+| P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 第一版已完成（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | MathText 与 subQuestions 已完成；图片纯位置归属等待真实 Badcase 信号 | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -74,7 +74,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 - 错题章节和知识点目前由模型建议、学生确认，尚未关联版本化教材知识树。
 - 知识点已通过 `knowledge_points` 建立稳定实体，当前按发布版本作用域隔离；掌握度已改为按最新不同题证据
   派生，并设置低证据置信度上限。跨教材聚合仍未建模，需等老师视图的真实使用场景再决定身份维度。
-- 没有班级、作业指派和教师视图：学生自选已发布试卷，老师看不到班级层面的掌握分布。
+- 班级、作业指派和教师视图第一版已落地：学生优先读取被指派作业，老师可查看单次作业的完成率与发布版本内知识点分布；登录、权限和跨版本聚合仍未建设。
 - 错题陪练已实现对话线程、受约束状态机、按错误原因生成的变式验证、进阶本迁移和 1/3/7 天复习进度闭环。
 
 ## 工程决策摘要

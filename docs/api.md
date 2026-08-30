@@ -37,6 +37,18 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/metrics/model-calls?days=7` | 模型调用边界指标聚合（只读）：按 runtime/task/provider/model 分组的调用数、失败数、平均耗时与输出 token 合计 |
 | `GET` | `/api/reports/learning-cost?learnerId=local-demo&days=7` | 学习效果与模型成本代理指标联合报告；学习为学生累计快照，模型为全局最近窗口，成本不表示货币金额或因果关系 |
 
+## 班级、作业与教师看板
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/classes` | 列出本地单库中的教学班级和成员数 |
+| `POST` | `/api/classes` | 创建班级；当前不包含登录、角色权限或租户字段 |
+| `GET` | `/api/classes/{classId}` | 读取班级、成员和已布置作业 |
+| `POST` | `/api/classes/{classId}/members` | 添加或更新一个 `learnerId` 的班级成员 |
+| `POST` | `/api/classes/{classId}/assignments` | 将已发布互动试卷指派给全班，可设置标题和截止时间 |
+| `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
+| `GET` | `/api/assignments?learnerId=local-demo` | 返回学生所属班级的作业及服务端派生进度 |
+
 生成模型、统一审核模型和 OCR 选择目前是 FastAPI 进程级状态，不按用户或教材隔离。
 `modelDetails.health` 是进程内连续失败计数（阈值 3 次），只用于候选筛选提示；它不会改写任何
 已开始运行的审计快照，成功调用会立即复位。
@@ -108,7 +120,11 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 离线补传不会把旧作答记成刚刚完成；浏览器暂时离线时，学生端会将记录放入本地待同步队列。
 会话查询响应中的 `attempts` 是按作答时间排序的答案快照，包含 `questionId`、`knowledgePointId`、`response`、判定和提示层级；
 学生端用它恢复已提交题目的选择、填空、数值或画线状态。模型讲解文本不作为恢复数据，避免旧反馈串题。
-学习会话请求使用 `publicationId` 指向已发布试卷；题目 `lessonId` 不作为会话输入。
+学习会话请求使用 `publicationId` 指向已发布试卷；作业入口同时携带 `assignmentId`，服务端会校验学生属于该班级且作业与试卷匹配。自由练习可以不带 `assignmentId`；题目 `lessonId` 不作为会话输入。
+
+班级看板的完成率按“该学生是否作答了作业中的全部题目”计算。知识点分布只统计有作答证据的学生，
+分为未开始、需帮助（score < 0.4）、发展中（0.4 ≤ score < 0.7）和已掌握（score ≥ 0.7）；
+没有证据的学生显示为“未开始”，不会被当成掌握度为 0。`assignment_id` 已加入学习会话，旧的自由练习会话允许为空。
 
 mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确为 `1`、部分正确为 `0.55`、错误为 `0`；
 不同题证据数的置信度上限依次为 1/2/3/4/5 道题的 `0.6/0.7/0.8/0.9/1.0`。`rawScore` 是最新题证据平均分，

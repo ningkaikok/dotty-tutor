@@ -3,6 +3,7 @@ export * from "./learning";
 export * from "./mistakes";
 export * from "./practice";
 export * from "./publications";
+export * from "./classroom";
 export * from "./runtime";
 export * from "./reviews";
 export * from "./textbooks";

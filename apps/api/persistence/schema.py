@@ -115,6 +115,36 @@ lesson_publications = Table(
     Column("updated_at", Float, nullable=False),
 )
 
+learning_classes = Table(
+    "learning_classes", metadata,
+    Column("class_id", String(64), primary_key=True),
+    Column("name", String(160), nullable=False),
+    Column("subject", String(80), nullable=False, default="数学"),
+    Column("grade_band", String(80), nullable=False, default="初中"),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+)
+
+class_memberships = Table(
+    "class_memberships", metadata,
+    Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), primary_key=True),
+    Column("learner_id", String(128), primary_key=True),
+    Column("display_name", String(160), nullable=False),
+    Column("joined_at", Float, nullable=False),
+)
+
+assignments = Table(
+    "assignments", metadata,
+    Column("assignment_id", String(64), primary_key=True),
+    Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), nullable=False),
+    Column("publication_id", String(64), ForeignKey("lesson_publications.publication_id"), nullable=False),
+    Column("title", String(200), nullable=False),
+    Column("due_at", Float),
+    Column("status", String(32), nullable=False, default="active"),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+)
+
 knowledge_points = Table(
     "knowledge_points", metadata,
     Column("knowledge_point_id", String(64), primary_key=True),
@@ -159,6 +189,8 @@ learning_sessions = Table(
     Column("session_id", String(64), primary_key=True),
     Column("learner_id", String(128), nullable=False),
     Column("publication_id", String(128), nullable=False),
+    # 新作答必须保留作业实例，旧的自由练习会话允许为空以兼容历史数据。
+    Column("assignment_id", String(64), ForeignKey("assignments.assignment_id"), nullable=True),
     Column("started_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )
@@ -205,7 +237,11 @@ Index("idx_question_revisions_source", question_revisions.c.upload_id, question_
 Index("uq_question_revisions_source_number", question_revisions.c.upload_id, question_revisions.c.source_question_key, question_revisions.c.revision_number, unique=True)
 Index("idx_lesson_publications_status", lesson_publications.c.status, lesson_publications.c.updated_at.desc())
 Index("idx_lesson_publications_revision", lesson_publications.c.revision_of, lesson_publications.c.version.desc())
+Index("idx_class_memberships_learner", class_memberships.c.learner_id, class_memberships.c.class_id)
+Index("idx_assignments_class", assignments.c.class_id, assignments.c.created_at.desc())
+Index("idx_assignments_publication", assignments.c.publication_id, assignments.c.created_at.desc())
 Index("idx_learning_sessions_learner", learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
+Index("idx_learning_sessions_assignment", learning_sessions.c.assignment_id, learning_sessions.c.learner_id, learning_sessions.c.updated_at.desc())
 Index("idx_exercise_attempts_session", exercise_attempts.c.session_id, exercise_attempts.c.created_at.desc())
 Index("uq_knowledge_points_publication_name", knowledge_points.c.publication_id, knowledge_points.c.normalized_name, unique=True)
 Index("idx_exercise_attempts_publication_question", exercise_attempts.c.publication_id, exercise_attempts.c.question_id, exercise_attempts.c.created_at.desc())

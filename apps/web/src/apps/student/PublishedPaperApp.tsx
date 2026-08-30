@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import {
   loadPublishedPublication,
 } from "../../api/publications";
@@ -38,6 +38,8 @@ interface StudentQuestionDraft {
 export function PublishedPaperApp() {
   const navigate = useNavigate();
   const { publicationId = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const assignmentId = searchParams.get("assignmentId") || undefined;
   const [publication, setPublication] = useState<PublicationDetail | null>(null);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [studentInput, setStudentInput] = useState("");
@@ -65,7 +67,7 @@ export function PublishedPaperApp() {
   const initializedPaperRef = useRef("");
   const explanationSectionRef = useRef<HTMLElement>(null);
   const wasShowingExplanationRef = useRef(false);
-  const { queueAttempt, syncMessage, mastery, attempts, sessionReady } = usePublishedLearningSession(publication?.publicationId);
+  const { queueAttempt, syncMessage, mastery, attempts, sessionReady } = usePublishedLearningSession(publication?.publicationId, assignmentId);
   const paperProgress = usePublishedPaperProgress(publication, attempts);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
