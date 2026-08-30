@@ -1,6 +1,6 @@
 # AI 运行治理与后台任务演进计划
 
-> 状态：G1～G3 已落地，G4/G5 仍在规划中。本文记录真实实现边界、下一阶段顺序和验收标准。
+> 状态：G1～G4 第一版已落地，G5 仍在规划中。本文记录真实实现边界、下一阶段顺序和验收标准。
 
 Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL 持久化等基础能力。下一步的重点不是
 引入更多代理框架，而是让一次 AI 处理过程可以被复现、观察、取消和评测。本计划参考通用 Agent Platform
@@ -23,11 +23,11 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 
 | 能力 | 当前基础 | 下一步 |
 | --- | --- | --- |
-| 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock | 统一请求/结果契约并显式记录实际回退 |
+| 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock；运行摘要记录耗时、token、Provider 尝试次数和 Schema 降级 | 继续按真实运行补齐跨任务成本分析 |
 | OCR | 页面路由、局部升级、质量门禁和内容寻址缓存 | 把长流程交给可恢复 Worker |
 | 状态 | `upload_jobs` 保存教材进度，`background_jobs` 保存后台执行状态 | 为整套重新审核等后续长任务复用同一 Job Store |
 | 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情 | 将 `run_id` 继续贯穿陪练与后续 Worker 任务 |
-| 质量 | 单元测试、Playwright、结构质量门禁 | 建立脱敏离线样本和可重复评测报告 |
+| 质量 | 单元测试、Playwright、结构质量门禁、脱敏离线语料、Badcase 回放和 Judge 报告 | 用真实运行持续扩充样本并建立学习效果报告 |
 
 ```mermaid
 flowchart LR
@@ -132,7 +132,7 @@ PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务；SQLite 只作为
 
 只有数据库轮询成为已测量的瓶颈，或需要多台机器高并发消费任务时，才评估 Redis/队列系统。
 
-## G4：离线评测集与质量报告
+## G4：离线评测集与质量报告（第一版已落地）
 
 仓库只保存自制、脱敏或授权样本，不提交真实教材和学生数据。最小样本集覆盖：
 
@@ -142,8 +142,11 @@ PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务；SQLite 只作为
 - 空 OCR、答案区泄漏、选项缺失、图片归属错误和局部重试；
 - 错题陪练中的正确、部分正确、错误和提示升级。
 
-报告至少展示 OCR 成功率、局部重试率、公式损坏率、题目切分数量偏差、质量门禁通过/隔离率、审核纠错率、
-陪练判定准确率、P50/P95 耗时以及模型调用/重试次数。评测脚本固定运行快照，使模型或提示词升级前后可比。
+确定性报告展示 OCR 成功率、局部重试率、公式损坏率、题目切分数量偏差、质量门禁通过/隔离率、审核纠错率和
+陪练判定准确率。Judge 报告展示成功率、失败数、P50/P95、逻辑调用数、Provider 实际请求数、token 用量、
+Schema 降级次数和评分均值。报告固定记录 `reportKind`、`reportVersion`、语料版本、样本集哈希以及审核
+Provider/Model/Prompt 版本；比较器只有在这些比较条件一致时才计算共同样本的配对评分，缺失指标不按 0 处理。
+测试不执行真实模型调用，真实 Judge 报告通过 `python -m evaluation.judge_cli --check` 按需生成。
 
 ## G5：轻量 Model Gateway 契约
 

@@ -176,6 +176,9 @@
 .knowledge-progress-card small { color: #78847c; }
 .knowledge-progress-card progress { width: 100%; margin-top: 7px; accent-color: #1b9a72; }
 .mistake-empty.compact { min-height: 150px; }
+.progress-evidence-note { margin-top: 18px; padding: 17px; border: 1px solid #dce4de; border-radius: 16px; background: rgba(255,255,252,.94); color: #58655e; }
+.progress-evidence-note h2 { margin: 0 0 8px; color: #203c30; font-size: 17px; }
+.progress-evidence-note p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; }
 
 @media (max-width: 820px) {
   .mistake-cropper, .mistake-confirm-grid, .tutor-layout, .progress-grid { grid-template-columns: 1fr; }

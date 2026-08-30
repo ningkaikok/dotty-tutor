@@ -1,4 +1,4 @@
-import type { VariationExercise } from "../types/practice";
+import type { MistakeEvidence, VariationExercise } from "../types/practice";
 import { parse } from "./client";
 
 export async function listVariations(mistakeId: string): Promise<VariationExercise[]> {
@@ -16,11 +16,15 @@ export async function createVariation(mistakeId: string): Promise<VariationExerc
 
 export async function answerVariation(
   variationId: string,
-  input: { content: string; interactionResult: Record<string, unknown> },
+  input: { attemptId?: string; content: string; interactionResult: Record<string, unknown> },
 ): Promise<VariationExercise> {
   return parse<VariationExercise>(await fetch(`/api/variations/${variationId}/answer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   }));
+}
+
+export async function loadMistakeEvidence(mistakeId: string): Promise<MistakeEvidence> {
+  return parse<MistakeEvidence>(await fetch(`/api/mistakes/${mistakeId}/evidence`, { cache: "no-store" }));
 }

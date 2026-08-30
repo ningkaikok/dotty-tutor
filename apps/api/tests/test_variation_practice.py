@@ -243,6 +243,76 @@ class VariationPracticeTests(unittest.TestCase):
         listed = self.client.get("/api/mistakes/mistake-1/variations").json()
         self.assertEqual(len(listed["items"]), 1)
 
+        evidence = self.client.get("/api/mistakes/mistake-1/evidence")
+        self.assertEqual(evidence.status_code, 200)
+        attempts = evidence.json()["variations"][0]["attempts"]
+        self.assertEqual(len(attempts), 2)
+        self.assertEqual([attempt["assessment"] for attempt in attempts], ["incorrect", "correct"])
+        self.assertEqual(evidence.json()["masteryTransition"], "unmastered → mastered")
+
+    def test_answer_attempt_id_is_idempotent_and_does_not_append_twice(self) -> None:
+        self._advance_thread_to_verify()
+        item = self.client.post("/api/mistakes/mistake-1/variations").json()
+        payload = {
+            "attemptId": "stable-attempt-1",
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        }
+        first = self.client.post(f"/api/variations/{item['variationId']}/answer", json=payload)
+        repeated = self.client.post(f"/api/variations/{item['variationId']}/answer", json=payload)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(repeated.status_code, 200)
+        attempts = self.client.get("/api/mistakes/mistake-1/evidence").json()["variations"][0]["attempts"]
+        self.assertEqual(len(attempts), 1)
+
+    def test_attempt_id_cannot_be_reused_for_another_variation(self) -> None:
+        self._advance_thread_to_verify()
+        item = self.client.post("/api/mistakes/mistake-1/variations").json()
+        first = self.client.post(f"/api/variations/{item['variationId']}/answer", json={
+            "attemptId": "shared-attempt",
+            "content": "我选择 B",
+            "interactionResult": {"selectedOptions": ["B"]},
+        })
+        self.assertEqual(first.status_code, 200)
+
+        other = self.variations.create(
+            mistake_id="mistake-1",
+            learner_id="local-demo",
+            strategy="concept-foundation",
+            level="parallel",
+            question_payload={"question": {
+                "questionType": "choice",
+                "prompt": "另一道题",
+                "options": ["A", "B"],
+                "correctAnswers": ["A"],
+            }},
+            model_run={},
+        )
+        conflict = self.client.post(f"/api/variations/{other['variationId']}/answer", json={
+            "attemptId": "shared-attempt",
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        })
+        self.assertEqual(conflict.status_code, 409)
+
+    def test_variation_requires_confirmed_error_reason_and_persists_strategy_metadata(self) -> None:
+        self._advance_thread_to_verify()
+        self.mistakes.confirm("mistake-1", {
+            "prompt": "下列各数中比 1 大的是？",
+            "originalAnswer": "B",
+            "subject": "数学",
+            "gradeBand": "初中",
+            "chapter": "有理数",
+            "knowledgePoint": "数的比较",
+            "errorReason": "concept",
+            "notes": "",
+        })
+        created = self.client.post("/api/mistakes/mistake-1/variations").json()
+        question = created["questionPayload"]["question"]
+        self.assertEqual(question["variationStrategyVersion"], "variation-strategy-v1")
+        self.assertEqual(question["variationTarget"], "concept")
+        self.assertTrue(question["variationObjective"])
+
     def test_one_correct_answer_promotes_mistake_and_schedules_reviews(self) -> None:
         self._advance_thread_to_verify()
         first = self.client.post("/api/mistakes/mistake-1/variations").json()

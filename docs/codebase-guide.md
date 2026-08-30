@@ -57,7 +57,12 @@ dotty-tutor/
 │   ├── run_audit.py            # 运行快照与题目修订审计
 │   ├── worker.py               # 独立后台 Worker 入口（PostgreSQL Job Store）
 │   ├── infrastructure/runtime/ # 模型、OCR、审校和 TTS Provider 适配器；capabilities.py 为能力目录与健康记录
-│   ├── evaluation/             # 脱敏金标准语料、Badcase 登记簿和确定性重放器（python -m evaluation.replay）
+│   ├── evaluation/             # 脱敏语料、Badcase 登记簿、确定性重放和 Judge 比较工具
+│   │   ├── corpus.py           # 版本化确定性/讲解样本与样本集哈希
+│   │   ├── replay.py           # 无模型、无数据库的确定性重放
+│   │   ├── judge.py            # 独立审核模型 rubric 与输出校验
+│   │   ├── judge_cli.py        # Judge 报告、运行指标和 --check 门禁
+│   │   └── compare.py          # 确定性回归与 Judge 配对比较
 │   ├── infrastructure/files/   # 上传注册和文件边界
 │   ├── persistence/            # 数据库基础设施和按领域拆分的 Store
 │   │   ├── base.py             # 引擎、初始化、健康检查和通用 Upsert
@@ -280,7 +285,8 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 扩展错题复习任务
 
-阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期。后续扩展时继续遵循同样边界：
+阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，
+Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。
 2. 复用 `QuestionPayload`、确定性判题和掌握度证据，不让模型直接修改状态。

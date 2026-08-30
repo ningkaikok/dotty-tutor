@@ -29,7 +29,7 @@ from domain.questions.pipeline import (
 )
 from domain.questions.source import split_question_sources
 from domain.tutoring.turn_plan import infer_student_intent
-from evaluation.corpus import CORPUS, CORPUS_VERSION
+from evaluation.corpus import CORPUS, CORPUS_VERSION, sample_set_hash
 
 STRUCTURED_FILENAMES = {
     "content_list": "source.content_list.json",
@@ -236,8 +236,11 @@ def run_replay(corpus: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     ]
     passed = [e for e in entries if e["passed"]]
     return {
+        "reportKind": "deterministic-replay",
+        "reportVersion": "replay-report-v1",
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "corpusVersion": CORPUS_VERSION,
+        "sampleSetHash": sample_set_hash(corpus),
         "entryCount": len(entries),
         "totals": {
             "passed": len(passed),
@@ -258,6 +261,7 @@ def write_report(result: dict[str, Any], output_dir: Path) -> dict[str, Path]:
         "# 离线评测重放报告",
         "",
         f"- 生成时间：{result['generatedAt']}",
+        f"- 报告类型：{result['reportKind']}；报告版本：{result['reportVersion']}",
         f"- 语料版本：v{result['corpusVersion']}",
         f"- 条目：{result['entryCount']}；通过 {result['totals']['passed']}；"
         f"预期外失败 {result['totals']['failedUnexpected']}；"
@@ -291,6 +295,11 @@ def main() -> int:
         type=Path,
         default=Path(__file__).resolve().parents[3] / "output" / "eval-reports",
         help="报告输出目录（默认 <repo>/output/eval-reports）",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="只关注校验退出码；报告仍会写入指定目录",
     )
     args = parser.parse_args()
     result = run_replay()

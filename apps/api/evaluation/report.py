@@ -66,24 +66,30 @@ def collect_judge_status(output_dir: Path) -> dict[str, Any]:
     if not reports:
         return {"available": False}
     latest = json.loads(reports[0].read_text(encoding="utf-8"))
-    scored = [
-        item["outcome"]["scores"]
-        for item in latest.get("results", [])
-        if item.get("passed") and isinstance(item.get("outcome"), dict)
-        and isinstance(item["outcome"].get("scores"), dict)
-    ]
-    averages = {
-        dimension: round(sum(s[dimension] for s in scored) / len(scored), 2)
-        for dimension in ("clarity", "targeting", "factual")
-        if scored
-    } if scored else {}
+    metrics = latest.get("judgeMetrics")
+    if isinstance(metrics, dict) and isinstance(metrics.get("averageScores"), dict):
+        averages = metrics["averageScores"]
+    else:
+        scored = [
+            item["outcome"]["scores"]
+            for item in latest.get("results", [])
+            if item.get("passed") and isinstance(item.get("outcome"), dict)
+            and isinstance(item["outcome"].get("scores"), dict)
+        ]
+        averages = {
+            dimension: round(sum(s[dimension] for s in scored) / len(scored), 2)
+            for dimension in ("clarity", "targeting", "factual")
+            if scored
+        } if scored else {}
+    judge = latest.get("judge") if isinstance(latest.get("judge"), dict) else {}
     return {
         "available": True,
         "latestReport": reports[0].name,
-        "provider": latest.get("provider"),
-        "model": latest.get("model"),
+        "provider": judge.get("provider", latest.get("provider")),
+        "model": judge.get("model", latest.get("model")),
         "samples": latest.get("totals", {}),
         "averageScores": averages,
+        "judgeMetrics": metrics if isinstance(metrics, dict) else None,
     }
 
 

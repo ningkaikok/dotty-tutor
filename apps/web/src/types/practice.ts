@@ -1,5 +1,7 @@
 import type { QuestionPayload } from "./question";
 import type { ModelRun } from "./runtime";
+import type { MistakeErrorReason, MistakeStatus } from "./mistake";
+import type { ReviewTask } from "./review";
 
 export type VariationStrategy =
   | "concept-foundation"
@@ -30,6 +32,8 @@ export interface VariationExercise {
   feedback: string;
   createdAt: number;
   answeredAt?: number;
+  attemptId?: string;
+  evaluationEvidence?: Record<string, unknown>;
   /** Returned by the answer endpoint when deterministic evidence changes the tutor stage. */
   tutorStage?: "practice" | "verify";
   mastery?: {
@@ -38,4 +42,36 @@ export interface VariationExercise {
     mastered: boolean;
     answeredCount: number;
   };
+}
+
+export interface VariationAttempt {
+  attemptId: string;
+  variationId: string;
+  mistakeId: string;
+  learnerId: string;
+  attemptNumber: number;
+  response: { content?: string; interactionResult?: Record<string, unknown> };
+  evaluationEvidence: Record<string, unknown>;
+  assessment: "correct" | "partial" | "incorrect";
+  feedback: string;
+  createdAt: number;
+}
+
+export interface MistakeEvidence {
+  mistakeId: string;
+  learnerId: string;
+  errorReason?: MistakeErrorReason;
+  status: MistakeStatus;
+  masteryTransition: string;
+  variations: Array<{
+    variationId: string;
+    sequence: number;
+    strategy: string;
+    strategyVersion?: string;
+    target?: string;
+    objective?: string;
+    level: VariationLevel;
+    attempts: VariationAttempt[];
+  }>;
+  reviewTasks: ReviewTask[];
 }

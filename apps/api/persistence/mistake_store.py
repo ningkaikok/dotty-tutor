@@ -176,11 +176,14 @@ class MistakeStore:
             "knowledge_point": str(question.get("knowledgePoint") or "未归类知识点"),
             "error_reason": None,
             "notes": "由互动试卷答错后自动记录",
-            "status": "unmastered",
+            # 自动记录只保存客观错答，错误原因必须由学生在确认页选择，不能由
+            # 这条作答记录推断；因此首次进入错题本仍是 pending_confirmation。
+            "status": "pending_confirmation",
             "created_at": timestamp,
             "updated_at": timestamp,
-            "confirmed_at": timestamp,
+            "confirmed_at": None,
         }
+        existing = self.get(mistake_id)
         update_values = {
             "question_payload_json": values["question_payload_json"],
             "guide_cards_json": values["guide_cards_json"],
@@ -189,10 +192,11 @@ class MistakeStore:
             "chapter": values["chapter"],
             "knowledge_point": values["knowledge_point"],
             # 学生再次做错已经掌握的题时，应重新回到待掌握状态。
-            "status": "unmastered",
+            "status": "unmastered" if existing and existing.get("errorReason") else "pending_confirmation",
             "updated_at": timestamp,
-            "confirmed_at": timestamp,
         }
+        if not existing or not existing.get("errorReason"):
+            update_values.update({"error_reason": None, "confirmed_at": None})
         if self.engine.dialect.name == "postgresql":
             statement = postgresql_insert(mistake_items).values(**values).on_conflict_do_update(
                 index_elements=[mistake_items.c.mistake_id],

@@ -36,20 +36,21 @@
 不需要再另外准备语料。因此把这两项从队列提前到最优先，先用现成坏样本把金标准集和回放循环建起来，
 再决定下一步修哪个：
 
-1. **T1 / `test/offline-ai-evaluation`**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练；
+1. **T1 / `test/offline-ai-evaluation`（已完成）**：建立脱敏金标准集，覆盖 OCR、公式、题图、题型、审核和陪练；
    种子数据直接复用本轮已经写成单测夹具的真实坏样本（`apps/api/tests/test_question_processing.py`、
    `test_question_segmentation.py`、`test_question_content_residue.py`、`test_stem_image_placement.py`
    里的真实 OCR 片段），不必重新采集。
-2. **T1 / `feature/badcase-replay-loop`**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
-   建成后，T0 里剩下的几项开放问题（见下）应该先进金标准集验证影响范围，再决定是否值得单独立项修复，
-   不要再凭感觉判断优先级。
+2. **T1 / `feature/badcase-replay-loop`（已完成）**：统一 Badcase 标签，支持失败样本重放、前后版本比较和回归入集。
+   确定性报告比较结构回归；Judge 报告使用 `judge-report-v2`，固定比较条件并对共同成功样本做配对评分，
+   同时展示成功率、失败数、P50/P95、逻辑调用数和 Provider 实际请求数。缺失指标不按 0 计算，评分变化不自动阻断。
+   后续用真实运行持续扩充样本，不把真实模型调用作为单元测试依赖。
 3. **T2 / `feat/ocr-preflight-report`**：增加页面预检和脏页报告，复用现有页面级 OCR 路由、质量门禁和局部重试。
    **已完成**（`apps/api/ocr_preflight.py` + `ocrRun.preflight`）：预检只参与路由（空白页跳过 MinerU
    升级）和报告，不删除页面；扫描页安全边界有专项测试。
 4. **T2 / `feat/model-capability-registry`**：建立模型能力目录，按任务能力筛选候选模型，并保持 RunSnapshot 不变。
    **已完成**（`infrastructure/runtime/capabilities.py` + `providers()` 的 `modelDetails` +
    调用路径健康挂钩）；剩余的"切换前后评测集比较"随 T1 模型维度解锁。
-5. **T0 / `feature/sub-questions`（已立项排期）**：多小问结构三处联动，按既有 T0 设计块拆分为
+5. **T0 / `feature/sub-questions`（已完成，v0.26.0）**：多小问结构三处联动，按既有 T0 设计块拆分为
    三个独立 PR——①契约层 `subQuestions` schema + 逐小问 answerSpec + 质量门禁适配；
    ②前端分小问作答渲染；③判题循环逐小问确定性判定与"不可判小问"显式标记。
    触发条件已满足（本地题库占比 17%）；在每个 PR 改动落在对应文件时顺路执行。
@@ -130,22 +131,22 @@
 找坏样本，成本高且覆盖面随机——下面两条正是要解决这个问题，而且已经有现成的真实坏样本可以直接
 当种子数据，不需要另外采集。
 
-1. [x] 建立脱敏金标准集，覆盖 OCR、公式、题图、题型和陪练意图（9 条语料，
+1. [x] 建立脱敏金标准集，覆盖 OCR、公式、题图、题型和陪练意图（9 条确定性语料，另有版本化讲解 Judge 语料，
    `apps/api/evaluation/`，`python -m evaluation.replay`）。种子直接复用单测夹具的真实坏样本，
    含一个固化 T0 子问题 A 的特征化条目（已随 v0.23.0 修复转正为回归证据）。重放器支持多入口：
    切分 / 公式规范化（幂等断言）/ 审核质量门禁（状态+错误摘要）/ 陪练意图识别。
-   **剩余**：讲解样本与期望质量锚点维度依赖 LLM-as-Judge 落地后补齐。验收时同步收敛版本化
+   讲解 Judge 使用独立的 `judge-report-v2` 报告契约，按需生成，不进入确定性重放链路。验收时同步收敛版本化
    Prompt 模板：
    模板进入普通 Python 模块或小目录，运行快照记录 `templateId`/`templateVersion`/`templateHash`/
    `schemaVersion`，动态输入只保存题目修订、OCR 产物和线程摘要 ID 的引用；不保存渲染后的完整
    Prompt（含教材原文和学生输入），也不建设 Prompt 管理平台或巨型常量表。快照同时记录采样参数
    （temperature 等 options）；回放目标是结构化重放与指标比较，不是逐字节复现——本地 LLM 输出
    本身非确定，同模板同参数也可能因运行时版本产生差异。
-2. [ ] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。**进行中**：
+2. [x] 统一 Badcase 标签，支持从失败样本重放并比较结构、评分、耗时和调用次数。**已完成**：
    统一标签体系（`evaluation/labels.py`）、坏样本登记簿（`evaluation/badcases.json` + `badcase.py`，
-   状态机约束"fixed 必须带修复说明和版本"）、前后对比工具（`python -m evaluation.compare`）已落地，
-   结构维度的对比可用；模型调用边界指标表（#166）已就绪，评分/耗时/调用次数的对比
-   只差评测集接入模型调用后串联。
+   状态机约束"fixed 必须带修复说明和版本"）、前后对比工具（`python -m evaluation.compare`）已落地。
+   Judge 报告单独记录 `judgeMetrics`，每样本保留真实耗时、token、逻辑调用和 Provider 尝试次数；报告带
+   唯一 `runId`，且配置或样本不一致时只报告不可比原因，不计算虚假分差。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
 5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
@@ -156,11 +157,10 @@
 clarity 均分 3.67、targeting 4.00、factual 5.00，置信度 0.9-0.95；报告落
 output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分数漂移。
 6. [ ] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
-   **进行中**：业务漏斗已上线（`GET /api/funnel`），成本/token 维度的数据源也已就绪——
+   **进行中**：业务漏斗已上线（`GET /api/funnel`），验证证据链第一版和同知识点再错率已落地；成本/token 维度的数据源也已就绪——
    模型调用边界指标表（`model_call_metrics`）随每次调用记录 runtime/task/provider/model/
    耗时/token/失败，聚合经 `GET /api/metrics/model-calls?days=N` 查询。漏斗与成本的
-   联合展示待前端页面；"同知识点再次出错率"需要尝试与知识点的跨会话关联，
-   待 subQuestions/画像工作后补充。
+   联合展示仍待前端页面；当前再错率限定为同一学生、同一发布版本内有后续作答的知识点路径。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
    CI 中在 `apps/api` 下跑 `uv run ruff check .`、在 `apps/web` 下跑 `pnpm run lint`）。
    规则集刻意克制：Ruff 只开 E4/E7/E9/F/I，
@@ -300,7 +300,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 历史正确性修复、`RunSnapshot`、事件模型、可恢复后台任务和整卷任务汇总已经完成；新的 PR 顺序为：
 
-`test/offline-ai-evaluation` → `feature/badcase-replay-loop` → `feat/ocr-preflight-report` →
+`test/offline-ai-evaluation`（已完成） → `feature/badcase-replay-loop`（已完成） → `feat/ocr-preflight-report` →
 `feat/model-capability-registry` → `test/postgres-integration` → `chore/public-test-hardening`。
 
 前两项种子数据直接复用本轮已核实的真实坏样本（见“当前执行队列”），不必重新采集；建成后再回头评估
