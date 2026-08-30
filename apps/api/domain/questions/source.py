@@ -566,10 +566,15 @@ def _apply_bbox_image_attribution(
         best = candidates[0] if candidates else None
         second_score = candidates[1]["score"] if len(candidates) > 1 else 0.0
         confident = bool(best and best["score"] >= 0.72 and best["score"] - second_score >= 0.12)
-        entry = {"image": path, "status": "assigned" if confident else "needs_review", "candidates": candidates, "selectedQuestionNumber": best["number"] if confident else None}
+        entry = {
+            "image": path,
+            "status": "assigned" if confident else "needs_review",
+            "candidates": candidates,
+            "selectedQuestionNumber": best["number"] if best is not None and confident else None,
+        }
         if audit is not None:
             audit.append(entry)
-        if not confident:
+        if not confident or best is None:
             continue
         target = index_by_number.get(best["number"])
         if target is not None and path not in mutable[target]:

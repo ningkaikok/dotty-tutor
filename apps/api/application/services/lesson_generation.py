@@ -134,8 +134,10 @@ def _normalized_sub_questions(generated: dict[str, Any]) -> list[dict[str, Any]]
     for index, raw in enumerate(raw_parts[:12], start=1):
         if not isinstance(raw, dict):
             continue
-        evaluation = raw.get("evaluation") if isinstance(raw.get("evaluation"), dict) else {}
-        mode = evaluation.get("mode") if evaluation.get("mode") in {"deterministic", "tutor"} else "tutor"
+        raw_evaluation = raw.get("evaluation")
+        evaluation: dict[str, Any] = raw_evaluation if isinstance(raw_evaluation, dict) else {}
+        mode_value = evaluation.get("mode")
+        mode = mode_value if mode_value in {"deterministic", "tutor"} else "tutor"
         question_type = safe_text(raw.get("questionType"), "short-answer", 30)
         if question_type not in allowed_types:
             question_type = "short-answer"
