@@ -62,16 +62,18 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
         />
       </div>
       {answered && (
+        // 合并原先两个 role="status" 区块：判定结果和掌握结果说的是同一件事，
+        // 分开渲染会让读屏把近义的话朗读两遍。层次是判定结果 → 反馈正文 →
+        // 掌握结果的增量信息，掌握结果那段只保留判定结果没有覆盖的新信息。
         <div className={`variation-feedback ${state.active.assessment}`} role="status">
           <strong>{state.active.assessment === "correct" ? "回答正确" : "这次还没有答对"}</strong>
           <p><RichText text={state.active.feedback} /></p>
-        </div>
-      )}
-      {answered && state.active.mastery && (
-        <div className="mastery-progress" role="status">
-          <strong>{state.active.mastery.mastered ? "已完成掌握验证" : "还没有答对"}</strong>
-          <span>{state.active.mastery.mastered ? "这道题已完成" : "修改答案后重新提交即可完成"}</span>
-          {state.active.mastery.mastered && <p>这道题已从错题本进入进阶本，后续会按计划安排复习。</p>}
+          {state.active.mastery && (
+            <div className="variation-mastery-note">
+              <strong>{state.active.mastery.mastered ? "已完成掌握验证" : "修改答案后重新提交即可完成"}</strong>
+              {state.active.mastery.mastered && <p>这道题已从错题本进入进阶本，后续会按计划安排复习。</p>}
+            </div>
+          )}
         </div>
       )}
       {state.error && <p className="mistake-error" role="alert">{state.error}</p>}

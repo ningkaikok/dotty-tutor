@@ -154,8 +154,10 @@
 .variation-feedback.correct { color: #12694f; background: #dff4e9; }
 .variation-feedback.incorrect { color: #9a4c30; background: #fae9df; }
 .variation-feedback p { margin: 5px 0 0; }
-.mastery-progress { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-top: 12px; padding: 12px 14px; border: 1px solid #bcdccc; border-radius: 12px; color: #1c624d; background: #eaf7f1; }
-.mastery-progress p { flex-basis: 100%; margin: 2px 0 0; color: #4f6d61; font-size: 12px; }
+/* 掌握结果的增量信息：同一个 role="status" 区块内的第二视觉层次，
+   与判定标题拉开一点距离，用浅色分隔线代替单独的卡片。 */
+.variation-mastery-note { margin-top: 10px; padding-top: 10px; border-top: 1px dashed rgba(23, 60, 49, .18); }
+.variation-mastery-note p { margin: 4px 0 0; font-size: 12px; }
 .variation-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 .progress-page { padding-bottom: 40px; }
 .progress-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 22px; }

@@ -7,6 +7,8 @@ interface PipelinePanelProps {
   phase: UploadPhase;
   processingTask: PdfUploadTask | null;
   activeStage: number;
+  /** 当前选中上传项的文件名；没有任何上传项时为空字符串。用来在结果面板标明“这是哪个文件的结果”。 */
+  activeFilename: string;
   onContinue: (result: TextbookImportResult) => void;
 }
 
@@ -39,14 +41,18 @@ function QualityReport({ report }: { report: ImportQualityReport }) {
   );
 }
 
-export function PipelinePanel({ result, pdfMode, phase, processingTask, activeStage, onContinue }: PipelinePanelProps) {
+export function PipelinePanel({ result, pdfMode, phase, processingTask, activeStage, activeFilename, onContinue }: PipelinePanelProps) {
   const pipeline = pdfMode ? PDF_PIPELINE : IMAGE_PIPELINE;
   const canContinue = Boolean(result) && (phase === "done" || !pdfMode);
+  // 上传区支持并行处理多个 PDF，但这里始终只渲染“当前选中项”的结果；
+  // 没有这行提示时，切换文件会让右侧整块跳变却说不清是哪个文件的结果。
+  const hasActiveUpload = Boolean(activeFilename);
 
   return (
     <aside className="pipeline-panel panel">
       <span className="eyebrow">处理链路</span>
       <h2>{result ? (phase === "done" ? "教材已拆分并结构化" : "预览已完成，整本处理中") : "即将执行的处理链路"}</h2>
+      {hasActiveUpload && <p className="pipeline-active-file">当前显示：{activeFilename}</p>}
       <ol className="pipeline-list">
         {(result?.stages.map((stage) => stage.label) ?? pipeline).map((label, index) => {
           const complete = Boolean(result) || (activeStage > 0 && index < activeStage);
@@ -98,14 +104,23 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
             {canContinue ? "进入动态教材 →" : "整本教材处理中…"}
           </button>
         </div>
-      ) : (
+      ) : hasActiveUpload ? (
+        // 选中的文件还没有结果，和“一个文件都还没加入”是两种不同的空态。
+        // 这里按 phase 分支而不是只看 pdfMode：文件刚选好还没开始时说“还在处理中”
+        // 是错的，会让人以为后台已经在跑。
         <p className="pipeline-note">
-          {pdfMode
-            ? phase === "processing"
-              ? (processingTask?.message ?? "正在读取后端处理进度…")
-              : "上传中断后点击继续，只会补传缺失分块；上传完成后由后台按页码批次持续识别整本教材。"
-            : "图片会直接进入版面、公式和题目识别流程。"}
+          {phase === "processing"
+            ? (processingTask?.message ?? "正在读取后端处理进度…")
+            : phase === "uploading" || phase === "paused"
+              ? "文件还在上传，传完会自动开始识别。"
+              : phase === "error"
+                ? "这个文件没有识别成功，可以在左侧重试或移除。"
+                : pdfMode
+                  ? "上传中断后点击继续，只会补传缺失分块；上传完成后由后台按页码批次持续识别整本教材。"
+                  : "点击左侧的开始识别后，这个文件的结构化结果会显示在这里。"}
         </p>
+      ) : (
+        <p className="pipeline-note">图片会直接进入版面、公式和题目识别流程；PDF 会分块上传并按页批次识别。</p>
       )}
     </aside>
   );
