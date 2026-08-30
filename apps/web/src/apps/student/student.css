@@ -323,6 +323,15 @@
 .student-feedback-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .student-feedback-heading span { color: #7b887f; font-size: 11px; }
 .student-feedback p { margin: 6px 0 0; line-height: 1.65; }
+.student-paper-panel > .evaluation-evidence { margin: 0 30px 22px; }
+.student-paper-panel .evaluation-evidence { border-color: #dce8e0; color: #53665b; background: #f8fbf8; }
+.student-paper-panel .evaluation-evidence summary { color: #27755d; cursor: pointer; font-weight: 700; }
+.student-paper-panel .evaluation-evidence-body { margin-top: 8px; line-height: 1.6; }
+.student-paper-panel .evaluation-evidence-body p { margin: 0; }
+.student-paper-panel .evaluation-evidence-body small { display: block; margin-top: 7px; color: #89958e; font-size: 10px; }
+.student-paper-panel .evaluation-evidence-parts { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
+.student-paper-panel .evaluation-evidence-parts li { display: flex; justify-content: space-between; gap: 12px; }
+.student-paper-panel .evaluation-evidence-parts strong { color: #27755d; font-size: 11px; }
 
 .student-mistake-notice {
   display: flex;

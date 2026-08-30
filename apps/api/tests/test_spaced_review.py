@@ -135,6 +135,30 @@ class SpacedReviewTests(unittest.TestCase):
         self.assertEqual(progress["reviewAccuracy"], 1)
         self.assertEqual(progress["knowledgePoints"][0]["knowledgePoint"], "基础运算")
 
+    def test_review_evaluation_evidence_is_persisted_and_listed(self) -> None:
+        task = self.reviews.schedule(
+            mistake_id="mistake-review",
+            learner_id="local-demo",
+            base_time=time.time() - 2 * 86_400,
+        )[0]
+
+        started = self.client.post(f"/api/reviews/{task['taskId']}/start")
+        self.assertEqual(started.status_code, 200)
+        answered = self.client.post(f"/api/reviews/{task['taskId']}/answer", json={
+            "content": "5",
+            "interactionResult": {"numericAnswer": "5"},
+        })
+
+        self.assertEqual(answered.status_code, 200)
+        evidence = answered.json()["evaluationEvidence"]
+        self.assertEqual(evidence["strategy"], "numeric-tolerance")
+        self.assertEqual(evidence["evaluatorVersion"], "answer-evaluator-v1")
+        stored = self.reviews.get(task["taskId"])
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored["evaluationEvidence"], evidence)
+        listed = self.reviews.list_for_learner("local-demo")
+        self.assertEqual(listed[0]["evaluationEvidence"], evidence)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -87,8 +87,12 @@ dotty-tutor/
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
-│   ├── apps/mistake/           # 错题本、录入、裁切和确认
+│   ├── apps/mistake/           # 错题本、录入、裁切、确认和陪练
+│   │   ├── errorReasons.ts     # 错因标签与描述的单一来源
+│   │   ├── attribution.ts      # 学生自评与最新可信 AI 归因的纯函数
+│   │   └── components/MistakeAttribution.tsx # 错因双归因对照展示
 │   ├── components/             # 跨教材题型复用的作答组件与富文本渲染
+│   │   └── EvaluationEvidence.tsx # 学生可见的确定性判题证据折叠展示
 │   ├── answerAssembly.ts       # 多小问及画线等交互答案的统一组装
 │   ├── richTextParser.ts       # 普通文本与显式数学片段的安全分词
 │   ├── lesson/                 # 课程文档和内容块渲染器
@@ -189,7 +193,18 @@ api/routers/mistake_routes.py
   → api/routers/tutoring_routes.py（线程 HTTP 边界）
   → application/services/stateful_tutor.py（判题、提示和状态转换）
   → persistence/tutoring_store.py（线程与消息）
+  → persistence/variation_store.py（验证题与追加式 EvaluationEvidence）
+  → api/routers/review_routes.py（复习判题与进度 HTTP 边界）
+  → persistence/review_store.py（review_tasks 快照、答案与 evaluation_evidence_json）
 ```
+
+错因双归因沿着同一条链路流动：`mistake_items.error_reason` 是学生自评，陪练模型把带证据的
+`misconception.category` 交给 `turn_plan.normalize_misconception()` 复用证据/置信度门禁；
+`tutoring_routes.py` 只在门禁通过后写入 `ai_error_reason` 与置信度。`build_tutor_turn_plan()`
+按 AI → 学生自评 → `unknown` 兜底选择变式策略，并在 `errorStrategy.source` 记录采信来源；
+兜底的 `unknown` 只用于策略选择，跳过自评不会写入数据库。陪练在自评完成或跳过后，
+由 `attribution.ts` 从线程消息取最后一条可信 AI 归因，并由 `MistakeAttribution.tsx` 与学生自评并列展示；
+错题本也复用 `errorReasons.ts` 区分显示两种标签。
 
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
 直接替换为确定性识别器，也避免导入 ASGI 应用。
@@ -310,8 +325,8 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 扩展错题复习任务
 
-阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，
-Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
+阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，复习作答的
+确定性判题证据由 `review_tasks.evaluation_evidence_json` 持久化，Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。
 2. 复用 `QuestionPayload`、确定性判题和掌握度证据，不让模型直接修改状态。

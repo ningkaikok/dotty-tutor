@@ -1,5 +1,6 @@
 import type { Question, QuestionPayload } from "./question";
 import type { ModelRun } from "./runtime";
+import type { EvaluationEvidence } from "./tutoring";
 
 export interface StructuredAnswerInput {
   content: string;
@@ -17,6 +18,8 @@ export interface ReviewTask {
   modelRun: ModelRun | Record<string, never>;
   response: StructuredAnswerInput | Record<string, never>;
   assessment?: "correct" | "partial" | "incorrect";
+  /** Older review responses may omit evidence until the persisted response contains it. */
+  evaluationEvidence?: EvaluationEvidence;
   feedback: string;
   createdAt: number;
   startedAt?: number;

@@ -13,6 +13,7 @@ from domain.tutoring.turn_plan import (
     build_tutor_turn_plan,
     infer_student_intent,
     normalize_misconception,
+    resolve_error_strategy,
     select_teaching_action,
     teaching_strategy_context,
 )
@@ -80,9 +81,13 @@ class StatefulTutor:
         )
         # 生成前只使用服务端已经知道的事实选择动作。模型随后可以提出误区
         # 假设，但不能反向改写这次输入的意图或判题权限。
+        generation_error_reason, _ = resolve_error_strategy(
+            mistake.get("errorReason"),
+            ai_error_reason=mistake.get("aiErrorReason"),
+        )
         generation_action = select_teaching_action(
             intent=student_intent["id"],
-            error_reason=mistake.get("errorReason"),
+            error_reason=generation_error_reason,
             current_stage=thread["stage"],
             assessment="partial",
         )
@@ -93,6 +98,7 @@ class StatefulTutor:
             thread["stage"],
             intent=student_intent,
             teaching_action=generation_action,
+            ai_error_reason=mistake.get("aiErrorReason"),
         )
         model_context = f"{context}\n{strategy_context}"[-2_700:]
         tutor_request = HelpRequest(
@@ -157,6 +163,7 @@ class StatefulTutor:
             ),
             student_intent=student_intent,
             misconception=misconception,
+            ai_error_reason=mistake.get("aiErrorReason"),
             generation_teaching_action=generation_action,
             evaluation_evidence=tutor_reply.guideContext.get("evaluationEvidence"),
         )

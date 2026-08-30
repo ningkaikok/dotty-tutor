@@ -4,7 +4,11 @@ import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { RichText } from "../../../RichText";
 import { displayedPrompt } from "../../../questionPresentation";
 import type { MistakeErrorReason, MistakeItem, TutorStage } from "../../../types/index";
+import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
+import { resolveMistakeAttribution } from "../attribution";
 import { useMistakeTutor } from "../useMistakeTutor";
+import { ERROR_REASONS } from "../errorReasons";
+import { MistakeAttribution } from "./MistakeAttribution";
 import { VariationPractice } from "./VariationPractice";
 
 interface MistakeTutorProps {
@@ -17,17 +21,6 @@ const STAGES: Array<{ id: "understanding" | "practice" | "verify"; label: string
   { id: "verify", label: "掌握验证" },
 ];
 
-// 与旧确认页完全一致的六个错因选项和描述文案：错因归因从确认页迁移到陪练
-// 首轮，这里是它唯一的落脚点，文案本身不应该在迁移过程中被改写。
-const ERROR_REASONS: Array<[MistakeErrorReason, string, string]> = [
-  ["concept", "概念不清", "定义、公式或原理没有理解"],
-  ["reading", "审题错误", "遗漏或误解了题目条件"],
-  ["calculation", "计算失误", "方法正确但运算出错"],
-  ["missing_step", "步骤遗漏", "推导、证明或单位不完整"],
-  ["unknown", "完全不会", "不知道从哪里开始"],
-  ["careless", "粗心大意", "会做但抄错、看错或没检查"],
-];
-
 function visibleStage(stage: TutorStage): (typeof STAGES)[number]["id"] {
   return stage === "diagnose" || stage === "explain" ? "understanding" : stage;
 }
@@ -37,6 +30,15 @@ function assessmentLabel(message: { assessment?: string; action: Record<string, 
   if (message.assessment !== "correct") return "继续思考";
   const plan = message.action.tutorTurnPlan as { audit?: { assessmentAuthority?: string } } | undefined;
   return plan?.audit?.assessmentAuthority === "deterministic" ? "答案正确" : "理解方向正确";
+}
+
+function messageEvidence(action: Record<string, unknown>): Record<string, unknown> | undefined {
+  const plan = action.tutorTurnPlan;
+  if (typeof plan !== "object" || plan === null || Array.isArray(plan)) return undefined;
+  const evidence = (plan as Record<string, unknown>).evaluationEvidence;
+  return typeof evidence === "object" && evidence !== null && !Array.isArray(evidence)
+    ? evidence as Record<string, unknown>
+    : undefined;
 }
 
 export function MistakeTutor({ item }: MistakeTutorProps) {
@@ -64,6 +66,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
   const activeStage = STAGES.findIndex((stage) => stage.id === visibleStage(thread.stage));
   const understanding = visibleStage(thread.stage) === "understanding";
   const hasSubmittedTurn = Boolean(thread.messages?.some((message) => message.role === "student"));
+  const attribution = resolveMistakeAttribution(item.errorReason, thread.messages);
 
   const submitSelfAssessment = async (reason: MistakeErrorReason) => {
     if (savingReason) return;
@@ -168,6 +171,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
           </div>
         ) : (
           <>
+            <MistakeAttribution attribution={attribution} />
             <div className="tutor-messages" aria-live="polite">
               {!state.thread.messages?.length && (
                 <div className="tutor-message assistant">
@@ -184,6 +188,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
                       {assessmentLabel(message)}
                     </small>
                   )}
+                  {message.role === "assistant" && <EvaluationEvidence evidence={messageEvidence(message.action)} question={question} />}
                 </div>
               ))}
               <div ref={messagesEnd} />

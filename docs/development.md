@@ -249,6 +249,7 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 数据库只支持全新空库启动。首次访问各领域 Store 时会根据
 `apps/api/persistence/schema.py` 及领域 Store 中的当前 SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema；
 项目不提供原地数据库升级，也不再维护编号 SQL 迁移链。已有本地测试库和 `data/` 资源应在切换当前基线前清空，
+例如复习任务新增字段后，旧的 `review_tasks` 表也必须随空库重建，
 生产环境需要通过备份后重建空库并重新导入当前数据。
 
 ## 更新 Playwright 视觉快照

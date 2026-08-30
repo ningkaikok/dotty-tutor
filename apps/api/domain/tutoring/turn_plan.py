@@ -50,6 +50,8 @@ ERROR_STRATEGIES = {
     "careless": ("self-check", "加入结果、单位和条件的自检步骤"),
 }
 
+AI_ERROR_REASONS = frozenset(ERROR_STRATEGIES) - {"unknown"}
+
 
 def _compact_text(value: Any, limit: int) -> str:
     return " ".join(str(value or "").split())[:limit]
@@ -174,6 +176,8 @@ def normalize_misconception(
     except (TypeError, ValueError):
         confidence = 0.0
     confidence = round(max(0.0, min(confidence, 1.0)), 3)
+    raw_category = source.get("category")
+    category = raw_category if isinstance(raw_category, str) and raw_category in ERROR_STRATEGIES else "unknown"
     # 只有模型调用边界提供了本轮原文时才重新验证证据来源。领域层再次清洗
     # 已规范化结果时保留 evidenceMatched，避免把“有文本”等同于“有证据”。
     evidence_matched = (
@@ -194,7 +198,34 @@ def normalize_misconception(
         "evidenceMatched": evidence_matched,
         "confidence": confidence,
         "needsConfirmation": needs_confirmation,
+        "category": category,
     }
+
+
+def resolve_error_strategy(
+    error_reason: str | None,
+    *,
+    ai_error_reason: str | None = None,
+    misconception: dict[str, Any] | None = None,
+) -> tuple[str, str]:
+    """Resolve the strategy reason shared by planning and prompt generation.
+
+    A current-round misconception is trusted only after the existing gate and
+    only when its category carries information. A previously persisted AI
+    attribution is the next source; ``unknown`` is deliberately excluded
+    because it means that the model had no usable classification.
+    """
+    diagnosis = normalize_misconception(misconception)
+    if (
+        diagnosis.get("needsConfirmation") is False
+        and diagnosis.get("category") in AI_ERROR_REASONS
+    ):
+        return diagnosis["category"], "ai"
+    if ai_error_reason in AI_ERROR_REASONS:
+        return ai_error_reason, "ai"
+    if error_reason in ERROR_STRATEGIES:
+        return error_reason, "self"
+    return "unknown", "fallback"
 
 
 def select_teaching_action(
@@ -204,10 +235,16 @@ def select_teaching_action(
     current_stage: str,
     assessment: str,
     misconception: dict[str, Any] | None = None,
+    ai_error_reason: str | None = None,
     evaluation_evidence: dict[str, Any] | None = None,
 ) -> str:
     """根据领域事实选择唯一教学动作，模型无权覆盖结果。"""
     diagnosis = normalize_misconception(misconception)
+    resolved_reason, _ = resolve_error_strategy(
+        error_reason,
+        ai_error_reason=ai_error_reason,
+        misconception=diagnosis,
+    )
     if intent == "confirm-ready":
         return "generate-micro-practice"
     if intent == "challenge-answer":
@@ -230,9 +267,9 @@ def select_teaching_action(
     ):
         return "extract-conditions"
     if intent == "request-explanation":
-        return "contrast-concepts" if error_reason == "concept" else "complete-step"
+        return "contrast-concepts" if resolved_reason == "concept" else "complete-step"
     if intent == "express-confusion":
-        return "show-micro-example" if error_reason == "unknown" else "extract-conditions"
+        return "show-micro-example" if resolved_reason == "unknown" else "extract-conditions"
     if intent == "off-topic":
         return "extract-conditions"
     if current_stage == "verify":
@@ -252,7 +289,7 @@ def select_teaching_action(
         "concept": "contrast-concepts",
         "unknown": "show-micro-example",
         "careless": "run-self-check",
-    }.get(error_reason or "unknown", "extract-conditions")
+    }.get(resolved_reason, "extract-conditions")
 
 
 def _evaluation_fact_line(evidence: dict[str, Any] | None) -> str:
@@ -281,10 +318,17 @@ def teaching_strategy_context(
     *,
     intent: dict[str, Any] | None = None,
     teaching_action: str | None = None,
+    misconception: dict[str, Any] | None = None,
+    ai_error_reason: str | None = None,
     evaluation_evidence: dict[str, Any] | None = None,
 ) -> str:
     """生成可安全放入提示词的锁定策略与动作约束。"""
-    reason = error_reason if error_reason in ERROR_STRATEGIES else "unknown"
+    diagnosis = normalize_misconception(misconception)
+    reason, _ = resolve_error_strategy(
+        error_reason,
+        ai_error_reason=ai_error_reason,
+        misconception=diagnosis,
+    )
     strategy, objective = ERROR_STRATEGIES[reason]
     intent_id = (intent or {}).get("id", "request-hint")
     action = teaching_action if teaching_action in TEACHING_ACTIONS else "extract-conditions"
@@ -352,12 +396,11 @@ def build_tutor_turn_plan(
     assessment_authority: str = "guided",
     student_intent: dict[str, Any] | None = None,
     misconception: dict[str, Any] | None = None,
+    ai_error_reason: str | None = None,
     generation_teaching_action: str | None = None,
     evaluation_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """用已确认事实和确定性结果构建稳定、可序列化的教学计划。"""
-    reason = error_reason if error_reason in ERROR_STRATEGIES else "unknown"
-    strategy, objective = ERROR_STRATEGIES[reason]
     authority = "deterministic" if assessment_authority == "deterministic" else "guided"
     intent = student_intent or {
         "id": "submit-answer" if mode == "answer" else "request-hint",
@@ -383,6 +426,12 @@ def build_tutor_turn_plan(
         "evidence": [item[:80] for item in intent_evidence if isinstance(item, str) and item.strip()][:6],
     }
     diagnosis = normalize_misconception(misconception)
+    reason, strategy_source = resolve_error_strategy(
+        error_reason,
+        ai_error_reason=ai_error_reason,
+        misconception=diagnosis,
+    )
+    strategy, objective = ERROR_STRATEGIES[reason]
     # 判据器证据白名单净化：只保留客观事实字段进入计划与消息动作摘要。
     safe_evidence: dict[str, Any] | None = None
     if isinstance(evaluation_evidence, dict) and evaluation_evidence.get("strategy"):
@@ -430,7 +479,12 @@ def build_tutor_turn_plan(
         # 客观判定事实随计划持久化到消息动作，供复盘"为什么这样回复"；
         # 只追加不覆盖，且不含标准答案。
         "evaluationEvidence": safe_evidence,
-        "errorStrategy": {"id": strategy, "objective": objective, "reason": reason},
+        "errorStrategy": {
+            "id": strategy,
+            "objective": objective,
+            "reason": reason,
+            "source": strategy_source,
+        },
         "teachingAction": action,
         # 仅确定性判题路径可显示标准答案；普通提示不能借计划越权泄题。
         "shouldRevealAnswer": mode == "answer" and authority == "deterministic" and assessment == "incorrect",

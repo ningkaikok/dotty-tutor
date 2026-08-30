@@ -127,6 +127,7 @@ flowchart TB
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `apps/web/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
+| 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
 | 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
 | 教材导入组件 | `apps/web/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |
@@ -193,16 +194,21 @@ flowchart TB
   → 复用 MinerU OCR 与结构化题目生成
   → mistake_items 保存题目快照和运行信息（待确认）
   → 学生修正题干、学段、章节、知识点和原答案
-  → 选择错误原因并 PATCH 确认（待掌握）
+  → 可选填写学生自评错误原因并 PATCH 确认（待掌握）
 ```
 
 错题域使用独立 `MistakeStore` 和 SQLAlchemy metadata，避免继续扩张应用组合 `AppStore`。它与教材域
 共享数据库引擎和数据根目录，但没有把错题生命周期耦合到教材批次表。确认后的错题可以创建唯一
 辅导线程。完成陪练后，独立的 `VariationStore` 保存唯一验证题和结构化作答，避免自由对话被误算为掌握证据。
-每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
+`error_reason` 的语义是学生自评归因；陪练首轮的学生输入由模型提出 `misconception`，其中
+`category` 与证据、置信度一起经过既有门禁。陪练路由只在 `needsConfirmation=false` 时把
+`category`/`confidence` 写入 `ai_error_reason`/`ai_error_reason_confidence`，否则保留既有 AI 判断。
+变式策略优先使用本轮通过门禁的 AI 归因，其次使用学生自评，最后仅在策略选择时回退 `unknown`；
+该来源记录在 `errorStrategy.source`，便于回放审计。前端在学生完成或跳过自评后，才把线程中最后一条可信 AI 归因与学生自评并列展示；
+两者都没有时不渲染对照区块。每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
 答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
 掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
-快照和答案，不参与首次掌握连续计数；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
+快照、答案和确定性判题证据，不参与首次掌握连续计数；复习作答的响应和后续读取都会带上 `evaluationEvidence`；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
 `/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
 ## 有状态单题陪练
@@ -222,6 +228,8 @@ sequenceDiagram
   Tutor->>Check: 复用 TutorEngine 确定性判题
   Check-->>Tutor: correct / partial / incorrect
   Tutor->>Tutor: 生成解释并计算下一阶段
+  Tutor-->>API: 归一化 misconception（含门禁结果）
+  API->>DB: 仅持久化通过门禁的 AI 归因
   Tutor->>DB: 同一事务保存学生和助手消息
   DB-->>UI: 新阶段、回复和结构化 action
 ```
@@ -551,7 +559,8 @@ POST /api/tts
   `(learner_id, knowledge_point_id)` 为键保存 `raw_score`、`score`、`evidence_confidence`、`evidence_count`、
   `algorithm_version` 和 `computed_at` 等掌握度投影。重复作答仍保留在日志中，但派生时每个发布版本的每道题只
   取最新作答，因此离线乱序不会污染结果。
-- `mistake_items` 保存错题快照、学生原答案、章节知识点、错误原因和确认状态。
+- `mistake_items` 保存错题快照、学生原答案、章节知识点、学生自评 `error_reason`、通过门禁的 AI
+  `ai_error_reason`/`ai_error_reason_confidence` 和确认状态；跳过自评不写入 `unknown`。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
 - `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。

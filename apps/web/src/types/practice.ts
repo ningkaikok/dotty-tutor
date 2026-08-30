@@ -2,6 +2,7 @@ import type { QuestionPayload } from "./question";
 import type { ModelRun } from "./runtime";
 import type { MistakeErrorReason, MistakeStatus } from "./mistake";
 import type { ReviewTask } from "./review";
+import type { EvaluationEvidence } from "./tutoring";
 
 export type VariationStrategy =
   | "concept-foundation"
@@ -33,7 +34,7 @@ export interface VariationExercise {
   createdAt: number;
   answeredAt?: number;
   attemptId?: string;
-  evaluationEvidence?: Record<string, unknown>;
+  evaluationEvidence?: EvaluationEvidence;
   /** Returned by the answer endpoint when deterministic evidence changes the tutor stage. */
   tutorStage?: "practice" | "verify";
   mastery?: {
@@ -51,7 +52,7 @@ export interface VariationAttempt {
   learnerId: string;
   attemptNumber: number;
   response: { content?: string; interactionResult?: Record<string, unknown> };
-  evaluationEvidence: Record<string, unknown>;
+  evaluationEvidence: EvaluationEvidence;
   assessment: "correct" | "partial" | "incorrect";
   feedback: string;
   createdAt: number;

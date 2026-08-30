@@ -219,6 +219,19 @@ class VariationPracticeTests(unittest.TestCase):
         self.assertEqual(item["level"], "foundation")
         self.assertEqual(item["questionPayload"]["question"]["variationOf"], "question-1")
 
+    def test_generation_prefers_gated_ai_error_reason(self) -> None:
+        self._advance_thread_to_verify()
+        self.mistakes.update_ai_error_reason(
+            "mistake-1", category="reading", confidence=0.9
+        )
+
+        created = self.client.post("/api/mistakes/mistake-1/variations")
+
+        self.assertEqual(created.status_code, 200)
+        item = created.json()
+        self.assertEqual(item["strategy"], "condition-reading")
+        self.assertEqual(item["questionPayload"]["question"]["variationTarget"], "reading")
+
     def test_incorrect_answer_can_be_resubmitted_without_generating_a_second_question(self) -> None:
         self._advance_thread_to_verify()
         item = self.client.post("/api/mistakes/mistake-1/variations").json()

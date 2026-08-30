@@ -209,6 +209,8 @@ class TutorEngine:
 4. 如果用户是请求提示，只引导下一步，不给最终答案；如果是提交回答，先明确判断再引导修改或继续。
 5. reply 应像真人老师一样简短，最后提一个学生可以继续回答的问题。
 6. misconception 只是对当前误区的假设：evidence 必须引用学生本轮输入中的具体内容；
+   category 必须从 concept（概念）、reading（读题）、calculation（计算）、missing_step（漏步骤）、
+   unknown（无法判断）或 careless（粗心）中选择最符合的一项；必须根据本轮输入填写，不能凭空补写。
    没有证据或置信度低于 0.65 时 needsConfirmation 必须为 true，并通过问题向学生确认。
 7. 严格遵守最近对话摘要中的“学生意图”和“唯一教学动作”；不能自行改判、切换动作或推进阶段。
 """.strip()

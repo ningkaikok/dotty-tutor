@@ -63,21 +63,10 @@ test: cover PostgreSQL job restoration
 
 ## 质量检查
 
-提交 Pull Request 前至少运行：
-
-```bash
-.venv/bin/python -m unittest discover -s backend -p 'test_*.py'
-cd frontend && npm ci && npm run build
-```
-
-Docker 相关改动还需要运行：
-
-```bash
-docker compose config
-docker compose up --build --detach
-curl -fsS http://127.0.0.1:8080/api/health
-docker compose down
-```
+完整的验证命令清单见 [`AGENTS.md`](AGENTS.md#验证与交付)，那份与
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 的门禁逐条对应，是唯一维护的一份。
+概括来说，提交 Pull Request 前后端要过 ruff、pyright 和 unittest，前端要过 eslint、vitest、
+生成类型漂移检查、tsc、build 和 E2E；Docker 相关改动还要验证 compose 能起来。
 
 新增或修复行为应附带测试。修改代码、配置、接口或用户可见行为时，应同步更新
 [`CHANGELOG.md`](CHANGELOG.md) 和相关文档。
@@ -92,6 +81,22 @@ docker compose down
 - 确认 GitHub Actions 全部通过并解决评审对话。
 
 维护者可能要求调整实现、补充测试、拆分 PR，或在产品方向不一致时关闭提案。
+
+## 发布准备
+
+`CHANGELOG.md` 遵循 [Keep a Changelog](https://keepachangelog.com/) 格式。哪些提交类型
+进入哪个分类见 [`AGENTS.md`](AGENTS.md#changelog)。发布版本或完成一组用户可见改动时：
+
+1. 从提交记录整理对应版本的 `Added`、`Changed`、`Fixed`。
+2. 使用用户能理解的描述，必要时合并重复条目。
+3. 将版本、发布日期和条目写入 `CHANGELOG.md`，保留 `Unreleased` 区域。
+4. 在 PR 描述中说明 CHANGELOG 是否已更新。
+
+只要提交信息遵循约定格式，就可以使用 `git-cliff`、Release Please 或类似工具生成初稿；
+自动生成后仍需人工检查措辞、重复项和对用户的实际影响。
+
+不要配置在每次 `main` 推送后覆盖 `Unreleased` 区域或自动创建 CHANGELOG PR 的工作流。
+发布准备时可在 `release/*` 分支运行 `scripts/generate-changelog.sh`，人工审校后再提交。
 
 ## 许可证
 

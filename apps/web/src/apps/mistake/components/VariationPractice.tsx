@@ -1,4 +1,5 @@
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
+import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { RichText } from "../../../RichText";
 import type { TutorStage } from "../../../types/index";
 import { useVariationPractice } from "../useVariationPractice";
@@ -76,6 +77,7 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
           )}
         </div>
       )}
+      {answered && <EvaluationEvidence evidence={state.active.evaluationEvidence as Record<string, unknown> | undefined} question={question} />}
       {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
       <div className="variation-actions">
         {!locked ? (

@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException
 
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.tutoring import TutorMessageRequest
+from domain.tutoring.turn_plan import ERROR_STRATEGIES
 from observability import log_event
 
 
@@ -89,6 +90,25 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             recent_messages=tutoring_store.recent_messages(thread_id),
             request=request,
         )
+        plan = result["action"].get("tutorTurnPlan")
+        diagnosis = plan.get("misconception") if isinstance(plan, dict) else None
+        # AI attribution is written only after the same evidence/confidence gate
+        # used by the tutor plan. An unconfirmed hypothesis must never overwrite
+        # the latest trusted value, and this boundary keeps StatefulTutor store-free.
+        category = diagnosis.get("category") if isinstance(diagnosis, dict) else None
+        confidence = diagnosis.get("confidence") if isinstance(diagnosis, dict) else None
+        if (
+            isinstance(diagnosis, dict)
+            and diagnosis.get("needsConfirmation") is False
+            and category in ERROR_STRATEGIES
+            and category != "unknown"
+            and confidence is not None
+        ):
+            mistake_store.update_ai_error_reason(
+                thread["mistakeId"],
+                category=category,
+                confidence=confidence,
+            )
         saved = tutoring_store.append_turn(
             thread_id,
             student_content=request.content.strip() or "请求下一步提示",
