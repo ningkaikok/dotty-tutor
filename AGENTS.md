@@ -1,7 +1,10 @@
 # Dotty Tutor 开发代理规范
 
 本文档适用于在本仓库中工作的 Codex、其他 AI 编程代理和自动化开发工具。
-与 GitHub 协作相关的通用要求同时参见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
+
+分工：**代理每次都要照做的规则和命令写在本文件里**，人类协作流程（Issue、PR 描述、评审、
+许可证、发布准备）写在 [`CONTRIBUTING.md`](CONTRIBUTING.md)。同一条规则只维护一份——
+两份副本曾各自漂移，导致 CONTRIBUTING 里的验证命令引用了早已不存在的目录。
 
 ## 基本要求
 
@@ -51,71 +54,23 @@
 docstring/JSDoc；显而易见的展示组件不需要堆叠注释。详细边界见
 [`docs/codebase-guide.md`](docs/codebase-guide.md)。
 
-## 分支命名
+## 分支命名与提交信息
 
-从最新的 `main` 创建分支，禁止直接在 `main` 上开发：
+前缀清单、Conventional Commits 格式和示例见
+[`CONTRIBUTING.md`](CONTRIBUTING.md#分支命名)，此处只列代理需要额外遵守的约束：
 
-```bash
-git switch main
-git pull --ff-only
-git switch -c feature/short-description
-```
+- 从最新的 `main` 创建分支，禁止直接在 `main` 上开发。
+- 不要使用 `codex/` 作为分支前缀。
+- 允许的提交 `type` 只有 `feat`、`fix`、`perf`、`refactor`、`docs`、`test`、`chore`；
+  没有把握时不要自造新 type。
+- 提交描述使用祈使语气、英文、小写开头，不加句号；一个提交只处理一个清晰主题。
+- 未经明确要求，不要 `git commit`、`git push` 或创建分支——把改动留在工作区待审。
+- 本仓库常态使用 git worktree，`git stash` 栈是共享的：不要使用裸 `git stash` / `git stash pop`。
 
-分支名称使用小写英文和连字符，并采用以下前缀：
+## CHANGELOG
 
-- `feature/`：新功能。
-- `fix/`：缺陷修复。
-- `docs/`：仅文档变更。
-- `test/`：测试补充或调整。
-- `refactor/`：不改变行为的重构。
-- `chore/`：依赖、CI 和工程维护。
-- `hotfix/`：线上紧急修复。
-- `release/`：版本发布准备。
-
-不要使用 `codex/` 作为分支前缀。例如：
-
-```text
-feature/question-drawing-interaction
-fix/question-structure-validation
-docs/deployment-guide
-chore/update-dependencies
-```
-
-## Git 提交信息
-
-所有提交使用 Conventional Commits：
-
-```text
-<type>(<scope>): <description>
-```
-
-允许的 `type` 只有：
-
-- `feat`：新增用户可见功能。
-- `fix`：修复用户可见缺陷。
-- `perf`：性能改进。
-- `refactor`：不改变行为的代码重构。
-- `docs`：文档变更。
-- `test`：测试变更。
-- `chore`：工程、依赖或 CI 维护。
-
-示例：
-
-```text
-feat(auth): add login page
-fix(api): handle timeout error
-perf(rag): reduce vector search latency
-docs(deploy): clarify Docker setup
-```
-
-每个提交只处理一个清晰主题。提交描述使用祈使语气、英文、小写开头，避免在描述中加入句号。
-
-## CHANGELOG 维护
-
-`CHANGELOG.md` 遵循 [Keep a Changelog](https://keepachangelog.com/) 格式，条目从用户视角描述影响，
-不要直接复制内部实现细节。
-
-只将以下提交类型写入变更日志：
+只有这三类提交进入 `CHANGELOG.md` 的 `Unreleased` 区域，条目从用户视角描述影响，
+不要复制内部实现细节：
 
 | 提交类型 | CHANGELOG 分类 |
 | --- | --- |
@@ -123,31 +78,39 @@ docs(deploy): clarify Docker setup
 | `fix` | `Fixed` |
 | `perf`、`refactor` | `Changed` |
 
-以下类型不写入 CHANGELOG：`docs`、`style`、`chore`、`test`。
-
-发布版本或完成一组用户可见改动时：
-
-1. 从提交记录整理对应版本的 `Added`、`Changed`、`Fixed`。
-2. 使用用户能理解的描述，必要时合并重复条目。
-3. 将版本、发布日期和条目写入 `CHANGELOG.md`，保留 `Unreleased` 区域。
-4. 在 PR 描述中说明 CHANGELOG 是否已更新。
-
-只要提交信息遵循上述格式，就可以使用 `git-cliff`、Release Please 或类似工具自动生成初稿；
-自动生成后仍需人工检查措辞、重复项和对用户的实际影响。
-
-不要配置在每次 `main` 推送后覆盖 `Unreleased` 区域或自动创建 CHANGELOG PR 的工作流。发布准备时可在
-`release/*` 分支运行 `scripts/generate-changelog.sh`，人工审校后再提交。
+`docs`、`style`、`chore`、`test` 不写入。整理版本、生成初稿和发布流程见
+[`CONTRIBUTING.md`](CONTRIBUTING.md#发布准备)。
 
 ## 验证与交付
 
-提交 PR 前至少运行：
+下面每一条都是 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 的门禁，任意一条
+失败 PR 就会挂。**交付前必须自己真的执行，不要凭印象报告通过**——只跑了单元测试就声称
+"检查通过"是本仓库反复出现的问题。
+
+后端（在 `apps/api` 下）：
 
 ```bash
-cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
+uv run ruff check .
+uv run pyright
+uv run python -m unittest discover -s tests -p 'test_*.py'
 ```
 
-Docker 相关改动还应运行：
+用 `uv run` 而不是直接写 `.venv/bin/...`：venv 的位置随 `uv sync` 的执行目录而变
+（仓库根生成 `<root>/.venv`，`apps/api` 下生成 `apps/api/.venv`），而本仓库常态使用
+git worktree，硬编码路径会在其中一种布局下失败。`uv run` 自己解析，且与 CI 用法一致。
+
+前端（在 `apps/web` 下）：
+
+```bash
+pnpm lint
+pnpm vitest run
+pnpm check:api      # 生成类型漂移检查；报漂移时跑 pnpm generate:api，禁止手改生成文件
+pnpm exec tsc --noEmit
+pnpm run build
+pnpm run test:e2e   # 改动触及用户可见流程或 DOM 结构时必跑
+```
+
+Docker 相关改动追加：
 
 ```bash
 docker compose config
@@ -156,4 +119,5 @@ curl -fsS http://127.0.0.1:8080/api/health
 docker compose down
 ```
 
-PR 应保持小而聚焦，说明问题、实现方法、影响范围和验证结果，并确认 GitHub Actions 全部通过。
+交付说明中列出实际执行过的命令和结果；跳过了哪一条要写明原因。PR 应保持小而聚焦，
+说明问题、实现方法、影响范围和验证结果。
