@@ -198,6 +198,22 @@ npm run check:api
 
 打开 <http://localhost:59174>。Vite 会把 `/api` 代理到 <http://127.0.0.1:8010>。
 
+前端端口可以用 `DOTTY_WEB_PORT` 覆盖（默认 `59174`），`vite.config.ts` 和 `playwright.config.ts`
+读的是同一个变量。两种情况需要它：
+
+```bash
+# 在 git worktree 里并行开发第二个检出
+DOTTY_WEB_PORT=59175 pnpm --filter dotty-tutor-web dev
+
+# dev server 继续开着，同时跑端到端测试
+DOTTY_WEB_PORT=59180 pnpm --filter dotty-tutor-web test:e2e
+```
+
+Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`）。复用只按端口判断、
+不校验服务的是哪个目录，曾经导致 E2E 静默连到另一个 worktree 的 dev server，把那份代码测成
+全绿——改动根本没被执行到却报通过。因此端口被占时测试会直接失败并提示端口冲突，这是刻意的：
+宁可响亮失败，也不要静默地测错代码。要与 dev server 并存，用上面的端口覆盖。
+
 前端入口：
 
 | 地址 | 用途 |
@@ -239,6 +255,7 @@ npm run check:api
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
+| `DOTTY_WEB_PORT` | `59174` | 前端 dev server 端口；`vite.config.ts` 与 `playwright.config.ts` 共用 |
 | `DATABASE_URL` | 由 `POSTGRES_*` 组装 | PostgreSQL 连接地址；优先使用 |
 | `POSTGRES_HOST` | `127.0.0.1` | PostgreSQL 主机 |
 | `POSTGRES_PORT` | `5432` | PostgreSQL 端口 |
