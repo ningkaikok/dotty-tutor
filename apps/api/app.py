@@ -4,7 +4,10 @@
 此文件只创建对象、注入依赖并注册路由。
 """
 
+import os
+
 from application import create_app
+from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.stateful_tutor import StatefulTutor
 from domain.questions.pipeline import build_question_content_blocks
@@ -12,6 +15,7 @@ from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import application_store as store
+from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
@@ -46,8 +50,16 @@ app.include_router(build_runtime_router(
 ))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
+assignment_planning_service = AssignmentPlanningService(
+    store=store,
+    planning_store=AssignmentPlanningStore(engine=store.engine),
+    mistake_store=mistake_store,
+    # The local demo stays deterministic; deployments can opt into the shared
+    # generation runtime and the same response validator still enforces its boundary.
+    runtime=generation_runtime if os.getenv("ASSIGNMENT_PLANNER_ENABLED") == "1" else None,
+)
 app.include_router(build_learning_router(store=store, mistake_store=mistake_store))
-app.include_router(build_classroom_router(store=store))
+app.include_router(build_classroom_router(store=store, planning_service=assignment_planning_service))
 publication_revision_service = PublicationRevisionService(
     store=store,
     processing_service=processing_service,

@@ -52,15 +52,26 @@ class ClassroomWorkflowTests(unittest.TestCase):
         self.store.close()
         self.temp_dir.cleanup()
 
+    def create_plan(self, class_id: str, *, confirm_warnings: bool = True) -> dict:
+        response = self.client.post(
+            f"/api/classes/{class_id}/assignment-plans",
+            json={"publicationId": "paper-classroom"},
+        )
+        self.assertEqual(response.status_code, 200)
+        plan = response.json()
+        plan["confirmWarnings"] = confirm_warnings
+        return plan
+
     def test_assignment_filters_student_and_dashboard_uses_evidence(self) -> None:
         created = self.client.post("/api/classes", json={"name": "初二数学一班"})
         self.assertEqual(created.status_code, 200)
         class_id = created.json()["classId"]
         self.client.post(f"/api/classes/{class_id}/members", json={"learnerId": "learner-a", "displayName": "小安"})
         self.client.post(f"/api/classes/{class_id}/members", json={"learnerId": "learner-b", "displayName": "小北"})
+        plan = self.create_plan(class_id)
         assignment = self.client.post(
             f"/api/classes/{class_id}/assignments",
-            json={"publicationId": "paper-classroom", "dueAt": 4_000_000_000},
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": plan["confirmWarnings"], "dueAt": 4_000_000_000},
         )
         self.assertEqual(assignment.status_code, 200)
         assignment_id = assignment.json()["assignmentId"]
@@ -94,15 +105,56 @@ class ClassroomWorkflowTests(unittest.TestCase):
 
     def test_assignment_session_requires_member_and_matching_publication(self) -> None:
         class_id = self.client.post("/api/classes", json={"name": "初二数学二班"}).json()["classId"]
+        plan = self.create_plan(class_id)
         assignment_id = self.client.post(
             f"/api/classes/{class_id}/assignments",
-            json={"publicationId": "paper-classroom"},
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": plan["confirmWarnings"]},
         ).json()["assignmentId"]
         outsider = self.client.post(
             "/api/learning/sessions",
             json={"learnerId": "outsider", "publicationId": "paper-classroom", "assignmentId": assignment_id},
         )
         self.assertEqual(outsider.status_code, 404)
+
+    def test_legacy_assignment_payload_is_rejected(self) -> None:
+        class_id = self.client.post("/api/classes", json={"name": "初二数学三班"}).json()["classId"]
+        response = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={"publicationId": "paper-classroom"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_plan_warning_stops_creation_and_confirmation_is_idempotent(self) -> None:
+        class_id = self.client.post("/api/classes", json={"name": "确认班"}).json()["classId"]
+        plan = self.create_plan(class_id, confirm_warnings=False)
+        blocked = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": False},
+        )
+        self.assertEqual(blocked.status_code, 409)
+        confirmed = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": True},
+        )
+        repeated = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": True},
+        )
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual(repeated.status_code, 200)
+        self.assertEqual(repeated.json()["assignmentId"], confirmed.json()["assignmentId"])
+        self.assertEqual(len(self.client.get(f"/api/classes/{class_id}").json()["assignments"]), 1)
+
+    def test_plan_becomes_stale_when_class_evidence_changes(self) -> None:
+        class_id = self.client.post("/api/classes", json={"name": "变更班"}).json()["classId"]
+        plan = self.create_plan(class_id)
+        self.client.post(f"/api/classes/{class_id}/members", json={"learnerId": "new", "displayName": "新同学"})
+        response = self.client.post(
+            f"/api/classes/{class_id}/assignments",
+            json={"planId": plan["planId"], "publicationId": "paper-classroom", "sourceFingerprint": plan["sourceFingerprint"], "confirmWarnings": True},
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("失效", response.json()["detail"])
 
 
 if __name__ == "__main__":

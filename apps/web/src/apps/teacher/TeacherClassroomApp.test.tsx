@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TeacherClassroomApp } from "./TeacherClassroomApp";
@@ -31,7 +31,7 @@ describe("TeacherClassroomApp", () => {
     }));
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
   it("shows assignment progress and the knowledge point distribution", async () => {
     render(<MemoryRouter initialEntries={["/teacher"]}><TeacherClassroomApp /></MemoryRouter>);
@@ -77,5 +77,36 @@ describe("TeacherClassroomApp", () => {
     const picker = await screen.findByLabelText("查看作业");
     expect(picker).toBeVisible();
     expect(screen.getByRole("option", { name: "二次函数练习" })).toBeInTheDocument();
+  });
+
+  it("analyzes before calling the assignment API and confirms once", async () => {
+    const calls: string[] = [];
+    const plan = {
+      planId: "plan-1", classId: "class-1", publicationId: "paper-1", publicationVersion: 1,
+      sourceFingerprint: "a".repeat(64), status: "draft", warnings: [], assignmentId: null, createdAt: 1, updatedAt: 1,
+      result: {
+        plannerVersion: "assignment-planner-v1", fallback: true, fallbackReason: "offline",
+        goals: [{ planningTopicKey: "一次函数", topic: "一次函数", priority: 1, objective: "巩固一次函数", reason: "有覆盖", evidenceRefs: ["coverage:一次函数"] }],
+        coverage: [{ planningTopicKey: "一次函数", topic: "一次函数", questionCount: 1 }], mastery: [], errorStats: [],
+      },
+    };
+    const created = { ...assignment, assignmentPlanId: "plan-1" };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(`${init?.method ?? "GET"} ${url}`);
+      if (url === "/api/classes") return { ok: true, json: async () => ({ items: [{ classId: "class-1", name: "初二数学一班", subject: "数学", gradeBand: "初中", memberCount: 1, createdAt: 1, updatedAt: 1 }] }) };
+      if (url === "/api/publications?status=published") return { ok: true, json: async () => ({ items: [{ publicationId: "paper-1", title: "一次函数练习", status: "published", version: 1, lessonIds: ["question-1"], lessonCount: 1, createdAt: 1, updatedAt: 1 }] }) };
+      if (url === "/api/classes/class-1" && init?.method !== "POST") return { ok: true, json: async () => ({ classId: "class-1", name: "初二数学一班", subject: "数学", gradeBand: "初中", memberCount: 1, members: [{ learnerId: "local-demo", displayName: "小安", joinedAt: 1 }], assignments: calls.some((call) => call.startsWith("POST /api/classes/class-1/assignments")) ? [created] : [], createdAt: 1, updatedAt: 1 }) };
+      if (url === "/api/classes/class-1/assignment-plans") return { ok: true, json: async () => plan };
+      if (url === "/api/classes/class-1/assignments") return { ok: true, json: async () => created };
+      return { ok: true, json: async () => ({ class: { classId: "class-1", name: "初二数学一班", subject: "数学", gradeBand: "初中" }, assignment: created, summary: { memberCount: 1, startedCount: 0, completedCount: 0, completionRate: 0 }, students: [], knowledgePoints: [], metricDefinition: "未开始不等于掌握度为 0" }) };
+    }));
+
+    render(<MemoryRouter initialEntries={["/teacher"]}><TeacherClassroomApp /></MemoryRouter>);
+    await screen.findByRole("button", { name: "分析并生成计划" }).then((button) => button.click());
+    expect(await screen.findByRole("heading", { name: "请审阅后确认" })).toBeVisible();
+    expect(calls.some((call) => call.includes("/assignments"))).toBe(false);
+    screen.getByRole("button", { name: "确认并布置作业" }).click();
+    await vi.waitFor(() => expect(calls.some((call) => call === "POST /api/classes/class-1/assignments")).toBe(true));
   });
 });

@@ -19,7 +19,9 @@ if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
 from persistence.app_store import AppStore
+from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.database import build_postgres_url_from_env, normalize_database_url
+from application.services.assignment_planning import AssignmentPlanningService
 
 
 DEMO_CLASS_ID = "demo-classroom"
@@ -69,14 +71,26 @@ def main() -> int:
         classroom = store.get_class(DEMO_CLASS_ID)
         assignment = next((item for item in classroom["assignments"] if item["publicationId"] == args.publication_id), None) if classroom else None
         if assignment is None:
-            assignment = store.create_assignment(
-                assignment_id=DEMO_ASSIGNMENT_ID,
+            planner = AssignmentPlanningService(
+                store=store,
+                planning_store=AssignmentPlanningStore(engine=store.engine),
+            )
+            plan = planner.create_plan(
+                class_id=DEMO_CLASS_ID,
+                publication_id=args.publication_id,
+            )
+            planner.planning_store.confirm_and_create_assignment(
+                plan_id=plan["planId"],
                 class_id=DEMO_CLASS_ID,
                 publication_id=args.publication_id,
                 title=f"演示作业 · {publication['title']}",
                 due_at=now + 7 * 86400,
+                source_fingerprint=plan["sourceFingerprint"],
+                warning_confirmed=True,
+                assignment_id=DEMO_ASSIGNMENT_ID,
                 created_at=now,
             )
+            assignment = store.get_assignment(DEMO_ASSIGNMENT_ID)
         first_question = next(
             ((lesson.get("questionPayload") or {}).get("question") or {}).get("id")
             for lesson in publication.get("lessons", [])

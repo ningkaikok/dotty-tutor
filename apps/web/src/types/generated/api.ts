@@ -56,6 +56,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/classes/{class_id}/assignment-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Assignment Plan */
+        post: operations["create_assignment_plan_api_classes__class_id__assignment_plans_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/classes/{class_id}/assignment-plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Assignment Plan */
+        get: operations["get_assignment_plan_api_classes__class_id__assignment_plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes/{class_id}/assignments": {
         parameters: {
             query?: never;
@@ -1284,12 +1318,26 @@ export interface components {
     schemas: {
         /** AssignmentCreate */
         AssignmentCreate: {
+            /**
+             * Confirmwarnings
+             * @default false
+             */
+            confirmWarnings: boolean;
             /** Dueat */
             dueAt?: number | null;
+            /** Planid */
+            planId: string;
             /** Publicationid */
             publicationId: string;
+            /** Sourcefingerprint */
+            sourceFingerprint: string;
             /** Title */
             title?: string | null;
+        };
+        /** AssignmentPlanCreate */
+        AssignmentPlanCreate: {
+            /** Publicationid */
+            publicationId: string;
         };
         /**
          * BackgroundJobSummary
@@ -1933,6 +1981,77 @@ export interface operations {
             header?: never;
             path: {
                 class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_assignment_plan_api_classes__class_id__assignment_plans_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignmentPlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_assignment_plan_api_classes__class_id__assignment_plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                class_id: string;
+                plan_id: string;
             };
             cookie?: never;
         };

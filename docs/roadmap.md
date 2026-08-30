@@ -20,7 +20,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
-| P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 第一版已完成（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
+| P1 产品 | 作业指派（班级 + assignment）与班级掌握分布看板；主用户明确为老师 | 第二版已完成：计划草稿→审阅→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | MathText 与 subQuestions 已完成；图片纯位置归属等待真实 Badcase 信号 | [`engineering-roadmap.md`](engineering-roadmap.md) |

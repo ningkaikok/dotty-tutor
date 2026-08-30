@@ -29,6 +29,38 @@ export interface AssignmentSummary {
   questionCount: number;
   createdAt: number;
   updatedAt: number;
+  assignmentPlanId?: string | null;
+}
+
+export interface AssignmentPlanGoal {
+  planningTopicKey: string;
+  topic: string;
+  priority: number;
+  objective: string;
+  reason: string;
+  evidenceRefs: string[];
+}
+
+export interface AssignmentPlan {
+  planId: string;
+  classId: string;
+  publicationId: string;
+  publicationVersion: number;
+  sourceFingerprint: string;
+  status: "draft" | "confirmed";
+  result: {
+    plannerVersion: string;
+    fallback: boolean;
+    fallbackReason: string | null;
+    goals: AssignmentPlanGoal[];
+    coverage: Array<{ planningTopicKey: string; topic: string; questionCount: number }>;
+    mastery: Array<Record<string, unknown>>;
+    errorStats: Array<Record<string, unknown>>;
+  };
+  warnings: Array<{ code: string; severity: string; message: string }>;
+  assignmentId: string | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface ClassDetail extends ClassSummary {

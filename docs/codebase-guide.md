@@ -70,9 +70,12 @@ dotty-tutor/
 │   │   ├── textbook_store.py   # 教材导入、题目批次和教材库
 │   │   ├── learning_store.py   # 课程、学习会话、作答和掌握度
 │   │   ├── classroom_store.py  # 班级、成员、作业指派和教师看板聚合
+│   │   ├── assignment_planning_store.py # 脱敏作业计划草稿、快照与确认事务
 │   │   └── schema.py           # 教材/学习 schema；其他领域表声明在各自 Store
+│   ├── domain/assignment_planning.py # 跨 publication 聚合、错因统计和确定性目标排序
 ├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
 ├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
+├── scripts/migrate_assignment_plans.py # 作业计划表与 assignment_plan_id 迁移
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── apps/web/src/
 │   ├── App.tsx                 # React Router 顶层路由和懒加载
@@ -83,7 +86,10 @@ dotty-tutor/
 │   │   ├── PaperQuestionProgress.tsx # 题号进度条：当前题、已答对和待修正的唯一展示位
 │   │   ├── PaperLearningProgress.tsx # 互动试卷掌握证据展示
 │   │   └── usePublishedLearningSession.ts # 会话恢复、离线队列和掌握度投影
-│   ├── apps/teacher/           # 班级、作业指派和教师掌握度看板
+│   ├── apps/teacher/           # 班级、作业计划审阅、指派和教师掌握度看板
+│   │   ├── useAssignmentPlanning.ts # 计划生成/恢复状态
+│   │   ├── AssignmentComposer.tsx # 试卷、标题和截止日期输入
+│   │   └── AssignmentPlanReview.tsx # 目标、证据、覆盖度和提醒审阅
 │   ├── apps/textbook/          # 内容生产、互动预览与发布子模块
 │   │   ├── PublicationStatusBar.tsx # 草稿→审核中→已发布状态机的独立展示条
 │   │   └── import/             # 导入状态机、校验和展示组件
@@ -247,6 +253,12 @@ flowchart LR
 `useStudentTodayQueue.ts` 并发读取作业指派、已发布练习、错题和复习进度。作业通过
 `assignmentId` 打开学习会话，已发布试卷仍保留在队列下方作为自由练习。教师从 `/teacher` 管理本地班级、
 成员和作业；`classroom_store.py` 按单次作业聚合学生完成状态和发布版本内知识点分布。
+
+教师布置作业经过 `useAssignmentPlanning.ts` → `POST /api/classes/{classId}/assignment-plans` →
+`AssignmentPlanningService` → `domain/assignment_planning.py`。服务只读取班级证据，使用
+`normalized_name` 生成临时 `planningTopicKey`，不跨 publication 直接合并知识点 ID；模型若不可用或
+输出越界则回退确定性目标。`AssignmentPlanReview` 确认后才调用 assignments API，Planning Store 在同一
+事务中校验计划、发布版本、sourceFingerprint 和提醒确认，并以 `assignment_plan_id` 保证重复确认幂等。
 
 错因归因不在确认页收集，而在陪练首轮由学生自评（见 `MistakeTutor.tsx`）：确认页的必填项只剩题干，
 分类信息收在折叠抽屉里。跳过自评时**不写入任何值**——`unknown`（完全不会）是一种真实的学生自评，

@@ -8,11 +8,22 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from domain.contracts.classroom import AssignmentCreate, ClassCreate, ClassMemberCreate
+from application.services.assignment_planning import AssignmentPlanningService
+from domain.contracts.classroom import (
+    AssignmentCreate,
+    AssignmentPlanCreate,
+    ClassCreate,
+    ClassMemberCreate,
+)
+from persistence.assignment_planning_store import AssignmentPlanningStore
 
 
-def build_classroom_router(*, store: Any) -> APIRouter:
+def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningService | None = None) -> APIRouter:
     router = APIRouter(prefix="/api")
+    planner = planning_service or AssignmentPlanningService(
+        store=store,
+        planning_store=AssignmentPlanningStore(engine=store.engine),
+    )
 
     @router.get("/classes")
     def list_classes() -> dict[str, Any]:
@@ -50,16 +61,47 @@ def build_classroom_router(*, store: Any) -> APIRouter:
     @router.post("/classes/{class_id}/assignments")
     def create_assignment(class_id: str, request: AssignmentCreate) -> dict[str, Any]:
         try:
-            return store.create_assignment(
-                assignment_id=uuid.uuid4().hex,
+            existing_plan = planner.get_plan(class_id=class_id, plan_id=request.planId)
+            if existing_plan and existing_plan["status"] == "confirmed" and existing_plan.get("assignmentId"):
+                existing_assignment = store.get_assignment_by_plan(request.planId)
+                if existing_assignment:
+                    return existing_assignment
+            current_fingerprint = planner.current_fingerprint(
+                class_id=class_id, publication_id=request.publicationId,
+            )
+            planner.planning_store.confirm_and_create_assignment(
+                plan_id=request.planId,
                 class_id=class_id,
                 publication_id=request.publicationId,
-                title=request.title,
+                title=request.title or "",
                 due_at=request.dueAt,
+                source_fingerprint=current_fingerprint,
+                warning_confirmed=request.confirmWarnings,
+                assignment_id=uuid.uuid4().hex,
                 created_at=time.time(),
             )
+            result = store.get_assignment_by_plan(request.planId)
+            if not result:
+                raise LookupError("作业创建结果不存在")
+            return result
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @router.post("/classes/{class_id}/assignment-plans")
+    def create_assignment_plan(class_id: str, request: AssignmentPlanCreate) -> dict[str, Any]:
+        try:
+            return planner.create_plan(class_id=class_id, publication_id=request.publicationId)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @router.get("/classes/{class_id}/assignment-plans/{plan_id}")
+    def get_assignment_plan(class_id: str, plan_id: str) -> dict[str, Any]:
+        result = planner.get_plan(class_id=class_id, plan_id=plan_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="作业计划不存在")
+        return result
 
     @router.get("/classes/{class_id}/dashboard")
     def class_dashboard(class_id: str, assignmentId: str | None = None) -> dict[str, Any]:

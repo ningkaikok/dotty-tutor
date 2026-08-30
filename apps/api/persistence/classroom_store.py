@@ -172,6 +172,19 @@ class ClassroomStore(DatabaseStore):
             ).mappings().first()
         return self._assignment_from_row(row) if row else None
 
+    def get_assignment_by_plan(self, plan_id: str) -> dict[str, Any] | None:
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(assignments, lesson_publications.c.title.label("publication_title"), lesson_publications.c.lesson_ids_json)
+                .select_from(assignments.join(
+                    lesson_publications,
+                    assignments.c.publication_id == lesson_publications.c.publication_id,
+                ))
+                .where(assignments.c.assignment_plan_id == plan_id)
+            ).mappings().first()
+        return self._assignment_from_row(row) if row else None
+
     def list_assignments_for_learner(self, learner_id: str, *, now: float | None = None) -> list[dict[str, Any]]:
         self._ensure_initialized()
         current_time = now if now is not None else time.time()
@@ -388,6 +401,7 @@ class ClassroomStore(DatabaseStore):
             "assignmentId": row["assignment_id"],
             "classId": row["class_id"],
             "publicationId": row["publication_id"],
+            "assignmentPlanId": row.get("assignment_plan_id"),
             "title": row["title"],
             "publicationTitle": row.get("publication_title") or row["title"],
             "className": row.get("class_name"),
