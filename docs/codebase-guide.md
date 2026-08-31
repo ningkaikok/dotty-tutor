@@ -65,12 +65,19 @@ dotty-tutor/
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放和 Judge 工具
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # 引擎、初始化、健康检查和通用 Upsert
+│   │       ├── schema_registry.py # 各领域 metadata 注册、重复表名检查和 SQLite 初始化
+│   │       ├── migration_support.py # Alembic revision 共用的幂等升级与 readiness 报告
+│   │       ├── migration_cli.py # current/head/preflight/upgrade/verify 统一命令
 │   │       ├── textbook_store.py # 教材导入、题目批次和教材库
 │   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
 │   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
-│   │       └── schema.py        # 教材/学习及其他领域表声明
+│   │       └── schema.py        # 教材/学习领域表声明
+│   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
+│   │   └── migrations/           # 唯一正式 schema migration 版本链
+│   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
+│   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
@@ -88,11 +95,11 @@ dotty-tutor/
 │   │   │   └── types/          # 按领域拆分的稳定类型
 │   │   ├── Dockerfile          # Web 构建镜像（corepack 固定 pnpm 版本）
 │   │   └── e2e/                # Playwright 用户路径
-├── scripts/migrate_mastery_v2.py # 掌握度 v2 的 dry-run/apply/verify 可重复迁移
-├── scripts/migrate_class_assignments.py # 班级/作业表和 assignment_id 迁移
-├── scripts/migrate_assignment_plans.py # 作业计划表与 assignment_plan_id 迁移
-├── scripts/migrate_teacher_review_events.py # 教师复核事件表迁移
-├── scripts/migrate_variation_attribution.py # 变式归因来源字段迁移与校验
+├── scripts/migrate_mastery_v2.py # deprecated：兼容旧调用，委托 Alembic 支持模块
+├── scripts/migrate_class_assignments.py # deprecated：兼容旧调用
+├── scripts/migrate_assignment_plans.py # deprecated：兼容旧调用
+├── scripts/migrate_teacher_review_events.py # deprecated：兼容旧调用
+├── scripts/migrate_variation_attribution.py # deprecated：兼容旧调用
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
@@ -203,6 +210,24 @@ apps/api/routers/mistake_routes.py
 
 错题域不复制 OCR 或题目生成代码。`mistake_recognition.py` 通过函数注入复用教材能力，因此测试时能
 直接替换为确定性识别器，也避免导入 ASGI 应用。
+
+### 数据库迁移链路
+
+```text
+DATABASE_URL / POSTGRES_*
+  → apps/api/persistence/migration_cli.py
+  → Alembic env.py（schema_registry 的 6 个 metadata）
+  → 0001 adoption
+  → 0002 mastery-v2
+  → 0003 assignment governance
+  → 0004 teacher review + variation provenance
+  → 0005 mistake_attributions + legacy column backfill
+```
+
+`DatabaseStore` 及各领域 Store 在 PostgreSQL 运行时不执行 DDL；只有显式 Alembic 命令会修改生产
+schema，并在 PostgreSQL 事务内持有 advisory lock。隔离 SQLite 测试可以通过 registry 自动创建当前
+schema，但不替代生产迁移。旧的 `scripts/migrate_*.py` 仅保留参数兼容，事实来源是版本链和
+`migration_support.py`。`mistake_items` 的旧归因列暂时保留，经过观察窗口后才考虑 contract/drop。
 
 ## 前端依赖方向
 

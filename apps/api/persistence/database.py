@@ -35,7 +35,7 @@ def build_postgres_url_from_env() -> str:
             "storage.postgres.socket_fallback",
             level=30,
             reason="POSTGRES_PASSWORD 未设置",
-            url=DEFAULT_POSTGRES_URL,
+            backend="postgresql",
             hint="如需连接 Docker/远程 PostgreSQL，请设置 POSTGRES_PASSWORD 等变量或 DATABASE_URL（本地开发用 scripts/dev-local.sh 会读取 .env.local）",
         )
         return DEFAULT_POSTGRES_URL

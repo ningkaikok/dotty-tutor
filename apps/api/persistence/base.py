@@ -19,7 +19,6 @@ from sqlalchemy.sql.schema import Table
 
 from observability import log_event
 from persistence.database import build_postgres_url_from_env, normalize_database_url
-from persistence.schema import metadata
 
 
 class DatabaseStore:
@@ -76,7 +75,12 @@ class DatabaseStore:
             self._ensure_initialized()
             with self.engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
-            return True
+            from persistence.migration_support import schema_is_ready
+
+            return schema_is_ready(
+                self.engine,
+                require_version=self.backend == "postgresql",
+            )
         except Exception as error:
             log_event(
                 "database.ping.failed",
@@ -94,8 +98,21 @@ class DatabaseStore:
         with self._initialize_lock:
             if self._initialized:
                 return
-            metadata.create_all(self.engine)
+            if self.engine.dialect.name == "sqlite":
+                from persistence.schema_registry import initialize_sqlite_schema
+
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
+
+    def schema_status(self) -> dict[str, Any]:
+        """Return a sanitized schema/readiness report for health and diagnostics."""
+        self._ensure_initialized()
+        from persistence.migration_support import schema_report
+
+        return schema_report(
+            self.engine,
+            require_version=self.backend == "postgresql",
+        )
 
     def _upsert(
         self,

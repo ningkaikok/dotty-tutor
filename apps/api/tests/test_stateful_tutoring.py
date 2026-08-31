@@ -294,6 +294,10 @@ class StatefulTutoringTests(unittest.TestCase):
             self.assertEqual(stored["aiErrorReason"], "missing_step")
             self.assertEqual(stored["aiErrorReasonConfidence"], 0.9)
             self.assertEqual(stored["errorReason"], "concept")
+            latest = self.mistakes.latest_attribution("mistake-1")
+            self.assertEqual(latest["source"], "ai")
+            self.assertEqual(latest["category"], "missing_step")
+            self.assertEqual(latest["evidence"]["matched"], True)
 
             runtime.generated["misconception"] = {
                 "hypothesis": "学生可能漏看了条件",

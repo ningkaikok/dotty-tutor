@@ -15,8 +15,10 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    CheckConstraint,
     Column,
     Float,
+    ForeignKey,
     Index,
     MetaData,
     String,
@@ -68,6 +70,53 @@ mistake_items = Table(
 Index("idx_mistake_items_learner", mistake_items.c.learner_id, mistake_items.c.updated_at.desc())
 Index("idx_mistake_items_status", mistake_items.c.learner_id, mistake_items.c.status)
 
+# The legacy columns above remain the API compatibility projection. New
+# attributions are append-only so a later AI or teacher decision cannot erase
+# the evidence that produced an earlier tutoring decision.
+mistake_attributions = Table(
+    "mistake_attributions",
+    mistake_metadata,
+    Column("attribution_id", String(64), primary_key=True),
+    Column(
+        "mistake_id",
+        String(64),
+        ForeignKey("mistake_items.mistake_id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("source", String(16), nullable=False),
+    Column("category", String(32), nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("evidence_json", json_document, nullable=False, default=dict),
+    Column("model_version", String(96)),
+    Column("created_at", Float, nullable=False),
+    Column("accepted_at", Float),
+    CheckConstraint(
+        "source IN ('self', 'ai', 'teacher')",
+        name="ck_mistake_attributions_source",
+    ),
+    CheckConstraint(
+        "category <> ''",
+        name="ck_mistake_attributions_category",
+    ),
+    CheckConstraint(
+        "confidence >= 0 AND confidence <= 1",
+        name="ck_mistake_attributions_confidence",
+    ),
+)
+
+Index(
+    "idx_mistake_attributions_mistake_created",
+    mistake_attributions.c.mistake_id,
+    mistake_attributions.c.created_at.desc(),
+    mistake_attributions.c.attribution_id,
+)
+Index(
+    "idx_mistake_attributions_source_category",
+    mistake_attributions.c.source,
+    mistake_attributions.c.category,
+    mistake_attributions.c.created_at.desc(),
+)
+
 
 def _decode(value: Any) -> Any:
     if isinstance(value, str):
@@ -102,7 +151,10 @@ class MistakeStore:
         with self._initialize_lock:
             if self._initialized:
                 return
-            mistake_metadata.create_all(self.engine)
+            from persistence.schema_registry import initialize_sqlite_schema
+
+            if self.engine.dialect.name == "sqlite":
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
 
     def item_directory(self, mistake_id: str) -> Path:
@@ -234,6 +286,8 @@ class MistakeStore:
         category: str,
         confidence: float,
         updated_at: float | None = None,
+        evidence: dict[str, Any] | None = None,
+        model_version: str | None = None,
     ) -> dict[str, Any] | None:
         """Persist an informative gated AI attribution without changing self-assessment.
 
@@ -256,6 +310,21 @@ class MistakeStore:
                     ai_error_reason=category,
                     ai_error_reason_confidence=confidence,
                     updated_at=timestamp,
+                )
+            )
+            connection.execute(
+                mistake_attributions.insert().values(
+                    attribution_id=hashlib.sha256(
+                        f"ai:{mistake_id}:{category}:{timestamp}".encode("utf-8")
+                    ).hexdigest(),
+                    mistake_id=mistake_id,
+                    source="ai",
+                    category=category,
+                    confidence=max(0.0, min(1.0, confidence)),
+                    evidence_json=evidence or {"source": "tutoring"},
+                    model_version=model_version,
+                    created_at=timestamp,
+                    accepted_at=timestamp,
                 )
             )
         return self.get(mistake_id)
@@ -281,6 +350,12 @@ class MistakeStore:
         replace_question_prompt(question, confirmation["prompt"])
         question["chapter"] = confirmation["chapter"]
         question["knowledgePoint"] = confirmation["knowledgePoint"]
+        error_reason = (
+            confirmation["errorReason"]
+            if confirmation.get("errorReason") is not None
+            else current.get("errorReason")
+        )
+        new_self_assessment = confirmation.get("errorReason")
         with self.engine.begin() as connection:
             connection.execute(
                 mistake_items.update()
@@ -294,18 +369,49 @@ class MistakeStore:
                     knowledge_point=confirmation["knowledgePoint"],
                     # Omitted and explicit null both mean “keep the existing
                     # self-assessment”; only a concrete enum replaces it.
-                    error_reason=(
-                        confirmation["errorReason"]
-                        if confirmation.get("errorReason") is not None
-                        else current.get("errorReason")
-                    ),
+                    error_reason=error_reason,
                     notes=confirmation.get("notes", ""),
                     status="unmastered",
                     updated_at=timestamp,
                     confirmed_at=timestamp,
                 )
             )
+            if new_self_assessment:
+                connection.execute(
+                    mistake_attributions.insert().values(
+                        attribution_id=hashlib.sha256(
+                            f"self:{mistake_id}:{new_self_assessment}:{timestamp}".encode("utf-8")
+                        ).hexdigest(),
+                        mistake_id=mistake_id,
+                        source="self",
+                        category=new_self_assessment,
+                        confidence=1.0,
+                        evidence_json={"source": "student-confirmation"},
+                        model_version=None,
+                        created_at=timestamp,
+                        accepted_at=timestamp,
+                    )
+                )
         return self.get(mistake_id)
+
+    def list_attributions(self, mistake_id: str) -> list[dict[str, Any]]:
+        """Return attribution history in append order for internal consumers."""
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                select(mistake_attributions)
+                .where(mistake_attributions.c.mistake_id == mistake_id)
+                .order_by(
+                    mistake_attributions.c.created_at,
+                    mistake_attributions.c.attribution_id,
+                )
+            ).mappings().all()
+        return [self._serialize_attribution(row) for row in rows]
+
+    def latest_attribution(self, mistake_id: str) -> dict[str, Any] | None:
+        """Return the latest accepted attribution without changing public APIs."""
+        items = self.list_attributions(mistake_id)
+        return items[-1] if items else None
 
     def set_archived(self, mistake_id: str, archived: bool) -> dict[str, Any] | None:
         self._ensure_initialized()
@@ -384,6 +490,20 @@ class MistakeStore:
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
             "confirmedAt": row["confirmed_at"],
+        }
+
+    @staticmethod
+    def _serialize_attribution(row: Any) -> dict[str, Any]:
+        return {
+            "attributionId": row["attribution_id"],
+            "mistakeId": row["mistake_id"],
+            "source": row["source"],
+            "category": row["category"],
+            "confidence": row["confidence"],
+            "evidence": _decode(row["evidence_json"]),
+            "modelVersion": row["model_version"],
+            "createdAt": row["created_at"],
+            "acceptedAt": row["accepted_at"],
         }
 
     def close(self) -> None:

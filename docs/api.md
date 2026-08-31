@@ -24,7 +24,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 检查 API 和数据库连接 |
+| `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，不会等业务查询触发缺列 `500` |
 | `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
@@ -134,8 +134,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 推翻还需要 `correctedAssessment`；掌握度覆盖需要 `knowledgePointId` 和 0 到 1 的 `masteryScore`。
 事件写入 `teacher_review_events` 后只追加不更新，dashboard 返回原始 `assessment`、最新复核状态、覆盖后的有效分数，
 以及按作业计算的 `judgedCount`、`reviewedCount`、`overturnedCount`、`reviewRate` 和 `overturnRate`。
-新数据库会随 schema 初始化创建该表；已有数据库必须运行
-`python scripts/migrate_teacher_review_events.py --dry-run|--apply|--verify`。
+隔离 SQLite 新库会由 schema registry 初始化该表；PostgreSQL 已有数据库依次使用统一 CLI 的
+`preflight`、`upgrade` 和 `verify` 命令，运行时不会自动建表。
 
 作业计划的 `result` 包含班级掌握度、`selfReported`/`aiAttributed`/`effective` 三套错因统计、试卷覆盖度、
 确定性目标和 `fallback` 状态。计划输入快照不保存姓名、learnerId、原始答案或聊天内容；发送给模型的内容只含
@@ -147,8 +147,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 
 mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确为 `1`、部分正确为 `0.55`、错误为 `0`；
 不同题证据数的置信度上限依次为 1/2/3/4/5 道题的 `0.6/0.7/0.8/0.9/1.0`。`rawScore` 是最新题证据平均分，
-`score = rawScore × evidenceConfidence`。旧数据库使用
-`python scripts/migrate_mastery_v2.py --dry-run|--apply|--verify` 迁移；迁移会保留旧掌握度表、补齐实体和作答归属，
+`score = rawScore × evidenceConfidence`。旧数据库依次使用统一 CLI 的
+`preflight`、`upgrade` 和 `verify` 命令迁移；迁移会保留旧掌握度表、补齐实体和作答归属，
 再从可用作答日志重建 mastery-v2 投影；没有作答证据的旧投影会明确标记为 legacy，重复执行为 no-op。
 
 试卷新版不会覆盖原课程文档。接口为每道题创建新的 `lessonId`，将试卷 `version` 加一并记录
@@ -255,7 +255,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | --- | --- | --- |
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
-| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、两路归因和运行信息 |
+| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、两路归因和运行信息；旧兼容归因列仍保留 |
 | `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
@@ -359,6 +359,8 @@ concept | reading | calculation | missing_step | unknown | careless
 
 每道变式题会固化 `variationStrategyVersion`、目标、教学目标、难度和 `attributionSource`（`ai`、`self` 或 `unknown`）。
 采信顺序统一为门禁后的 AI 归因、学生自评、unknown；列表和 Evidence API 使用题目快照，不会按当前错题重新计算。
+数据库另有 append-only `mistake_attributions` 历史表，保存 source、category、confidence、evidence、modelVersion、
+createdAt 和 acceptedAt。历史 `error_reason`、`ai_error_reason` 与置信度会在迁移时幂等回填；后续确认或通过门禁的 AI
+归因会与旧兼容列在同一事务内双写。旧列暂不删除，待观察窗口结束后再单独评估 contract/drop。
 错题确认中的 `errorReason` 省略或为 `null` 都表示“不修改已有学生自评”，不是清除；首次没有已有值仍保存为 `null`，非法枚举返回 `422`。
-旧变式无法反推来源，统一迁移为 `unknown`：`python scripts/migrate_variation_attribution.py --database-url DATABASE_URL --dry-run`，
-实际写入使用 `--apply`，完成后使用 `--verify`。
+旧变式无法反推来源，统一迁移为 `unknown`；使用统一 CLI 的 `preflight`、`upgrade` 和 `verify` 完成迁移。

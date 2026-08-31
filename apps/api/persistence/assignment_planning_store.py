@@ -11,7 +11,6 @@ from persistence.schema import (
     assignment_plans,
     knowledge_points,
     mastery_states,
-    metadata,
 )
 
 
@@ -24,7 +23,10 @@ class AssignmentPlanningStore:
 
     def _ensure_initialized(self) -> None:
         if not self._initialized:
-            metadata.create_all(self.engine)
+            from persistence.schema_registry import initialize_sqlite_schema
+
+            if self.engine.dialect.name == "sqlite":
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
 
     def create(

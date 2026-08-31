@@ -248,15 +248,46 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
-全新数据库首次访问各领域 Store 时，会根据 `apps/api/persistence/schema.py` 及领域 Store 中的当前
-SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema。已有数据库不能只依赖 `create_all()`：切换包含
-schema 变更的版本时，应先备份，再按变更使用 `scripts/migrate_mastery_v2.py`、
-`scripts/migrate_class_assignments.py` 或 `scripts/migrate_assignment_plans.py` 执行 dry-run、apply 和 verify。
+## 数据库迁移、版本检查与隔离
 
-变式归因字段升级使用 `python scripts/migrate_variation_attribution.py --database-url DATABASE_URL --dry-run`，
-实际写入改用 `--apply`，完成后用 `--verify` 检查旧记录是否全部为 `unknown` 或合法的 `ai`/`self`。
-项目尚无通用 Alembic 迁移历史，因此真实生产数据接入前仍需补齐可回滚的版本化迁移；本地测试库和 `data/`
-资源可以在不需要保留数据时清空，但这不是当前版本的唯一升级方式。
+所有正式 schema 变更统一由 Alembic 管理。迁移配置位于 `apps/api/alembic.ini`，registry 汇总核心、错题、
+陪练、变式、复习和指标六个领域的 metadata；Alembic autogenerate 使用这组 metadata，并在导入时拒绝重复表名。
+
+从仓库根目录执行时：
+
+```bash
+cd apps/api
+uv run python -m persistence.migration_cli head
+uv run python -m persistence.migration_cli current --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli preflight --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli upgrade --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli verify --database-url "$DATABASE_URL"
+```
+
+`preflight` 和 `verify` 只读；五个命令的输出都不会打印数据库 URL、密码或 SQL 凭据。`upgrade` 会先取得
+PostgreSQL advisory lock，再在事务中执行有序版本链。`0001` 可以 adoption 空库、完整的 v0.27.0 schema（即使
+没有 `alembic_version`）以及当前这种部分迁移库；`0002`–`0005` 逐领域补齐 mastery、作业、教师/变式和错因归因。
+迁移只增加表/列/索引或保留式投影，不删除数据；mastery 旧表会保留为 `mastery_states_legacy`。
+
+旧的 `scripts/migrate_mastery_v2.py`、`migrate_class_assignments.py`、`migrate_assignment_plans.py`、
+`migrate_teacher_review_events.py` 和 `migrate_variation_attribution.py` 仅作为 deprecated 兼容包装器，新的
+操作和事实来源都使用统一 CLI。
+
+PostgreSQL 运行时的 Store 不再执行 `create_all()` 或 `ALTER TABLE`。健康检查会先检查连通性与 schema readiness；
+schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表/列/索引列表。隔离 SQLite 测试仍可由
+`schema_registry` 自动创建当前 schema，但不写入迁移版本，便于现有 Store 单测；需要验证正式版本时使用上述
+Alembic CLI。
+
+多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`，测试使用临时 SQLite；
+只有明确配置且与用户库隔离的 `DOTTY_TEST_POSTGRES_URL` 才允许运行真实 PostgreSQL 集成测试。辅助命令不会自动
+创建或删除数据库，也不会把 branch 名拼进 SQL。发布顺序固定为：
+
+```text
+backup → preflight → upgrade → verify → deploy/restart
+```
+
+`mistake_items.error_reason`、`ai_error_reason` 和 `ai_error_reason_confidence` 仍是旧 API 兼容投影；
+`mistake_attributions` 记录追加式历史，旧列要经过观察窗口后才单独评估 contract/drop。
 
 ## 更新 Playwright 视觉快照
 

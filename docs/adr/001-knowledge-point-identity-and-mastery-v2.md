@@ -38,7 +38,7 @@
 
 ### 3. 数据迁移采用保守、可重复的方式
 
-`scripts/migrate_mastery_v2.py` 提供 `--dry-run`、`--apply` 和 `--verify`：
+统一 CLI 的 `preflight`、`upgrade` 和 `verify` 提供迁移预检、执行和验证：
 
 1. 保留旧的 `mastery_states` 为 `mastery_states_legacy`，不覆盖原始旧投影；
 2. 创建知识点实体和 mastery-v2 结构，补齐作答归属；
@@ -46,8 +46,8 @@
 4. 没有作答证据的旧投影明确标记为 `mastery-v1-legacy`；
 5. 迁移在重复执行时保持 no-op，并通过计数和空值检查验证结果。
 
-应用启动时的 SQLAlchemy `create_all()` 只负责初始化缺失表，不负责修改已存在的旧表，因此已有数据库仍必须
-显式执行迁移。新建空数据库可以直接由当前 schema 初始化。
+生产 PostgreSQL 应用启动时不执行 SQLAlchemy DDL；已有数据库必须显式执行 Alembic 迁移。隔离 SQLite 测试库
+可以直接由 schema registry 初始化当前 schema。
 
 ### 4. 同一知识点的首次并发写入必须串行化
 
@@ -69,4 +69,4 @@
 - 修改掌握度算法时可以保留作答证据并重建 projection，不需要再次转换事实记录。
 - 未来若确定需要跨发布版本聚合，必须先定义知识点的学科/教材身份，再新增映射或迁移，不能直接去掉
   `publication_id` 作用域。
-- 当前一次性脚本不是通用迁移框架。进入公网生产前仍需补齐版本化迁移历史、备份恢复演练、低权限账号和 SSL。
+- 当前已由 Alembic 版本链统一管理迁移；旧的一次性脚本仅保留为 deprecated 兼容包装器。进入公网生产前仍需完成备份恢复演练、低权限账号和 SSL。

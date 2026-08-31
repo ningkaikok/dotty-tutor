@@ -7,6 +7,14 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+### Added
+
+- 新增 Alembic 统一数据库迁移链、schema registry、预检/升级/验证命令，以及 append-only 错因归因历史表和历史列回填。
+
+### Changed
+
+- PostgreSQL 运行时不再自动执行 schema DDL；Store 只对隔离 SQLite 测试库自动初始化，schema 落后时健康检查返回明确的 `503 + SCHEMA_OUT_OF_DATE`。
+
 ## [0.27.0] - 2026-08-31
 
 ### Added

@@ -14,8 +14,12 @@ const openapiPath = join(temporaryDirectory, "openapi.json");
 const generatedPath = join(temporaryDirectory, "api.ts");
 
 function pythonExecutable() {
-  const venvPython = resolve(repositoryRoot, ".venv/bin/python");
-  return existsSync(venvPython) ? venvPython : (process.env.PYTHON || "python3");
+  const candidates = [
+    process.env.PYTHON,
+    resolve(repositoryRoot, ".venv/bin/python"),
+    resolve(repositoryRoot, "apps/api/.venv/bin/python"),
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || "python3";
 }
 
 function generateWithOpenapiTypescript() {

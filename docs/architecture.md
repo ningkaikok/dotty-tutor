@@ -199,7 +199,8 @@ flowchart TB
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
-| 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py` | 引擎生命周期、数据库配置、表结构和跨数据库 Upsert |
+| 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py`、`schema_registry.py` | 引擎生命周期、数据库配置、按领域 metadata 注册、SQLite 隔离初始化和跨数据库 Upsert；PostgreSQL 运行时不执行 DDL |
+| 数据库迁移 | `apps/api/alembic.ini`、`apps/api/migrations/`、`persistence/migration_support.py`、`persistence/migration_cli.py` | 唯一版本链、adoption/增量升级、幂等回填、readiness 检查；PostgreSQL 使用事务 advisory lock |
 | 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
 | 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和 plan-backed 作业指派；按 assignment 关联学习会话，追加教师复核证据并聚合有效掌握度与看板指标 |
 | 作业计划存储 | `apps/api/persistence/assignment_planning_store.py`、`schema.py` | 保存脱敏输入快照、结构化结果、提醒和 sourceFingerprint；确认计划与创建 assignment 使用同一事务 |
@@ -208,11 +209,11 @@ flowchart TB
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
 | 错题路由与契约 | `apps/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
-| 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、原图路径和错题状态 |
+| 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
-| 验证持久化 | `apps/api/persistence/variation_store.py`、`scripts/migrate_variation_attribution.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据 |
+| 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |
 | 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
 
@@ -603,6 +604,9 @@ POST /api/tts
 确认前修改，不会改变分析指纹。
 - `mistake_items` 保存错题快照、学生原答案、章节知识点、学生自评 `error_reason`、通过门禁的 AI
   `ai_error_reason`/`ai_error_reason_confidence` 和确认状态；跳过自评不写入 `unknown`。
+- `mistake_attributions` 保存 `self`/`ai`/`teacher` 的追加式归因、置信度、证据 JSON、模型版本和接受时间。
+  历史列通过确定性主键只回填一次；`MistakeStore.confirm` 与 `update_ai_error_reason` 在同一事务内同时更新
+  旧列和新表，读取旧 API 仍保持不变。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
 - `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
 - `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。
@@ -611,6 +615,17 @@ POST /api/tts
 - 批次资源目录保存 OCR Markdown、模型提示词和题图。
 - `data/mistakes/{mistakeId}/` 保存错题原图和识别产生的题图。
 - 内存中的任务和题目只作为读取缓存，未命中时从 PostgreSQL 恢复。
+
+### Schema 生命周期与隔离
+
+正式入口是 `cd apps/api && uv run python -m persistence.migration_cli <command>`，可用命令为
+`current`、`head`、`preflight`、`upgrade` 和 `verify`。`preflight`/`verify` 只读且输出不包含连接串；
+PostgreSQL 的业务请求不会补表或加列。健康检查会在连接可用但 schema 落后时返回 `503` 和
+`SCHEMA_OUT_OF_DATE`，避免业务查询先触发缺列 `500`。
+
+每个 worktree/session 必须使用独立可写数据库：PostgreSQL 推荐独立 `POSTGRES_DB`，测试使用
+独立 `DOTTY_TEST_POSTGRES_URL` 或临时 SQLite。不要让多个 worktree 共享同一个可写开发库；迁移发布顺序为
+`backup → preflight → upgrade → verify → deploy/restart`。
 
 生产版本边界和改造优先级见[路线图](roadmap.md)。
 错题域的数据模型、智能体状态机和代码复用边界见

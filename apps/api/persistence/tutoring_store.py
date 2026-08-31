@@ -93,7 +93,10 @@ class TutoringStore:
         with self._initialize_lock:
             if self._initialized:
                 return
-            tutoring_metadata.create_all(self.engine)
+            from persistence.schema_registry import initialize_sqlite_schema
+
+            if self.engine.dialect.name == "sqlite":
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
 
     def create_or_get(self, mistake_id: str, learner_id: str = DEMO_LEARNER_ID) -> dict[str, Any]:

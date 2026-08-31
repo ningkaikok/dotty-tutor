@@ -115,6 +115,8 @@ class MistakeCaptureApiTests(unittest.TestCase):
                 {"id": "stem-2", "type": "math", "latex": "x + 1 = 3", "display": False, "sourceOrder": 1},
             ],
         )
+        attributions = self.store.list_attributions(imported["mistakeId"])
+        self.assertEqual([(item["source"], item["category"]) for item in attributions], [("self", "calculation")])
 
         listed = self.client.get("/api/mistakes").json()["items"]
         self.assertEqual([item["mistakeId"] for item in listed], [imported["mistakeId"]])
@@ -188,6 +190,7 @@ class MistakeCaptureApiTests(unittest.TestCase):
         self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=omitted).json()["errorReason"], "calculation")
         explicit_null = {**omitted, "errorReason": None}
         self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=explicit_null).json()["errorReason"], "calculation")
+        self.assertEqual(len(self.store.list_attributions(mistake_id)), 1)
 
     def test_confirmation_succeeds_with_empty_chapter_and_knowledge_point(self) -> None:
         """章节/知识点不再强制：AI 已预填时，学生可以直接保存而不修改分类。"""

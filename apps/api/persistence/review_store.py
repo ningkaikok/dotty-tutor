@@ -70,7 +70,10 @@ class ReviewStore:
         with self._initialize_lock:
             if self._initialized:
                 return
-            review_metadata.create_all(self.engine)
+            from persistence.schema_registry import initialize_sqlite_schema
+
+            if self.engine.dialect.name == "sqlite":
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
 
     def schedule(

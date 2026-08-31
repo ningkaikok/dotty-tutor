@@ -126,18 +126,10 @@ class VariationStore:
         with self._initialize_lock:
             if self._initialized:
                 return
-            variation_metadata.create_all(self.engine)
-            # SQLAlchemy create_all does not alter an existing table. This
-            # small compatibility step keeps old SQLite databases readable;
-            # deployments should also run the checked-in migration script.
-            from sqlalchemy import inspect, text
-            columns = {item["name"] for item in inspect(self.engine).get_columns("variation_exercises")}
-            if "attribution_source" not in columns:
-                with self.engine.begin() as connection:
-                    statement = (
-                        "ALTER TABLE variation_exercises ADD COLUMN attribution_source VARCHAR(16) NOT NULL DEFAULT 'unknown'"
-                    )
-                    connection.execute(text(statement))
+            from persistence.schema_registry import initialize_sqlite_schema
+
+            if self.engine.dialect.name == "sqlite":
+                initialize_sqlite_schema(self.engine)
             self._initialized = True
 
     def create(
