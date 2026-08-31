@@ -39,9 +39,25 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.addCleanup(self.store.close)
         self.assertTrue(self.store.ping())
 
-    def new_database(self) -> PostgresTestDatabase:
+    def new_bare_database(self) -> PostgresTestDatabase:
+        """Create a database with no application tables for legacy-shape tests."""
         database = PostgresTestDatabase.create()
         self.addCleanup(database.close)
+        from persistence.migration_cli import current_revision
+
+        self.assertEqual(inspect(database.engine).get_table_names(), [])
+        self.assertIsNone(current_revision(database.database_url))
+        return database
+
+    def new_migrated_database(self) -> PostgresTestDatabase:
+        """Create a fresh database, migrate it, and assert it is at schema head."""
+        database = self.new_bare_database()
+        from persistence.migration_cli import current_revision, upgrade_database
+        from persistence.schema_registry import SCHEMA_HEAD_REVISION
+
+        result = upgrade_database(database.database_url)
+        self.assertEqual(result["current"], SCHEMA_HEAD_REVISION)
+        self.assertEqual(current_revision(database.database_url), SCHEMA_HEAD_REVISION)
         return database
 
     def test_domain_tables_exist_on_real_postgres(self) -> None:
@@ -113,7 +129,7 @@ class PostgresIntegrationTests(unittest.TestCase):
             ["0.5"],
         )
 
-        database = self.new_database()
+        database = self.new_bare_database()
         from persistence.migration_cli import upgrade_database
         from persistence.migration_support import create_registered_schema
 
@@ -175,7 +191,7 @@ class PostgresIntegrationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertTrue(verified["ready"])
 
-        database = self.new_database()
+        database = self.new_bare_database()
         from persistence.migration_support import create_registered_schema
 
         with database.engine.begin() as connection:
@@ -191,7 +207,7 @@ class PostgresIntegrationTests(unittest.TestCase):
             schema_report,
         )
 
-        database = self.new_database()
+        database = self.new_bare_database()
         with database.engine.begin() as connection:
             create_registered_schema(connection)
             connection.execute(text('DROP INDEX "idx_assignments_plan"'))
@@ -212,7 +228,7 @@ class PostgresIntegrationTests(unittest.TestCase):
             schema_report,
         )
 
-        database = self.new_database()
+        database = self.new_migrated_database()
         with database.engine.begin() as connection:
             connection.execute(text('ALTER TABLE "assignments" DROP CONSTRAINT "fk_assignments_assignment_plan"'))
             connection.execute(text('ALTER TABLE "learning_sessions" DROP CONSTRAINT "fk_learning_sessions_assignment"'))
