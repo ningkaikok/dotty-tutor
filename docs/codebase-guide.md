@@ -213,6 +213,9 @@ apps/api/routers/mistake_routes.py
 
 ### 数据库迁移链路
 
+数据库从早期本地文件/SQLite 到当前 PostgreSQL、领域 Store 和 Alembic 治理的历史，以及完全退出
+SQLite 的三阶段路线，见[数据库设计与治理演进](database-evolution.md)。
+
 ```text
 DATABASE_URL / POSTGRES_*
   → apps/api/persistence/migration_cli.py

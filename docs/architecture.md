@@ -618,6 +618,10 @@ POST /api/tts
 
 ### Schema 生命周期与隔离
 
+数据库设计从本地文件/SQLite 快速开发到当前 PostgreSQL + Alembic 治理的完整演进记录见
+[数据库设计与治理演进](database-evolution.md)。当前权威边界是：PostgreSQL 作为正式运行时唯一数据库，
+Alembic 作为 schema 版本权威，SQLAlchemy metadata 只描述当前模型，业务进程不得执行 DDL。
+
 正式入口是 `cd apps/api && uv run python -m persistence.migration_cli <command>`，可用命令为
 `current`、`head`、`preflight`、`upgrade` 和 `verify`。`preflight`/`verify` 只读且输出不包含连接串；
 PostgreSQL 的业务请求不会补表或加列。健康检查会在连接可用但 schema 落后时返回 `503` 和
