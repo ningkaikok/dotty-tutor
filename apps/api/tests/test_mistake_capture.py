@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 
 from persistence.mistake_store import MistakeStore, mistake_attributions
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from routers.mistake_routes import build_mistake_router
+from tests.postgres_test_support import PostgresTestCase
 
 
 def fake_recognize(
@@ -47,13 +46,14 @@ def fake_recognize(
     )
 
 
-class MistakeCaptureApiTests(unittest.TestCase):
+class MistakeCaptureApiTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.directory = TemporaryDirectory()
+        super().setUp()
         self.store = MistakeStore(
-            database_url=f"sqlite+pysqlite:///{self.directory.name}/mistakes.sqlite3",
-            data_root=self.directory.name,
+            database_url=self.database_url,
+            data_root=self.data_root,
         )
+        self.addCleanup(self.store.close)
         self.cleared: list[tuple[str, str]] = []
         app = FastAPI()
         app.include_router(build_mistake_router(
@@ -62,15 +62,11 @@ class MistakeCaptureApiTests(unittest.TestCase):
             archive_cleanup=self._clear_tutor,
         ))
         self.client = TestClient(app)
+        self.addCleanup(self.client.close)
 
     def _clear_tutor(self, mistake_id: str, learner_id: str) -> int:
         self.cleared.append((mistake_id, learner_id))
         return 1
-
-    def tearDown(self) -> None:
-        self.client.close()
-        self.store.close()
-        self.directory.cleanup()
 
     def test_import_confirm_list_and_archive_mistake(self) -> None:
         response = self.client.post(
@@ -270,10 +266,9 @@ class MistakeCaptureApiTests(unittest.TestCase):
 
     def test_archive_keeps_learning_evidence_clears_thread_and_restore_starts_new_thread(self) -> None:
         """归档是错题软删除；陪练上下文清理，但验证证据必须可追溯。"""
-        engine = create_engine(f"sqlite:///{self.directory.name}/archive.sqlite3", future=True)
-        mistakes = MistakeStore(engine=engine, data_root=self.directory.name)
-        tutoring = TutoringStore(engine=engine)
-        variations = VariationStore(engine=engine)
+        mistakes = self.store
+        tutoring = TutoringStore(engine=self.engine)
+        variations = VariationStore(engine=self.engine)
         now = 1.0
         mistakes.create({
             "mistakeId": "archive-mistake",
@@ -322,7 +317,6 @@ class MistakeCaptureApiTests(unittest.TestCase):
             self.assertEqual(new_thread["messages"], [])
         finally:
             client.close()
-            engine.dispose()
 
 
 if __name__ == "__main__":

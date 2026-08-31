@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unittest
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from domain.contracts.audit import BatchProcessResponse
@@ -11,15 +10,17 @@ from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 from persistence.textbook_store import TextbookStore
 from run_audit import RunAudit, build_run_config
+from tests.postgres_test_support import PostgresTestCase
 
 
-class RunAuditStoreTests(unittest.TestCase):
+class RunAuditStoreTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.directory = TemporaryDirectory()
+        super().setUp()
         self.store = TextbookStore(
-            database_url=f"sqlite+pysqlite:///{self.directory.name}/audit.sqlite3",
-            data_root=self.directory.name,
+            database_url=self.database_url,
+            data_root=self.data_root,
         )
+        self.addCleanup(self.store.close)
         # question_revisions intentionally references an upload row.
         self.store.save_job({
             "uploadId": "upload-audit", "filename": "book.pdf", "contentType": "application/pdf",
@@ -27,10 +28,6 @@ class RunAuditStoreTests(unittest.TestCase):
             "status": "complete", "progress": 100, "message": "done", "startedAt": 1.0,
             "updatedAt": 1.0, "completedAt": 1.0, "result": {"uploadId": "upload-audit"},
         })
-
-    def tearDown(self) -> None:
-        self.store.close()
-        self.directory.cleanup()
 
     def test_run_config_is_frozen_and_can_finish_only_once(self) -> None:
         run = RunAudit(self.store).start(

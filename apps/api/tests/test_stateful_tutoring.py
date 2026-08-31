@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import tempfile
 import time
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 
 from application.services.stateful_tutor import StatefulTutor
 from domain.contracts.tutoring import TutorMessageRequest
@@ -16,6 +13,7 @@ from domain.questions.contracts import TutorReply
 from persistence.mistake_store import MistakeStore
 from persistence.tutoring_store import TutoringStore
 from routers.tutoring_routes import build_tutoring_router
+from tests.postgres_test_support import PostgresTestCase
 
 GUIDE_CARD = {
     "level": 0,
@@ -60,12 +58,10 @@ class _PlanlessTutor:
         }
 
 
-class StatefulTutoringTests(unittest.TestCase):
+class StatefulTutoringTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        database = Path(self.temporary.name) / "tutoring.sqlite3"
-        self.engine = create_engine(f"sqlite:///{database}", future=True)
-        self.mistakes = MistakeStore(engine=self.engine, data_root=self.temporary.name)
+        super().setUp()
+        self.mistakes = MistakeStore(engine=self.engine, data_root=self.data_root)
         self.threads = TutoringStore(engine=self.engine)
         runtime = SimpleNamespace(selection=SimpleNamespace(provider="mock", model="demo"))
         app = FastAPI()
@@ -75,11 +71,7 @@ class StatefulTutoringTests(unittest.TestCase):
             tutor=StatefulTutor(runtime=runtime),
         ))
         self.client = TestClient(app)
-
-    def tearDown(self) -> None:
-        self.client.close()
-        self.engine.dispose()
-        self.temporary.cleanup()
+        self.addCleanup(self.client.close)
 
     def _mistake(self, *, confirmed: bool = True) -> dict:
         now = time.time()
@@ -88,7 +80,7 @@ class StatefulTutoringTests(unittest.TestCase):
             "learnerId": "local-demo",
             "sourceFilename": "source.png",
             "contentType": "image/png",
-            "sourceImagePath": str(Path(self.temporary.name) / "source.png"),
+            "sourceImagePath": str(self.data_root / "source.png"),
             "sourceImageUrl": "/api/mistakes/mistake-1/source",
             "questionPayload": {
                 "question": {

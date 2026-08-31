@@ -12,7 +12,9 @@ from fastapi import HTTPException
 
 from application.services.textbook_processing import TextbookProcessingService
 from domain.questions.source import MAX_QUESTIONS_PER_BATCH
-from routers.textbook_routes import pdf_uploads, processing_service
+from tests.postgres_test_support import postgres_tests_enabled
+
+_POSTGRES_TEST_SKIP_REASON = "需要 DOTTY_TEST_POSTGRES_ADMIN_URL 指向隔离 PostgreSQL admin 库"
 
 
 class TextbookProcessingTests(unittest.TestCase):
@@ -272,8 +274,11 @@ class TextbookProcessingTests(unittest.TestCase):
 
         self.assertEqual([item["question"]["id"] for item in ordered], ["q1", "q2"])
 
+    @unittest.skipUnless(postgres_tests_enabled(), _POSTGRES_TEST_SKIP_REASON)
     def test_queued_batch_uses_its_page_range_and_becomes_switchable(self) -> None:
         """A later batch includes the previous page to recover split questions."""
+        from routers.textbook_routes import pdf_uploads, processing_service
+
         with TemporaryDirectory() as directory:
             payload = {
                 "question": {"id": "q2"},
@@ -344,8 +349,11 @@ class TextbookProcessingTests(unittest.TestCase):
             finally:
                 pdf_uploads.pop("test-upload", None)
 
+    @unittest.skipUnless(postgres_tests_enabled(), _POSTGRES_TEST_SKIP_REASON)
     def test_question_regeneration_replaces_only_selected_question(self) -> None:
         """Single-question repair must keep the other questions and stable source key."""
+        from routers.textbook_routes import pdf_uploads, processing_service
+
         with TemporaryDirectory() as directory:
             source_key = "batch-001-q-2"
             first = {
@@ -416,6 +424,7 @@ class TextbookProcessingTests(unittest.TestCase):
             finally:
                 pdf_uploads.pop(job["uploadId"], None)
 
+    @unittest.skipUnless(postgres_tests_enabled(), _POSTGRES_TEST_SKIP_REASON)
     def test_question_regeneration_reaches_questions_beyond_the_preview_limit(self) -> None:
         """整卷批次里第 6 题之后的题目也必须能单独修复。
 
@@ -423,6 +432,8 @@ class TextbookProcessingTests(unittest.TestCase):
         一个批次最多有 MAX_FULL_PAPER_QUESTIONS_PER_BATCH（20）题。沿用默认值会让
         "修复本题" 对第 6 题之后的题目一律返回 "OCR 结果中已找不到这道题"。
         """
+        from routers.textbook_routes import pdf_uploads, processing_service
+
         with TemporaryDirectory() as directory:
             source_key = "batch-001-q-7"
             old_target = {

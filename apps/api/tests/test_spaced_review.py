@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import tempfile
 import time
 import unittest
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from routers.review_routes import build_review_router
+from tests.postgres_test_support import PostgresTestCase
 from variation_service import VariationService
 
 
@@ -39,12 +37,10 @@ def fake_generator(source_text: str) -> tuple[dict, list[dict], dict]:
     )
 
 
-class SpacedReviewTests(unittest.TestCase):
+class SpacedReviewTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        database = Path(self.temporary.name) / "review.sqlite3"
-        self.engine = create_engine(f"sqlite:///{database}", future=True)
-        self.mistakes = MistakeStore(engine=self.engine, data_root=self.temporary.name)
+        super().setUp()
+        self.mistakes = MistakeStore(engine=self.engine, data_root=self.data_root)
         self.reviews = ReviewStore(engine=self.engine)
         self._create_mastered_mistake()
         app = FastAPI()
@@ -54,11 +50,7 @@ class SpacedReviewTests(unittest.TestCase):
             variation_service=VariationService(generator=fake_generator),
         ))
         self.client = TestClient(app)
-
-    def tearDown(self) -> None:
-        self.client.close()
-        self.engine.dispose()
-        self.temporary.cleanup()
+        self.addCleanup(self.client.close)
 
     def _create_mastered_mistake(self) -> None:
         now = time.time()
@@ -67,7 +59,7 @@ class SpacedReviewTests(unittest.TestCase):
             "learnerId": "local-demo",
             "sourceFilename": "source.png",
             "contentType": "image/png",
-            "sourceImagePath": str(Path(self.temporary.name) / "source.png"),
+            "sourceImagePath": str(self.data_root / "source.png"),
             "sourceImageUrl": "/source.png",
             "questionPayload": {
                 "question": {

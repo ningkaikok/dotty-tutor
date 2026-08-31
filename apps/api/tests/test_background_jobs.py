@@ -15,14 +15,17 @@ from application.job_worker import (
     TerminalJobError,
 )
 from persistence.job_store import JobStore
-from tests.postgres_test_support import PostgresTestDatabase, postgres_tests_enabled
+from tests.postgres_test_support import PostgresTestCase, postgres_tests_enabled
 
 
-class BackgroundJobTests(unittest.TestCase):
+class BackgroundJobTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def make_store(self) -> tuple[JobStore, tempfile.TemporaryDirectory[str]]:
         directory = tempfile.TemporaryDirectory()
         root = Path(directory.name)
-        return JobStore(f"sqlite+pysqlite:///{root / 'jobs.sqlite3'}", root), directory
+        return JobStore(self.database_url, root), directory
 
     def test_idempotency_and_claim_increment_attempt_count(self) -> None:
         store, directory = self.make_store()
@@ -151,7 +154,7 @@ class BackgroundJobTests(unittest.TestCase):
         second_store = None
         try:
             second_store = JobStore(
-                f"sqlite+pysqlite:///{Path(directory.name) / 'jobs.sqlite3'}",
+                self.database_url,
                 Path(directory.name),
             )
             registry = TaskRegistry()
@@ -224,15 +227,7 @@ class BackgroundJobTests(unittest.TestCase):
     postgres_tests_enabled(),
     "需要 DOTTY_TEST_POSTGRES_ADMIN_URL 指向隔离 PostgreSQL admin 库",
 )
-class PostgresBackgroundJobTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.database = PostgresTestDatabase.create()
-        cls.addClassCleanup(cls.database.close)
-        from persistence.migration_cli import upgrade_database
-
-        upgrade_database(cls.database.database_url)
-
+class PostgresBackgroundJobTests(PostgresTestCase):
     def test_two_postgres_connections_claim_one_job(self) -> None:
         first = JobStore(database_url=self.database.database_url)
         second = JobStore(database_url=self.database.database_url)

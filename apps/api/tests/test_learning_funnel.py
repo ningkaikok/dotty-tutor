@@ -1,15 +1,13 @@
 """学习漏斗聚合的验收测试（roadmap T1#6 业务侧第一版）。
 
-用真实 SQLite 引擎播种错题/线程/变式/复习四个领域的数据，
+用真实 PostgreSQL 引擎播种错题/线程/变式/复习四个领域的数据，
 验证漏斗数字与比率的计算，以及"分母为零时比率为 None"的约定。
 """
 
 from __future__ import annotations
 
-import tempfile
 import time
 import unittest
-from pathlib import Path
 
 from application.services.learning_funnel import build_funnel_snapshot
 from persistence.app_store import AppStore
@@ -17,6 +15,7 @@ from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from tests.postgres_test_support import PostgresTestCase
 
 _CONFIRMATION = {
     "prompt": "（3分）修正后的题干",
@@ -53,20 +52,17 @@ def _mistake_item(mistake_id: str) -> dict:
     }
 
 
-class LearningFunnelTests(unittest.TestCase):
+class LearningFunnelTests(PostgresTestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        data_root = Path(self._tmp.name)
-        self.addCleanup(self._tmp.cleanup)
-        store = AppStore(f"sqlite+pysqlite:///{data_root / 'funnel.sqlite3'}", data_root)
+        super().setUp()
+        store = AppStore(self.database_url, self.data_root)
         self.addCleanup(store.close)
         self.engine = store.engine
-        self.mistakes = MistakeStore(engine=self.engine, data_root=data_root)
+        self.mistakes = MistakeStore(engine=self.engine, data_root=self.data_root)
         self.tutoring = TutoringStore(engine=self.engine)
         self.variations = VariationStore(engine=self.engine)
         self.reviews = ReviewStore(engine=self.engine)
-        # 预热建表：各领域表由首次访问的 Store 创建，漏斗是只读聚合，
-        # 不应承担建表职责。
+        # 预热查询：漏斗是只读聚合，不应承担建表职责。
         self.mistakes.list("local-demo")
         self.tutoring.find_for_mistake("warm-up", "local-demo")
         self.variations.count_for_mistake("warm-up")

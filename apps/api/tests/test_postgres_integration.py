@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tempfile
 import threading
 import time
 import unittest
@@ -12,53 +11,23 @@ from pathlib import Path
 
 from sqlalchemy import inspect, text
 
-from tests.postgres_test_support import PostgresTestDatabase, postgres_tests_enabled
+from tests.postgres_test_support import PostgresTestCase, postgres_tests_enabled
 
 
 @unittest.skipUnless(
     postgres_tests_enabled(),
     "需要 DOTTY_TEST_POSTGRES_ADMIN_URL 指向隔离 PostgreSQL admin 库",
 )
-class PostgresIntegrationTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.database = PostgresTestDatabase.create()
-        cls.addClassCleanup(cls.database.close)
-        cls.data_root = tempfile.TemporaryDirectory()
-        cls.addClassCleanup(cls.data_root.cleanup)
-
-        from persistence.migration_cli import upgrade_database
-
-        upgrade_database(cls.database.database_url)
+class PostgresIntegrationTests(PostgresTestCase):
 
     def setUp(self) -> None:
+        super().setUp()
         from persistence.app_store import AppStore
 
         self.run_id = uuid.uuid4().hex[:8]
-        self.store = AppStore(self.database.database_url, Path(self.data_root.name))
+        self.store = AppStore(self.database_url, self.data_root)
         self.addCleanup(self.store.close)
         self.assertTrue(self.store.ping())
-
-    def new_bare_database(self) -> PostgresTestDatabase:
-        """Create a database with no application tables for legacy-shape tests."""
-        database = PostgresTestDatabase.create()
-        self.addCleanup(database.close)
-        from persistence.migration_cli import current_revision
-
-        self.assertEqual(inspect(database.engine).get_table_names(), [])
-        self.assertIsNone(current_revision(database.database_url))
-        return database
-
-    def new_migrated_database(self) -> PostgresTestDatabase:
-        """Create a fresh database, migrate it, and assert it is at schema head."""
-        database = self.new_bare_database()
-        from persistence.migration_cli import current_revision, upgrade_database
-        from persistence.schema_registry import SCHEMA_HEAD_REVISION
-
-        result = upgrade_database(database.database_url)
-        self.assertEqual(result["current"], SCHEMA_HEAD_REVISION)
-        self.assertEqual(current_revision(database.database_url), SCHEMA_HEAD_REVISION)
-        return database
 
     def test_domain_tables_exist_on_real_postgres(self) -> None:
         from persistence.metrics_store import MetricsStore

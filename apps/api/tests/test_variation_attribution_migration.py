@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import importlib.util
-import tempfile
 import unittest
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
+
+from tests.postgres_test_support import PostgresTestCase
 
 
 def load_migration():
@@ -18,27 +19,27 @@ def load_migration():
     return module
 
 
-class VariationAttributionMigrationTests(unittest.TestCase):
-    def test_old_sqlite_table_dry_run_apply_and_verify(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            database_url = f"sqlite:///{Path(directory) / 'old.sqlite3'}"
-            engine = create_engine(database_url, future=True)
-            with engine.begin() as connection:
+class VariationAttributionMigrationTests(PostgresTestCase):
+    def test_legacy_table_dry_run_apply_and_verify(self) -> None:
+        database = self.new_bare_database()
+        with database.engine.begin() as connection:
+            connection.execute(text(
+                "CREATE TABLE variation_exercises (variation_id VARCHAR(64) PRIMARY KEY, strategy VARCHAR(32) NOT NULL)"
+            ))
+            connection.execute(text("INSERT INTO variation_exercises VALUES ('legacy-1', 'concept-foundation')"))
+        migration = load_migration()
+        self.assertFalse(migration.migrate(database.database_url)["column"])
+        applied = migration.migrate(database.database_url, apply=True)
+        self.assertTrue(applied["column"])
+        verified = migration.verify(database.database_url)
+        self.assertTrue(verified["verified"])
+        with database.engine.connect() as connection:
+            self.assertEqual(
                 connection.execute(text(
-                    "CREATE TABLE variation_exercises (variation_id VARCHAR(64) PRIMARY KEY, strategy VARCHAR(32) NOT NULL)"
-                ))
-                connection.execute(text("INSERT INTO variation_exercises VALUES ('legacy-1', 'concept-foundation')"))
-            migration = load_migration()
-            self.assertFalse(migration.migrate(database_url)["column"])
-            applied = migration.migrate(database_url, apply=True)
-            self.assertTrue(applied["column"])
-            verified = migration.verify(database_url)
-            self.assertTrue(verified["verified"])
-            with engine.connect() as connection:
-                self.assertEqual(connection.execute(text(
                     "SELECT attribution_source FROM variation_exercises WHERE variation_id = 'legacy-1'"
-                )).scalar_one(), "unknown")
-            engine.dispose()
+                )).scalar_one(),
+                "unknown",
+            )
 
 
 if __name__ == "__main__":

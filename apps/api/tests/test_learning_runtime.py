@@ -13,6 +13,7 @@ from domain.contracts.lesson import (
 from persistence.app_store import AppStore
 from persistence.mistake_store import MistakeStore
 from routers.learning_routes import build_learning_router
+from tests.postgres_test_support import PostgresTestCase
 
 
 class LessonContractTests(unittest.TestCase):
@@ -38,11 +39,14 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(validated.blocks[0].type, "diagram")
         self.assertEqual(validated.blocks[-1].type, "quiz")
 
-class LearningStoreTests(unittest.TestCase):
+class LearningStoreTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def test_persists_lesson_attempt_and_mastery(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             document = {
@@ -101,7 +105,7 @@ class LearningStoreTests(unittest.TestCase):
     def test_publishes_a_lesson_collection_and_deduplicates_sync_retries(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             for lesson_id in ("lesson-a", "lesson-b"):
@@ -193,7 +197,7 @@ class LearningStoreTests(unittest.TestCase):
     def test_rejects_attempt_for_unknown_session(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             with self.assertRaisesRegex(LookupError, "学习会话不存在"):
@@ -212,7 +216,7 @@ class LearningStoreTests(unittest.TestCase):
     def test_rejects_unsafe_publication_transitions_and_missing_quality(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             store.save_lesson({
@@ -241,7 +245,7 @@ class LearningStoreTests(unittest.TestCase):
     def test_attempt_id_cannot_cross_learning_sessions(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             store.save_lesson({
@@ -297,11 +301,14 @@ class LearningStoreTests(unittest.TestCase):
                     created_at=3.0,
                 )
 
-class LearningRouteTests(unittest.TestCase):
+class LearningRouteTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def test_session_targets_a_published_paper_and_rejects_old_input(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             store.save_lesson({
@@ -352,7 +359,7 @@ class LearningRouteTests(unittest.TestCase):
     def test_incorrect_published_attempt_is_idempotently_added_to_mistake_book(self) -> None:
         with TemporaryDirectory() as directory:
             store = AppStore(
-                database_url=f"sqlite+pysqlite:///{directory}/learning.sqlite3",
+                database_url=self.database_url,
                 data_root=directory,
             )
             mistake_store = MistakeStore(engine=store.engine, data_root=directory)
