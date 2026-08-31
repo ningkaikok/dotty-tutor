@@ -40,6 +40,7 @@ GENERATION_COMPARISON_REPORT_VERSION = "generation-comparison-v1"
 
 GENERATION_SCHEMA: dict[str, Any] = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {"explanation": {"type": "string"}},
     "required": ["explanation"],
 }
