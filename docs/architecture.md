@@ -629,7 +629,7 @@ PostgreSQL 的业务请求不会补表或加列。健康检查会在连接可用
 assignment 外键前会拒绝非空 orphan 数据；SQLite 只有 fresh registry schema 保证新外键，部分旧 SQLite 库会明确保持 not-ready。
 
 每个 worktree/session 必须使用独立可写数据库：PostgreSQL 推荐独立 `POSTGRES_DB`，测试使用
-独立 `DOTTY_TEST_POSTGRES_URL` 或临时 SQLite。不要让多个 worktree 共享同一个可写开发库；迁移发布顺序为
+独立 `DOTTY_TEST_POSTGRES_ADMIN_URL` 创建的一次性数据库或临时 SQLite。不要让多个 worktree 共享同一个可写开发库；迁移发布顺序为
 `backup → preflight → upgrade → verify → deploy/restart`。
 
 生产版本边界和改造优先级见[路线图](roadmap.md)。

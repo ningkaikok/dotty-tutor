@@ -78,6 +78,10 @@ dotty-tutor/
 │   │   └── migrations/           # 唯一正式 schema migration 版本链
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
 │   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因
+│   │   └── tests/                # SQLite 单测与隔离 PostgreSQL 集成测试
+│   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
+│   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
+│   │       └── test_postgres_integration.py # 迁移、JSONB、外键、锁和 Store 契约
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
@@ -101,6 +105,7 @@ dotty-tutor/
 ├── scripts/migrate_teacher_review_events.py # deprecated：兼容旧调用
 ├── scripts/migrate_variation_attribution.py # deprecated：兼容旧调用
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
+├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # 可重复演示环境
 ```

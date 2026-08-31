@@ -142,6 +142,24 @@ set +a
 `DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产根目录，不能选择数据库。阶段 1 继续允许
 测试显式传入 `database_url="sqlite+pysqlite:///..."`；这是过渡兼容能力，不是正式运行时或脚本的默认数据库。
 
+### 后端 PostgreSQL 集成测试
+
+需要验证真实 PostgreSQL 迁移、JSONB、外键、事务锁或并发 Job Store 时，从仓库根目录为测试提供
+一个专用的 admin/维护库：
+
+```bash
+export DOTTY_TEST_POSTGRES_ADMIN_URL='postgresql+psycopg://postgres:password@127.0.0.1:5432/postgres'
+bash scripts/test-backend-postgres.sh
+```
+
+测试设施只接受这个显式 admin 变量，不会把 `DATABASE_URL`、`POSTGRES_*` 或 `DOTTY_DATA_DIR`
+猜作测试管理入口。每次运行会创建带固定安全前缀和随机后缀的临时数据库，迁移到当前 head 后
+运行完整后端测试，最后只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
+正在使用的库作为 admin 目标；命令不会打印连接凭据。
+
+没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，PostgreSQL 专项测试会跳过；显式 SQLite URL 的
+单元测试仍可运行。CI 后端 job 会启动独立 PostgreSQL service，并通过该变量运行同一脚本。
+
 ### 独立切换陪练模型
 
 内容生产端的运行时设置包含三个互不影响的选择：题目生成模型、统一审核模型（文字与图片共用）和错题陪练模型。
@@ -283,9 +301,9 @@ schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表
 `schema_registry` 自动创建当前 schema，但不写入迁移版本，便于现有 Store 单测；需要验证正式版本时使用上述
 Alembic CLI。PostgreSQL 添加 assignment 外键前会拒绝非空 orphan 数据；SQLite 无法为已有表原地追加外键，部分旧 SQLite 库会保持 not-ready。
 
-多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`，测试暂时可使用显式临时 SQLite；
-只有明确配置且与用户库隔离的 `DOTTY_TEST_POSTGRES_URL` 才允许运行真实 PostgreSQL 集成测试。辅助命令不会自动
-创建或删除数据库，也不会把 branch 名拼进 SQL。发布顺序固定为：
+多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`；测试默认使用显式临时 SQLite，
+真实 PostgreSQL 集成测试使用 `DOTTY_TEST_POSTGRES_ADMIN_URL` 创建一次性数据库。辅助脚本不会把生产
+`DATABASE_URL` 当作 admin，也不会把 branch 名拼进 SQL。发布顺序固定为：
 
 ```text
 backup → preflight → upgrade → verify → deploy/restart
@@ -434,7 +452,7 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 ## 测试
 
 ```bash
-cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+cd apps/api && uv run python -m unittest discover -s tests -p 'test_*.py' -v
 cd apps/web
 npm run build
 npx playwright install chromium   # 首次运行或浏览器版本更新时执行
@@ -446,8 +464,8 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 填空题、数值题、画线题和 Help 交互；不会调用本地模型、OCR 或数据库。失败时 CI 会保留 HTML 报告、trace、
 截图和视频，便于下载排查。浏览器探索可以使用 Computer Use，稳定回归统一使用 Playwright。
 
-当前 CI 会并行运行后端单元测试、前端 TypeScript/生产构建、Playwright 浏览器冒烟测试和后端
-Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
+当前 CI 会并行运行后端 PostgreSQL 隔离集成/单元测试、前端 TypeScript/生产构建、Playwright
+浏览器冒烟测试和后端 Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 
