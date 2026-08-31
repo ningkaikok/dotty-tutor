@@ -177,20 +177,22 @@ not-ready，不能把 SQLite 的结构限制伪装成生产约束已经存在。
 分支、SQLite 的 schema registry 初始化、遗留库兼容工具，以及当前依赖临时 `.sqlite3` 文件的
 测试。直接删除会让单测需要数据库服务，也可能丢失对历史 SQLite 数据的可验证迁移入口。
 
-退出条件应全部满足后再做，不以“生产已经使用 PostgreSQL”作为唯一判断：
+阶段 1 已完成：正式 AppStore/DatabaseStore、Worker 和业务脚本在没有显式 PostgreSQL 配置时会直接失败；
+`DOTTY_DATA_DIR` 只决定文件资产根目录，显式 SQLite URL 仅作为过渡测试能力保留。完全退出 SQLite
+仍需满足以下剩余条件，不以“生产已经使用 PostgreSQL”作为唯一判断：
 
-- 正式运行时、Worker、脚本和开发启动路径都没有把 `DOTTY_DATA_DIR` 或 SQLite 当作数据库回退；
+- 正式运行时、Worker、脚本和开发启动路径继续没有把 `DOTTY_DATA_DIR` 或 SQLite 当作数据库回退；
 - 迁移工具已能在隔离 PostgreSQL 上覆盖 adoption、增量升级、幂等重跑、外键 orphan 拒绝、
   advisory lock 和 JSONB 默认值；
 - 16 个 SQLite 测试文件已经迁移或明确删除，CI 不再依赖本地 `.sqlite3`；
 - 历史 SQLite 导入已完成一次可审计演练并有备份、行数核对和回滚/重试方案；
 - 运行手册、开发文档和健康检查不再把 SQLite 描述为正式数据库选项。
 
-建议分三阶段：
+三阶段路线的当前状态如下：
 
-1. **先取消正式运行时回退。** 保留 SQLite 测试和兼容工具，但生产/Worker 若未提供
-   PostgreSQL 配置就明确失败；移除正式启动路径对 `DOTTY_DATA_DIR` 选择 SQLite 的行为，补齐
-   部署检查和告警。
+1. **阶段 1（已完成）：取消正式运行时回退。** 保留 SQLite 测试和兼容工具，但生产/Worker
+   若未提供 PostgreSQL 配置就明确失败；`DOTTY_DATA_DIR` 不再选择 SQLite，部署配置要求密码或
+   完整的 `DATABASE_URL`，并用无凭据错误消息提示修复方向。
 2. **把 PostgreSQL 特性与迁移测试迁到隔离 PG。** 为 Alembic、JSONB、外键、事务锁、并发
    Job Store 和 orphan 检查建立每个 worktree/session 独立的临时 PostgreSQL 数据库；保留
    `DOTTY_TEST_POSTGRES_URL` 这类显式隔离入口，绝不使用用户共享库。

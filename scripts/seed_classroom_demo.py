@@ -20,7 +20,7 @@ if str(API_ROOT) not in sys.path:
 
 from persistence.app_store import AppStore
 from persistence.assignment_planning_store import AssignmentPlanningStore
-from persistence.database import build_postgres_url_from_env, normalize_database_url
+from persistence.database import resolve_database_url
 from application.services.assignment_planning import AssignmentPlanningService
 
 
@@ -36,17 +36,13 @@ DEMO_MEMBERS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publication-id", required=True, help="已发布互动试卷 ID")
-    parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
+    parser.add_argument("--database-url", default=None)
     parser.add_argument("--data-root", default=os.getenv("DOTTY_DATA_DIR"))
     return parser.parse_args()
 
 
 def database_url(args: argparse.Namespace) -> str:
-    if args.database_url:
-        return normalize_database_url(args.database_url)
-    if args.data_root:
-        return f"sqlite+pysqlite:///{Path(args.data_root).expanduser().resolve() / 'dotty.sqlite3'}"
-    return normalize_database_url(build_postgres_url_from_env())
+    return resolve_database_url(args.database_url)
 
 
 def main() -> int:

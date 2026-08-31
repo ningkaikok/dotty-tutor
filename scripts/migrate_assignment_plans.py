@@ -14,17 +14,13 @@ API_ROOT = REPOSITORY_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from persistence.database import build_postgres_url_from_env, normalize_database_url  # noqa: E402
+from persistence.database import resolve_database_url  # noqa: E402
 from persistence.migration_cli import upgrade_database  # noqa: E402
 from persistence.migration_support import assignment_plan, upgrade_assignments  # noqa: E402
 
 
 def database_url(args: argparse.Namespace) -> str:
-    if args.database_url:
-        return normalize_database_url(args.database_url)
-    if args.data_root:
-        return f"sqlite+pysqlite:///{Path(args.data_root).expanduser().resolve() / 'dotty.sqlite3'}"
-    return normalize_database_url(os.getenv("DATABASE_URL") or build_postgres_url_from_env())
+    return resolve_database_url(args.database_url)
 
 
 def migration_plan(connection: Any) -> dict[str, Any]:

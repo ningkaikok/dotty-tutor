@@ -16,7 +16,7 @@ API_ROOT = REPOSITORY_ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
 
-from persistence.database import build_postgres_url_from_env, normalize_database_url  # noqa: E402
+from persistence.database import resolve_database_url  # noqa: E402
 from persistence.migration_cli import upgrade_database  # noqa: E402
 from persistence.migration_support import add_missing_columns  # noqa: E402
 
@@ -86,15 +86,10 @@ def main() -> int:
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--verify", action="store_true")
-    parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
+    parser.add_argument("--database-url", default=None)
     parser.add_argument("--data-root", default=os.getenv("DOTTY_DATA_DIR"))
     args = parser.parse_args()
-    if args.database_url:
-        database_url = normalize_database_url(args.database_url)
-    elif args.data_root:
-        database_url = f"sqlite+pysqlite:///{Path(args.data_root).expanduser().resolve() / 'dotty.sqlite3'}"
-    else:
-        database_url = normalize_database_url(os.getenv("DATABASE_URL") or build_postgres_url_from_env())
+    database_url = resolve_database_url(args.database_url)
     if args.verify:
         result = {"mode": "verify", **verify(database_url)}
     elif args.apply:

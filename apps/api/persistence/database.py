@@ -12,9 +12,9 @@ import os
 from typing import Any
 from urllib.parse import quote
 
-from observability import log_event
 
-DEFAULT_POSTGRES_URL = "postgresql+psycopg:///dotty_tutor"
+class DatabaseConfigurationError(RuntimeError):
+    """Raised when a runtime database target was not configured explicitly."""
 
 
 def normalize_database_url(value: str) -> str:
@@ -30,15 +30,11 @@ def build_postgres_url_from_env() -> str:
     """Build an escaped password URL when POSTGRES_* variables are provided."""
     password = os.getenv("POSTGRES_PASSWORD", "")
     if not password:
-        # 显式记录本地 Socket 回退；环境变量只配置一半，通常意味着开发者忘记加载 .env.local。
-        log_event(
-            "storage.postgres.socket_fallback",
-            level=30,
-            reason="POSTGRES_PASSWORD 未设置",
-            backend="postgresql",
-            hint="如需连接 Docker/远程 PostgreSQL，请设置 POSTGRES_PASSWORD 等变量或 DATABASE_URL（本地开发用 scripts/dev-local.sh 会读取 .env.local）",
+        raise DatabaseConfigurationError(
+            "未配置 PostgreSQL 数据库：请设置 DATABASE_URL，或设置 POSTGRES_PASSWORD "
+            "并按需设置 POSTGRES_HOST、POSTGRES_PORT、POSTGRES_USER、POSTGRES_DB；"
+            "DOTTY_DATA_DIR 只决定文件资产目录，不能作为数据库配置。"
         )
-        return DEFAULT_POSTGRES_URL
     user = quote(os.getenv("POSTGRES_USER", "dotty_app"), safe="")
     encoded_password = quote(password, safe="")
     host = os.getenv("POSTGRES_HOST", "127.0.0.1")
@@ -47,6 +43,33 @@ def build_postgres_url_from_env() -> str:
     sslmode = os.getenv("POSTGRES_SSLMODE", "")
     query = f"?sslmode={quote(sslmode, safe='')}" if sslmode else ""
     return f"postgresql+psycopg://{user}:{encoded_password}@{host}:{port}/{database}{query}"
+
+
+def resolve_database_url(explicit_url: str | None = None) -> str:
+    """Resolve an explicit target or a configured PostgreSQL environment.
+
+    SQLite remains available only when passed as an explicit argument, which
+    keeps isolated tests working without allowing ``DOTTY_DATA_DIR`` or an
+    unset environment to silently select a local database for the runtime.
+    """
+    if explicit_url:
+        normalized = normalize_database_url(explicit_url)
+        if normalized.startswith("sqlite"):
+            return normalized
+        if not normalized.startswith("postgresql"):
+            raise DatabaseConfigurationError(
+                "数据库 URL 必须指向 PostgreSQL；过渡测试才可通过 database_url 参数显式传入 SQLite URL。"
+            )
+        return normalized
+    configured_url = os.getenv("DATABASE_URL")
+    if configured_url:
+        normalized = normalize_database_url(configured_url)
+        if not normalized.startswith("postgresql"):
+            raise DatabaseConfigurationError(
+                "DATABASE_URL 必须指向 PostgreSQL；过渡测试请通过 database_url 参数显式传入 SQLite URL。"
+            )
+        return normalized
+    return build_postgres_url_from_env()
 
 
 def decode_json(value: Any) -> Any:

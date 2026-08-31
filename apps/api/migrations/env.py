@@ -14,8 +14,8 @@ if API_ROOT not in sys.path:
     sys.path.insert(0, API_ROOT)
 
 from persistence.database import (  # noqa: E402
-    build_postgres_url_from_env,
     normalize_database_url,
+    resolve_database_url,
 )
 from persistence.schema_registry import SCHEMA_METADATA, table_registry  # noqa: E402
 
@@ -31,7 +31,7 @@ def database_url() -> str:
     configured = config.attributes.get("database_url")
     if configured:
         return normalize_database_url(str(configured))
-    return normalize_database_url(os.getenv("DATABASE_URL") or build_postgres_url_from_env())
+    return resolve_database_url()
 
 
 def run_migrations_offline() -> None:

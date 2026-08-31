@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import os
 import unittest
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from persistence.database import build_postgres_url_from_env
+from persistence.app_store import AppStore
+from persistence.database import (
+    DatabaseConfigurationError,
+    build_postgres_url_from_env,
+    resolve_database_url,
+)
 
 
 class StorageConfigTests(unittest.TestCase):
@@ -23,20 +29,49 @@ class StorageConfigTests(unittest.TestCase):
                 "postgresql+psycopg://dotty%40app:p%40ss%2Fword%231@db.internal:5433/dotty%20tutor?sslmode=require",
             )
 
-    def test_keeps_socket_default_without_password(self) -> None:
+    def test_database_url_takes_precedence(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "postgres://app:secret@db.internal:5432/tutor"},
+            clear=True,
+        ):
+            self.assertEqual(
+                resolve_database_url(),
+                "postgresql+psycopg://app:secret@db.internal:5432/tutor",
+            )
+
+    def test_rejects_sqlite_database_url_from_environment(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(DatabaseConfigurationError, "必须指向 PostgreSQL"):
+                resolve_database_url()
+
+    def test_rejects_non_postgres_database_url(self) -> None:
+        with self.assertRaisesRegex(DatabaseConfigurationError, "必须指向 PostgreSQL"):
+            resolve_database_url("mysql+pymysql://app:secret@db.internal/tutor")
+
+    def test_requires_postgres_configuration(self) -> None:
         with patch.dict(os.environ, {}, clear=True):
-            self.assertEqual(build_postgres_url_from_env(), "postgresql+psycopg:///dotty_tutor")
+            with self.assertRaisesRegex(DatabaseConfigurationError, "未配置 PostgreSQL"):
+                build_postgres_url_from_env()
 
-    def test_warns_when_falling_back_to_socket(self) -> None:
-        with patch.dict(os.environ, {"POSTGRES_PORT": "15432"}, clear=True), \
-                patch("persistence.database.log_event") as log_event:
-            build_postgres_url_from_env()
-        log_event.assert_called_once()
-        self.assertEqual(log_event.call_args.args[0], "storage.postgres.socket_fallback")
-        self.assertEqual(log_event.call_args.kwargs["level"], 30)
+    def test_data_directory_does_not_select_sqlite(self) -> None:
+        with patch.dict(os.environ, {"DOTTY_DATA_DIR": "/tmp/dotty-test-data"}, clear=True):
+            with self.assertRaisesRegex(DatabaseConfigurationError, "DOTTY_DATA_DIR"):
+                resolve_database_url()
 
-    def test_does_not_warn_when_password_present(self) -> None:
-        with patch.dict(os.environ, {"POSTGRES_PASSWORD": "secret"}, clear=True), \
-                patch("persistence.database.log_event") as log_event:
-            build_postgres_url_from_env()
-        log_event.assert_not_called()
+    def test_store_fails_fast_without_database_configuration(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(DatabaseConfigurationError, "未配置 PostgreSQL"):
+                AppStore()
+
+    def test_explicit_sqlite_url_remains_available_for_transition_tests(self) -> None:
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            store = AppStore(database_url="sqlite+pysqlite:///:memory:", data_root=directory)
+            try:
+                self.assertEqual(store.backend, "sqlite")
+            finally:
+                store.close()

@@ -47,12 +47,13 @@ from domain.questions.contracts import (
 from infrastructure.files.upload_registry import UploadRegistry
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from observability import log_event
-from persistence.app_store import application_store as store
+from persistence.app_store import get_application_store
 from persistence.job_store import JobStore
 from routers.library_routes import build_library_router
 from textbook_ocr import extract_pdf_text, resolve_ocr_text
 
 router = APIRouter()
+store = get_application_store()
 
 # HTTP 边界的体积限制必须在 OCR/模型调用前保护内存与磁盘；生成数量限制属于处理服务与题目流水线，
 # 两类限制刻意分开，避免传输细节渗透进领域逻辑。

@@ -18,7 +18,7 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.schema import Table
 
 from observability import log_event
-from persistence.database import build_postgres_url_from_env, normalize_database_url
+from persistence.database import resolve_database_url
 
 
 class DatabaseStore:
@@ -29,6 +29,7 @@ class DatabaseStore:
         database_url: str | None = None,
         data_root: str | Path | None = None,
     ) -> None:
+        self.database_url = resolve_database_url(database_url)
         configured_root = data_root or os.getenv("DOTTY_DATA_DIR")
         self.root = (
             Path(configured_root).expanduser().resolve()
@@ -41,13 +42,6 @@ class DatabaseStore:
         self.upload_root = self.root / "uploads"
         self.upload_root.mkdir(parents=True, exist_ok=True)
 
-        configured_url = database_url or os.getenv("DATABASE_URL")
-        # DOTTY_DATA_DIR selects an isolated SQLite database for local tests.
-        if not configured_url and os.getenv("DOTTY_DATA_DIR"):
-            configured_url = f"sqlite+pysqlite:///{self.root / 'dotty.sqlite3'}"
-        self.database_url = normalize_database_url(
-            configured_url or build_postgres_url_from_env()
-        )
         self.database_path = (
             Path(self.database_url.removeprefix("sqlite+pysqlite:///"))
             if self.database_url.startswith("sqlite+pysqlite:///")

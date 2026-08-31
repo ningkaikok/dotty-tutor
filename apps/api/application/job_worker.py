@@ -8,7 +8,6 @@ Worker 只负责领取任务、调用注册表中的 handler 和收敛执行状�
 from __future__ import annotations
 
 import importlib
-import os
 import threading
 import uuid
 from dataclasses import dataclass
@@ -255,7 +254,7 @@ def main(argv: list[str] | None = None) -> None:
     import argparse
 
     parser = argparse.ArgumentParser(description="Run Dotty background jobs")
-    parser.add_argument("--database-url", default=os.getenv("DATABASE_URL"))
+    parser.add_argument("--database-url", default=None)
     parser.add_argument("--worker-id", default=None)
     parser.add_argument("--lease-seconds", type=float, default=60.0)
     parser.add_argument("--poll-interval", type=float, default=1.0)

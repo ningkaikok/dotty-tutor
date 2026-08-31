@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,7 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect
 
-from persistence.database import build_postgres_url_from_env, normalize_database_url
+from persistence.database import resolve_database_url as resolve_configured_database_url
 from persistence.migration_support import schema_report
 
 API_ROOT = Path(__file__).resolve().parents[1]
@@ -21,11 +20,8 @@ ALEMBIC_CONFIG = API_ROOT / "alembic.ini"
 
 
 def resolve_database_url(database_url: str | None, data_root: str | None) -> str:
-    if database_url:
-        return normalize_database_url(database_url)
-    if data_root:
-        return f"sqlite+pysqlite:///{Path(data_root).expanduser().resolve() / 'dotty.sqlite3'}"
-    return normalize_database_url(os.getenv("DATABASE_URL") or build_postgres_url_from_env())
+    del data_root
+    return resolve_configured_database_url(database_url)
 
 
 def alembic_config(database_url: str) -> Config:

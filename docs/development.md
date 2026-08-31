@@ -129,14 +129,18 @@ source .env
 set +a
 ```
 
-也可以只设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
-`POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高。不要提交真实密钥：
+也可以设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
+`POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高；两者都没有时，
+应用、Worker 和业务脚本会在启动前直接失败，不会回退到本机 PostgreSQL socket 或 SQLite。不要提交真实密钥：
 
 `.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
 > 图片看起来与刚生成的结果不一致时，先确认服务使用的是同一份环境和全新测试数据库：
-> `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录；
+> `source .env.local` 后再启动后端。未加载环境文件时，应用会在启动前报告缺少 PostgreSQL 配置，不会静默连接本机 socket 或另一套数据目录；
 > 当前基线不读取旧数据库题目，需清空测试库并按当前导入流程重新生成。
+
+`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产根目录，不能选择数据库。阶段 1 继续允许
+测试显式传入 `database_url="sqlite+pysqlite:///..."`；这是过渡兼容能力，不是正式运行时或脚本的默认数据库。
 
 ### 独立切换陪练模型
 
@@ -279,7 +283,7 @@ schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表
 `schema_registry` 自动创建当前 schema，但不写入迁移版本，便于现有 Store 单测；需要验证正式版本时使用上述
 Alembic CLI。PostgreSQL 添加 assignment 外键前会拒绝非空 orphan 数据；SQLite 无法为已有表原地追加外键，部分旧 SQLite 库会保持 not-ready。
 
-多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`，测试使用临时 SQLite；
+多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`，测试暂时可使用显式临时 SQLite；
 只有明确配置且与用户库隔离的 `DOTTY_TEST_POSTGRES_URL` 才允许运行真实 PostgreSQL 集成测试。辅助命令不会自动
 创建或删除数据库，也不会把 branch 名拼进 SQL。发布顺序固定为：
 
@@ -319,10 +323,10 @@ backup → preflight → upgrade → verify → deploy/restart
 | `POSTGRES_HOST` | `127.0.0.1` | PostgreSQL 主机 |
 | `POSTGRES_PORT` | `5432` | PostgreSQL 端口 |
 | `POSTGRES_USER` | `dotty_app` | 应用数据库用户 |
-| `POSTGRES_PASSWORD` | 空 | 应用数据库密码；设置后启用显式密码连接 |
+| `POSTGRES_PASSWORD` | 无默认值 | 应用数据库密码；运行时配置 PostgreSQL 时必填 |
 | `POSTGRES_DB` | `dotty_tutor` | 数据库名称 |
 | `POSTGRES_SSLMODE` | 空 | 云数据库可设为 `require` |
-| `DOTTY_DATA_DIR` | 项目下 `data/` | PDF、Markdown 和题图目录 |
+| `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
 | `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |
