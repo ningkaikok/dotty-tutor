@@ -29,9 +29,11 @@ RUBRIC: dict[str, str] = {
 
 JUDGE_SCHEMA: dict[str, Any] = {
     "type": "object",
+    "additionalProperties": False,
     "properties": {
         "scores": {
             "type": "object",
+            "additionalProperties": False,
             "properties": {
                 key: {"type": "integer", "minimum": 1, "maximum": 5}
                 for key in RUBRIC
