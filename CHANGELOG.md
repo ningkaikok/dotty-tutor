@@ -13,8 +13,9 @@ Semantic Versioning。
 
 ### Changed
 
-- PostgreSQL 运行时不再自动执行 schema DDL；Store 只对隔离 SQLite 测试库自动初始化，schema 落后时健康检查返回明确的 `503 + SCHEMA_OUT_OF_DATE`。
-- 应用运行时、Worker 和业务脚本现在要求显式 PostgreSQL 配置；`DOTTY_DATA_DIR` 只决定文件资产目录，显式 SQLite URL 仅保留给过渡测试。
+- PostgreSQL 运行时、Worker 和业务脚本继续只通过显式迁移管理 schema；Store 不执行 DDL，schema 落后时健康检查返回明确的 `503 + SCHEMA_OUT_OF_DATE`。
+- 后端数据库测试统一使用隔离 PostgreSQL：普通 Store 测试按测试清理业务表，adoption/legacy 测试使用未迁移空库，CI 与本地 runner 采用同一套流程。
+- 移除数据库 URL、Upsert、Store 初始化和任务领取中的旧兼容路径；`DOTTY_DATA_DIR` 仍只决定文件资产目录。
 
 ## [0.27.0] - 2026-08-31
 

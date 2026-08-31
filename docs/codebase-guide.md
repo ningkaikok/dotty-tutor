@@ -64,8 +64,8 @@ dotty-tutor/
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放和 Judge 工具
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
-│   │       ├── base.py         # 引擎、初始化、健康检查和通用 Upsert
-│   │       ├── schema_registry.py # 各领域 metadata 注册、重复表名检查和 SQLite 初始化
+│   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
+│   │       ├── schema_registry.py # 各领域 metadata 注册和重复表名检查
 │   │       ├── migration_support.py # Alembic revision 共用的幂等升级与 readiness 报告
 │   │       ├── migration_cli.py # current/head/preflight/upgrade/verify 统一命令
 │   │       ├── textbook_store.py # 教材导入、题目批次和教材库
@@ -78,7 +78,7 @@ dotty-tutor/
 │   │   └── migrations/           # 唯一正式 schema migration 版本链
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
 │   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因
-│   │   └── tests/                # SQLite 单测与隔离 PostgreSQL 集成测试
+│   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
 │   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
 │   │       └── test_postgres_integration.py # 迁移、JSONB、外键、锁和 Store 契约
@@ -232,9 +232,10 @@ DATABASE_URL / POSTGRES_*
   → 0005 mistake_attributions + legacy column backfill
 ```
 
-`DatabaseStore` 及各领域 Store 在 PostgreSQL 运行时不执行 DDL；只有显式 Alembic 命令会修改生产
-schema，并在 PostgreSQL 事务内持有 advisory lock。隔离 SQLite 测试可以通过 registry 自动创建当前
-schema，但不替代生产迁移。旧的 `scripts/migrate_*.py` 仅保留参数兼容，事实来源是版本链和
+`DatabaseStore` 及各领域 Store 只连接 PostgreSQL，且不执行 DDL；只有显式 Alembic 命令会修改生产
+schema，并在 PostgreSQL 事务内持有 advisory lock。数据库测试通过 `PostgresTestCase` 创建一次性
+数据库，普通 Store 测试在每个测试前清理业务表，legacy/adoption 测试则显式使用未迁移空库。旧的
+`scripts/migrate_*.py` 仅保留兼容包装，事实来源是版本链和
 `migration_support.py`。readiness 报告和健康检查会用 `autoFixable`/`manualActionRequired` 区分可自动补齐的
 表/列/索引与需人工处理的字段、索引、外键或 orphan 数据；`mistake_items` 的旧归因列暂时保留，经过观察窗口后才考虑 contract/drop。
 

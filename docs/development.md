@@ -131,7 +131,7 @@ set +a
 
 也可以设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
 `POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高；两者都没有时，
-应用、Worker 和业务脚本会在启动前直接失败，不会回退到本机 PostgreSQL socket 或 SQLite。不要提交真实密钥：
+应用、Worker 和业务脚本会在启动前直接失败，不会回退到本机 PostgreSQL socket 或本地文件。不要提交真实密钥：
 
 `.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
@@ -139,8 +139,8 @@ set +a
 > `source .env.local` 后再启动后端。未加载环境文件时，应用会在启动前报告缺少 PostgreSQL 配置，不会静默连接本机 socket 或另一套数据目录；
 > 当前基线不读取旧数据库题目，需清空测试库并按当前导入流程重新生成。
 
-`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产根目录，不能选择数据库。阶段 1 继续允许
-测试显式传入 `database_url="sqlite+pysqlite:///..."`；这是过渡兼容能力，不是正式运行时或脚本的默认数据库。
+`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产根目录，不能选择数据库。所有需要数据库的
+测试都通过隔离 PostgreSQL 夹具运行，纯逻辑测试不连接数据库。
 
 ### 后端 PostgreSQL 集成测试
 
@@ -157,8 +157,8 @@ bash scripts/test-backend-postgres.sh
 运行完整后端测试，最后只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
 正在使用的库作为 admin 目标；命令不会打印连接凭据。
 
-没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，PostgreSQL 专项测试会跳过；显式 SQLite URL 的
-单元测试仍可运行。CI 后端 job 会启动独立 PostgreSQL service，并通过该变量运行同一脚本。
+没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，需要数据库的测试会跳过，纯逻辑测试仍可运行。CI
+后端 job 会启动独立 PostgreSQL service，并通过该变量运行同一脚本。
 
 ### 独立切换陪练模型
 
@@ -297,12 +297,12 @@ PostgreSQL advisory lock，再在事务中执行有序版本链。`0001` 可以 
 
 PostgreSQL 运行时的 Store 不再执行 `create_all()` 或 `ALTER TABLE`。健康检查会先检查连通性与 schema readiness；
 schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表/列/索引/外键及 orphan count 列表，并按
-`autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项（包括列、索引和外键）。隔离 SQLite 测试仍可由
-`schema_registry` 自动创建当前 schema，但不写入迁移版本，便于现有 Store 单测；需要验证正式版本时使用上述
-Alembic CLI。PostgreSQL 添加 assignment 外键前会拒绝非空 orphan 数据；SQLite 无法为已有表原地追加外键，部分旧 SQLite 库会保持 not-ready。
+`autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项（包括列、索引和外键）。数据库测试
+通过 `PostgresTestCase` 先升级到 head，再按测试清理业务表；需要验证 adoption 或 legacy 行为时使用
+显式未迁移空库。正式数据库仍必须使用上述 Alembic CLI；添加 assignment 外键前会拒绝非空 orphan 数据。
 
-多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`；测试默认使用显式临时 SQLite，
-真实 PostgreSQL 集成测试使用 `DOTTY_TEST_POSTGRES_ADMIN_URL` 创建一次性数据库。辅助脚本不会把生产
+多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`；测试使用
+`DOTTY_TEST_POSTGRES_ADMIN_URL` 创建一次性数据库。辅助脚本不会把生产
 `DATABASE_URL` 当作 admin，也不会把 branch 名拼进 SQL。发布顺序固定为：
 
 ```text

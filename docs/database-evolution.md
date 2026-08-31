@@ -2,8 +2,8 @@
 
 本文记录 Dotty Tutor 数据库从快速验证到正式运行治理的演进。内容以仓库 Git 历史、当前
 `apps/api/persistence/` 代码和测试为依据，快照日期为 **2026-08-31**。它解释为什么当前
-PostgreSQL 是正式运行时的唯一数据库、为什么 SQLite 暂时仍在仓库中，以及后续完全退出 SQLite
-需要满足什么条件。
+PostgreSQL 是正式运行时、业务脚本和数据库测试的唯一数据库。文中的 SQLite 仅用于解释历史
+设计和迁移背景，不代表当前支持的运行时或测试入口。
 
 ## 一、演进时间线
 
@@ -28,11 +28,9 @@ PostgreSQL，文件资产仍留在本地目录。
 但也暴露出一个关键约束：多个领域必须共用同一个 Engine 和同一条 schema 初始化路径，否则
 每个 Store 都可能形成自己的表创建逻辑。
 
-当前代码延续了这个边界：领域查询留在各自 Store，`persistence/base.py` 负责 Engine、连接
-策略、健康检查和 PostgreSQL/SQLite Upsert 差异，`schema_registry.py` 只负责把多个领域
-metadata 汇总给 SQLite 隔离初始化、Alembic 和 readiness 检查。JSON 文档在 PostgreSQL 使用
-JSONB，在 SQLite 使用 JSON；有行锁、`SKIP LOCKED` 等 PostgreSQL 能力的地方，SQLite 只保留
-明确标注的单进程测试回退。
+该阶段代码形成了当前边界的前身：领域查询留在各自 Store，`persistence/base.py` 负责 Engine、
+连接策略、健康检查和两套方言的 Upsert，`schema_registry.py` 汇总多个领域 metadata。当前实现
+已完成 PostgreSQL-only 收敛，JSON 文档使用 JSONB，行锁和 `SKIP LOCKED` 直接由 PostgreSQL 提供。
 
 ### 3. 从核心学习记录到错题与复习闭环
 
@@ -93,7 +91,7 @@ projections`：引入 `knowledge_points`，让知识点身份由发布版本作�
 | metrics | `model_call_metrics` | 模型调用边界指标和成本代理数据 |
 
 当前代码中的 SQLAlchemy metadata 是“模型描述”，不是生产变更命令。各领域 metadata 通过
-registry 被 Alembic 检查和被隔离 SQLite 测试复用，避免再次出现同名表由导入顺序决定事实来源。
+registry 被 Alembic 检查、readiness 报告和 PostgreSQL 测试夹具复用，避免再次出现同名表由导入顺序决定事实来源。
 
 ## 三、从 schema drift 得到的教训
 
@@ -110,11 +108,11 @@ schema。
 某个 Store 在自己的首次请求中懒建表，数据库就会出现业务可访问但迁移工具看不到的表。当前
 registry 明确列出六个 metadata，并在导入时拒绝重复表名。
 
-### 运行时懒建表适合隔离测试，不适合正式运行时
+### 运行时懒建表不应改变正式 schema
 
-各 Store 仍保留 SQLite 隔离初始化，是为了让单元测试不依赖外部服务；同一入口对 PostgreSQL
-直接跳过 DDL。这样测试便利性不会转化为生产请求隐式改表，也能让 `/api/health` 在业务查询
-前报告 schema 未就绪。
+当前各 Store 不执行 `create_all()` 或 `ALTER TABLE`。正式 PostgreSQL 只能通过 Alembic 改变
+schema；`PostgresTestCase` 负责为数据库测试创建一次性 PostgreSQL 库、升级到 head，并在测试
+之间清理业务表。这样测试隔离不会转化为业务请求的隐式 DDL，`/api/health` 也能在业务查询前报告 schema 未就绪。
 
 ### 一次性脚本必须退回兼容包装层
 
@@ -154,53 +152,40 @@ registry 明确列出六个 metadata，并在导入时拒绝重复表名。
 
 `env.py` 在 PostgreSQL 事务内取得 advisory lock；`migration_cli.py` 提供
 `current`、`head`、`preflight`、`upgrade`、`verify` 五个统一入口；`schema_registry.py` 保证
-六个领域的 metadata 在迁移、检查和隔离 SQLite 初始化中保持同一份注册事实。
+六个领域的 metadata 在迁移、检查和 PostgreSQL 测试夹具中保持同一份注册事实。
 
-## 五、为什么 SQLite 暂时保留
+## 五、PostgreSQL-only 现状
 
-SQLite 当前只保留两个准确用途：
+截至 2026-08-31，PostgreSQL 是唯一支持的数据库目标：
 
-- 快速、隔离的后端单元测试，不占用共享服务，也不要求测试环境先创建数据库；
-- 兼容遗留 SQLite 数据和迁移工具的验证路径，帮助把历史数据安全导入 PostgreSQL。
+- `resolve_database_url()` 只接受 PostgreSQL URL；`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产目录；
+- 生产 Store、Worker、业务脚本和迁移 CLI 都使用 PostgreSQL，Store 不执行 schema DDL；
+- 需要数据库的测试通过 `PostgresTestCase` 创建独立库、升级到 Alembic head，并在每个测试前
+  使用可信 schema registry 生成 `TRUNCATE ... RESTART IDENTITY CASCADE`；
+- adoption、legacy 和 preflight 场景显式创建未迁移的空 PostgreSQL 库，不与普通 Store 测试夹具混用；
+- CI 和本地 `scripts/test-backend-postgres.sh` 都要求显式 `DOTTY_TEST_POSTGRES_ADMIN_URL`，
+  只创建并清理固定安全前缀下的临时测试库。
 
-SQLite **不存放正式业务数据**，也不是生产 PostgreSQL 的隐式回退。新建 SQLite schema 仍可由
-registry 初始化，是测试便利；已有 SQLite 遗留表无法原地追加 assignment 外键时，报告会保持
-not-ready，不能把 SQLite 的结构限制伪装成生产约束已经存在。
+本文件前四节中的 SQLite 内容是历史记录。当前仓库不提供 SQLite 运行时、测试回退或 SQLite
+迁移脚本；需要处理历史备份时，应在受控的一次性数据迁移流程中完成，不能把旧备份接入业务 Store。
 
-本次审计的 2026-08-31 快照统计为：后端有 **16 个测试文件显式使用 SQLite**，生产代码和脚本
-约有 **45 处 SQLite 引用**。这里的“引用”按实际测试/运行分支与兼容入口统计，不把文档说明和
-重复注释当作新的运行能力。
+`schema_registry.py` 仍然是 metadata 的单一注册事实，但不再提供运行时自动建表函数。
 
-## 六、完全删除 SQLite 的影响、退出条件与路线
+## 六、本次迁移的完成项
 
-完全删除 SQLite 会影响测试启动方式、`sqlite+pysqlite` URL 解析、JSON/JSONB 和 Upsert 方言
-分支、SQLite 的 schema registry 初始化、遗留库兼容工具，以及当前依赖临时 `.sqlite3` 文件的
-测试。直接删除会让单测需要数据库服务，也可能丢失对历史 SQLite 数据的可验证迁移入口。
+本次收敛先建立隔离 PostgreSQL 测试基础设施，再迁移数据库测试，最后删除兼容代码和文档入口，
+避免因为先删测试能力而失去迁移验证。完成项如下：
 
-阶段 1 已完成：正式 AppStore/DatabaseStore、Worker 和业务脚本在没有显式 PostgreSQL 配置时会直接失败；
-`DOTTY_DATA_DIR` 只决定文件资产根目录，显式 SQLite URL 仅作为过渡测试能力保留。完全退出 SQLite
-仍需满足以下剩余条件，不以“生产已经使用 PostgreSQL”作为唯一判断。阶段 2 已建立隔离
-PostgreSQL 测试设施和 CI service：测试只接受显式 `DOTTY_TEST_POSTGRES_ADMIN_URL`，每次创建
-固定安全前缀加随机后缀的运行库，迁移到 head 后运行完整后端套件，并在结束时清理自己创建的库。
+1. **阶段 1（已完成）：取消正式运行时回退。** 正式 API、Worker 和业务脚本若未提供 PostgreSQL
+   配置就明确失败，`DOTTY_DATA_DIR` 不再参与数据库选择。
+2. **阶段 2（已完成）：建立隔离 PostgreSQL 测试设施。** Alembic、JSONB、外键、事务锁、并发
+   Job Store 和 orphan 检查使用一次性数据库；CI 通过独立 service 和显式 admin URL 运行。
+3. **阶段 3（已完成）：完成测试和代码收敛。** 数据库 Store/Route 测试已统一迁移到 PostgreSQL；
+   删除 SQLite URL、Upsert、初始化、batch migration 和任务锁回退分支；脚本移除 `--data-root`
+   数据库兼容参数；当前代码、测试和脚本扫描不再包含 SQLite 运行时引用。
 
-仍需满足：
-
-- 正式运行时、Worker、脚本和开发启动路径继续没有把 `DOTTY_DATA_DIR` 或 SQLite 当作数据库回退；
-- 16 个 SQLite 测试文件已经迁移或明确删除，CI 不再依赖本地 `.sqlite3`；
-- 历史 SQLite 导入已完成一次可审计演练并有备份、行数核对和回滚/重试方案；
-- 运行手册、开发文档和健康检查不再把 SQLite 描述为正式数据库选项。
-
-三阶段路线的当前状态如下：
-
-1. **阶段 1（已完成）：取消正式运行时回退。** 保留 SQLite 测试和兼容工具，但生产/Worker
-   若未提供 PostgreSQL 配置就明确失败；`DOTTY_DATA_DIR` 不再选择 SQLite，部署配置要求密码或
-   完整的 `DATABASE_URL`，并用无凭据错误消息提示修复方向。
-2. **阶段 2（已完成）：把 PostgreSQL 特性与迁移测试迁到隔离 PG。** 为 Alembic、JSONB、外键、
-   事务锁、并发 Job Store 和 orphan 检查建立一次性 PostgreSQL 数据库；CI 使用独立 service，
-   测试 admin 地址只通过 `DOTTY_TEST_POSTGRES_ADMIN_URL` 提供，绝不使用用户共享库。
-3. **迁移余下测试并删除方言分支。** 将剩余单测从临时 SQLite 迁到隔离 PostgreSQL，确认
-   所有测试不再依赖 SQLite 后，删除 SQLite URL/Upsert/初始化/`render_as_batch` 分支和遗留
-   兼容脚本中的 SQLite 入口；最后再移除 SQLite 依赖与文档，而不是先删测试基础设施。
+迁移后的历史数据仍必须遵守既有备份、行数核对、回滚和重试要求；本次代码收敛不自动读取或删除
+任何历史数据库文件，也不把历史导入脚本重新纳入正式运行路径。
 
 ## 七、标准迁移流程
 

@@ -97,7 +97,7 @@ Route 只负责创建 `background_jobs` 并快速返回 `202`；Worker 调用
 
 - 创建 SQLAlchemy Engine。
 - 初始化 Schema。
-- PostgreSQL/SQLite 通用 Upsert。
+- PostgreSQL Upsert。
 - 健康检查和连接关闭。
 
 具体查询放在领域 Store：
@@ -209,7 +209,7 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 本项目的测试分三层：
 
 1. 纯函数/契约测试：判题、Schema 和规范化。
-2. Store/Route 测试：使用临时 SQLite 和 FastAPI TestClient。
+2. Store/Route 测试：通过 `PostgresTestCase` 使用隔离 PostgreSQL 和 FastAPI TestClient；纯逻辑边界不连接数据库。
 3. Playwright E2E：保护学生能看到并操作的主路径。
 
 常用命令：

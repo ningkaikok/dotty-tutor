@@ -109,7 +109,7 @@ POST complete
 
 第一版新增 `background_jobs`，保留 `upload_jobs` 的教材领域语义。任务记录包含 `attempt_count`、
 `max_attempts`、`last_error`、`cancel_requested`、`lease_owner`、`lease_expires_at`、幂等键、运行快照和结果。
-PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务；SQLite 只作为测试回退。Worker 定时续租，失去租约后
+PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务。Worker 定时续租，失去租约后
 不会用旧执行者身份提交结果；过期租约会按取消请求、重试预算和失败上限确定性恢复。
 
 当前已异步化：

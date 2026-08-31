@@ -170,8 +170,8 @@ TTS，语音只属于明确的“请求讲解”动作。
 - `exercise_attempts`：原始回答、判定、提示层级、耗时以及服务端解析出的发布版本和知识点 ID。
 - `mastery_states`：按学习者和知识点聚合的当前 mastery-v2 掌握度投影。
 
-隔离 SQLite 单测首次访问 Store 时通过 schema registry 的 `create_all()` 初始化当前 schema；PostgreSQL 运行时不执行 DDL。
-已有数据库需要先备份，再在 `apps/api` 依次执行统一 CLI 的 `preflight`、`upgrade` 和 `verify` 命令。版本链会保留旧掌握度表，从作答证据重建新投影，
+数据库测试通过 PostgreSQL 测试夹具先升级到当前 schema；PostgreSQL 运行时不执行 DDL。已有数据库需要先备份，再在
+`apps/api` 依次执行统一 CLI 的 `preflight`、`upgrade` 和 `verify` 命令。版本链会保留旧掌握度表，从作答证据重建新投影，
 并将没有作答证据的旧行标记为 legacy；正式迁移依次执行 `preflight`、`upgrade` 和 `verify`，
 `scripts/migrate_mastery_v2.py` 仅是 deprecated 兼容包装器。
 

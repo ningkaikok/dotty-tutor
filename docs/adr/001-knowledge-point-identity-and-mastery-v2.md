@@ -46,14 +46,14 @@
 4. 没有作答证据的旧投影明确标记为 `mastery-v1-legacy`；
 5. 迁移在重复执行时保持 no-op，并通过计数和空值检查验证结果。
 
-生产 PostgreSQL 应用启动时不执行 SQLAlchemy DDL；已有数据库必须显式执行 Alembic 迁移。隔离 SQLite 测试库
-可以直接由 schema registry 初始化当前 schema。
+生产 PostgreSQL 应用启动时不执行 SQLAlchemy DDL；已有数据库必须显式执行 Alembic 迁移。数据库测试
+通过隔离 PostgreSQL 夹具先升级到当前 schema。
 
 ### 4. 同一知识点的首次并发写入必须串行化
 
 掌握度行可能在第一次作答时尚不存在。写入前锁定稳定存在的 `knowledge_points` 行，再在事务内重算和 upsert
 `mastery_states`，避免两个不同题目的并发作答各自读取不完整证据并覆盖对方结果。该锁只在 PostgreSQL 上承担
-生产并发语义；SQLite 仅用于隔离测试兼容。
+生产并发语义；测试也使用 PostgreSQL，以验证同一套行锁和事务语义。
 
 ## 未选择的方案
 

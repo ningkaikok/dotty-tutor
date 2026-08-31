@@ -91,12 +91,12 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 
 - 数据库连接串和云服务密钥只放在服务器密钥文件或部署平台 Secrets 中。
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
-- 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到 SQLite 或本机 socket。
+- 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到本机 socket 或本地文件。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
 - PostgreSQL 生产库必须显式执行 Alembic 迁移；Store 运行时不会自动创建或修改表。发布前在 `apps/api` 依次执行
   `uv run python -m persistence.migration_cli preflight`、`upgrade` 和 `verify`，顺序固定为
   `backup → preflight → upgrade → verify → deploy/restart`。每个 worktree/session 使用独立 `POSTGRES_DB`，
-  不得共享可写开发库。本地隔离 SQLite 单测仍可通过 schema registry 自动初始化，但不应把“重建空库”当作生产升级步骤。
+  不得共享可写开发库。后端数据库测试统一通过专用 admin 库创建一次性 PostgreSQL 测试库；测试建库不应被当作生产升级步骤。
 
 ## 启动前检查
 
