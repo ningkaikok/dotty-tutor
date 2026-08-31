@@ -26,7 +26,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
 variation_metadata = MetaData()
@@ -113,24 +112,14 @@ class VariationStore:
             self.engine = create_engine(database_url, future=True)
         else:
             self.engine = engine
-        self._initialized = False
-        self._initialize_lock = threading.Lock()
         # Serialize local submissions so the max(attempt_number) allocation
         # cannot race between concurrent requests.  PostgreSQL also locks the
         # variation projection below, covering separate worker transactions.
         self._answer_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        with self._initialize_lock:
-            if self._initialized:
-                return
-            from persistence.schema_registry import initialize_sqlite_schema
-
-            if self.engine.dialect.name == "sqlite":
-                initialize_sqlite_schema(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def create(
         self,
@@ -296,11 +285,7 @@ class VariationStore:
                 "feedback": feedback,
                 "created_at": timestamp,
             }
-            insert = (
-                postgresql_insert(variation_attempts)
-                if self.engine.dialect.name == "postgresql"
-                else sqlite_insert(variation_attempts)
-            )
+            insert = postgresql_insert(variation_attempts)
             result = connection.execute(insert.values(**values).on_conflict_do_nothing())
             if not result.rowcount:
                 return self._serialize(current)

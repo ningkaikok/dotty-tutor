@@ -8,7 +8,6 @@ the first two learners so the teacher dashboard has meaningful local data.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 import time
 from pathlib import Path
@@ -37,7 +36,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publication-id", required=True, help="已发布互动试卷 ID")
     parser.add_argument("--database-url", default=None)
-    parser.add_argument("--data-root", default=os.getenv("DOTTY_DATA_DIR"))
     return parser.parse_args()
 
 
@@ -47,7 +45,7 @@ def database_url(args: argparse.Namespace) -> str:
 
 def main() -> int:
     args = parse_args()
-    store = AppStore(database_url=database_url(args), data_root=args.data_root)
+    store = AppStore(database_url=database_url(args))
     try:
         publication = store.load_publication(args.publication_id)
         if not publication or publication["status"] != "published":

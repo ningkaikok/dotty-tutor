@@ -2,12 +2,11 @@
 
 上传记录和可执行任务是两个不同的生命周期：一条教材上传可以产生多个任务，任务也可以
 来自未来的批处理或重新审核。因此这里不修改 ``upload_jobs``，而是提供独立的最小 Job
-Store。时间戳统一使用 Unix seconds，便于 SQLite 测试与 PostgreSQL 生产环境共享契约。
+Store。时间戳统一使用 Unix seconds，便于队列审计和重试契约共享。
 """
 
 from __future__ import annotations
 
-import threading
 import time
 import uuid
 from typing import Any
@@ -19,16 +18,14 @@ from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import background_jobs
 
-_SQLITE_CLAIM_LOCK = threading.Lock()
 JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
 
 
 class JobStore(DatabaseStore):
     """保存后台任务，并在数据库层约束租约和状态迁移。
 
-    PostgreSQL 的 claim 在事务中使用 ``FOR UPDATE SKIP LOCKED``，让多个 Worker
-    可以安全地抢占不同任务。SQLite 没有等价的行锁，因此测试回退明确使用单进程
-    互斥锁；它不是多进程队列实现，生产环境应使用 PostgreSQL。
+    claim 在事务中使用 PostgreSQL 的 ``FOR UPDATE SKIP LOCKED``，让多个 Worker
+    可以安全地抢占不同任务。
     """
 
     def _row_to_job(self, row: Any) -> dict[str, Any]:
@@ -203,8 +200,8 @@ class JobStore(DatabaseStore):
     ) -> dict[str, Any] | None:
         """原子领取一个任务并递增 attemptCount。
 
-        PostgreSQL 生产路径显式加行锁并 ``SKIP LOCKED``；SQLite 路径在事务外层
-        使用单进程锁，避免把 SQLite 的数据库锁误称为可扩展的队列能力。
+        行锁和 ``SKIP LOCKED`` 都由 PostgreSQL 在事务内执行，避免多个 Worker
+        领取同一任务。
         """
         if not worker_id:
             raise ValueError("worker_id 不能为空")
@@ -212,47 +209,44 @@ class JobStore(DatabaseStore):
             raise ValueError("lease_seconds 必须大于 0")
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
-        lock = _SQLITE_CLAIM_LOCK if self.backend == "sqlite" else _NullLock()
-        with lock:
-            with self.engine.begin() as connection:
-                eligible = or_(
-                    and_(
-                        background_jobs.c.status == "queued",
-                        background_jobs.c.attempt_count < background_jobs.c.max_attempts,
-                    ),
-                    and_(
-                        background_jobs.c.status == "running",
-                        background_jobs.c.lease_expires_at.is_not(None),
-                        background_jobs.c.lease_expires_at <= timestamp,
-                    ),
+        with self.engine.begin() as connection:
+            eligible = or_(
+                and_(
+                    background_jobs.c.status == "queued",
+                    background_jobs.c.attempt_count < background_jobs.c.max_attempts,
+                ),
+                and_(
+                    background_jobs.c.status == "running",
+                    background_jobs.c.lease_expires_at.is_not(None),
+                    background_jobs.c.lease_expires_at <= timestamp,
+                ),
+            )
+            query = (
+                select(background_jobs)
+                .where(eligible)
+                .order_by(background_jobs.c.created_at, background_jobs.c.job_id)
+                .limit(1)
+                .with_for_update(skip_locked=True)
+            )
+            row = connection.execute(query).mappings().first()
+            if not row:
+                return None
+            connection.execute(
+                update(background_jobs)
+                .where(background_jobs.c.job_id == row["job_id"])
+                .values(
+                    status="running",
+                    attempt_count=background_jobs.c.attempt_count + 1,
+                    lease_owner=worker_id,
+                    lease_expires_at=timestamp + lease_seconds,
+                    started_at=row["started_at"] or timestamp,
+                    updated_at=timestamp, progress=5, message="Worker 已开始处理",
                 )
-                query = (
-                    select(background_jobs)
-                    .where(eligible)
-                    .order_by(background_jobs.c.created_at, background_jobs.c.job_id)
-                    .limit(1)
-                )
-                if self.backend == "postgresql":
-                    query = query.with_for_update(skip_locked=True)
-                row = connection.execute(query).mappings().first()
-                if not row:
-                    return None
-                connection.execute(
-                    update(background_jobs)
-                    .where(background_jobs.c.job_id == row["job_id"])
-                    .values(
-                        status="running",
-                        attempt_count=background_jobs.c.attempt_count + 1,
-                        lease_owner=worker_id,
-                        lease_expires_at=timestamp + lease_seconds,
-                        started_at=row["started_at"] or timestamp,
-                        updated_at=timestamp, progress=5, message="Worker 已开始处理",
-                    )
-                )
-                claimed = connection.execute(
-                    select(background_jobs).where(background_jobs.c.job_id == row["job_id"])
-                ).mappings().first()
-                return self._row_to_job(claimed) if claimed else None
+            )
+            claimed = connection.execute(
+                select(background_jobs).where(background_jobs.c.job_id == row["job_id"])
+            ).mappings().first()
+            return self._row_to_job(claimed) if claimed else None
 
     def is_cancel_requested(self, job_id: str) -> bool:
         self._ensure_initialized()
@@ -473,13 +467,3 @@ class JobStore(DatabaseStore):
                 .values(**values)
             )
         return self.get_job(job_id)  # type: ignore[return-value]
-
-
-class _NullLock:
-    """Context-manager no-op used to keep the SQLite and PostgreSQL paths parallel."""
-
-    def __enter__(self) -> "_NullLock":
-        return self
-
-    def __exit__(self, *_args: Any) -> None:
-        return None

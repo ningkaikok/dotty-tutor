@@ -1,8 +1,7 @@
 """集中注册各持久化领域的 SQLAlchemy metadata。
 
-Store 仍然按领域拆分；registry 只负责让 SQLite 初始化、Alembic
-autogenerate 和 schema readiness 检查看到同一组表。导入时显式检查重复表名，
-避免两个领域声明同名表后由导入顺序静默决定事实来源。
+Store 仍然按领域拆分；registry 负责让 Alembic autogenerate 和 schema
+readiness 检查看到同一组表。导入时显式检查重复表名，避免两个领域声明同名表后由导入顺序静默决定事实来源。
 """
 
 from __future__ import annotations
@@ -10,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from sqlalchemy import MetaData, Table
-from sqlalchemy.engine import Engine
 
 from persistence.metrics_store import metadata as metrics_metadata
 from persistence.mistake_store import mistake_metadata
@@ -61,19 +59,6 @@ def iter_metadata(*, exclude_tables: Iterable[str] = ()) -> Iterable[tuple[MetaD
         tables = [table for table in schema.tables.values() if table.name not in excluded]
         if tables:
             yield schema, tables
-
-
-def initialize_sqlite_schema(engine: Engine) -> None:
-    """Initialize an isolated SQLite test database from the shared registry.
-
-    Production PostgreSQL databases must be changed only through Alembic. The
-    backend guard makes accidentally reusing this convenience path against a
-    shared database fail loudly instead of silently changing its schema.
-    """
-    if engine.dialect.name != "sqlite":
-        raise RuntimeError("只有隔离 SQLite 才允许使用自动 schema 初始化")
-    for schema, tables in iter_metadata():
-        schema.create_all(engine, tables=tables, checkfirst=True)
 
 
 # Runtime health uses this stable value without importing Alembic's command

@@ -67,10 +67,8 @@ class MetricsStore:
         self.engine = engine
 
     def _ensure_initialized(self) -> None:
-        from persistence.schema_registry import initialize_sqlite_schema
-
-        if self.engine.dialect.name == "sqlite":
-            initialize_sqlite_schema(self.engine)
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def record(self, entry: dict[str, Any]) -> None:
         """追加一条调用记录；白名单外字段直接忽略，避免脏数据进入聚合。"""

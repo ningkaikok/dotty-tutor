@@ -108,11 +108,7 @@ def add_missing_columns(connection: Connection) -> list[str]:
             if column_name in existing:
                 continue
             if definition == "JSON_OBJECT_NOT_NULL":
-                definition = (
-                    "JSONB NOT NULL DEFAULT '{}'::jsonb"
-                    if connection.dialect.name == "postgresql"
-                    else "JSON NOT NULL DEFAULT '{}'"
-                )
+                definition = "JSONB NOT NULL DEFAULT '{}'::jsonb"
             connection.execute(
                 text(
                     f"ALTER TABLE {quote_identifier(table_name)} "
@@ -174,14 +170,7 @@ def foreign_key_orphan_counts(connection: Connection) -> dict[str, int]:
 
 
 def ensure_registered_foreign_keys(connection: Connection) -> list[str]:
-    """Add the new assignment FKs on PostgreSQL after an orphan safety check.
-
-    SQLite cannot add a foreign key to an existing table without rebuilding it;
-    its fresh schema is created with the constraints by the registry, while a
-    partial legacy SQLite database remains explicitly not-ready in reports.
-    """
-    if connection.dialect.name != "postgresql":
-        return []
+    """Add assignment FKs after an orphan safety check."""
     tables = table_names(connection)
     inspector = inspect(connection)
     pending: list[dict[str, Any]] = []
@@ -714,7 +703,7 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
         auto_fixable_foreign_keys = sorted(
             name
             for name in missing_fk_names
-            if engine.dialect.name == "postgresql" and orphan_counts.get(name, 0) == 0
+            if orphan_counts.get(name, 0) == 0
         )
         manual_foreign_keys = sorted(set(missing_fk_names) - set(auto_fixable_foreign_keys))
         manual_columns = {

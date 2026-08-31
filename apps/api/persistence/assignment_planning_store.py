@@ -19,15 +19,10 @@ class AssignmentPlanningStore:
 
     def __init__(self, *, engine: Any) -> None:
         self.engine = engine
-        self._initialized = False
 
     def _ensure_initialized(self) -> None:
-        if not self._initialized:
-            from persistence.schema_registry import initialize_sqlite_schema
-
-            if self.engine.dialect.name == "sqlite":
-                initialize_sqlite_schema(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def create(
         self,

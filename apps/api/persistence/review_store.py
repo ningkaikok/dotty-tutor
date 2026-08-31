@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 import time
 import uuid
 from typing import Any
@@ -61,20 +60,10 @@ class ReviewStore:
             self.engine = create_engine(database_url, future=True)
         else:
             self.engine = engine
-        self._initialized = False
-        self._initialize_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        with self._initialize_lock:
-            if self._initialized:
-                return
-            from persistence.schema_registry import initialize_sqlite_schema
-
-            if self.engine.dialect.name == "sqlite":
-                initialize_sqlite_schema(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def schedule(
         self,

@@ -8,7 +8,6 @@ root with the rest of the application.
 from __future__ import annotations
 
 import hashlib
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -29,7 +28,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
 from domain.constants import DEMO_LEARNER_ID
@@ -142,20 +140,10 @@ class MistakeStore:
         self.root = Path(data_root).expanduser().resolve()
         self.mistake_root = self.root / "mistakes"
         self.mistake_root.mkdir(parents=True, exist_ok=True)
-        self._initialized = False
-        self._initialize_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        with self._initialize_lock:
-            if self._initialized:
-                return
-            from persistence.schema_registry import initialize_sqlite_schema
-
-            if self.engine.dialect.name == "sqlite":
-                initialize_sqlite_schema(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def item_directory(self, mistake_id: str) -> Path:
         directory = self.mistake_root / mistake_id
@@ -254,16 +242,10 @@ class MistakeStore:
         }
         if not existing or not existing.get("errorReason"):
             update_values.update({"error_reason": None, "confirmed_at": None})
-        if self.engine.dialect.name == "postgresql":
-            statement = postgresql_insert(mistake_items).values(**values).on_conflict_do_update(
-                index_elements=[mistake_items.c.mistake_id],
-                set_=update_values,
-            )
-        else:
-            statement = sqlite_insert(mistake_items).values(**values).on_conflict_do_update(
-                index_elements=[mistake_items.c.mistake_id],
-                set_=update_values,
-            )
+        statement = postgresql_insert(mistake_items).values(**values).on_conflict_do_update(
+            index_elements=[mistake_items.c.mistake_id],
+            set_=update_values,
+        )
         with self.engine.begin() as connection:
             connection.execute(statement)
         return self.get(mistake_id) or {
@@ -280,17 +262,10 @@ class MistakeStore:
         return self._serialize(row) if row else None
 
     def _insert_attribution(self, connection: Any, **values: Any) -> None:
-        """Insert an attribution once for the active SQL dialect."""
-        if self.engine.dialect.name == "postgresql":
-            statement = postgresql_insert(mistake_attributions).values(**values).on_conflict_do_nothing(
-                index_elements=[mistake_attributions.c.attribution_id]
-            )
-        elif self.engine.dialect.name == "sqlite":
-            statement = sqlite_insert(mistake_attributions).values(**values).on_conflict_do_nothing(
-                index_elements=[mistake_attributions.c.attribution_id]
-            )
-        else:
-            raise RuntimeError(f"不支持的数据库后端：{self.engine.dialect.name}")
+        """Insert an attribution once by its stable PostgreSQL identifier."""
+        statement = postgresql_insert(mistake_attributions).values(**values).on_conflict_do_nothing(
+            index_elements=[mistake_attributions.c.attribution_id]
+        )
         connection.execute(statement)
 
     def update_ai_error_reason(

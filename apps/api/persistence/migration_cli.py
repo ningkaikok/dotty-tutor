@@ -19,15 +19,15 @@ API_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_CONFIG = API_ROOT / "alembic.ini"
 
 
-def resolve_database_url(database_url: str | None, data_root: str | None) -> str:
-    del data_root
+def resolve_database_url(database_url: str | None) -> str:
     return resolve_configured_database_url(database_url)
 
 
-def alembic_config(database_url: str) -> Config:
+def alembic_config(database_url: str | None = None) -> Config:
     config = Config(str(ALEMBIC_CONFIG))
     config.set_main_option("script_location", str(API_ROOT / "migrations"))
-    config.attributes["database_url"] = database_url
+    if database_url is not None:
+        config.attributes["database_url"] = database_url
     return config
 
 
@@ -62,9 +62,9 @@ def upgrade_database(database_url: str) -> dict[str, Any]:
 
 def run(args: argparse.Namespace) -> tuple[int, dict[str, Any]]:
     if args.command == "head":
-        config = alembic_config("sqlite+pysqlite:///:memory:")
+        config = alembic_config()
         return 0, {"head": head_revision(config)}
-    database_url = resolve_database_url(args.database_url, args.data_root)
+    database_url = resolve_database_url(args.database_url)
     config = alembic_config(database_url)
     head = head_revision(config)
     if args.command == "current":
@@ -83,7 +83,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=("current", "head", "preflight", "upgrade", "verify"))
     parser.add_argument("--database-url", default=None)
-    parser.add_argument("--data-root", default=None)
     args = parser.parse_args()
     code, result = run(args)
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))

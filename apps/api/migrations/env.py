@@ -60,11 +60,9 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
-            render_as_batch=connection.dialect.name == "sqlite",
         )
         with context.begin_transaction():
-            if connection.dialect.name == "postgresql":
-                connection.execute(text("SELECT pg_advisory_xact_lock(734291507)"))
+            connection.execute(text("SELECT pg_advisory_xact_lock(734291507)"))
             context.run_migrations()
     connectable.dispose()
 

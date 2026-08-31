@@ -504,7 +504,7 @@ class LearningStore(DatabaseStore):
         # cannot serialize concurrent first writes. A published knowledge
         # point row is created before this method and is stable for the
         # publication; PostgreSQL locks it for the duration of this transaction
-        # while SQLite treats the clause as a no-op.
+        # PostgreSQL uses the clause to serialize competing mastery updates.
         connection.execute(
             select(knowledge_points.c.knowledge_point_id)
             .where(knowledge_points.c.knowledge_point_id == knowledge_point_id_value)

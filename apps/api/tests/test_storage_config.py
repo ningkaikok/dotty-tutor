@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import unittest
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from persistence.app_store import AppStore
@@ -40,10 +39,10 @@ class StorageConfigTests(unittest.TestCase):
                 "postgresql+psycopg://app:secret@db.internal:5432/tutor",
             )
 
-    def test_rejects_sqlite_database_url_from_environment(self) -> None:
+    def test_rejects_non_postgres_database_url_from_environment(self) -> None:
         with patch.dict(
             os.environ,
-            {"DATABASE_URL": "sqlite+pysqlite:///:memory:"},
+            {"DATABASE_URL": "mysql+pymysql://app:secret@db.internal/tutor"},
             clear=True,
         ):
             with self.assertRaisesRegex(DatabaseConfigurationError, "必须指向 PostgreSQL"):
@@ -58,7 +57,7 @@ class StorageConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(DatabaseConfigurationError, "未配置 PostgreSQL"):
                 build_postgres_url_from_env()
 
-    def test_data_directory_does_not_select_sqlite(self) -> None:
+    def test_data_directory_does_not_select_database(self) -> None:
         with patch.dict(os.environ, {"DOTTY_DATA_DIR": "/tmp/dotty-test-data"}, clear=True):
             with self.assertRaisesRegex(DatabaseConfigurationError, "DOTTY_DATA_DIR"):
                 resolve_database_url()
@@ -68,10 +67,6 @@ class StorageConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(DatabaseConfigurationError, "未配置 PostgreSQL"):
                 AppStore()
 
-    def test_explicit_sqlite_url_remains_available_for_transition_tests(self) -> None:
-        with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
-            store = AppStore(database_url="sqlite+pysqlite:///:memory:", data_root=directory)
-            try:
-                self.assertEqual(store.backend, "sqlite")
-            finally:
-                store.close()
+    def test_rejects_explicit_non_postgres_url(self) -> None:
+        with self.assertRaisesRegex(DatabaseConfigurationError, "必须指向 PostgreSQL"):
+            resolve_database_url("mysql+pymysql://app:secret@db.internal/tutor")

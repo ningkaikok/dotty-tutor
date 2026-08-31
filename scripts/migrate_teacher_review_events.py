@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -39,7 +38,6 @@ def main() -> int:
     mode.add_argument("--apply", action="store_true")
     mode.add_argument("--verify", action="store_true")
     parser.add_argument("--database-url", default=None)
-    parser.add_argument("--data-root", default=os.getenv("DOTTY_DATA_DIR"))
     args = parser.parse_args()
     from sqlalchemy import create_engine
 

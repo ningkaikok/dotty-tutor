@@ -1,7 +1,7 @@
 """Database URL and JSON value helpers.
 
 This module contains infrastructure rules rather than product data access.  A
-store can therefore reuse the same PostgreSQL/SQLite setup without importing
+store can therefore reuse the same PostgreSQL setup without importing
 application-specific persistence composition.
 """
 
@@ -48,17 +48,14 @@ def build_postgres_url_from_env() -> str:
 def resolve_database_url(explicit_url: str | None = None) -> str:
     """Resolve an explicit target or a configured PostgreSQL environment.
 
-    SQLite remains available only when passed as an explicit argument, which
-    keeps isolated tests working without allowing ``DOTTY_DATA_DIR`` or an
-    unset environment to silently select a local database for the runtime.
+    ``DOTTY_DATA_DIR`` is intentionally not consulted here: it selects file
+    assets only and must never silently select a local database.
     """
     if explicit_url:
         normalized = normalize_database_url(explicit_url)
-        if normalized.startswith("sqlite"):
-            return normalized
         if not normalized.startswith("postgresql"):
             raise DatabaseConfigurationError(
-                "数据库 URL 必须指向 PostgreSQL；过渡测试才可通过 database_url 参数显式传入 SQLite URL。"
+                "数据库 URL 必须指向 PostgreSQL。"
             )
         return normalized
     configured_url = os.getenv("DATABASE_URL")
@@ -66,14 +63,14 @@ def resolve_database_url(explicit_url: str | None = None) -> str:
         normalized = normalize_database_url(configured_url)
         if not normalized.startswith("postgresql"):
             raise DatabaseConfigurationError(
-                "DATABASE_URL 必须指向 PostgreSQL；过渡测试请通过 database_url 参数显式传入 SQLite URL。"
+                "DATABASE_URL 必须指向 PostgreSQL。"
             )
         return normalized
     return build_postgres_url_from_env()
 
 
 def decode_json(value: Any) -> Any:
-    """Return a JSON value from either SQLAlchemy's native value or SQLite text."""
+    """Return a JSON value from either the driver's native value or text."""
     if isinstance(value, str):
         return json.loads(value)
     return value

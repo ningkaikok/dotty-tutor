@@ -148,14 +148,14 @@ class PostgresIntegrationTests(PostgresTestCase):
         self.assertEqual(head_revision(config), SCHEMA_HEAD_REVISION)
         self.assertEqual(current_revision(self.database.database_url), SCHEMA_HEAD_REVISION)
         code, preflight = run(
-            Namespace(command="preflight", database_url=self.database.database_url, data_root=None)
+            Namespace(command="preflight", database_url=self.database.database_url)
         )
         self.assertEqual(code, 0)
         self.assertTrue(preflight["ready"])
         self.assertEqual(upgrade_database(self.database.database_url)["current"], SCHEMA_HEAD_REVISION)
         self.assertEqual(upgrade_database(self.database.database_url)["current"], SCHEMA_HEAD_REVISION)
         code, verified = run(
-            Namespace(command="verify", database_url=self.database.database_url, data_root=None)
+            Namespace(command="verify", database_url=self.database.database_url)
         )
         self.assertEqual(code, 0)
         self.assertTrue(verified["ready"])
