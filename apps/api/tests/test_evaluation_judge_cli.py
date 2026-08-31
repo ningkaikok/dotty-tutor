@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import evaluation.judge_cli as judge_cli
+from evaluation.corpus import EXPLANATION_SAMPLES
 from evaluation.judge_cli import (
     JUDGE_REPORT_KIND,
     JUDGE_REPORT_VERSION,
@@ -55,7 +56,7 @@ class JudgeReportTests(unittest.TestCase):
         self.assertEqual(sample["logicalCalls"], 1)
         self.assertEqual(sample["providerAttempts"], 2)
         self.assertEqual(sample["tokenUsage"], {"promptTokens": 10, "outputTokens": 6})
-        self.assertEqual(report["judgeMetrics"]["providerAttempts"], 6)
+        self.assertEqual(report["judgeMetrics"]["providerAttempts"], 2 * len(EXPLANATION_SAMPLES))
         self.assertEqual(report["judgeMetrics"]["p50DurationMs"], 17.5)
         self.assertNotIn("rationale", str(report))
         self.assertNotIn("modelMetrics", report)
