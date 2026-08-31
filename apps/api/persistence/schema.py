@@ -139,7 +139,12 @@ assignments = Table(
     Column("class_id", String(64), ForeignKey("learning_classes.class_id", ondelete="CASCADE"), nullable=False),
     Column("publication_id", String(64), ForeignKey("lesson_publications.publication_id"), nullable=False),
     # A confirmed plan is the idempotency boundary for teacher assignment creation.
-    Column("assignment_plan_id", String(64), ForeignKey("assignment_plans.plan_id"), nullable=True),
+    Column(
+        "assignment_plan_id",
+        String(64),
+        ForeignKey("assignment_plans.plan_id", name="fk_assignments_assignment_plan"),
+        nullable=True,
+    ),
     Column("title", String(200), nullable=False),
     Column("due_at", Float),
     Column("status", String(32), nullable=False, default="active"),
@@ -210,7 +215,12 @@ learning_sessions = Table(
     Column("learner_id", String(128), nullable=False),
     Column("publication_id", String(128), nullable=False),
     # 新作答必须保留作业实例，旧的自由练习会话允许为空以兼容历史数据。
-    Column("assignment_id", String(64), ForeignKey("assignments.assignment_id"), nullable=True),
+    Column(
+        "assignment_id",
+        String(64),
+        ForeignKey("assignments.assignment_id", name="fk_learning_sessions_assignment"),
+        nullable=True,
+    ),
     Column("started_at", Float, nullable=False),
     Column("updated_at", Float, nullable=False),
 )

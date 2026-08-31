@@ -279,6 +279,20 @@ class MistakeStore:
             ).mappings().first()
         return self._serialize(row) if row else None
 
+    def _insert_attribution(self, connection: Any, **values: Any) -> None:
+        """Insert an attribution once for the active SQL dialect."""
+        if self.engine.dialect.name == "postgresql":
+            statement = postgresql_insert(mistake_attributions).values(**values).on_conflict_do_nothing(
+                index_elements=[mistake_attributions.c.attribution_id]
+            )
+        elif self.engine.dialect.name == "sqlite":
+            statement = sqlite_insert(mistake_attributions).values(**values).on_conflict_do_nothing(
+                index_elements=[mistake_attributions.c.attribution_id]
+            )
+        else:
+            raise RuntimeError(f"不支持的数据库后端：{self.engine.dialect.name}")
+        connection.execute(statement)
+
     def update_ai_error_reason(
         self,
         mistake_id: str,
@@ -312,20 +326,19 @@ class MistakeStore:
                     updated_at=timestamp,
                 )
             )
-            connection.execute(
-                mistake_attributions.insert().values(
-                    attribution_id=hashlib.sha256(
-                        f"ai:{mistake_id}:{category}:{timestamp}".encode("utf-8")
-                    ).hexdigest(),
-                    mistake_id=mistake_id,
-                    source="ai",
-                    category=category,
-                    confidence=max(0.0, min(1.0, confidence)),
-                    evidence_json=evidence or {"source": "tutoring"},
-                    model_version=model_version,
-                    created_at=timestamp,
-                    accepted_at=timestamp,
-                )
+            self._insert_attribution(
+                connection,
+                attribution_id=hashlib.sha256(
+                    f"ai:{mistake_id}:{category}:{timestamp}".encode("utf-8")
+                ).hexdigest(),
+                mistake_id=mistake_id,
+                source="ai",
+                category=category,
+                confidence=max(0.0, min(1.0, confidence)),
+                evidence_json=evidence or {"source": "tutoring"},
+                model_version=model_version,
+                created_at=timestamp,
+                accepted_at=timestamp,
             )
         return self.get(mistake_id)
 
@@ -377,20 +390,19 @@ class MistakeStore:
                 )
             )
             if new_self_assessment:
-                connection.execute(
-                    mistake_attributions.insert().values(
-                        attribution_id=hashlib.sha256(
-                            f"self:{mistake_id}:{new_self_assessment}:{timestamp}".encode("utf-8")
-                        ).hexdigest(),
-                        mistake_id=mistake_id,
-                        source="self",
-                        category=new_self_assessment,
-                        confidence=1.0,
-                        evidence_json={"source": "student-confirmation"},
-                        model_version=None,
-                        created_at=timestamp,
-                        accepted_at=timestamp,
-                    )
+                self._insert_attribution(
+                    connection,
+                    attribution_id=hashlib.sha256(
+                        f"self:{mistake_id}:{new_self_assessment}:{timestamp}".encode("utf-8")
+                    ).hexdigest(),
+                    mistake_id=mistake_id,
+                    source="self",
+                    category=new_self_assessment,
+                    confidence=1.0,
+                    evidence_json={"source": "student-confirmation"},
+                    model_version=None,
+                    created_at=timestamp,
+                    accepted_at=timestamp,
                 )
         return self.get(mistake_id)
 
@@ -409,9 +421,23 @@ class MistakeStore:
         return [self._serialize_attribution(row) for row in rows]
 
     def latest_attribution(self, mistake_id: str) -> dict[str, Any] | None:
-        """Return the latest accepted attribution without changing public APIs."""
-        items = self.list_attributions(mistake_id)
-        return items[-1] if items else None
+        """Return the latest attribution that has been explicitly accepted."""
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(mistake_attributions)
+                .where(
+                    mistake_attributions.c.mistake_id == mistake_id,
+                    mistake_attributions.c.accepted_at.is_not(None),
+                )
+                .order_by(
+                    mistake_attributions.c.accepted_at.desc(),
+                    mistake_attributions.c.created_at.desc(),
+                    mistake_attributions.c.attribution_id.desc(),
+                )
+                .limit(1)
+            ).mappings().first()
+        return self._serialize_attribution(row) if row else None
 
     def set_archived(self, mistake_id: str, archived: bool) -> dict[str, Any] | None:
         self._ensure_initialized()

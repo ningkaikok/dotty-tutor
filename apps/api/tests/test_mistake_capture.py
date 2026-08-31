@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 
-from persistence.mistake_store import MistakeStore
+from persistence.mistake_store import MistakeStore, mistake_attributions
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from routers.mistake_routes import build_mistake_router
@@ -191,6 +191,61 @@ class MistakeCaptureApiTests(unittest.TestCase):
         explicit_null = {**omitted, "errorReason": None}
         self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=explicit_null).json()["errorReason"], "calculation")
         self.assertEqual(len(self.store.list_attributions(mistake_id)), 1)
+
+    def test_attribution_retries_are_idempotent_and_latest_ignores_pending(self) -> None:
+        mistake_id = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation.png", b"image-fixture", "image/png")},
+        ).json()["mistakeId"]
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.7, updated_at=10
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.7, updated_at=10
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.8, updated_at=11
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="reading", confidence=0.9, updated_at=12
+        )
+        self.assertEqual(len(self.store.list_attributions(mistake_id)), 3)
+        self.assertEqual(self.store.latest_attribution(mistake_id)["category"], "reading")
+
+        with self.store.engine.begin() as connection:
+            connection.execute(
+                mistake_attributions.insert().values(
+                    attribution_id="pending-attribution",
+                    mistake_id=mistake_id,
+                    source="teacher",
+                    category="teacher-review",
+                    confidence=1.0,
+                    evidence_json={"source": "test"},
+                    model_version=None,
+                    created_at=99,
+                    accepted_at=None,
+                )
+            )
+        self.assertEqual(self.store.latest_attribution(mistake_id)["category"], "reading")
+
+        confirmation = {
+            "prompt": "解方程 2x + 3 = 11",
+            "originalAnswer": "x=1",
+            "subject": "数学",
+            "gradeBand": "初中",
+            "chapter": "一元一次方程",
+            "knowledgePoint": "移项",
+            "errorReason": "calculation",
+            "notes": "移项后符号写错",
+        }
+        fresh_id = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation-2.png", b"image-fixture", "image/png")},
+        ).json()["mistakeId"]
+        self.store.confirm(fresh_id, confirmation, confirmed_at=20)
+        self.store.confirm(fresh_id, confirmation, confirmed_at=20)
+        self.store.confirm(fresh_id, confirmation, confirmed_at=21)
+        self.assertEqual(len(self.store.list_attributions(fresh_id)), 2)
 
     def test_confirmation_succeeds_with_empty_chapter_and_knowledge_point(self) -> None:
         """章节/知识点不再强制：AI 已预填时，学生可以直接保存而不修改分类。"""

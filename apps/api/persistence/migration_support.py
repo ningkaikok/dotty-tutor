@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Mapping
 from typing import Any
 
 from sqlalchemy import inspect, select, text
@@ -40,6 +41,22 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "attribution_source": "VARCHAR(16) NOT NULL DEFAULT 'unknown'",
     },
 }
+_ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
+    {
+        "name": "fk_learning_sessions_assignment",
+        "table": "learning_sessions",
+        "columns": ("assignment_id",),
+        "referred_table": "assignments",
+        "referred_columns": ("assignment_id",),
+    },
+    {
+        "name": "fk_assignments_assignment_plan",
+        "table": "assignments",
+        "columns": ("assignment_plan_id",),
+        "referred_table": "assignment_plans",
+        "referred_columns": ("plan_id",),
+    },
+)
 
 
 def table_names(connection: Connection) -> set[str]:
@@ -98,6 +115,104 @@ def add_missing_columns(connection: Connection) -> list[str]:
     return added
 
 
+def _foreign_key_matches(reflected: Mapping[str, Any], expected: dict[str, Any]) -> bool:
+    return (
+        tuple(reflected.get("constrained_columns") or ()) == expected["columns"]
+        and reflected.get("referred_table") == expected["referred_table"]
+        and tuple(reflected.get("referred_columns") or ()) == expected["referred_columns"]
+    )
+
+
+def missing_foreign_keys(connection: Connection) -> list[str]:
+    """Return missing assignment FK names without changing the database."""
+    tables = table_names(connection)
+    missing: list[str] = []
+    inspector = inspect(connection)
+    for expected in _ADDITIVE_FOREIGN_KEYS:
+        if expected["table"] not in tables or expected["referred_table"] not in tables:
+            continue
+        if not set(expected["columns"]).issubset(column_names(connection, expected["table"])):
+            continue
+        reflected = inspector.get_foreign_keys(expected["table"])
+        if not any(_foreign_key_matches(item, expected) for item in reflected):
+            missing.append(expected["name"])
+    return missing
+
+
+def foreign_key_orphan_counts(connection: Connection) -> dict[str, int]:
+    """Count non-null child values that would violate the assignment FKs."""
+    tables = table_names(connection)
+    counts: dict[str, int] = {}
+    for expected in _ADDITIVE_FOREIGN_KEYS:
+        if expected["table"] not in tables or expected["referred_table"] not in tables:
+            continue
+        if not set(expected["columns"]).issubset(column_names(connection, expected["table"])):
+            continue
+        child = quote_identifier(expected["table"])
+        child_column = quote_identifier(expected["columns"][0])
+        parent = quote_identifier(expected["referred_table"])
+        parent_column = quote_identifier(expected["referred_columns"][0])
+        count = connection.scalar(
+            text(
+                f"SELECT COUNT(*) FROM {child} AS child "
+                f"WHERE child.{child_column} IS NOT NULL "
+                f"AND NOT EXISTS (SELECT 1 FROM {parent} AS parent "
+                f"WHERE parent.{parent_column} = child.{child_column})"
+            )
+        )
+        counts[expected["name"]] = int(count or 0)
+    return counts
+
+
+def ensure_registered_foreign_keys(connection: Connection) -> list[str]:
+    """Add the new assignment FKs on PostgreSQL after an orphan safety check.
+
+    SQLite cannot add a foreign key to an existing table without rebuilding it;
+    its fresh schema is created with the constraints by the registry, while a
+    partial legacy SQLite database remains explicitly not-ready in reports.
+    """
+    if connection.dialect.name != "postgresql":
+        return []
+    tables = table_names(connection)
+    inspector = inspect(connection)
+    pending: list[dict[str, Any]] = []
+    for expected in _ADDITIVE_FOREIGN_KEYS:
+        if expected["table"] not in tables or expected["referred_table"] not in tables:
+            continue
+        if not set(expected["columns"]).issubset(column_names(connection, expected["table"])):
+            continue
+        reflected = inspector.get_foreign_keys(expected["table"])
+        if any(_foreign_key_matches(item, expected) for item in reflected):
+            continue
+        if any(item.get("name") == expected["name"] for item in reflected):
+            raise RuntimeError(
+                f"外键 {expected['name']} 已存在但定义不一致，拒绝覆盖"
+            )
+        orphan_count = foreign_key_orphan_counts(connection).get(expected["name"], 0)
+        if orphan_count:
+            raise RuntimeError(
+                f"拒绝添加外键 {expected['name']}：发现 {orphan_count} 条孤儿引用，"
+                "请先人工修复数据；迁移不会删除或改写这些行"
+            )
+        pending.append(expected)
+    added: list[str] = []
+    for expected in pending:
+        columns = ", ".join(quote_identifier(column) for column in expected["columns"])
+        referred_columns = ", ".join(
+            quote_identifier(column) for column in expected["referred_columns"]
+        )
+        connection.execute(
+            text(
+                f"ALTER TABLE {quote_identifier(expected['table'])} "
+                f"ADD CONSTRAINT {quote_identifier(expected['name'])} "
+                f"FOREIGN KEY ({columns}) REFERENCES "
+                f"{quote_identifier(expected['referred_table'])} ({referred_columns})"
+            )
+        )
+        added.append(expected["name"])
+    return added
+
+
 def ensure_registered_indexes(connection: Connection) -> list[str]:
     """Create missing named indexes after additive columns are available."""
     created: list[str] = []
@@ -125,8 +240,13 @@ def ensure_current_schema(connection: Connection, *, include_attributions: bool 
     exclude = set() if include_attributions else {"mistake_attributions"}
     create_registered_schema(connection, exclude_tables=exclude)
     added_columns = add_missing_columns(connection)
+    added_foreign_keys = ensure_registered_foreign_keys(connection)
     created_indexes = ensure_registered_indexes(connection)
-    return {"addedColumns": added_columns, "createdIndexes": created_indexes}
+    return {
+        "addedColumns": added_columns,
+        "addedForeignKeys": added_foreign_keys,
+        "createdIndexes": created_indexes,
+    }
 
 
 def mastery_primary_key(connection: Connection, table_name: str = "mastery_states") -> list[str]:
@@ -560,7 +680,15 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
         version_state = "current" if version == SCHEMA_HEAD_REVISION else "missing"
         if version is not None and version != SCHEMA_HEAD_REVISION:
             version_state = "outdated"
-        ready = not missing_tables and not missing_columns and not missing_indexes
+        missing_fk_names = missing_foreign_keys(connection)
+        orphan_counts = foreign_key_orphan_counts(connection)
+        ready = (
+            not missing_tables
+            and not missing_columns
+            and not missing_indexes
+            and not missing_fk_names
+            and not any(orphan_counts.values())
+        )
         if require_version and version != SCHEMA_HEAD_REVISION:
             ready = False
         return {
@@ -572,6 +700,8 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
             "missingTables": missing_tables,
             "missingColumns": missing_columns,
             "missingIndexes": sorted(set(missing_indexes)),
+            "missingForeignKeys": missing_fk_names,
+            "orphanCounts": orphan_counts,
         }
 
 

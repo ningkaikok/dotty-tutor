@@ -73,6 +73,8 @@ def build_runtime_router(
                     "missingTables": schema.get("missingTables", []),
                     "missingColumns": schema.get("missingColumns", {}),
                     "missingIndexes": schema.get("missingIndexes", []),
+                    "missingForeignKeys": schema.get("missingForeignKeys", []),
+                    "orphanCounts": schema.get("orphanCounts", {}),
                 },
             )
         log_event("service.health.ok", level=10, database=store.backend)

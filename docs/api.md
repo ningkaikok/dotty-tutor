@@ -24,7 +24,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，不会等业务查询触发缺列 `500` |
+| `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，details 会列出缺失表/列/索引/外键及 orphan count，不会等业务查询触发缺列 `500` |
 | `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
@@ -136,6 +136,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 以及按作业计算的 `judgedCount`、`reviewedCount`、`overturnedCount`、`reviewRate` 和 `overturnRate`。
 隔离 SQLite 新库会由 schema registry 初始化该表；PostgreSQL 已有数据库依次使用统一 CLI 的
 `preflight`、`upgrade` 和 `verify` 命令，运行时不会自动建表。
+`preflight`/`verify` 会报告 `missingForeignKeys` 与 `orphanCounts`；PostgreSQL 添加 assignment 外键前会先检查非空孤儿引用，发现后拒绝迁移，
+不删除或改写数据。SQLite 无法对已有表原地追加外键，部分旧 SQLite 库会保持 not-ready，只有 registry 创建的 fresh schema 保证该约束。
 
 作业计划的 `result` 包含班级掌握度、`selfReported`/`aiAttributed`/`effective` 三套错因统计、试卷覆盖度、
 确定性目标和 `fallback` 状态。计划输入快照不保存姓名、learnerId、原始答案或聊天内容；发送给模型的内容只含

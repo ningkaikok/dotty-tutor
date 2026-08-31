@@ -35,6 +35,14 @@ class DatabaseMigrationTests(unittest.TestCase):
                 }
             command.upgrade(alembic_config(database_url), "head")
             self.assertEqual(current_revision(database_url), SCHEMA_HEAD_REVISION)
+            self.assertIn(
+                "fk_learning_sessions_assignment",
+                {item["name"] for item in inspect(engine).get_foreign_keys("learning_sessions")},
+            )
+            self.assertIn(
+                "fk_assignments_assignment_plan",
+                {item["name"] for item in inspect(engine).get_foreign_keys("assignments")},
+            )
             self.assertEqual(set(inspect(engine).get_table_names()), first_tables)
             with engine.connect() as connection:
                 second_counts = {
@@ -91,6 +99,10 @@ class DatabaseMigrationTests(unittest.TestCase):
             command.upgrade(alembic_config(database_url), "head")
             with engine.connect() as connection:
                 self.assertEqual(connection.execute(text("SELECT COUNT(*) FROM mistake_attributions")).scalar_one(), 2)
+            report = schema_report(engine)
+            self.assertIn("fk_learning_sessions_assignment", report["missingForeignKeys"])
+            self.assertEqual(report["orphanCounts"]["fk_learning_sessions_assignment"], 0)
+            self.assertFalse(report["ready"])
             engine.dispose()
 
     def test_current_v027_schema_without_version_is_adopted(self) -> None:
@@ -143,6 +155,8 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertEqual(response.status_code, 503)
             self.assertEqual(response.json()["errorCode"], "SCHEMA_OUT_OF_DATE")
             self.assertIn("mistake_attributions", response.json()["details"]["missingTables"])
+            self.assertIn("missingForeignKeys", response.json()["details"])
+            self.assertIn("orphanCounts", response.json()["details"])
             store.close()
 
 
