@@ -117,9 +117,17 @@ class MasteryStoreTests(PostgresTestCase):
                 attempt_id="b", session_id="session-paper-b", question_id="question-1",
                 response={}, assessment="incorrect", hint_level=0, duration_ms=0, created_at=2,
             )
-            items = second.list_mastery("learner")
-            self.assertEqual(len(items), 1)
-            self.assertNotEqual(items[0]["knowledgePointId"], knowledge_point_id("paper-a", "同名知识点"))
+            # The learner-wide endpoint returns both publications; the stable
+            # knowledge-point ID carries publication scope and must keep scores separate.
+            items = {
+                item["knowledgePointId"]: item
+                for item in second.list_mastery("learner")
+            }
+            first_point_id = knowledge_point_id("paper-a", "同名知识点")
+            second_point_id = knowledge_point_id("paper-b", "同名知识点")
+            self.assertEqual(set(items), {first_point_id, second_point_id})
+            self.assertEqual(items[first_point_id]["score"], 1.0)
+            self.assertEqual(items[second_point_id]["score"], 0.0)
 
     def test_mastery_boundary_comes_from_published_sub_questions(self) -> None:
         with tempfile.TemporaryDirectory() as root:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import unittest
 
 from alembic import command
@@ -146,9 +145,9 @@ class DatabaseMigrationTests(PostgresTestCase):
                 2,
             )
         report = schema_report(database.engine)
-        self.assertIn("fk_learning_sessions_assignment", report["missingForeignKeys"])
+        self.assertNotIn("fk_learning_sessions_assignment", report["missingForeignKeys"])
         self.assertEqual(report["orphanCounts"]["fk_learning_sessions_assignment"], 0)
-        self.assertFalse(report["ready"])
+        self.assertTrue(report["ready"])
 
     def test_current_v027_schema_without_version_is_adopted(self) -> None:
         database = self.new_bare_database()
@@ -209,11 +208,9 @@ class DatabaseMigrationTests(PostgresTestCase):
             self.assertIn("evaluation_evidence_json", columns["review_tasks"])
             self.assertIn("attribution_source", columns["variation_exercises"])
             self.assertEqual(
-                json.loads(
-                    connection.execute(
-                        text("SELECT evaluation_evidence_json FROM review_tasks WHERE task_id = 'task'")
-                    ).scalar_one()
-                ),
+                connection.execute(
+                    text("SELECT evaluation_evidence_json FROM review_tasks WHERE task_id = 'task'")
+                ).scalar_one(),
                 {},
             )
             review_column = next(

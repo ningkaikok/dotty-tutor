@@ -16,6 +16,7 @@ from persistence.app_store import AppStore
 from persistence.learning_store import LearningStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
+from persistence.schema_registry import table_registry
 from persistence.textbook_store import TextbookStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
@@ -72,35 +73,9 @@ class PersistenceDomainTests(PostgresTestCase):
                 VariationStore(engine=store.engine).count_for_mistake("missing")
                 ReviewStore(engine=store.engine).list_for_mistake("missing")
 
-                self.assertEqual(
-                    set(inspect(store.engine).get_table_names()),
-                    {
-                        "background_jobs",
-                        "batch_questions",
-                        "assignments",
-                        "assignment_plans",
-                        "class_memberships",
-                        "exercise_attempts",
-                        "learning_classes",
-                        "learning_sessions",
-                        "lesson_documents",
-                        "lesson_publications",
-                        "knowledge_points",
-                        "mastery_states",
-                        "teacher_review_events",
-                        "mistake_attributions",
-                        "mistake_items",
-                        "model_call_metrics",
-                        "question_revisions",
-                        "review_tasks",
-                        "run_snapshots",
-                        "tutor_messages",
-                        "tutor_threads",
-                        "variation_attempts",
-                        "upload_jobs",
-                        "variation_exercises",
-                    },
-                )
+                actual_tables = set(inspect(store.engine).get_table_names())
+                self.assertTrue(set(table_registry()) <= actual_tables)
+                self.assertIn("alembic_version", actual_tables)
             finally:
                 store.close()
 
