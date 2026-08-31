@@ -40,6 +40,9 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     "variation_exercises": {
         "attribution_source": "VARCHAR(16) NOT NULL DEFAULT 'unknown'",
     },
+    "review_tasks": {
+        "evaluation_evidence_json": "JSON_OBJECT_NOT_NULL",
+    },
 }
 _ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
     {
@@ -104,6 +107,12 @@ def add_missing_columns(connection: Connection) -> list[str]:
         for column_name, definition in columns.items():
             if column_name in existing:
                 continue
+            if definition == "JSON_OBJECT_NOT_NULL":
+                definition = (
+                    "JSONB NOT NULL DEFAULT '{}'::jsonb"
+                    if connection.dialect.name == "postgresql"
+                    else "JSON NOT NULL DEFAULT '{}'"
+                )
             connection.execute(
                 text(
                     f"ALTER TABLE {quote_identifier(table_name)} "
@@ -682,6 +691,53 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
             version_state = "outdated"
         missing_fk_names = missing_foreign_keys(connection)
         orphan_counts = foreign_key_orphan_counts(connection)
+        auto_fixable_columns = sorted(
+            f"{table_name}.{column_name}"
+            for table_name, columns in missing_columns.items()
+            for column_name in columns
+            if column_name in _ADDITIVE_COLUMNS.get(table_name, {})
+        )
+        auto_fixable_indexes = sorted(
+            index_name
+            for table_name, table in registry.items()
+            if table_name in tables
+            for index in table.indexes
+            for index_name in [index.name]
+            if index_name in missing_indexes
+            and all(column.name in column_names(connection, table_name) for column in index.columns)
+        )
+        auto_fixable_foreign_keys = sorted(
+            name
+            for name in missing_fk_names
+            if engine.dialect.name == "postgresql" and orphan_counts.get(name, 0) == 0
+        )
+        manual_foreign_keys = sorted(set(missing_fk_names) - set(auto_fixable_foreign_keys))
+        manual_columns = {
+            table_name: [
+                column_name
+                for column_name in columns
+                if column_name not in _ADDITIVE_COLUMNS.get(table_name, {})
+            ]
+            for table_name, columns in missing_columns.items()
+        }
+        manual_columns = {
+            table_name: columns
+            for table_name, columns in manual_columns.items()
+            if columns
+        }
+        auto_fixable = {
+            "tables": missing_tables,
+            "columns": auto_fixable_columns,
+            "indexes": auto_fixable_indexes,
+            "foreignKeys": auto_fixable_foreign_keys,
+        }
+        manual_action_required = {
+            "columns": manual_columns,
+            "foreignKeys": manual_foreign_keys,
+            "orphanCounts": {
+                name: count for name, count in orphan_counts.items() if count
+            },
+        }
         ready = (
             not missing_tables
             and not missing_columns
@@ -702,6 +758,8 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
             "missingIndexes": sorted(set(missing_indexes)),
             "missingForeignKeys": missing_fk_names,
             "orphanCounts": orphan_counts,
+            "autoFixable": auto_fixable,
+            "manualActionRequired": manual_action_required,
         }
 
 

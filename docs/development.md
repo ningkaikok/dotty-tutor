@@ -274,7 +274,8 @@ PostgreSQL advisory lock，再在事务中执行有序版本链。`0001` 可以 
 操作和事实来源都使用统一 CLI。
 
 PostgreSQL 运行时的 Store 不再执行 `create_all()` 或 `ALTER TABLE`。健康检查会先检查连通性与 schema readiness；
-schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表/列/索引/外键及 orphan count 列表。隔离 SQLite 测试仍可由
+schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表/列/索引/外键及 orphan count 列表，并按
+`autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项。隔离 SQLite 测试仍可由
 `schema_registry` 自动创建当前 schema，但不写入迁移版本，便于现有 Store 单测；需要验证正式版本时使用上述
 Alembic CLI。PostgreSQL 添加 assignment 外键前会拒绝非空 orphan 数据；SQLite 无法为已有表原地追加外键，部分旧 SQLite 库会保持 not-ready。
 

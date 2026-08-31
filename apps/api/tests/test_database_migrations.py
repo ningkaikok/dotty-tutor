@@ -2,24 +2,52 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from alembic import command
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import Column, MetaData, Table, create_engine, inspect, text
 
 from application import create_app
 from persistence.migration_cli import alembic_config, current_revision
 from persistence.migration_support import schema_report
+from persistence.mistake_store import mistake_items
+from persistence.review_store import review_tasks
+from persistence.schema import assignments, learning_sessions
 from persistence.schema_registry import SCHEMA_HEAD_REVISION, table_registry
+from persistence.variation_store import variation_exercises
 from routers.runtime_routes import build_runtime_router
 
 
 class DatabaseMigrationTests(unittest.TestCase):
     def _url(self, directory: str, name: str = "database.sqlite3") -> str:
         return f"sqlite+pysqlite:///{Path(directory) / name}"
+
+    def _create_legacy_projection(
+        self,
+        connection,
+        source_table: Table,
+        omitted_columns: set[str],
+    ) -> None:
+        """Create a legacy table with all known fields except the migration gap."""
+        metadata = MetaData()
+        Table(
+            source_table.name,
+            metadata,
+            *(
+                Column(
+                    column.name,
+                    column.type,
+                    primary_key=column.primary_key,
+                    nullable=column.nullable,
+                )
+                for column in source_table.columns
+                if column.name not in omitted_columns
+            ),
+        ).create(connection)
 
     def test_registry_is_unique_and_alembic_upgrade_is_repeatable(self) -> None:
         self.assertEqual(len(table_registry()), 24)
@@ -118,6 +146,81 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertNotIn("mastery_states_legacy", inspect(engine).get_table_names())
             engine.dispose()
 
+    def test_realistic_legacy_gap_shape_is_completed_idempotently(self) -> None:
+        """Cover the exact partial PostgreSQL shape reported by read-only preflight."""
+        with tempfile.TemporaryDirectory() as directory:
+            database_url = self._url(directory, "realistic-gap.sqlite3")
+            engine = create_engine(database_url, future=True)
+            with engine.begin() as connection:
+                self._create_legacy_projection(connection, assignments, {"assignment_plan_id"})
+                self._create_legacy_projection(connection, learning_sessions, {"assignment_id"})
+                self._create_legacy_projection(
+                    connection,
+                    mistake_items,
+                    {"ai_error_reason", "ai_error_reason_confidence"},
+                )
+                self._create_legacy_projection(connection, review_tasks, {"evaluation_evidence_json"})
+                self._create_legacy_projection(connection, variation_exercises, {"attribution_source"})
+                connection.exec_driver_sql(
+                    "INSERT INTO review_tasks "
+                    "(task_id, mistake_id, learner_id, interval_days, due_at, status, "
+                    "question_payload_json, model_run_json, response_json, assessment, feedback, "
+                    "created_at, started_at, completed_at) "
+                    "VALUES ('task', 'mistake', 'learner', 1, 1, 'scheduled', NULL, '{}', '{}', NULL, '', 1, NULL, NULL)"
+                )
+
+            preflight = schema_report(engine)
+            self.assertIn("review_tasks.evaluation_evidence_json", preflight["autoFixable"]["columns"])
+            command.upgrade(alembic_config(database_url), "head")
+            command.upgrade(alembic_config(database_url), "head")
+            with engine.connect() as connection:
+                columns = {
+                    table_name: {
+                        column["name"] for column in inspect(connection).get_columns(table_name)
+                    }
+                    for table_name in (
+                        "assignments",
+                        "learning_sessions",
+                        "mistake_items",
+                        "review_tasks",
+                        "variation_exercises",
+                    )
+                }
+                self.assertIn("assignment_plan_id", columns["assignments"])
+                self.assertIn("assignment_id", columns["learning_sessions"])
+                self.assertIn("ai_error_reason", columns["mistake_items"])
+                self.assertIn("ai_error_reason_confidence", columns["mistake_items"])
+                self.assertIn("evaluation_evidence_json", columns["review_tasks"])
+                self.assertIn("attribution_source", columns["variation_exercises"])
+                self.assertEqual(
+                    json.loads(
+                        connection.execute(
+                            text("SELECT evaluation_evidence_json FROM review_tasks WHERE task_id = 'task'")
+                        ).scalar_one()
+                    ),
+                    {},
+                )
+                review_column = next(
+                    column
+                    for column in inspect(connection).get_columns("review_tasks")
+                    if column["name"] == "evaluation_evidence_json"
+                )
+                self.assertFalse(review_column["nullable"])
+                self.assertIn("mistake_attributions", inspect(connection).get_table_names())
+                self.assertIn("variation_attempts", inspect(connection).get_table_names())
+                self.assertIn("idx_assignments_plan", {
+                    item["name"] for item in inspect(connection).get_indexes("assignments")
+                })
+                self.assertIn("idx_learning_sessions_assignment", {
+                    item["name"] for item in inspect(connection).get_indexes("learning_sessions")
+                })
+
+            report = schema_report(engine)
+            self.assertIn("fk_assignments_assignment_plan", report["manualActionRequired"]["foreignKeys"])
+            self.assertIn("fk_learning_sessions_assignment", report["manualActionRequired"]["foreignKeys"])
+            self.assertFalse(report["ready"])
+            engine.dispose()
+
     def test_schema_report_distinguishes_unversioned_sqlite_and_missing_columns(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             database_url = self._url(directory, "status.sqlite3")
@@ -157,6 +260,8 @@ class DatabaseMigrationTests(unittest.TestCase):
             self.assertIn("mistake_attributions", response.json()["details"]["missingTables"])
             self.assertIn("missingForeignKeys", response.json()["details"])
             self.assertIn("orphanCounts", response.json()["details"])
+            self.assertIn("autoFixable", response.json()["details"])
+            self.assertIn("manualActionRequired", response.json()["details"])
             store.close()
 
 
