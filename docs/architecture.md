@@ -621,7 +621,7 @@ POST /api/tts
 正式入口是 `cd apps/api && uv run python -m persistence.migration_cli <command>`，可用命令为
 `current`、`head`、`preflight`、`upgrade` 和 `verify`。`preflight`/`verify` 只读且输出不包含连接串；
 PostgreSQL 的业务请求不会补表或加列。健康检查会在连接可用但 schema 落后时返回 `503` 和
-`SCHEMA_OUT_OF_DATE`，并返回缺失外键、orphan count 以及 `autoFixable`/`manualActionRequired`，避免业务查询先触发缺列 `500`。PostgreSQL 迁移添加
+`SCHEMA_OUT_OF_DATE`，并返回缺失外键、orphan count 以及按列/索引/外键分类的 `autoFixable`/`manualActionRequired`，避免业务查询先触发缺列 `500`。PostgreSQL 迁移添加
 assignment 外键前会拒绝非空 orphan 数据；SQLite 只有 fresh registry schema 保证新外键，部分旧 SQLite 库会明确保持 not-ready。
 
 每个 worktree/session 必须使用独立可写数据库：PostgreSQL 推荐独立 `POSTGRES_DB`，测试使用

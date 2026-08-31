@@ -171,6 +171,9 @@ class DatabaseMigrationTests(unittest.TestCase):
 
             preflight = schema_report(engine)
             self.assertIn("review_tasks.evaluation_evidence_json", preflight["autoFixable"]["columns"])
+            self.assertIn("idx_assignments_plan", preflight["autoFixable"]["indexes"])
+            self.assertIn("idx_learning_sessions_assignment", preflight["autoFixable"]["indexes"])
+            self.assertEqual(preflight["manualActionRequired"]["indexes"], [])
             command.upgrade(alembic_config(database_url), "head")
             command.upgrade(alembic_config(database_url), "head")
             with engine.connect() as connection:

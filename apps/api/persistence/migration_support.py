@@ -704,8 +704,13 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
             for index in table.indexes
             for index_name in [index.name]
             if index_name in missing_indexes
-            and all(column.name in column_names(connection, table_name) for column in index.columns)
+            and all(
+                column.name in column_names(connection, table_name)
+                or column.name in _ADDITIVE_COLUMNS.get(table_name, {})
+                for column in index.columns
+            )
         )
+        manual_indexes = sorted(set(missing_indexes) - set(auto_fixable_indexes))
         auto_fixable_foreign_keys = sorted(
             name
             for name in missing_fk_names
@@ -733,6 +738,7 @@ def schema_report(engine: Engine, *, require_version: bool = False) -> dict[str,
         }
         manual_action_required = {
             "columns": manual_columns,
+            "indexes": manual_indexes,
             "foreignKeys": manual_foreign_keys,
             "orphanCounts": {
                 name: count for name, count in orphan_counts.items() if count

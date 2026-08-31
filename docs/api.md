@@ -136,7 +136,7 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 以及按作业计算的 `judgedCount`、`reviewedCount`、`overturnedCount`、`reviewRate` 和 `overturnRate`。
 隔离 SQLite 新库会由 schema registry 初始化该表；PostgreSQL 已有数据库依次使用统一 CLI 的
 `preflight`、`upgrade` 和 `verify` 命令，运行时不会自动建表。
-`preflight`/`verify` 会报告 `missingForeignKeys`、`orphanCounts` 以及 `autoFixable`/`manualActionRequired`；PostgreSQL 添加 assignment 外键前会先检查非空孤儿引用，发现后拒绝迁移，
+`preflight`/`verify` 会报告 `missingForeignKeys`、`orphanCounts` 以及 `autoFixable`/`manualActionRequired`（其中包含列、索引和外键分类）；PostgreSQL 添加 assignment 外键前会先检查非空孤儿引用，发现后拒绝迁移，
 不删除或改写数据。SQLite 无法对已有表原地追加外键，部分旧 SQLite 库会保持 not-ready，只有 registry 创建的 fresh schema 保证该约束。
 
 作业计划的 `result` 包含班级掌握度、`selfReported`/`aiAttributed`/`effective` 三套错因统计、试卷覆盖度、

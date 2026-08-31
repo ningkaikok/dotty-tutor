@@ -228,7 +228,7 @@ DATABASE_URL / POSTGRES_*
 schema，并在 PostgreSQL 事务内持有 advisory lock。隔离 SQLite 测试可以通过 registry 自动创建当前
 schema，但不替代生产迁移。旧的 `scripts/migrate_*.py` 仅保留参数兼容，事实来源是版本链和
 `migration_support.py`。readiness 报告和健康检查会用 `autoFixable`/`manualActionRequired` 区分可自动补齐的
-表/列/索引与需人工处理的字段、外键或 orphan 数据；`mistake_items` 的旧归因列暂时保留，经过观察窗口后才考虑 contract/drop。
+表/列/索引与需人工处理的字段、索引、外键或 orphan 数据；`mistake_items` 的旧归因列暂时保留，经过观察窗口后才考虑 contract/drop。
 
 ## 前端依赖方向
 
