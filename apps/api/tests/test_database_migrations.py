@@ -145,9 +145,43 @@ class DatabaseMigrationTests(PostgresTestCase):
                 2,
             )
         report = schema_report(database.engine)
-        self.assertNotIn("fk_learning_sessions_assignment", report["missingForeignKeys"])
-        self.assertEqual(report["orphanCounts"]["fk_learning_sessions_assignment"], 0)
-        self.assertTrue(report["ready"])
+        self.assertEqual(report["missingForeignKeys"], [])
+        self.assertEqual(
+            report["orphanCounts"],
+            {
+                "fk_learning_sessions_assignment": 0,
+                "fk_assignments_assignment_plan": 0,
+            },
+        )
+        self.assertEqual(
+            report["manualActionRequired"]["columns"],
+            {
+                "exercise_attempts": ["duration_ms", "hint_level", "response_json"],
+                "variation_exercises": [
+                    "answered_at",
+                    "assessment",
+                    "created_at",
+                    "feedback",
+                    "learner_id",
+                    "level",
+                    "mistake_id",
+                    "model_run_json",
+                    "question_payload_json",
+                    "response_json",
+                    "sequence",
+                    "status",
+                ],
+            },
+        )
+        self.assertEqual(
+            report["manualActionRequired"]["indexes"],
+            ["idx_variation_exercises_learner", "idx_variation_exercises_mistake"],
+        )
+        self.assertEqual(report["manualActionRequired"]["foreignKeys"], [])
+        self.assertEqual(report["manualActionRequired"]["orphanCounts"], {})
+        self.assertFalse(report["ready"])
+        self.assertEqual(report["version"], SCHEMA_HEAD_REVISION)
+        self.assertEqual(current_revision(database_url), SCHEMA_HEAD_REVISION)
 
     def test_current_v027_schema_without_version_is_adopted(self) -> None:
         database = self.new_bare_database()
@@ -231,9 +265,19 @@ class DatabaseMigrationTests(PostgresTestCase):
             )
 
         report = schema_report(database.engine)
-        self.assertIn("fk_assignments_assignment_plan", report["manualActionRequired"]["foreignKeys"])
-        self.assertIn("fk_learning_sessions_assignment", report["manualActionRequired"]["foreignKeys"])
-        self.assertFalse(report["ready"])
+        self.assertTrue(report["ready"])
+        self.assertEqual(report["missingTables"], [])
+        self.assertEqual(report["missingColumns"], {})
+        self.assertEqual(report["missingIndexes"], [])
+        self.assertEqual(report["missingForeignKeys"], [])
+        self.assertEqual(report["manualActionRequired"], {
+            "columns": {},
+            "indexes": [],
+            "foreignKeys": [],
+            "orphanCounts": {},
+        })
+        self.assertEqual(report["version"], SCHEMA_HEAD_REVISION)
+        self.assertEqual(current_revision(database_url), SCHEMA_HEAD_REVISION)
 
     def test_schema_report_distinguishes_unversioned_database_and_missing_columns(self) -> None:
         database = self.new_bare_database()

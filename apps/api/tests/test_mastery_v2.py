@@ -126,8 +126,10 @@ class MasteryStoreTests(PostgresTestCase):
             first_point_id = knowledge_point_id("paper-a", "同名知识点")
             second_point_id = knowledge_point_id("paper-b", "同名知识点")
             self.assertEqual(set(items), {first_point_id, second_point_id})
-            self.assertEqual(items[first_point_id]["score"], 1.0)
+            self.assertEqual(items[first_point_id]["score"], 0.6)
+            self.assertEqual(items[first_point_id]["rawScore"], 1.0)
             self.assertEqual(items[second_point_id]["score"], 0.0)
+            self.assertEqual(items[second_point_id]["rawScore"], 0.0)
 
     def test_mastery_boundary_comes_from_published_sub_questions(self) -> None:
         with tempfile.TemporaryDirectory() as root:
