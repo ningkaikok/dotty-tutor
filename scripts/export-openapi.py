@@ -11,14 +11,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND = ROOT / "backend"
+BACKEND = ROOT / "apps" / "api"
 if str(BACKEND) not in sys.path:
     sys.path.insert(0, str(BACKEND))
+
+# OpenAPI generation imports the fully assembled application, whose stores require an
+# explicit PostgreSQL URL.  Engine construction is lazy and does not connect, so use a
+# deliberately unreachable schema-only URL when the caller did not provide runtime
+# configuration.  This keeps CI type generation independent from a shared database
+# without reintroducing a SQLite fallback.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg://openapi:openapi@127.0.0.1:1/openapi",
+)
 
 
 def main() -> int:

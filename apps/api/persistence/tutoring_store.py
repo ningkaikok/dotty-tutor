@@ -1,8 +1,7 @@
-"""PostgreSQL/SQLite persistence for tutor threads and bounded messages."""
+"""PostgreSQL persistence for tutor threads and bounded messages."""
 
 from __future__ import annotations
 
-import threading
 import time
 import uuid
 from typing import Any
@@ -84,17 +83,10 @@ class TutoringStore:
             self.engine = create_engine(database_url, future=True)
         else:
             self.engine = engine
-        self._initialized = False
-        self._initialize_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        with self._initialize_lock:
-            if self._initialized:
-                return
-            tutoring_metadata.create_all(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def create_or_get(self, mistake_id: str, learner_id: str = DEMO_LEARNER_ID) -> dict[str, Any]:
         """Return the one thread allowed for a learner/mistake pair."""
@@ -165,7 +157,7 @@ class TutoringStore:
 
         错题本的归档仍是软删除：题目和学习证据保留，列表默认隐藏。但归档后
         再次进入不应恢复一段已经失效的对话，因此显式删除消息和线程；消息表先删
-        先删消息再删线程，保证 PostgreSQL 与 SQLite 的行为一致。
+        先删消息再删线程，保持删除顺序与外键约束一致。
         """
         self._ensure_initialized()
         with self.engine.begin() as connection:

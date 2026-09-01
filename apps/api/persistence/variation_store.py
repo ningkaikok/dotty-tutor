@@ -26,7 +26,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 
 variation_metadata = MetaData()
@@ -113,32 +112,14 @@ class VariationStore:
             self.engine = create_engine(database_url, future=True)
         else:
             self.engine = engine
-        self._initialized = False
-        self._initialize_lock = threading.Lock()
         # Serialize local submissions so the max(attempt_number) allocation
         # cannot race between concurrent requests.  PostgreSQL also locks the
         # variation projection below, covering separate worker transactions.
         self._answer_lock = threading.Lock()
 
     def _ensure_initialized(self) -> None:
-        if self._initialized:
-            return
-        with self._initialize_lock:
-            if self._initialized:
-                return
-            variation_metadata.create_all(self.engine)
-            # SQLAlchemy create_all does not alter an existing table. This
-            # small compatibility step keeps old SQLite databases readable;
-            # deployments should also run the checked-in migration script.
-            from sqlalchemy import inspect, text
-            columns = {item["name"] for item in inspect(self.engine).get_columns("variation_exercises")}
-            if "attribution_source" not in columns:
-                with self.engine.begin() as connection:
-                    statement = (
-                        "ALTER TABLE variation_exercises ADD COLUMN attribution_source VARCHAR(16) NOT NULL DEFAULT 'unknown'"
-                    )
-                    connection.execute(text(statement))
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def create(
         self,
@@ -304,11 +285,7 @@ class VariationStore:
                 "feedback": feedback,
                 "created_at": timestamp,
             }
-            insert = (
-                postgresql_insert(variation_attempts)
-                if self.engine.dialect.name == "postgresql"
-                else sqlite_insert(variation_attempts)
-            )
+            insert = postgresql_insert(variation_attempts)
             result = connection.execute(insert.values(**values).on_conflict_do_nothing())
             if not result.rowcount:
                 return self._serialize(current)

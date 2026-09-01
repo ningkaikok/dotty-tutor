@@ -84,12 +84,10 @@
    三个独立 PR——①契约层 `subQuestions` schema + 逐小问 answerSpec + 质量门禁适配；
    ②前端分小问作答渲染；③判题循环逐小问确定性判定与"不可判小问"显式标记。
    触发条件已满足（本地题库占比 17%）；在每个 PR 改动落在对应文件时顺路执行。
-6. **T0 / 版本化迁移（Alembic）**：当前建表散在五个 Store 的 `metadata.create_all()` 里
-   （`review_store` / `metrics_store` / `mistake_store` / `tutoring_store` / `variation_store`），
-   schema 变更靠一次性迁移脚本。单人 Demo 阶段这样最省事，但**必须在第一个真实学科组试用之前补完**：
-   一旦库里有真实班级的作答和掌握度，`create_all` 既不会改已存在的表，也没有回滚路径，
-   多环境（本机 / 试用现场）之间无法对齐版本。
-   > 与“暂缓生产化”不冲突：这条不是多租户也不是登录，是数据资产的可回滚性。
+6. **T0 / 版本化迁移（Alembic，已完成）**：已建立由 schema registry 驱动的统一版本链和
+   `current/head/preflight/upgrade/verify` 命令；PostgreSQL 运行时不再执行 Store DDL，迁移使用事务 advisory lock，
+   并覆盖空库、v0.27.0 adoption、部分旧 schema、mastery/作业/教师/变式增量和错因历史回填。
+   > 与“暂缓生产化”不冲突：这条不是多租户也不是登录，是数据资产的可审计性与可重复升级。
    > 外部评审里有一份建议把它排在试用之后——不采纳，代价是不对称的：早做一天，晚做要脱一层皮。
    > 边界：只做版本化迁移链和 CI 里的 `upgrade head` 冒烟，不引入数据播种或蓝绿迁移工具。
 7. **P1 生产准备（按需）**：真实 PostgreSQL 集成测试、CodeQL、Actions SHA 固定、API 错误脱敏

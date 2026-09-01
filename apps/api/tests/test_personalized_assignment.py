@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -14,6 +12,7 @@ from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.mistake_store import MistakeStore
 from routers.classroom_routes import build_classroom_router
 from routers.learning_routes import build_learning_router
+from tests.postgres_test_support import PostgresTestCase
 
 
 class FakePersonalizedRuntime:
@@ -40,11 +39,12 @@ class FakePersonalizedRuntime:
         }, {"provider": "test", "model": "fake", "fallback": False}
 
 
-class PersonalizedAssignmentTests(unittest.TestCase):
+class PersonalizedAssignmentTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        root = Path(self.temp.name)
-        self.store = AppStore(database_url=f"sqlite+pysqlite:///{root / 'app.sqlite3'}", data_root=root)
+        super().setUp()
+        root = self.data_root
+        self.store = AppStore(database_url=self.database_url, data_root=root)
+        self.addCleanup(self.store.close)
         self.store.save_lesson({
             "lessonId": "source-question",
             "title": "一次函数",
@@ -73,6 +73,7 @@ class PersonalizedAssignmentTests(unittest.TestCase):
         app.include_router(build_learning_router(store=self.store))
         app.include_router(build_classroom_router(store=self.store, planning_service=planner, personalized_service=service))
         self.client = TestClient(app)
+        self.addCleanup(self.client.close)
         self.runtime = runtime
         planner.mistake_store.create({
             "mistakeId": "class-mistake", "learnerId": "learner-a", "sourceFilename": "source.png",
@@ -81,11 +82,6 @@ class PersonalizedAssignmentTests(unittest.TestCase):
             "chapter": "一次函数", "knowledgePoint": "一次函数", "errorReason": "concept",
             "status": "unmastered", "createdAt": 1, "updatedAt": 1,
         })
-
-    def tearDown(self) -> None:
-        self.client.close()
-        self.store.close()
-        self.temp.cleanup()
 
     def test_generates_new_publication_and_final_plan_idempotently(self) -> None:
         class_id = self.client.post("/api/classes", json={"name": "一次函数班"}).json()["classId"]

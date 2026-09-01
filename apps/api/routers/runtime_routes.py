@@ -12,6 +12,7 @@ from typing import Any, Callable
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from application.errors import AppError
 from application.services.learning_funnel import build_funnel_snapshot
 from domain.constants import DEMO_LEARNER_ID
 from domain.questions.contracts import (
@@ -41,11 +42,45 @@ def build_runtime_router(
 
     @router.get("/api/health")
     def health() -> dict[str, str]:
-        if not store.ping():
+        try:
+            schema = store.schema_status()
+        except Exception as error:
             log_event("service.health.failed", level=40, dependency="database")
-            raise HTTPException(status_code=503, detail="数据库不可用")
+            raise AppError(
+                "数据库不可用",
+                status_code=503,
+                error_code="DATABASE_UNAVAILABLE",
+                retryable=True,
+            ) from error
+        if not schema["ready"]:
+            log_event(
+                "service.health.failed",
+                level=40,
+                dependency="database-schema",
+                schema_version=schema.get("version"),
+                missing_tables=len(schema.get("missingTables", [])),
+                missing_columns=len(schema.get("missingColumns", {})),
+            )
+            raise AppError(
+                "数据库 schema 未就绪，请先执行迁移命令",
+                status_code=503,
+                error_code="SCHEMA_OUT_OF_DATE",
+                retryable=False,
+                details={
+                    "version": schema.get("version"),
+                    "head": schema.get("head"),
+                    "versionState": schema.get("versionState"),
+                    "missingTables": schema.get("missingTables", []),
+                    "missingColumns": schema.get("missingColumns", {}),
+                    "missingIndexes": schema.get("missingIndexes", []),
+                    "missingForeignKeys": schema.get("missingForeignKeys", []),
+                    "orphanCounts": schema.get("orphanCounts", {}),
+                    "autoFixable": schema.get("autoFixable", {}),
+                    "manualActionRequired": schema.get("manualActionRequired", {}),
+                },
+            )
         log_event("service.health.ok", level=10, database=store.backend)
-        return {"status": "ok", "database": store.backend}
+        return {"status": "ok", "database": store.backend, "schema": "current"}
 
     @router.get("/api/tts/status")
     def tts_status() -> dict[str, Any]:

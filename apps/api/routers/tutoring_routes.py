@@ -108,6 +108,15 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
                 thread["mistakeId"],
                 category=category,
                 confidence=confidence,
+                evidence={
+                    "text": diagnosis.get("evidence", ""),
+                    "matched": diagnosis.get("evidenceMatched", False),
+                },
+                model_version=(
+                    result["reply"].modelRun.get("model")
+                    if isinstance(result["reply"].modelRun, dict)
+                    else None
+                ),
             )
         saved = tutoring_store.append_turn(
             thread_id,

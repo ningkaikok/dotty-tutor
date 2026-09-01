@@ -9,6 +9,14 @@ class AppStore(TextbookStore, LearningStore, ClassroomStore):
     """Expose core application domains through one shared SQLAlchemy engine."""
 
 
-application_store = AppStore()
+_application_store: AppStore | None = None
 
-__all__ = ["AppStore", "application_store"]
+
+def get_application_store() -> AppStore:
+    """Create the formal runtime store lazily, after configuration is loaded."""
+    global _application_store
+    if _application_store is None:
+        _application_store = AppStore()
+    return _application_store
+
+__all__ = ["AppStore", "get_application_store"]

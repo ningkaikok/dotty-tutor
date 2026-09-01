@@ -11,7 +11,6 @@ from persistence.schema import (
     assignment_plans,
     knowledge_points,
     mastery_states,
-    metadata,
 )
 
 
@@ -20,12 +19,10 @@ class AssignmentPlanningStore:
 
     def __init__(self, *, engine: Any) -> None:
         self.engine = engine
-        self._initialized = False
 
     def _ensure_initialized(self) -> None:
-        if not self._initialized:
-            metadata.create_all(self.engine)
-            self._initialized = True
+        """Keep store call sites uniform; schema creation is Alembic-owned."""
+        return None
 
     def create(
         self,

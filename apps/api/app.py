@@ -15,7 +15,7 @@ from domain.questions.pipeline import build_question_content_blocks
 from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
 from mistake_recognition import build_mistake_recognizer
-from persistence.app_store import application_store as store
+from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
@@ -37,6 +37,7 @@ from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
 
 app = create_app()
+store = get_application_store()
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 # 模型调用边界指标的共享存储；生成/陪练两个 Runtime 实例都写入同一张表。

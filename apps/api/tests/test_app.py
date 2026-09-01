@@ -43,6 +43,7 @@ from infrastructure.runtime.review_runtime import (
     normalize_ocr_question,
 )
 from persistence.app_store import AppStore
+from tests.postgres_test_support import PostgresTestCase
 
 STEPS = [
     {"text": "方程两边同时减去 3。", "speechText": "先做移项。"},
@@ -234,9 +235,15 @@ class LessonGenerationTests(unittest.TestCase):
         self.assertNotIn("images/", payload["question"]["prompt"])
 
 
-class PersistentStoreTests(unittest.TestCase):
+class PersistentStoreTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def test_completed_pdf_and_questions_survive_store_recreation(self) -> None:
-        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"DATABASE_URL": self.database_url, "DOTTY_DATA_DIR": directory},
+        ):
             first_store = AppStore()
             upload_directory = first_store.upload_root / "persisted-upload"
             upload_directory.mkdir()
@@ -281,7 +288,10 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertEqual(restored["batchGuideCards"]["batch-001"][0]["hint"], "持久化提示")
 
     def test_soft_deleted_import_drops_from_library_but_keeps_data(self) -> None:
-        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"DATABASE_URL": self.database_url, "DOTTY_DATA_DIR": directory},
+        ):
             store = AppStore()
             upload_directory = store.upload_root / "delete-upload"
             upload_directory.mkdir()
@@ -318,7 +328,10 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertFalse(store.soft_delete_import("missing-upload"))
 
     def test_find_completed_import_matches_content_hash(self) -> None:
-        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"DATABASE_URL": self.database_url, "DOTTY_DATA_DIR": directory},
+        ):
             store = AppStore()
 
             def make_job(upload_id: str, status: str) -> dict:
@@ -344,7 +357,10 @@ class PersistentStoreTests(unittest.TestCase):
             self.assertIsNone(store.find_completed_import("pdf-deadbeef1234"))
 
     def test_saves_multiple_questions_in_one_batch_transaction(self) -> None:
-        with TemporaryDirectory() as directory, patch.dict(os.environ, {"DOTTY_DATA_DIR": directory}):
+        with TemporaryDirectory() as directory, patch.dict(
+            os.environ,
+            {"DATABASE_URL": self.database_url, "DOTTY_DATA_DIR": directory},
+        ):
             store = AppStore()
             upload_directory = store.upload_root / "atomic-upload"
             upload_directory.mkdir()

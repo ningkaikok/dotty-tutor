@@ -42,7 +42,7 @@
 | npm | 9.5.1 |
 | 前端 | React 18、Vite 6.4.3，端口 5174 |
 | 后端 | FastAPI、Uvicorn，端口 8010 |
-| 数据库 | PostgreSQL 18，`dotty_tutor`；旧 SQLite 仅保留为迁移备份 |
+| 数据库 | PostgreSQL 18，`dotty_tutor`（当前唯一支持的数据库） |
 | OCR | MinerU，实际生效模式 `mineru` |
 
 当前可用模型：

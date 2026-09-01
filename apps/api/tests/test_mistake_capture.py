@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
 
-from persistence.mistake_store import MistakeStore
+from persistence.mistake_store import MistakeStore, mistake_attributions
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from routers.mistake_routes import build_mistake_router
+from tests.postgres_test_support import PostgresTestCase
 
 
 def fake_recognize(
@@ -47,13 +46,14 @@ def fake_recognize(
     )
 
 
-class MistakeCaptureApiTests(unittest.TestCase):
+class MistakeCaptureApiTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.directory = TemporaryDirectory()
+        super().setUp()
         self.store = MistakeStore(
-            database_url=f"sqlite+pysqlite:///{self.directory.name}/mistakes.sqlite3",
-            data_root=self.directory.name,
+            database_url=self.database_url,
+            data_root=self.data_root,
         )
+        self.addCleanup(self.store.close)
         self.cleared: list[tuple[str, str]] = []
         app = FastAPI()
         app.include_router(build_mistake_router(
@@ -62,15 +62,11 @@ class MistakeCaptureApiTests(unittest.TestCase):
             archive_cleanup=self._clear_tutor,
         ))
         self.client = TestClient(app)
+        self.addCleanup(self.client.close)
 
     def _clear_tutor(self, mistake_id: str, learner_id: str) -> int:
         self.cleared.append((mistake_id, learner_id))
         return 1
-
-    def tearDown(self) -> None:
-        self.client.close()
-        self.store.close()
-        self.directory.cleanup()
 
     def test_import_confirm_list_and_archive_mistake(self) -> None:
         response = self.client.post(
@@ -115,6 +111,8 @@ class MistakeCaptureApiTests(unittest.TestCase):
                 {"id": "stem-2", "type": "math", "latex": "x + 1 = 3", "display": False, "sourceOrder": 1},
             ],
         )
+        attributions = self.store.list_attributions(imported["mistakeId"])
+        self.assertEqual([(item["source"], item["category"]) for item in attributions], [("self", "calculation")])
 
         listed = self.client.get("/api/mistakes").json()["items"]
         self.assertEqual([item["mistakeId"] for item in listed], [imported["mistakeId"]])
@@ -188,6 +186,62 @@ class MistakeCaptureApiTests(unittest.TestCase):
         self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=omitted).json()["errorReason"], "calculation")
         explicit_null = {**omitted, "errorReason": None}
         self.assertEqual(self.client.patch(f"/api/mistakes/{mistake_id}", json=explicit_null).json()["errorReason"], "calculation")
+        self.assertEqual(len(self.store.list_attributions(mistake_id)), 1)
+
+    def test_attribution_retries_are_idempotent_and_latest_ignores_pending(self) -> None:
+        mistake_id = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation.png", b"image-fixture", "image/png")},
+        ).json()["mistakeId"]
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.7, updated_at=10
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.7, updated_at=10
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="calculation", confidence=0.8, updated_at=11
+        )
+        self.store.update_ai_error_reason(
+            mistake_id, category="reading", confidence=0.9, updated_at=12
+        )
+        self.assertEqual(len(self.store.list_attributions(mistake_id)), 3)
+        self.assertEqual(self.store.latest_attribution(mistake_id)["category"], "reading")
+
+        with self.store.engine.begin() as connection:
+            connection.execute(
+                mistake_attributions.insert().values(
+                    attribution_id="pending-attribution",
+                    mistake_id=mistake_id,
+                    source="teacher",
+                    category="teacher-review",
+                    confidence=1.0,
+                    evidence_json={"source": "test"},
+                    model_version=None,
+                    created_at=99,
+                    accepted_at=None,
+                )
+            )
+        self.assertEqual(self.store.latest_attribution(mistake_id)["category"], "reading")
+
+        confirmation = {
+            "prompt": "解方程 2x + 3 = 11",
+            "originalAnswer": "x=1",
+            "subject": "数学",
+            "gradeBand": "初中",
+            "chapter": "一元一次方程",
+            "knowledgePoint": "移项",
+            "errorReason": "calculation",
+            "notes": "移项后符号写错",
+        }
+        fresh_id = self.client.post(
+            "/api/mistakes/import",
+            files={"file": ("equation-2.png", b"image-fixture", "image/png")},
+        ).json()["mistakeId"]
+        self.store.confirm(fresh_id, confirmation, confirmed_at=20)
+        self.store.confirm(fresh_id, confirmation, confirmed_at=20)
+        self.store.confirm(fresh_id, confirmation, confirmed_at=21)
+        self.assertEqual(len(self.store.list_attributions(fresh_id)), 2)
 
     def test_confirmation_succeeds_with_empty_chapter_and_knowledge_point(self) -> None:
         """章节/知识点不再强制：AI 已预填时，学生可以直接保存而不修改分类。"""
@@ -212,10 +266,9 @@ class MistakeCaptureApiTests(unittest.TestCase):
 
     def test_archive_keeps_learning_evidence_clears_thread_and_restore_starts_new_thread(self) -> None:
         """归档是错题软删除；陪练上下文清理，但验证证据必须可追溯。"""
-        engine = create_engine(f"sqlite:///{self.directory.name}/archive.sqlite3", future=True)
-        mistakes = MistakeStore(engine=engine, data_root=self.directory.name)
-        tutoring = TutoringStore(engine=engine)
-        variations = VariationStore(engine=engine)
+        mistakes = self.store
+        tutoring = TutoringStore(engine=self.engine)
+        variations = VariationStore(engine=self.engine)
         now = 1.0
         mistakes.create({
             "mistakeId": "archive-mistake",
@@ -264,7 +317,6 @@ class MistakeCaptureApiTests(unittest.TestCase):
             self.assertEqual(new_thread["messages"], [])
         finally:
             client.close()
-            engine.dispose()
 
 
 if __name__ == "__main__":

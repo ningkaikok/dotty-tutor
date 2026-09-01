@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -15,6 +14,7 @@ from domain.learning.mastery import (
 )
 from persistence.app_store import AppStore
 from routers.learning_routes import build_learning_router
+from tests.postgres_test_support import PostgresTestCase
 
 
 class MasteryAlgorithmTests(unittest.TestCase):
@@ -38,41 +38,55 @@ class MasteryAlgorithmTests(unittest.TestCase):
         self.assertEqual(derive_mastery(evidence), derive_mastery(reversed(evidence)))
 
 
-class MasteryStoreTests(unittest.TestCase):
+def build_store_with_publication(
+    database_url: str,
+    root: str,
+    publication_id: str = "paper-1",
+    count: int = 2,
+) -> AppStore:
+    store = AppStore(database_url=database_url, data_root=root)
+    lesson_ids = []
+    for index in range(count):
+        question_id = f"question-{index + 1}"
+        lesson_ids.append(question_id)
+        store.save_lesson({
+            "lessonId": question_id,
+            "title": question_id,
+            "version": 1,
+            "status": "draft",
+            "knowledgePoints": ["同名知识点"],
+            "blocks": [],
+            "questionPayload": {
+                "question": {"id": question_id, "knowledgePoint": "同名知识点"},
+                "quality": {"status": "ready"},
+            },
+        })
+    store.create_publication(
+        publication_id=publication_id,
+        title=publication_id,
+        source_upload_id=None,
+        lesson_ids=lesson_ids,
+        status="draft",
+        created_at=1,
+    )
+    store.update_publication_status(publication_id, "in_review")
+    store.update_publication_status(publication_id, "published")
+    store.create_learning_session(
+        session_id=f"session-{publication_id}",
+        learner_id="learner",
+        publication_id=publication_id,
+        started_at=1,
+    )
+    return store
+
+
+class MasteryStoreTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def _store_with_publication(self, root: str, publication_id: str = "paper-1", count: int = 2) -> AppStore:
-        store = AppStore(database_url=f"sqlite+pysqlite:///{Path(root) / publication_id}.sqlite3", data_root=root)
-        lesson_ids = []
-        for index in range(count):
-            question_id = f"question-{index + 1}"
-            lesson_ids.append(question_id)
-            store.save_lesson({
-                "lessonId": question_id,
-                "title": question_id,
-                "version": 1,
-                "status": "draft",
-                "knowledgePoints": ["同名知识点"],
-                "blocks": [],
-                "questionPayload": {
-                    "question": {"id": question_id, "knowledgePoint": "同名知识点"},
-                    "quality": {"status": "ready"},
-                },
-            })
-        store.create_publication(
-            publication_id=publication_id,
-            title=publication_id,
-            source_upload_id=None,
-            lesson_ids=lesson_ids,
-            status="draft",
-            created_at=1,
-        )
-        store.update_publication_status(publication_id, "in_review")
-        store.update_publication_status(publication_id, "published")
-        store.create_learning_session(
-            session_id=f"session-{publication_id}",
-            learner_id="learner",
-            publication_id=publication_id,
-            started_at=1,
-        )
+        store = build_store_with_publication(self.database_url, root, publication_id, count)
+        self.addCleanup(store.close)
         return store
 
     def test_repeated_question_is_capped_and_latest_wins(self) -> None:
@@ -103,13 +117,24 @@ class MasteryStoreTests(unittest.TestCase):
                 attempt_id="b", session_id="session-paper-b", question_id="question-1",
                 response={}, assessment="incorrect", hint_level=0, duration_ms=0, created_at=2,
             )
-            items = second.list_mastery("learner")
-            self.assertEqual(len(items), 1)
-            self.assertNotEqual(items[0]["knowledgePointId"], knowledge_point_id("paper-a", "同名知识点"))
+            # The learner-wide endpoint returns both publications; the stable
+            # knowledge-point ID carries publication scope and must keep scores separate.
+            items = {
+                item["knowledgePointId"]: item
+                for item in second.list_mastery("learner")
+            }
+            first_point_id = knowledge_point_id("paper-a", "同名知识点")
+            second_point_id = knowledge_point_id("paper-b", "同名知识点")
+            self.assertEqual(set(items), {first_point_id, second_point_id})
+            self.assertEqual(items[first_point_id]["score"], 0.6)
+            self.assertEqual(items[first_point_id]["rawScore"], 1.0)
+            self.assertEqual(items[second_point_id]["score"], 0.0)
+            self.assertEqual(items[second_point_id]["rawScore"], 0.0)
 
     def test_mastery_boundary_comes_from_published_sub_questions(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            store = AppStore(database_url=f"sqlite+pysqlite:///{Path(root) / 'tutor-only.sqlite3'}", data_root=root)
+            store = AppStore(database_url=self.database_url, data_root=root)
+            self.addCleanup(store.close)
             store.save_lesson({
                 "lessonId": "lesson-tutor-only",
                 "title": "证明题",
@@ -162,7 +187,8 @@ class MasteryStoreTests(unittest.TestCase):
 
     def test_schema_contains_v2_projection_fields(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            store = AppStore(database_url=f"sqlite+pysqlite:///{root}/schema.sqlite3", data_root=root)
+            store = AppStore(database_url=self.database_url, data_root=root)
+            self.addCleanup(store.close)
             store.ping()
             self.assertEqual(
                 {column["name"] for column in inspect(store.engine).get_columns("mastery_states")},
@@ -174,10 +200,14 @@ class MasteryStoreTests(unittest.TestCase):
             )
 
 
-class MasteryRouteTests(unittest.TestCase):
+class MasteryRouteTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def test_server_resolves_knowledge_point_and_rejects_foreign_question(self) -> None:
         with tempfile.TemporaryDirectory() as root:
-            store = MasteryStoreTests()._store_with_publication(root, count=1)
+            store = build_store_with_publication(self.database_url, root, count=1)
+            self.addCleanup(store.close)
             app = FastAPI()
             app.include_router(build_learning_router(store=store))
             client = TestClient(app)

@@ -16,19 +16,22 @@ from persistence.app_store import AppStore
 from persistence.learning_store import LearningStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
+from persistence.schema_registry import table_registry
 from persistence.textbook_store import TextbookStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from tests.postgres_test_support import PostgresTestCase
 
 
-class PersistenceDomainTests(unittest.TestCase):
-    def make_url(self, root: Path, name: str) -> str:
-        return f"sqlite+pysqlite:///{root / name}"
+class PersistenceDomainTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
 
     def test_textbook_store_exposes_only_textbook_operations(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = TextbookStore(self.make_url(root, "textbook.sqlite3"), root)
+            store = TextbookStore(self.database_url, root)
+            self.addCleanup(store.close)
             try:
                 self.assertTrue(callable(store.save_job))
                 self.assertFalse(hasattr(store, "record_exercise_attempt"))
@@ -38,7 +41,8 @@ class PersistenceDomainTests(unittest.TestCase):
     def test_learning_store_exposes_only_learning_operations(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = LearningStore(self.make_url(root, "learning.sqlite3"), root)
+            store = LearningStore(self.database_url, root)
+            self.addCleanup(store.close)
             try:
                 self.assertTrue(callable(store.save_lesson))
                 self.assertFalse(hasattr(store, "save_job"))
@@ -48,7 +52,8 @@ class PersistenceDomainTests(unittest.TestCase):
     def test_app_store_combines_domains_with_one_engine(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = AppStore(self.make_url(root, "combined.sqlite3"), root)
+            store = AppStore(self.database_url, root)
+            self.addCleanup(store.close)
             try:
                 self.assertTrue(callable(store.save_job))
                 self.assertTrue(callable(store.save_lesson))
@@ -56,10 +61,11 @@ class PersistenceDomainTests(unittest.TestCase):
             finally:
                 store.close()
 
-    def test_empty_database_creates_every_current_domain_table(self) -> None:
+    def test_migrated_database_exposes_every_current_domain_table(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            store = AppStore(self.make_url(root, "current.sqlite3"), root)
+            store = AppStore(self.database_url, root)
+            self.addCleanup(store.close)
             try:
                 self.assertTrue(store.ping())
                 MistakeStore(engine=store.engine, data_root=root).list("local-demo")
@@ -67,33 +73,9 @@ class PersistenceDomainTests(unittest.TestCase):
                 VariationStore(engine=store.engine).count_for_mistake("missing")
                 ReviewStore(engine=store.engine).list_for_mistake("missing")
 
-                self.assertEqual(
-                    set(inspect(store.engine).get_table_names()),
-                    {
-                        "background_jobs",
-                        "batch_questions",
-                        "assignments",
-                        "assignment_plans",
-                        "class_memberships",
-                        "exercise_attempts",
-                        "learning_classes",
-                        "learning_sessions",
-                        "lesson_documents",
-                        "lesson_publications",
-                        "knowledge_points",
-                        "mastery_states",
-                        "teacher_review_events",
-                        "mistake_items",
-                        "question_revisions",
-                        "review_tasks",
-                        "run_snapshots",
-                        "tutor_messages",
-                        "tutor_threads",
-                        "variation_attempts",
-                        "upload_jobs",
-                        "variation_exercises",
-                    },
-                )
+                actual_tables = set(inspect(store.engine).get_table_names())
+                self.assertTrue(set(table_registry()) <= actual_tables)
+                self.assertIn("alembic_version", actual_tables)
             finally:
                 store.close()
 

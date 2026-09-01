@@ -129,14 +129,36 @@ source .env
 set +a
 ```
 
-也可以只设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
-`POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高。不要提交真实密钥：
+也可以设置 `POSTGRES_HOST`、`POSTGRES_PORT`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 和
+`POSTGRES_DB`，后端会自动组装 `DATABASE_URL`。`DATABASE_URL` 优先级更高；两者都没有时，
+应用、Worker 和业务脚本会在启动前直接失败，不会回退到本机 PostgreSQL socket 或本地文件。不要提交真实密钥：
 
 `.env` 已被 `.gitignore` 忽略；当前应用不会自动读取 `.env`，上面的 `source` 用于把变量导入当前 shell。
 
 > 图片看起来与刚生成的结果不一致时，先确认服务使用的是同一份环境和全新测试数据库：
-> `source .env.local` 后再启动后端。未加载环境文件时，PostgreSQL 可能回退到本机 socket 或另一套数据目录；
+> `source .env.local` 后再启动后端。未加载环境文件时，应用会在启动前报告缺少 PostgreSQL 配置，不会静默连接本机 socket 或另一套数据目录；
 > 当前基线不读取旧数据库题目，需清空测试库并按当前导入流程重新生成。
+
+`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产根目录，不能选择数据库。所有需要数据库的
+测试都通过隔离 PostgreSQL 夹具运行，纯逻辑测试不连接数据库。
+
+### 后端 PostgreSQL 集成测试
+
+需要验证真实 PostgreSQL 迁移、JSONB、外键、事务锁或并发 Job Store 时，从仓库根目录为测试提供
+一个专用的 admin/维护库：
+
+```bash
+export DOTTY_TEST_POSTGRES_ADMIN_URL='postgresql+psycopg://postgres:password@127.0.0.1:5432/postgres'
+bash scripts/test-backend-postgres.sh
+```
+
+测试设施只接受这个显式 admin 变量，不会把 `DATABASE_URL`、`POSTGRES_*` 或 `DOTTY_DATA_DIR`
+猜作测试管理入口。每次运行会创建带固定安全前缀和随机后缀的临时数据库，迁移到当前 head 后
+运行完整后端测试，最后只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
+正在使用的库作为 admin 目标；命令不会打印连接凭据。
+
+没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，需要数据库的测试会跳过，纯逻辑测试仍可运行。CI
+后端 job 会启动独立 PostgreSQL service，并通过该变量运行同一脚本。
 
 ### 独立切换陪练模型
 
@@ -192,6 +214,8 @@ npm run check:api
 ```
 
 `check:api` 会在临时目录生成 OpenAPI 类型并与已提交文件逐字比较；它不会用生成结果静默覆盖工作树。
+OpenAPI 导出只构建应用契约，不连接数据库；未提供运行时配置时，导出脚本会使用不可连接的显式
+PostgreSQL schema-only URL，因此 CI 不需要共享数据库，也不会恢复 SQLite 回退。
 
 `apps/web/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
 收到可操作的切换提示。
@@ -248,15 +272,47 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 
 完整依赖方向、开源复用清单和扩展步骤见[代码结构与扩展指南](codebase-guide.md)。
 
-全新数据库首次访问各领域 Store 时，会根据 `apps/api/persistence/schema.py` 及领域 Store 中的当前
-SQLAlchemy metadata 创建 PostgreSQL 或 SQLite schema。已有数据库不能只依赖 `create_all()`：切换包含
-schema 变更的版本时，应先备份，再按变更使用 `scripts/migrate_mastery_v2.py`、
-`scripts/migrate_class_assignments.py` 或 `scripts/migrate_assignment_plans.py` 执行 dry-run、apply 和 verify。
+## 数据库迁移、版本检查与隔离
 
-变式归因字段升级使用 `python scripts/migrate_variation_attribution.py --database-url DATABASE_URL --dry-run`，
-实际写入改用 `--apply`，完成后用 `--verify` 检查旧记录是否全部为 `unknown` 或合法的 `ai`/`self`。
-项目尚无通用 Alembic 迁移历史，因此真实生产数据接入前仍需补齐可回滚的版本化迁移；本地测试库和 `data/`
-资源可以在不需要保留数据时清空，但这不是当前版本的唯一升级方式。
+所有正式 schema 变更统一由 Alembic 管理。迁移配置位于 `apps/api/alembic.ini`，registry 汇总核心、错题、
+陪练、变式、复习和指标六个领域的 metadata；Alembic autogenerate 使用这组 metadata，并在导入时拒绝重复表名。
+
+从仓库根目录执行时：
+
+```bash
+cd apps/api
+uv run python -m persistence.migration_cli head
+uv run python -m persistence.migration_cli current --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli preflight --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli upgrade --database-url "$DATABASE_URL"
+uv run python -m persistence.migration_cli verify --database-url "$DATABASE_URL"
+```
+
+`preflight` 和 `verify` 只读；五个命令的输出都不会打印数据库 URL、密码或 SQL 凭据。`upgrade` 会先取得
+PostgreSQL advisory lock，再在事务中执行有序版本链。`0001` 可以 adoption 空库、完整的 v0.27.0 schema（即使
+没有 `alembic_version`）以及当前这种部分迁移库；`0002`–`0005` 逐领域补齐 mastery、作业、教师/变式和错因归因。
+迁移只增加表/列/索引或保留式投影，不删除数据；mastery 旧表会保留为 `mastery_states_legacy`。
+
+旧的 `scripts/migrate_mastery_v2.py`、`migrate_class_assignments.py`、`migrate_assignment_plans.py`、
+`migrate_teacher_review_events.py` 和 `migrate_variation_attribution.py` 仅作为 deprecated 兼容包装器，新的
+操作和事实来源都使用统一 CLI。
+
+PostgreSQL 运行时的 Store 不再执行 `create_all()` 或 `ALTER TABLE`。健康检查会先检查连通性与 schema readiness；
+schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表/列/索引/外键及 orphan count 列表，并按
+`autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项（包括列、索引和外键）。数据库测试
+通过 `PostgresTestCase` 先升级到 head，再按测试清理业务表；需要验证 adoption 或 legacy 行为时使用
+显式未迁移空库。正式数据库仍必须使用上述 Alembic CLI；添加 assignment 外键前会拒绝非空 orphan 数据。
+
+多 worktree/session 不得共享可写开发数据库。推荐每个 worktree 配置独立 `POSTGRES_DB`；测试使用
+`DOTTY_TEST_POSTGRES_ADMIN_URL` 创建一次性数据库。辅助脚本不会把生产
+`DATABASE_URL` 当作 admin，也不会把 branch 名拼进 SQL。发布顺序固定为：
+
+```text
+backup → preflight → upgrade → verify → deploy/restart
+```
+
+`mistake_items.error_reason`、`ai_error_reason` 和 `ai_error_reason_confidence` 仍是旧 API 兼容投影；
+`mistake_attributions` 记录追加式历史，旧列要经过观察窗口后才单独评估 contract/drop。
 
 ## 更新 Playwright 视觉快照
 
@@ -287,10 +343,10 @@ schema 变更的版本时，应先备份，再按变更使用 `scripts/migrate_m
 | `POSTGRES_HOST` | `127.0.0.1` | PostgreSQL 主机 |
 | `POSTGRES_PORT` | `5432` | PostgreSQL 端口 |
 | `POSTGRES_USER` | `dotty_app` | 应用数据库用户 |
-| `POSTGRES_PASSWORD` | 空 | 应用数据库密码；设置后启用显式密码连接 |
+| `POSTGRES_PASSWORD` | 无默认值 | 应用数据库密码；运行时配置 PostgreSQL 时必填 |
 | `POSTGRES_DB` | `dotty_tutor` | 数据库名称 |
 | `POSTGRES_SSLMODE` | 空 | 云数据库可设为 `require` |
-| `DOTTY_DATA_DIR` | 项目下 `data/` | PDF、Markdown 和题图目录 |
+| `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
 | `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |
@@ -398,7 +454,7 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 ## 测试
 
 ```bash
-cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+cd apps/api && uv run python -m unittest discover -s tests -p 'test_*.py' -v
 cd apps/web
 npm run build
 npx playwright install chromium   # 首次运行或浏览器版本更新时执行
@@ -410,8 +466,8 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 填空题、数值题、画线题和 Help 交互；不会调用本地模型、OCR 或数据库。失败时 CI 会保留 HTML 报告、trace、
 截图和视频，便于下载排查。浏览器探索可以使用 Computer Use，稳定回归统一使用 Playwright。
 
-当前 CI 会并行运行后端单元测试、前端 TypeScript/生产构建、Playwright 浏览器冒烟测试和后端
-Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
+当前 CI 会并行运行后端 PostgreSQL 隔离集成/单元测试、前端 TypeScript/生产构建、Playwright
+浏览器冒烟测试和后端 Docker 镜像构建。所有检查结束后，`feishu-notify-action` 会把各项结果推送到飞书群；未配置
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 

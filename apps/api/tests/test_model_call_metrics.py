@@ -8,9 +8,7 @@
 
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,14 +19,13 @@ from infrastructure.runtime.model_runtime import ModelRuntime, ModelSelection
 from persistence.app_store import AppStore
 from persistence.metrics_store import MetricsStore
 from routers.runtime_routes import build_runtime_router
+from tests.postgres_test_support import PostgresTestCase
 
 
-class MetricsStoreRoundtripTests(unittest.TestCase):
+class MetricsStoreRoundtripTests(PostgresTestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        root = Path(self._tmp.name)
-        self.addCleanup(self._tmp.cleanup)
-        store = AppStore(f"sqlite+pysqlite:///{root / 'metrics.sqlite3'}", root)
+        super().setUp()
+        store = AppStore(self.database_url, self.data_root)
         self.addCleanup(store.close)
         self.metrics = MetricsStore(engine=store.engine)
 
@@ -118,12 +115,10 @@ class MetricsStoreRoundtripTests(unittest.TestCase):
         self.assertIn("不提供学生级成本归因", " ".join(report["limitations"]))
 
 
-class RuntimeHookTests(unittest.TestCase):
+class RuntimeHookTests(PostgresTestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        root = Path(self._tmp.name)
-        self.addCleanup(self._tmp.cleanup)
-        store = AppStore(f"sqlite+pysqlite:///{root / 'hook.sqlite3'}", root)
+        super().setUp()
+        store = AppStore(self.database_url, self.data_root)
         self.addCleanup(store.close)
         self.metrics = MetricsStore(engine=store.engine)
         self.runtime = ModelRuntime(metrics_store=self.metrics)
@@ -153,12 +148,14 @@ class RuntimeHookTests(unittest.TestCase):
         self.assertEqual(rows[0]["calls"], 1)
         self.assertEqual(rows[0]["failures"], 1)
 
+class RuntimeHookConstructionTests(unittest.TestCase):
     def test_constructor_does_not_touch_engine(self) -> None:
         """惰性建表约定：组合根在无数据库环境 import 时也必须安全。"""
 
         class ExplodingEngine:
             def connect(self):
                 raise AssertionError("constructor must not connect")
+
             def begin(self):
                 raise AssertionError("constructor must not connect")
 

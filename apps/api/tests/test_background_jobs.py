@@ -4,6 +4,7 @@ import tempfile
 import threading
 import time
 import unittest
+import uuid
 from pathlib import Path
 
 from application.job_worker import (
@@ -14,13 +15,17 @@ from application.job_worker import (
     TerminalJobError,
 )
 from persistence.job_store import JobStore
+from tests.postgres_test_support import PostgresTestCase, postgres_tests_enabled
 
 
-class BackgroundJobTests(unittest.TestCase):
+class BackgroundJobTests(PostgresTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+
     def make_store(self) -> tuple[JobStore, tempfile.TemporaryDirectory[str]]:
         directory = tempfile.TemporaryDirectory()
         root = Path(directory.name)
-        return JobStore(f"sqlite+pysqlite:///{root / 'jobs.sqlite3'}", root), directory
+        return JobStore(self.database_url, root), directory
 
     def test_idempotency_and_claim_increment_attempt_count(self) -> None:
         store, directory = self.make_store()
@@ -149,7 +154,7 @@ class BackgroundJobTests(unittest.TestCase):
         second_store = None
         try:
             second_store = JobStore(
-                f"sqlite+pysqlite:///{Path(directory.name) / 'jobs.sqlite3'}",
+                self.database_url,
                 Path(directory.name),
             )
             registry = TaskRegistry()
@@ -216,6 +221,47 @@ class BackgroundJobTests(unittest.TestCase):
         finally:
             store.close()
             directory.cleanup()
+
+
+@unittest.skipUnless(
+    postgres_tests_enabled(),
+    "需要 DOTTY_TEST_POSTGRES_ADMIN_URL 指向隔离 PostgreSQL admin 库",
+)
+class PostgresBackgroundJobTests(PostgresTestCase):
+    def test_two_postgres_connections_claim_one_job(self) -> None:
+        first = JobStore(database_url=self.database.database_url)
+        second = JobStore(database_url=self.database.database_url)
+        self.addCleanup(first.close)
+        self.addCleanup(second.close)
+        job = first.create_job(
+            "postgres-concurrency",
+            {"value": 1},
+            job_id=f"pg-job-{uuid.uuid4().hex}",
+        )
+        barrier = threading.Barrier(2)
+        results: list[dict[str, object] | None] = []
+        errors: list[Exception] = []
+
+        def claim(store: JobStore, worker_id: str) -> None:
+            try:
+                barrier.wait(timeout=3)
+                results.append(store.claim_next(worker_id))
+            except Exception as error:
+                errors.append(error)
+
+        threads = [
+            threading.Thread(target=claim, args=(first, "pg-worker-a")),
+            threading.Thread(target=claim, args=(second, "pg-worker-b")),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(5)
+        self.assertEqual(errors, [])
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.assertEqual(sum(result is not None for result in results), 1)
+        claimed = next(result for result in results if result is not None)
+        self.assertEqual(claimed["jobId"], job["jobId"])
 
 
 if __name__ == "__main__":

@@ -70,7 +70,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 - 选择、多选、填空和数值题已由确定性答案引擎判定（`apps/api/answer_evaluator.py`）；简答题和证明类
   内容仍无统一判题，多小问结构（`subQuestions`）已支持，但 tutor-only 小问仍不进入自动掌握判定。
 - 快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题。
-- 数据库表由 `create_all()` 初始化；mastery-v2 已有一次性迁移脚本，但尚无通用 Alembic 迁移历史。
+- 数据库 schema 已由 Alembic 版本链管理；数据库测试通过隔离 PostgreSQL 夹具运行，PostgreSQL 运行时不执行 DDL。
 - 已有结构化日志和请求 ID，但尚无集中式指标、追踪、错误监控和自动备份。
 - 错题章节和知识点目前由模型建议、学生确认，尚未关联版本化教材知识树。
 - 知识点已通过 `knowledge_points` 建立稳定实体，当前按发布版本作用域隔离；掌握度已改为按最新不同题证据
@@ -84,9 +84,8 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
   只有出现"多代理并行编排、跨请求长流程恢复、同一编排逻辑在两个以上流程重复"信号时，才局部评估；
   详细触发条件见 [engineering-roadmap](engineering-roadmap.md) 的架构边界一节。
 - **暂不引入 TanStack Query / Zod**：理由和重评条件见 engineering-roadmap 的前端工具决策一节。
-- **学习数据采用显式迁移**：`create_all()` 只初始化缺失表；mastery-v2 通过
-  `scripts/migrate_mastery_v2.py` 进行 dry-run/apply/verify。进入公网生产前仍需补齐通用版本化迁移历史、
-  备份恢复演练和回滚流程。
+- **学习数据采用显式迁移**：统一 CLI 通过 `preflight → upgrade → verify` 管理版本链；旧 mastery/归因数据以保留式
+  projection 和幂等回填升级。进入公网生产前仍需补充备份恢复演练和低权限账号。
 
 ## 下一阶段：AI 运行治理与后台任务
 

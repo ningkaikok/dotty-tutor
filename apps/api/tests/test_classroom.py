@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -10,13 +8,14 @@ from fastapi.testclient import TestClient
 from persistence.app_store import AppStore
 from routers.classroom_routes import build_classroom_router
 from routers.learning_routes import build_learning_router
+from tests.postgres_test_support import PostgresTestCase
 
 
-class ClassroomWorkflowTests(unittest.TestCase):
+class ClassroomWorkflowTests(PostgresTestCase):
     def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
-        root = Path(self.temp_dir.name)
-        self.store = AppStore(database_url=f"sqlite+pysqlite:///{root / 'classroom.sqlite3'}", data_root=root)
+        super().setUp()
+        self.store = AppStore(database_url=self.database_url, data_root=self.data_root)
+        self.addCleanup(self.store.close)
         self.store.save_lesson({
             "lessonId": "q-classroom-1",
             "title": "一次函数",
@@ -47,10 +46,7 @@ class ClassroomWorkflowTests(unittest.TestCase):
         app.include_router(build_learning_router(store=self.store))
         app.include_router(build_classroom_router(store=self.store))
         self.client = TestClient(app)
-
-    def tearDown(self) -> None:
-        self.store.close()
-        self.temp_dir.cleanup()
+        self.addCleanup(self.client.close)
 
     def create_plan(self, class_id: str, *, confirm_warnings: bool = True) -> dict:
         response = self.client.post(

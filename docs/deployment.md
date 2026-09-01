@@ -91,11 +91,12 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 
 - 数据库连接串和云服务密钥只放在服务器密钥文件或部署平台 Secrets 中。
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
+- 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到本机 socket 或本地文件。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
-- 全新数据库首次访问各领域 Store 时按当前 SQLAlchemy schema 创建 PostgreSQL 表；已有数据库切换版本时，
-  先备份，再执行对应的 `scripts/migrate_*.py` dry-run、apply 和 verify。当前尚无通用 Alembic 迁移历史，
-  真实生产数据接入前仍需补齐可回滚的版本化迁移。本地测试若不需要保留数据，可以清空仓库内 `data/` 资源，
-  但不应把“重建空库”当作生产升级步骤。
+- PostgreSQL 生产库必须显式执行 Alembic 迁移；Store 运行时不会自动创建或修改表。发布前在 `apps/api` 依次执行
+  `uv run python -m persistence.migration_cli preflight`、`upgrade` 和 `verify`，顺序固定为
+  `backup → preflight → upgrade → verify → deploy/restart`。每个 worktree/session 使用独立 `POSTGRES_DB`，
+  不得共享可写开发库。后端数据库测试统一通过专用 admin 库创建一次性 PostgreSQL 测试库；测试建库不应被当作生产升级步骤。
 
 ## 启动前检查
 
@@ -247,7 +248,7 @@ Docker 部署包含：
 
 | 文件 | 作用 |
 | --- | --- |
-| `compose.yaml` | 编排 PostgreSQL、一次性数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
+| `compose.yaml` | 编排 PostgreSQL、一次性数据库迁移与数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
 | `apps/api/Dockerfile` | 构建 API/Worker 共用的非 root 后端镜像 |
 | `apps/web/Dockerfile` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
 | `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
@@ -288,11 +289,13 @@ localhost:8080
             → db:5432（PostgreSQL）
         worker（同镜像，消费 background_jobs）
 
+db（健康）→ db-migrate（一次性 Alembic upgrade，成功后退出）→ api / worker
 data-init（一次性运行，准备共享教材卷后退出）
 ```
 
-API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会等待数据库和
-API 健康后再启动依赖服务。
+API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会先等待数据库健康，
+再由 `db-migrate` 将 schema 升级到 Alembic head；只有迁移与数据卷初始化都成功后才启动 API 和 Worker，
+前端继续等待 API 健康。迁移失败会阻止业务服务启动，而不是让请求在缺表或缺列时返回 500。
 
 ### 日志与状态
 
