@@ -19,6 +19,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
+| **最高（临时，2026-08-31）** | AI 工程方向：陪练上下文分层、模型调用边界指标、评测语料继续扩充 | 待启动。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |

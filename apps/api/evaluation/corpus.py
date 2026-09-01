@@ -27,8 +27,8 @@ from tests.test_question_segmentation import (
 CORPUS_VERSION = "1"
 
 # 讲解 Judge 语料独立版本化。题目切分语料的版本变化不应让讲解评分报告
-# 在没有实际变更讲解样本时失去可比性。
-EXPLANATION_CORPUS_VERSION = "explanation-samples-v1"
+# 在没有实际变更讲解样本时失去可比性。样本内容变化必须递增版本号。
+EXPLANATION_CORPUS_VERSION = "explanation-samples-v2"
 
 EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
@@ -56,6 +56,51 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
             "已经证明两个邻角相等，还差最后的垂直关系。"
             "∠PMA 与 ∠PMB 相等，并且它们组成一个平角。"
             "两个相等的邻补角分别是多少度？这说明 PM 与 AB 有什么关系？"
+        ),
+    },
+    {
+        "id": "guide-cards-linear-equation-transposition",
+        "questionContext": "解方程 3x + 5 = 2x - 7。",
+        "explanation": (
+            "方程两边都有 x 项和常数项，还没有把它们分开。"
+            "试着把含 x 的项移到等号一边、常数项移到另一边，移项时要变号。"
+            "移完之后，等号两边分别剩下什么？"
+        ),
+    },
+    {
+        "id": "guide-cards-factoring-common-factor",
+        "questionContext": "因式分解 6x²y - 9xy。",
+        "explanation": (
+            "两项之间还没有找出公共因式。"
+            "观察系数 6 和 9 的最大公约数，再看看 x、y 在两项里各出现了几次。"
+            "提取这个公因式之后，括号里还剩下什么？"
+        ),
+    },
+    {
+        "id": "guide-cards-linear-function-slope",
+        "questionContext": "已知一次函数 y=kx+b 的图象经过 (1,3) 和 (2,5)，求 k 和 b。",
+        "explanation": (
+            "两个点的坐标还没有代入函数表达式里。"
+            "把两个点分别代入 y=kx+b，会得到两个含 k、b 的方程。"
+            "这两个方程联立起来，能不能先消去 b 解出 k？"
+        ),
+    },
+    {
+        "id": "guide-cards-mode-median-confusion",
+        "questionContext": "一组数据 3、5、5、7、9 的众数和中位数分别是多少？",
+        "explanation": (
+            "众数和中位数是两个不同的统计量，容易混在一起判断。"
+            "众数看的是出现次数最多的数，中位数看的是排序后最中间的数。"
+            "这组数据已经是从小到大排好的，最中间的那个数是几？出现次数最多的又是几？"
+        ),
+    },
+    {
+        "id": "guide-cards-inequality-direction-flip",
+        "questionContext": "解不等式 -2x + 4 > 10。",
+        "explanation": (
+            "移项之后要在含 x 的项前面除以一个负系数，这一步最容易出错。"
+            "先把常数项移到右边，再看看剩下的 x 前面的系数是正是负。"
+            "两边除以负数的时候，不等号方向要不要变化？"
         ),
     },
 ]
