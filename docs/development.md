@@ -214,6 +214,8 @@ npm run check:api
 ```
 
 `check:api` 会在临时目录生成 OpenAPI 类型并与已提交文件逐字比较；它不会用生成结果静默覆盖工作树。
+OpenAPI 导出只构建应用契约，不连接数据库；未提供运行时配置时，导出脚本会使用不可连接的显式
+PostgreSQL schema-only URL，因此 CI 不需要共享数据库，也不会恢复 SQLite 回退。
 
 `apps/web/package.json` 的 `engines` 与 Vite 8/Playwright 的实际要求一致；Node.js 18 或 Node.js 21 会在启动前
 收到可操作的切换提示。
