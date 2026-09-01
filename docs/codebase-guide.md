@@ -107,7 +107,7 @@ dotty-tutor/
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
 ├── docs/                       # 面向维护者和使用者的文档
-└── compose.yaml                # 可重复演示环境
+└── compose.yaml                # PostgreSQL、一次性迁移/卷初始化与应用服务编排
 ```
 
 前端 API 和类型按领域分别位于 `apps/web/src/api/` 与 `apps/web/src/types/` 目录。后端规范代码必须进入
@@ -222,7 +222,8 @@ apps/api/routers/mistake_routes.py
 SQLite 的三阶段路线，见[数据库设计与治理演进](database-evolution.md)。
 
 ```text
-DATABASE_URL / POSTGRES_*
+显式 CLI / Compose db-migrate
+  → DATABASE_URL / POSTGRES_*
   → apps/api/persistence/migration_cli.py
   → Alembic env.py（schema_registry 的 6 个 metadata）
   → 0001 adoption
@@ -238,6 +239,7 @@ schema，并在 PostgreSQL 事务内持有 advisory lock。数据库测试通过
 `scripts/migrate_*.py` 仅保留兼容包装，事实来源是版本链和
 `migration_support.py`。readiness 报告和健康检查会用 `autoFixable`/`manualActionRequired` 区分可自动补齐的
 表/列/索引与需人工处理的字段、索引、外键或 orphan 数据；`mistake_items` 的旧归因列暂时保留，经过观察窗口后才考虑 contract/drop。
+Compose 的 API 与 Worker 依赖一次性 `db-migrate` 成功退出，空库或旧库会先升级，迁移失败则不会启动业务进程。
 
 ## 前端依赖方向
 

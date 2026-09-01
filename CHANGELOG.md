@@ -14,6 +14,7 @@ Semantic Versioning。
 ### Changed
 
 - PostgreSQL 运行时、Worker 和业务脚本继续只通过显式迁移管理 schema；Store 不执行 DDL，schema 落后时健康检查返回明确的 `503 + SCHEMA_OUT_OF_DATE`。
+- Docker Compose 在启动 API 和 Worker 前通过一次性 `db-migrate` 服务升级 schema；迁移失败会阻止业务服务启动。
 - 后端数据库测试统一使用隔离 PostgreSQL：普通 Store 测试按测试清理业务表，adoption/legacy 测试使用未迁移空库，CI 与本地 runner 采用同一套流程。
 - 移除数据库 URL、Upsert、Store 初始化和任务领取中的旧兼容路径；`DOTTY_DATA_DIR` 仍只决定文件资产目录。
 

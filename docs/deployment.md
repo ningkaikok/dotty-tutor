@@ -248,7 +248,7 @@ Docker 部署包含：
 
 | 文件 | 作用 |
 | --- | --- |
-| `compose.yaml` | 编排 PostgreSQL、一次性数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
+| `compose.yaml` | 编排 PostgreSQL、一次性数据库迁移与数据卷初始化、FastAPI、后台 Worker 和前端 Nginx |
 | `apps/api/Dockerfile` | 构建 API/Worker 共用的非 root 后端镜像 |
 | `apps/web/Dockerfile` | 使用 Node 构建前端，再复制到 Nginx 镜像 |
 | `docker/nginx.conf` | 托管 SPA 并把 `/api/` 代理到 API 容器 |
@@ -289,11 +289,13 @@ localhost:8080
             → db:5432（PostgreSQL）
         worker（同镜像，消费 background_jobs）
 
+db（健康）→ db-migrate（一次性 Alembic upgrade，成功后退出）→ api / worker
 data-init（一次性运行，准备共享教材卷后退出）
 ```
 
-API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会等待数据库和
-API 健康后再启动依赖服务。
+API 和 PostgreSQL 不映射宿主端口，只在 Compose 内部网络中可见。Compose 会先等待数据库健康，
+再由 `db-migrate` 将 schema 升级到 Alembic head；只有迁移与数据卷初始化都成功后才启动 API 和 Worker，
+前端继续等待 API 健康。迁移失败会阻止业务服务启动，而不是让请求在缺表或缺列时返回 500。
 
 ### 日志与状态
 

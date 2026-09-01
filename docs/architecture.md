@@ -200,7 +200,7 @@ flowchart TB
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py`、`schema_registry.py` | PostgreSQL 引擎生命周期、数据库配置、按领域 metadata 注册和 Upsert；业务运行时不执行 DDL |
-| 数据库迁移 | `apps/api/alembic.ini`、`apps/api/migrations/`、`persistence/migration_support.py`、`persistence/migration_cli.py` | 唯一版本链、adoption/增量升级、幂等回填、readiness 检查；PostgreSQL 使用事务 advisory lock |
+| 数据库迁移 | `apps/api/alembic.ini`、`apps/api/migrations/`、`persistence/migration_support.py`、`persistence/migration_cli.py`、Compose `db-migrate` | 唯一版本链、adoption/增量升级、幂等回填、readiness 检查；PostgreSQL 使用事务 advisory lock，容器启动在迁移成功前阻断 API/Worker |
 | 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
 | 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和 plan-backed 作业指派；按 assignment 关联学习会话，追加教师复核证据并聚合有效掌握度与看板指标 |
 | 作业计划存储 | `apps/api/persistence/assignment_planning_store.py`、`schema.py` | 保存脱敏输入快照、结构化结果、提醒和 sourceFingerprint；确认计划与创建 assignment 使用同一事务 |
@@ -627,6 +627,8 @@ Alembic 作为 schema 版本权威，SQLAlchemy metadata 只描述当前模型�
 PostgreSQL 的业务请求不会补表或加列。健康检查会在连接可用但 schema 落后时返回 `503` 和
 `SCHEMA_OUT_OF_DATE`，并返回缺失外键、orphan count 以及按列/索引/外键分类的 `autoFixable`/`manualActionRequired`，避免业务查询先触发缺列 `500`。PostgreSQL 迁移添加
  assignment 外键前会拒绝非空 orphan 数据；schema 不完整时报告会保持 not-ready，并要求先完成正式迁移。
+Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrade；API 和 Worker 以
+`service_completed_successfully` 依赖该服务，因此空库、旧库或迁移失败都不会绕过 schema 门禁。
 
 每个 worktree/session 必须使用独立可写 PostgreSQL 数据库；测试使用独立
 `DOTTY_TEST_POSTGRES_ADMIN_URL` 创建的一次性数据库。不要让多个 worktree 共享同一个可写开发库；迁移发布顺序为
