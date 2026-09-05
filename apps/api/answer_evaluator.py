@@ -89,19 +89,52 @@ def _has_submitted_sub_answer(value: Any) -> bool:
     return value is not None
 
 
+# 判断题的否定式必须先于肯定式匹配："不正确"里含有"正确"。
+# 旧的内联实现按肯定式优先，因此把"不正确"判成了"正确"——在只影响陪练文案时
+# 这只是措辞不准，一旦判定成为掌握度的权威来源就会写错学习记录。
+_TRUE_FALSE_NEGATIVE = ("不正确", "不对", "错误", "false")
+_TRUE_FALSE_POSITIVE = ("正确", "对", "true")
+
+
+def normalize_true_false(value: Any) -> str | None:
+    """把判断题的作答或标准答案归一化为 ``正确`` / ``错误``；无法识别返回 None。
+
+    标准答案与学生作答走同一个函数，避免出现"correctAnswer 写成 True、
+    学生答"正确"却判错"这类两侧口径不一致的问题。
+    """
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if any(marker in text for marker in _TRUE_FALSE_NEGATIVE):
+        return "错误"
+    if any(marker in text for marker in _TRUE_FALSE_POSITIVE):
+        return "正确"
+    return None
+
+
 def _result(
     assessment: str,
     reply: str,
     hint: str,
     evidence: dict[str, Any] | None = None,
+    *,
+    knowledge: list[str] | None = None,
+    stuck_at: str | None = None,
+    follow_up: str | None = None,
 ) -> dict[str, Any]:
+    """构造判定结果。
+
+    ``knowledge``/``stuck_at``/``follow_up`` 允许按题型给出更贴题的引导措辞；
+    不传时沿用通用文案。这几个字段会流进引导卡（见 ``domain/tutoring/checks.py``），
+    所以能贴题就不要退化成通用句。
+    """
     payload = {
         "assessment": assessment,
         "reply": reply,
         "hint": hint,
-        "knowledge": ["答案核对"],
-        "stuckAt": "需要根据题目要求检查作答格式和关键结果。",
-        "question": "你能指出答案中的哪个量或步骤支持这个结果吗？",
+        "knowledge": knowledge or ["答案核对"],
+        "stuckAt": stuck_at or "需要根据题目要求检查作答格式和关键结果。",
+        "question": follow_up or "你能指出答案中的哪个量或步骤支持这个结果吗？",
     }
     # 客观判定证据：只包含学生侧已知的事实（自己的作答、哪些空未匹配、容差等）。
     # 绝不放入标准答案/期望标签——该结构会进入学生可见的 guideContext。
@@ -126,6 +159,29 @@ def evaluate_structured_answer(
     if isinstance(sub_questions, list) and sub_questions:
         return _evaluate_sub_questions(sub_questions, student_input, interaction)
     question_type = question.get("questionType")
+
+    if question_type == "true-false":
+        expected = normalize_true_false(question.get("correctAnswer"))
+        selected = normalize_true_false(student_input)
+        if not expected or not selected:
+            return None
+        evidence = {"strategy": "true-false-match", "submittedLabel": selected}
+        # 判断题只有两个选项，"这个判断不对"本身就等于说出了答案，因此这里
+        # 不再像旧实现那样显式复述 correctAnswer——与其余题型的措辞保持一致。
+        knowledge = [str(question.get("knowledgePoint") or "概念判断")]
+        stuck_at = "需要根据题干条件判断命题真伪。"
+        follow_up = "题干中的哪条条件能支持你的判断？"
+        if selected == expected:
+            return _result(
+                "correct", "判断正确。请再说说题干中的哪个条件支持这个判断。",
+                "圈出题干中的关键条件，再逐项核对命题。", evidence,
+                knowledge=knowledge, stuck_at=stuck_at, follow_up=follow_up,
+            )
+        return _result(
+            "incorrect", "这个判断不对。请回到题干，找出能验证这句话的条件。",
+            "圈出题干中的关键条件，再逐项核对命题。", evidence,
+            knowledge=knowledge, stuck_at=stuck_at, follow_up=follow_up,
+        )
 
     if question_type in {"choice", "multi-select"}:
         # 多选按完整选项集合比较：多选、少选、错选都判 incorrect，不做部分给分。

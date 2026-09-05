@@ -97,37 +97,9 @@ class TutorEngine:
                 source="answer-check",
                 modelRun=mock_model_run(),
             )
-        if question.get("questionType") == "true-false" and question.get("correctAnswer"):
-            expected = str(question["correctAnswer"]).strip().lower()
-            submitted = request.studentInput.strip().lower()
-            selected = "正确" if "正确" in submitted or "true" in submitted else "错误" if "错误" in submitted or "false" in submitted else ""
-            if selected:
-                is_correct = selected.lower() == expected
-                return TutorReply(
-                    reply=(
-                        f"回答正确，答案是“{question['correctAnswer']}”。请再说说题干中的哪个条件支持这个判断。"
-                        if is_correct else
-                        f"这次选择不对，正确答案是“{question['correctAnswer']}”。请回到题干，找出能验证这句话的条件。"
-                    ),
-                    guideContext={
-                        "assessment": "correct" if is_correct else "incorrect",
-                        "assessmentAuthority": "deterministic",
-                        "stuckAt": "需要根据题干条件判断命题真伪。",
-                        "knowledge": [question.get("knowledgePoint", "概念判断")],
-                        "hint": "圈出题干中的关键条件，再逐项核对命题。",
-                        "question": "题干中的哪条条件能支持你的判断？",
-                        "misconception": normalize_misconception(None),
-                        "evaluationEvidence": {
-                            "strategy": "true-false-match",
-                            "submittedLabel": selected,
-                            "evaluatorVersion": EVALUATOR_VERSION,
-                        },
-                    },
-                    nextHintLevel=min(request.hintLevel + 1, 3),
-                    canvasAction=safe_canvas_action(question, "show-base"),
-                    source="answer-check",
-                    modelRun=mock_model_run(),
-                )
+        # 判断题此前在这里内联判定。它已并入 evaluate_structured_answer，
+        # 由上面的通用分支统一处理——那条路径同时被写入端复核和变式/复习复用，
+        # 留两份实现只会让三个调用方各自漂移。
         if question.get("questionType") == "draw-line":
             interaction = question.get("interaction") or {}
             required = {
