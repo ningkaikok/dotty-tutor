@@ -239,6 +239,50 @@ class VariationPracticeTests(PostgresTestCase):
         mistake["aiErrorReason"] = "unknown"
         self.assertEqual(service.generate(mistake, 1)["attributionSource"], "self")
 
+    def test_generation_retries_once_and_self_heals_from_a_non_deterministic_type(self) -> None:
+        mistake = self.mistakes.get("mistake-1") or {}
+        calls: list[str] = []
+
+        def flaky_generator(prompt: str) -> tuple[dict, list[dict], dict]:
+            calls.append(prompt)
+            if len(calls) == 1:
+                return (
+                    {"question": {"questionType": "short-answer", "prompt": "第一次生成的题干"}},
+                    [],
+                    {},
+                )
+            return (
+                {"question": {"questionType": "true-false", "prompt": "第二次生成的题干"}},
+                [],
+                {},
+            )
+
+        service = VariationService(generator=flaky_generator)
+        generated = service.generate(mistake, 1)
+
+        self.assertEqual(len(calls), 2)
+        self.assertIn("上一次生成不合格", calls[1])
+        self.assertEqual(generated["questionPayload"]["question"]["questionType"], "true-false")
+
+    def test_generation_raises_after_exhausting_retries_on_repeated_non_deterministic_type(
+        self,
+    ) -> None:
+        mistake = self.mistakes.get("mistake-1") or {}
+        calls: list[str] = []
+
+        def always_subjective_generator(prompt: str) -> tuple[dict, list[dict], dict]:
+            calls.append(prompt)
+            return (
+                {"question": {"questionType": "short-answer", "prompt": "简答题干"}},
+                [],
+                {},
+            )
+
+        service = VariationService(generator=always_subjective_generator)
+        with self.assertRaises(ValueError):
+            service.generate(mistake, 1)
+        self.assertEqual(len(calls), 2)
+
     def test_incorrect_answer_can_be_resubmitted_without_generating_a_second_question(self) -> None:
         self._advance_thread_to_verify()
         item = self.client.post("/api/mistakes/mistake-1/variations").json()
