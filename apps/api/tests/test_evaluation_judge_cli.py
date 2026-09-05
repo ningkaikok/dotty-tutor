@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import evaluation.judge_cli as judge_cli
-from evaluation.corpus import EXPLANATION_SAMPLES
+from evaluation.corpus import EXPLANATION_SAMPLES, flaw_families
 from evaluation.judge_cli import (
     JUDGE_REPORT_KIND,
     JUDGE_REPORT_VERSION,
@@ -74,6 +74,37 @@ def _label_aware_generator(*, sound_factual: int = 5, flawed_factual: int = 2,
     return generate
 
 
+def _family_aware_generator(*, sound_factual: int = 5, family_factual: dict[str, int] | None = None):
+    """按错误家族分别指定 factual 分数，用于验证 ``byFlawFamily`` 是否按家族区分。
+
+    未在 ``family_factual`` 里指定的家族默认打 3 分（既不是"完全没看出来"的 5，
+    也不是"看出来了"的低分），避免测试意外依赖某个家族的默认行为。
+    """
+    families = flaw_families()
+    by_explanation_family = {
+        sample["explanation"]: families.get(sample["id"]) for sample in EXPLANATION_SAMPLES
+    }
+    family_factual = family_factual or {}
+
+    def generate(provider, model, prompt, schema, max_tokens=400):
+        family = next(
+            (value for text, value in by_explanation_family.items() if text in prompt),
+            None,
+        )
+        factual = sound_factual if family is None else family_factual.get(family, 3)
+        return (
+            {**VALID_PAYLOAD, "scores": {"clarity": 4, "targeting": 3, "factual": factual}},
+            {
+                "durationMs": 12.0,
+                "providerAttempts": 1,
+                "schemaFallback": {"used": False, "reason": None},
+                "usage": {"promptTokens": 10, "outputTokens": 6},
+            },
+        )
+
+    return generate
+
+
 class ScoreDiscriminationTests(unittest.TestCase):
     """区分度回答的是"评审能不能看出错"，一致性指标回答不了这个问题。"""
 
@@ -116,6 +147,51 @@ class ScoreDiscriminationTests(unittest.TestCase):
         self.assertIn(
             "judgeMetrics.scoreDiscrimination is required", validate_report(report)
         )
+
+
+class FlawFamilyDiscriminationTests(unittest.TestCase):
+    """整体 flawed gap 会把"编造通则"和"算错一步"平均在一起，可能互相掩盖。
+
+    这组测试验证 byFlawFamily 能把两者分开：一个评审模型完全漏检某个家族时，
+    整体 gap 依然可能显得体面，但对应家族的 gap 必须显式地接近 0。
+    """
+
+    def test_family_breakdown_isolates_the_family_that_is_not_caught(self) -> None:
+        report = run_all(
+            "ollama", "qwen2.5:7b",
+            generate_json_as=_family_aware_generator(
+                sound_factual=5,
+                family_factual={
+                    "fabricated-rule": 5,       # 完全没看出来：和 sound 打一样的分
+                    "computation-error": 1,     # 看出来了
+                    "fabricated-condition": 1,
+                    "definition-error": 1,
+                },
+            ),
+        )
+        by_family = report["judgeMetrics"]["scoreDiscrimination"]["byFlawFamily"]
+        self.assertEqual(by_family["fabricated-rule"]["byDimension"]["factual"]["gap"], 0.0)
+        self.assertEqual(by_family["computation-error"]["byDimension"]["factual"]["gap"], 4.0)
+        self.assertEqual(by_family["fabricated-condition"]["byDimension"]["factual"]["gap"], 4.0)
+
+    def test_family_sample_counts_match_the_corpus(self) -> None:
+        report = run_all(
+            "ollama", "qwen2.5:7b",
+            generate_json_as=_family_aware_generator(family_factual={}),
+        )
+        by_family = report["judgeMetrics"]["scoreDiscrimination"]["byFlawFamily"]
+        # 语料测试那边锁的是 >=5；这里锁精确值，两处一起变化时能互相提醒。
+        self.assertEqual(by_family["fabricated-rule"]["sampleCount"], 6)
+        self.assertEqual(by_family["computation-error"]["sampleCount"], 3)
+
+    def test_family_absent_when_every_judge_call_fails_for_it(self) -> None:
+        """一个家族全军覆没时不该出现在结果里，也不该被静默算成 0 分。"""
+        def always_fail_generate(provider, model, prompt, schema, max_tokens=400):
+            raise RuntimeError("provider unavailable")
+
+        report = run_all("ollama", "qwen2.5:7b", generate_json_as=always_fail_generate)
+        by_family = report["judgeMetrics"]["scoreDiscrimination"]["byFlawFamily"]
+        self.assertEqual(by_family, {})
 
 
 class JudgeReportTests(unittest.TestCase):

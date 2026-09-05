@@ -39,6 +39,26 @@ class ExplanationSampleLabelTests(unittest.TestCase):
         self.assertGreaterEqual(labels.count("sound"), 2)
         self.assertGreaterEqual(labels.count("flawed"), 2)
 
+    def test_flaw_family_is_present_exactly_for_flawed_samples(self) -> None:
+        for sample in corpus_module.EXPLANATION_SAMPLES:
+            with self.subTest(sample=sample["id"]):
+                flawed = sample["factualLabel"] == "flawed"
+                self.assertEqual(flawed, "flawFamily" in sample)
+
+    def test_flaw_family_is_one_of_the_known_families(self) -> None:
+        for sample in corpus_module.EXPLANATION_SAMPLES:
+            if sample["factualLabel"] != "flawed":
+                continue
+            with self.subTest(sample=sample["id"]):
+                self.assertIn(sample["flawFamily"], corpus_module._FLAW_FAMILIES)
+
+    def test_fabricated_rule_family_has_enough_samples_to_detect_a_pattern(self) -> None:
+        """qwen2.5:7b 在 v3 语料上唯一漏检的样本恰好是这个家族，n=1 判断不了是不是
+        稳定的失败模式。这条测试锁住样本量，防止将来有人为了别的原因缩减这个家族，
+        又悄悄让这次调查退回到不可判断的样本量。"""
+        families = list(corpus_module.flaw_families().values())
+        self.assertGreaterEqual(families.count("fabricated-rule"), 5)
+
     def test_labels_never_reach_the_judge_prompt(self) -> None:
         """标注泄漏进提示词会让区分度指标失去意义：评审只是照抄答案。"""
         for sample in corpus_module.EXPLANATION_SAMPLES:

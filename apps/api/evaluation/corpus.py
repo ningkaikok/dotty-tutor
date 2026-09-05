@@ -28,7 +28,7 @@ CORPUS_VERSION = "1"
 
 # 讲解 Judge 语料独立版本化。题目切分语料的版本变化不应让讲解评分报告
 # 在没有实际变更讲解样本时失去可比性。样本内容变化必须递增版本号。
-EXPLANATION_CORPUS_VERSION = "explanation-samples-v3"
+EXPLANATION_CORPUS_VERSION = "explanation-samples-v4"
 
 # 讲解 Judge 语料的事实性标注。
 #
@@ -151,6 +151,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-inequality-sign",
         "factualLabel": "flawed",
+        "flawFamily": "computation-error",
         "flawNote": "不等式两边同除以负数时断言方向不变，结论 x > -4 错误（应为 x < -4）。",
         "questionContext": "解不等式 -3x > 12。",
         "explanation": (
@@ -162,6 +163,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-power-of-power",
         "factualLabel": "flawed",
+        "flawFamily": "computation-error",
         "flawNote": "幂的乘方误用为指数相加，(x³)² 被算成 x⁵（应为 x⁶）。",
         "questionContext": "化简 (x³)²。",
         "explanation": (
@@ -173,6 +175,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-fabricated-condition",
         "factualLabel": "flawed",
+        "flawFamily": "fabricated-condition",
         "flawNote": "编造题干没有的条件，凭空断言这是等腰三角形。",
         "questionContext": "三角形 ABC 中，∠A=50°，∠B=60°，求 ∠C。",
         "explanation": (
@@ -184,6 +187,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-median-definition",
         "factualLabel": "flawed",
+        "flawFamily": "definition-error",
         "flawNote": "中位数的定义被说成“出现次数最多的数”，与众数混为一谈。",
         "questionContext": "一组数据 2、4、4、6、10 的中位数是多少？",
         "explanation": (
@@ -195,6 +199,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-missing-square-root",
         "factualLabel": "flawed",
+        "flawFamily": "computation-error",
         "flawNote": "勾股定理算出 c²=100 后漏了开方，直接断言斜边是 100（应为 10）。",
         "questionContext": "直角三角形的两条直角边分别是 6 和 8，求斜边。",
         "explanation": (
@@ -206,6 +211,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-flawed-invented-congruence-rule",
         "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
         "flawNote": "编造“边边角”全等判定：两边及一个非夹角相等并不能判定全等。",
         "questionContext": "已知 AB=DE，BC=EF，∠A=∠D，判断三角形 ABC 与 DEF 是否全等。",
         "explanation": (
@@ -214,14 +220,96 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
             "题目里两组边和一个角都给齐了，那么这两个三角形是不是全等？"
         ),
     },
+    {
+        "id": "guide-cards-flawed-irrational-sum",
+        "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
+        "flawNote": "编造“两个无理数之和一定是无理数”；反例 (2-√2)+√2=2 是有理数。",
+        "questionContext": "判断：两个无理数的和一定是无理数。这个说法对吗？",
+        "explanation": (
+            "先想清楚无理数做加法之后属于哪一类数。"
+            "两个无理数相加，结果一定还是无理数，这是实数分类里的一条规律。"
+            "按照这条规律，这道判断题的答案是不是“正确”？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-inverse-proportion-quadrant",
+        "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
+        "flawNote": "编造反比例函数图象“一定”经过第一、三象限，漏了对 k 正负的讨论（k<0 时过二、四象限）。",
+        "questionContext": "反比例函数 y = k/x 的图象经过第一、三象限，还是第二、四象限？",
+        "explanation": (
+            "先看看这个函数属于哪种类型。"
+            "反比例函数 y=k/x 的图象都经过第一、三象限，这是它的固定性质。"
+            "按这条性质，答案是不是第一、三象限？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-gamblers-fallacy",
+        "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
+        "flawNote": "赌徒谬误：编造“连续正面之后反面概率变大”，每次抛掷相互独立，概率恒为 1/2。",
+        "questionContext": "抛一枚均匀硬币连续 5 次都是正面朝上，第 6 次抛出反面的概率会不会更大？",
+        "explanation": (
+            "先想清楚前面几次结果会不会影响下一次。"
+            "已经连续 5 次正面，那么接下来反面朝上的可能性会变大，去平衡前面的结果，这是概率里的规律。"
+            "按这条规律，第 6 次是不是更可能抛出反面？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-sum-divisible-by-three",
+        "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
+        "flawNote": "编造“两数之和是 3 的倍数则两个加数都是 3 的倍数”；反例 1+2=3，两个加数都不是。",
+        "questionContext": "如果两个整数的和是 3 的倍数，那么这两个整数是不是都一定是 3 的倍数？",
+        "explanation": (
+            "先看看整除的规律能不能拆开来看每一个加数。"
+            "两个数的和是 3 的倍数，说明这两个数各自也一定是 3 的倍数，这是整除性质的直接推论。"
+            "按这条推论，答案是不是“都一定是”？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-mean-implies-same-spread",
+        "factualLabel": "flawed",
+        "flawFamily": "fabricated-rule",
+        "flawNote": "编造“平均数相同则离散程度也相同”，忽略方差/极差可以完全不同。",
+        "questionContext": "甲、乙两组数据的平均数相同，能不能说明这两组数据的离散程度也相同？",
+        "explanation": (
+            "先想清楚平均数这一个指标能不能代表整组数据的全部特征。"
+            "两组数据只要平均数相同，离散程度也就一定相同，这是描述数据集中趋势的规律。"
+            "按这条规律，能不能说这两组数据的离散程度相同？"
+        ),
+    },
 ]
 
 _FACTUAL_LABELS = ("sound", "flawed")
+
+# flawed 样本按"错误的性质"再分一层。第一版语料的 6 条 flawed 里只有 1 条属于
+# fabricated-rule（编造的 SSA 全等判定），qwen2.5:7b 唯一漏检的正是这一条——但 n=1
+# 判断不了这是不是稳定的失败模式。这里把 fabricated-rule 扩到 6 条，覆盖代数、函数、
+# 概率、数论、统计五个不同领域，专门用来检验"评审模型是否系统性地漏检听起来合理的
+# 编造通则"，而不是偶然踩到一条难题。
+# - fabricated-rule：编造一条以偏概全、但初中生直觉上容易信以为真的通则
+# - computation-error：方法选对了，执行过程算错（符号、指数、漏步骤）
+# - fabricated-condition：凭空编造题干没有给出的条件
+# - definition-error：混淆了两个概念的定义
+_FLAW_FAMILIES = (
+    "fabricated-rule", "computation-error", "fabricated-condition", "definition-error",
+)
 
 
 def factual_labels() -> dict[str, str]:
     """返回样本 id 到事实性标注的映射，供报告计算区分度使用。"""
     return {sample["id"]: sample["factualLabel"] for sample in EXPLANATION_SAMPLES}
+
+
+def flaw_families() -> dict[str, str]:
+    """返回 flawed 样本 id 到错误家族的映射；sound 样本不出现在结果里。"""
+    return {
+        sample["id"]: sample["flawFamily"]
+        for sample in EXPLANATION_SAMPLES
+        if sample["factualLabel"] == "flawed"
+    }
 
 
 def sample_set_hash(samples: list[dict[str, Any]]) -> str:
