@@ -10,14 +10,21 @@ from fastapi import APIRouter, HTTPException
 
 from domain.contracts.audit import PublicationRevisionResponse
 from domain.contracts.lesson import PublicationCreate, PublicationStatusUpdate
+from domain.questions.student_view import student_question
 from observability import log_event
 from publication_quality import PublicationQualityError
 
 
 def _public_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
-    """课程进入学生端前移除工作台诊断信息和真实模型标识。"""
+    """课程进入学生端前移除工作台诊断信息、真实模型标识和标准答案。
+
+    题目本身走 ``student_question`` 白名单投影：此前这里只按名字剥掉了几个诊断
+    字段，``correctAnswer``/``correctAnswers``/``blanks[].correctAnswers``/
+    ``answerSpec.expected``/``subQuestions[].correctAnswer``/
+    ``interaction.requiredConnections`` 会随题目一起发到学生浏览器。
+    """
     payload = dict(lesson.get("questionPayload") or {})
-    question = dict(payload.get("question") or {})
+    question = student_question(payload.get("question"))
     for key in ("publicationStatus", "sourceArtifactUrl", "promptArtifactUrl"):
         question.pop(key, None)
     payload["question"] = question
