@@ -2333,7 +2333,6 @@ export interface operations {
         parameters: {
             query?: {
                 request_id?: string;
-                x_debug_token?: string;
             };
             header?: never;
             path?: never;

@@ -350,10 +350,20 @@ class OcrSelectionRequest(BaseModel):
     provider: OcrProvider
 
 
+# 分块上传的限额定义在这里，因为这里才是真正执行它们的地方（Pydantic 校验）。
+# 路由模块曾经另存一份同名常量，但从不被读取——改那份不会生效，只会误导。
+PDF_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+PDF_MAX_CHUNK_BYTES = 5 * 1024 * 1024
+PDF_MIN_CHUNK_BYTES = 1024
+PDF_MAX_CHUNKS = 200
+
+
 class PdfUploadInitRequest(BaseModel):
     filename: str = Field(min_length=1, max_length=255)
-    size: int = Field(gt=0, le=500 * 1024 * 1024)
+    size: int = Field(gt=0, le=PDF_MAX_UPLOAD_BYTES)
     contentType: str = "application/pdf"
-    chunkSize: int = Field(default=5 * 1024 * 1024, ge=1024, le=5 * 1024 * 1024)
-    totalChunks: int = Field(gt=0, le=200)
+    chunkSize: int = Field(
+        default=PDF_MAX_CHUNK_BYTES, ge=PDF_MIN_CHUNK_BYTES, le=PDF_MAX_CHUNK_BYTES,
+    )
+    totalChunks: int = Field(gt=0, le=PDF_MAX_CHUNKS)
     sourceText: str = Field(default="", max_length=20_000)

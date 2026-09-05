@@ -43,6 +43,13 @@ class DebugEntryTests(unittest.TestCase):
         response = self.client.get("/api/debug/errors")
         self.assertEqual(response.status_code, 404)
 
+    def test_token_is_not_accepted_from_the_query_string(self) -> None:
+        """凭据只走请求头。查询参数会进日志、浏览器历史和 Referer。"""
+        with patch.dict(os.environ, {"DOTTY_DEBUG_TOKEN": "real-token"}):
+            self._trigger_failure()
+            response = self.client.get("/api/debug/errors?x_debug_token=real-token")
+            self.assertEqual(response.status_code, 403)
+
     def test_wrong_token_forbidden(self) -> None:
         with patch.dict(os.environ, {"DOTTY_DEBUG_TOKEN": "real-token"}):
             self._trigger_failure()
