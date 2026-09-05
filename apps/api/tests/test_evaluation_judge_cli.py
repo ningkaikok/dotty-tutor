@@ -42,6 +42,82 @@ def _generator(*, attempts: int = 2, fallback: bool = True, fail_on: int | None 
     return generate
 
 
+def _label_aware_generator(*, sound_factual: int = 5, flawed_factual: int = 2,
+                           fail_on_flawed: bool = False):
+    """按提示词里出现的讲解原文判断样本类别，模拟"看得出错"的评审模型。
+
+    伪造的评审拿不到标注（标注不进提示词），只能靠讲解原文反查——这与真实评审
+    模型面对的输入完全一致，避免测试用一条真实链路上不存在的捷径来造分。
+    """
+    by_explanation = {
+        sample["explanation"]: sample["factualLabel"] for sample in EXPLANATION_SAMPLES
+    }
+
+    def generate(provider, model, prompt, schema, max_tokens=400):
+        label = next(
+            (value for text, value in by_explanation.items() if text in prompt),
+            "sound",
+        )
+        if label == "flawed" and fail_on_flawed:
+            raise RuntimeError("provider unavailable")
+        factual = flawed_factual if label == "flawed" else sound_factual
+        return (
+            {**VALID_PAYLOAD, "scores": {"clarity": 4, "targeting": 3, "factual": factual}},
+            {
+                "durationMs": 12.0,
+                "providerAttempts": 1,
+                "schemaFallback": {"used": False, "reason": None},
+                "usage": {"promptTokens": 10, "outputTokens": 6},
+            },
+        )
+
+    return generate
+
+
+class ScoreDiscriminationTests(unittest.TestCase):
+    """区分度回答的是"评审能不能看出错"，一致性指标回答不了这个问题。"""
+
+    def test_gap_reflects_lower_factual_scores_on_flawed_samples(self) -> None:
+        report = run_all("ollama", "qwen2.5:7b", generate_json_as=_label_aware_generator())
+        discrimination = report["judgeMetrics"]["scoreDiscrimination"]
+        self.assertGreater(discrimination["soundCount"], 0)
+        self.assertGreater(discrimination["flawedCount"], 0)
+        self.assertEqual(discrimination["byDimension"]["factual"]["gap"], 3.0)
+        # 对照维度：植入的错误只在数学内容上，clarity/targeting 不应被拉开。
+        self.assertEqual(discrimination["byDimension"]["clarity"]["gap"], 0.0)
+        self.assertEqual(discrimination["byDimension"]["targeting"]["gap"], 0.0)
+
+    def test_uniform_scores_yield_zero_gap_rather_than_none(self) -> None:
+        """0 是"测到了、没有区分能力"，None 是"没测成"，两者不能混。"""
+        report = run_all(
+            "ollama", "qwen2.5:7b",
+            generate_json_as=_label_aware_generator(sound_factual=5, flawed_factual=5),
+        )
+        self.assertEqual(
+            report["judgeMetrics"]["scoreDiscrimination"]["byDimension"]["factual"]["gap"],
+            0.0,
+        )
+
+    def test_gap_is_none_when_one_class_has_no_successful_judge(self) -> None:
+        report = run_all(
+            "ollama", "qwen2.5:7b",
+            generate_json_as=_label_aware_generator(fail_on_flawed=True),
+        )
+        discrimination = report["judgeMetrics"]["scoreDiscrimination"]
+        self.assertEqual(discrimination["flawedCount"], 0)
+        self.assertIsNone(discrimination["byDimension"]["factual"]["gap"])
+        self.assertIsNone(discrimination["byDimension"]["factual"]["flawedMean"])
+        self.assertIsNotNone(discrimination["byDimension"]["factual"]["soundMean"])
+
+    def test_report_contract_requires_score_discrimination(self) -> None:
+        report = run_all("ollama", "qwen2.5:7b", generate_json_as=_label_aware_generator())
+        self.assertEqual(validate_report(report), [])
+        del report["judgeMetrics"]["scoreDiscrimination"]
+        self.assertIn(
+            "judgeMetrics.scoreDiscrimination is required", validate_report(report)
+        )
+
+
 class JudgeReportTests(unittest.TestCase):
     def test_report_contract_separates_judge_metrics_and_runtime_metadata(self) -> None:
         report = run_all("ollama", "qwen", generate_json_as=_generator())

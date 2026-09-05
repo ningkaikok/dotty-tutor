@@ -13,8 +13,12 @@
 生成步骤是评测专用的独立 prompt，不接生产 guideCards 流水线——评测必须保持
 只读、不进入学生状态或课程发布路径，这一点与 ``judge.py`` 的职责边界一致。
 
-样本量当前只有个位数，任何报告都必须显式声明不构成统计显著性；
+样本量当前只有两位数出头，任何报告都必须显式声明不构成统计显著性；
 不要把描述性统计包装成模型选型结论。
+
+一致性不等于有效性：两个评审模型可以稳定地打出同一个分，同时**一起看不出**讲解里
+的数学错误。判断评审是否有效要看 ``judgeMetrics.scoreDiscrimination``——它按语料的
+事实性标注分组比较均分，由 ``judge_cli`` 计算，两个报告都会带上。
 """
 
 from __future__ import annotations
@@ -119,6 +123,9 @@ def run_judge_agreement(
     ``judge_candidates`` 里的每一项都是"评审员"，不是"讲解生成者"——
     这批讲解全部来自 ``EXPLANATION_SAMPLES`` 里手写的静态文本，不会因为
     换了评审模型而改变。
+
+    本报告只回答"评审员彼此是否一致"。"评审员是否真的评对了"由每个评审各自的
+    ``judgeMetrics.scoreDiscrimination`` 回答，不要用极差替代它下结论。
     """
     if len(judge_candidates) < 2:
         raise ValueError("至少需要两个评审模型才能比较一致性")
@@ -164,6 +171,8 @@ def run_judge_agreement(
         },
         # 每道样本、每个评分维度上，各评审模型打分的极差（max-min）；
         # 只有 >=2 个评审都成功评出分才有值，否则为 None（不是 0——0 意味着"完全一致"）。
+        # 极差小只说明评审员之间一致，不说明评审有效；有效性看
+        # perJudgeMetrics[label].scoreDiscrimination。
         "perSampleScoreSpread": per_sample_spread,
         "dimensionMeanSpread": dimension_mean_spread,
     }
@@ -180,6 +189,10 @@ def run_generation_comparison(
 
     评审模型（``judge_provider``/``judge_model``）在整次比较里必须保持不变——
     否则观察到的分数差异分不清是"生成模型不同"还是"评审标准不同"造成的。
+
+    这里**没有** ``scoreDiscrimination``，而且不应该有：语料的 ``factualLabel``
+    标注的是手写讲解原文对不对，而本函数评的是模型现场生成的新文本，标注对它不成立。
+    只有 ``judge_cli.run_all`` 那条评审静态语料的路径才能算区分度。
     """
     generator = generate_json_as or model_runtime.generate_json_as
     per_generator: dict[str, Any] = {}

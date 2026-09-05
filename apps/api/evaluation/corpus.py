@@ -28,11 +28,29 @@ CORPUS_VERSION = "1"
 
 # 讲解 Judge 语料独立版本化。题目切分语料的版本变化不应让讲解评分报告
 # 在没有实际变更讲解样本时失去可比性。样本内容变化必须递增版本号。
-EXPLANATION_CORPUS_VERSION = "explanation-samples-v2"
+EXPLANATION_CORPUS_VERSION = "explanation-samples-v3"
 
+# 讲解 Judge 语料的事实性标注。
+#
+# 为什么需要标注：``factual`` 维度只有在语料里**同时存在正确与错误的讲解**时才可
+# 度量。早期语料八条全部是手写引导卡，没有任何一条包含错误数学陈述——这种语料上
+# 无论评审模型打什么分都无法证伪，实测也确实出现了"两个评审模型极差 3 分、而换成
+# 模型自己生成的讲解又全部满分"的矛盾读数。
+#
+# ``factualLabel`` 取值：
+# - ``"sound"``：讲解中的数学陈述全部正确（也包括"几乎不作断言"的纯引导式讲解）。
+# - ``"flawed"``：**故意**植入了一处数学错误，``flawNote`` 说明植入的是什么。
+#
+# 植入原则：错误只出现在数学内容上。这些样本的语言依然清晰、依然针对学生的具体
+# 卡点——否则 clarity/targeting 会跟着一起掉分，就分不清评审模型究竟是"发现了数学
+# 错误"还是"只是觉得这段话写得差"。
+#
+# 标注只进报告与统计，**不进提示词**：``build_judge_prompt`` 只读
+# ``questionContext`` 与 ``explanation``；``test_evaluation_corpus`` 锁定这一点。
 EXPLANATION_SAMPLES: list[dict[str, str]] = [
     {
         "id": "guide-cards-perpendicular-bisector",
+        "factualLabel": "sound",
         "questionContext": "PA=PB，M 是 AB 中点，求证 PM 垂直 AB。",
         "explanation": (
             "还没有把“到两点距离相等”转化为可以证明的几何关系。"
@@ -42,6 +60,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-ssr-congruence",
+        "factualLabel": "sound",
         "questionContext": "接上题，已证 PA=PB、AM=BM，继续求证 PM⊥AB。",
         "explanation": (
             "已经找到相等的边，但还没有使用全等三角形。"
@@ -51,6 +70,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-adjacent-supplementary",
+        "factualLabel": "sound",
         "questionContext": "接上题，已证 ∠PMA=∠PMB，求证 PM⊥AB。",
         "explanation": (
             "已经证明两个邻角相等，还差最后的垂直关系。"
@@ -60,6 +80,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-linear-equation-transposition",
+        "factualLabel": "sound",
         "questionContext": "解方程 3x + 5 = 2x - 7。",
         "explanation": (
             "方程两边都有 x 项和常数项，还没有把它们分开。"
@@ -69,6 +90,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-factoring-common-factor",
+        "factualLabel": "sound",
         "questionContext": "因式分解 6x²y - 9xy。",
         "explanation": (
             "两项之间还没有找出公共因式。"
@@ -78,6 +100,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-linear-function-slope",
+        "factualLabel": "sound",
         "questionContext": "已知一次函数 y=kx+b 的图象经过 (1,3) 和 (2,5)，求 k 和 b。",
         "explanation": (
             "两个点的坐标还没有代入函数表达式里。"
@@ -87,6 +110,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-mode-median-confusion",
+        "factualLabel": "sound",
         "questionContext": "一组数据 3、5、5、7、9 的众数和中位数分别是多少？",
         "explanation": (
             "众数和中位数是两个不同的统计量，容易混在一起判断。"
@@ -96,6 +120,7 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
     },
     {
         "id": "guide-cards-inequality-direction-flip",
+        "factualLabel": "sound",
         "questionContext": "解不等式 -2x + 4 > 10。",
         "explanation": (
             "移项之后要在含 x 的项前面除以一个负系数，这一步最容易出错。"
@@ -103,7 +128,100 @@ EXPLANATION_SAMPLES: list[dict[str, str]] = [
             "两边除以负数的时候，不等号方向要不要变化？"
         ),
     },
+    {
+        "id": "guide-cards-percent-increase",
+        "factualLabel": "sound",
+        "questionContext": "某商品原价 80 元，涨价后售价 100 元，求涨价的百分比。",
+        "explanation": (
+            "涨价的百分比是拿涨了多少去比原来的价格，分母容易取错。"
+            "先算出涨了多少钱，再想清楚这个差额应该除以哪一个价格。"
+            "如果把差额除以原价 80，你会得到多少？"
+        ),
+    },
+    {
+        "id": "guide-cards-similar-triangle-ratio",
+        "factualLabel": "sound",
+        "questionContext": "两个相似三角形，小三角形的一条边长 3，对应的大三角形边长 6，小三角形另一边长 4，求大三角形对应边。",
+        "explanation": (
+            "还没有把“相似”转化成边与边之间的固定比。"
+            "相似三角形的对应边成比例，先用已知的那一组对应边求出这个比。"
+            "算出比之后，把它用到长度为 4 的那条边上，会得到多少？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-inequality-sign",
+        "factualLabel": "flawed",
+        "flawNote": "不等式两边同除以负数时断言方向不变，结论 x > -4 错误（应为 x < -4）。",
+        "questionContext": "解不等式 -3x > 12。",
+        "explanation": (
+            "现在卡在怎么把 x 前面的 -3 去掉。"
+            "两边同时除以 -3 就可以了，不等号的方向保持不变。"
+            "照这样算下去，你得到的解集是不是 x > -4？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-power-of-power",
+        "factualLabel": "flawed",
+        "flawNote": "幂的乘方误用为指数相加，(x³)² 被算成 x⁵（应为 x⁶）。",
+        "questionContext": "化简 (x³)²。",
+        "explanation": (
+            "这里容易和同底数幂相乘搞混，先看清楚括号外面的 2 是什么意思。"
+            "幂的乘方，把两个指数加起来就行，也就是 3 加 2。"
+            "那么化简的结果是不是 x⁵？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-fabricated-condition",
+        "factualLabel": "flawed",
+        "flawNote": "编造题干没有的条件，凭空断言这是等腰三角形。",
+        "questionContext": "三角形 ABC 中，∠A=50°，∠B=60°，求 ∠C。",
+        "explanation": (
+            "你还没有把已知的两个角和三角形的内角和联系起来。"
+            "题目已经告诉我们这是一个等腰三角形，所以 ∠B 和 ∠C 是相等的两个底角。"
+            "那么只要用 180° 减去 ∠A 再平分，∠C 是多少？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-median-definition",
+        "factualLabel": "flawed",
+        "flawNote": "中位数的定义被说成“出现次数最多的数”，与众数混为一谈。",
+        "questionContext": "一组数据 2、4、4、6、10 的中位数是多少？",
+        "explanation": (
+            "先分清楚题目要的是哪一个统计量，不要和平均数混起来。"
+            "中位数指的是这组数据里出现次数最多的那个数，把每个数出现几次数一遍就能找到。"
+            "在这组数据里，哪个数出现的次数最多？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-missing-square-root",
+        "factualLabel": "flawed",
+        "flawNote": "勾股定理算出 c²=100 后漏了开方，直接断言斜边是 100（应为 10）。",
+        "questionContext": "直角三角形的两条直角边分别是 6 和 8，求斜边。",
+        "explanation": (
+            "你已经找对了要用勾股定理，卡在最后一步的计算上。"
+            "两条直角边的平方和是 36 加 64，等于 100，这个 100 就是斜边的长度。"
+            "所以斜边是 100，你算出来的结果和这个一致吗？"
+        ),
+    },
+    {
+        "id": "guide-cards-flawed-invented-congruence-rule",
+        "factualLabel": "flawed",
+        "flawNote": "编造“边边角”全等判定：两边及一个非夹角相等并不能判定全等。",
+        "questionContext": "已知 AB=DE，BC=EF，∠A=∠D，判断三角形 ABC 与 DEF 是否全等。",
+        "explanation": (
+            "你现在需要挑一个合适的全等判定条件。"
+            "只要两个三角形有两组边分别相等，再加上任意一个角相等，就一定全等。"
+            "题目里两组边和一个角都给齐了，那么这两个三角形是不是全等？"
+        ),
+    },
 ]
+
+_FACTUAL_LABELS = ("sound", "flawed")
+
+
+def factual_labels() -> dict[str, str]:
+    """返回样本 id 到事实性标注的映射，供报告计算区分度使用。"""
+    return {sample["id"]: sample["factualLabel"] for sample in EXPLANATION_SAMPLES}
 
 
 def sample_set_hash(samples: list[dict[str, Any]]) -> str:

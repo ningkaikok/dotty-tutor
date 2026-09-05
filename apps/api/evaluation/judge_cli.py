@@ -18,6 +18,7 @@ from typing import Any
 from evaluation.corpus import (
     EXPLANATION_CORPUS_VERSION,
     EXPLANATION_SAMPLES,
+    factual_labels,
     sample_set_hash,
 )
 from evaluation.judge import JUDGE_PROMPT_VERSION, RUBRIC, run_judge_detailed
@@ -40,14 +41,59 @@ def _numeric_sum(values: list[Any]) -> int | None:
     return sum(numbers) if numbers and len(numbers) == len(values) else None
 
 
+def _mean_scores(scores: list[dict[str, int]]) -> dict[str, float]:
+    return {
+        dimension: round(sum(item[dimension] for item in scores) / len(scores), 2)
+        for dimension in RUBRIC
+    }
+
+
+def _score_discrimination(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """按语料的事实性标注分组比较各维度均分，衡量评审是否真的能区分对错。
+
+    ``gap = soundMean - flawedMean``：在某个维度上，评审模型给"数学正确的讲解"比给
+    "被植入数学错误的讲解"高出多少分。``factual`` 的 gap 接近 0 说明该维度在当前
+    语料上**没有区分能力**——打分再稳定也不代表评审有效，一致性指标单独看会把
+    "一致地看不出错"误读成"评审可靠"。
+
+    clarity/targeting 的 gap 一并输出作为对照组：flawed 样本刻意写得清晰、且针对
+    学生的具体卡点，只有数学内容是错的。若这两个维度也跟着一起掉分，说明评审模型
+    只是整体印象变差，并没有定位到数学错误本身。
+
+    任一类样本为空时返回 None 而不是 0——0 意味着"测到了、没有差异"。
+    """
+    labels = factual_labels()
+    grouped: dict[str, list[dict[str, int]]] = {"sound": [], "flawed": []}
+    for result in results:
+        scores = result["scores"]
+        label = labels.get(result["id"])
+        if result["judgeSucceeded"] and isinstance(scores, dict) and label in grouped:
+            grouped[label].append(scores)
+    sound_mean = _mean_scores(grouped["sound"]) if grouped["sound"] else None
+    flawed_mean = _mean_scores(grouped["flawed"]) if grouped["flawed"] else None
+    return {
+        "soundCount": len(grouped["sound"]),
+        "flawedCount": len(grouped["flawed"]),
+        "byDimension": {
+            dimension: {
+                "soundMean": sound_mean[dimension] if sound_mean else None,
+                "flawedMean": flawed_mean[dimension] if flawed_mean else None,
+                "gap": (
+                    round(sound_mean[dimension] - flawed_mean[dimension], 2)
+                    if sound_mean and flawed_mean
+                    else None
+                ),
+            }
+            for dimension in RUBRIC
+        },
+    }
+
+
 def _build_judge_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
     succeeded = [result for result in results if result["judgeSucceeded"]]
     durations = [float(result["durationMs"]) for result in results]
     scores = [result["scores"] for result in succeeded if result["scores"]]
-    average_scores = {
-        dimension: round(sum(item[dimension] for item in scores) / len(scores), 2)
-        for dimension in RUBRIC
-    } if scores else {}
+    average_scores = _mean_scores(scores) if scores else {}
     prompt_tokens = _numeric_sum(
         [result["tokenUsage"]["promptTokens"] for result in results]
     )
@@ -64,6 +110,7 @@ def _build_judge_metrics(results: list[dict[str, Any]]) -> dict[str, Any]:
         "logicalCalls": sum(result["logicalCalls"] for result in results),
         "providerAttempts": sum(result["providerAttempts"] for result in results),
         "averageScores": average_scores,
+        "scoreDiscrimination": _score_discrimination(results),
         "tokenUsage": {
             "promptTokens": prompt_tokens,
             "outputTokens": output_tokens,
@@ -205,7 +252,8 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         for key in (
             "sampleCount", "succeeded", "successRate", "failureCount",
             "p50DurationMs", "p95DurationMs", "logicalCalls", "providerAttempts",
-            "averageScores", "tokenUsage", "schemaFallbackCount",
+            "averageScores", "scoreDiscrimination", "tokenUsage",
+            "schemaFallbackCount",
         ):
             if key not in metrics:
                 problems.append(f"judgeMetrics.{key} is required")
@@ -231,6 +279,9 @@ def write_report(result: dict[str, Any], output_dir: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run LLM-as-Judge over explanation samples.")
     parser.add_argument("--provider", default="ollama")
+    # 默认评审模型不要为省资源下调到 qwen2.5:3b：2026-09-05 的两次独立实测里，3b 的
+    # factual 区分度是 -0.10 / +0.16（等价于随机），它会给编造的全等判定和漏开方的
+    # 结论打满分。评审模型没有区分能力时，报告里的分数是噪声而不是质量信号。
     parser.add_argument("--model", default="qwen2.5:7b")
     parser.add_argument(
         "--output-dir",

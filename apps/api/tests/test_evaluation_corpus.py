@@ -10,7 +10,44 @@ from __future__ import annotations
 import unittest
 
 from evaluation import corpus as corpus_module
+from evaluation.judge import build_judge_prompt
 from evaluation.replay import run_replay, write_report
+
+
+class ExplanationSampleLabelTests(unittest.TestCase):
+    """事实性标注是 ``factual`` 维度可度量的前提，必须自成回归资产。"""
+
+    def test_sample_ids_are_unique(self) -> None:
+        ids = [sample["id"] for sample in corpus_module.EXPLANATION_SAMPLES]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_every_sample_declares_a_valid_factual_label(self) -> None:
+        for sample in corpus_module.EXPLANATION_SAMPLES:
+            with self.subTest(sample=sample["id"]):
+                self.assertIn(sample["factualLabel"], corpus_module._FACTUAL_LABELS)
+
+    def test_flaw_note_is_present_exactly_for_flawed_samples(self) -> None:
+        """植入的错误必须写清楚是什么，否则后来的人无法判断评审模型漏了哪一处。"""
+        for sample in corpus_module.EXPLANATION_SAMPLES:
+            with self.subTest(sample=sample["id"]):
+                flawed = sample["factualLabel"] == "flawed"
+                self.assertEqual(flawed, bool(sample.get("flawNote", "").strip()))
+
+    def test_both_label_classes_are_represented(self) -> None:
+        """只有正确样本的语料上，factual 维度无法证伪——这正是旧语料的问题。"""
+        labels = list(corpus_module.factual_labels().values())
+        self.assertGreaterEqual(labels.count("sound"), 2)
+        self.assertGreaterEqual(labels.count("flawed"), 2)
+
+    def test_labels_never_reach_the_judge_prompt(self) -> None:
+        """标注泄漏进提示词会让区分度指标失去意义：评审只是照抄答案。"""
+        for sample in corpus_module.EXPLANATION_SAMPLES:
+            prompt = build_judge_prompt(sample["questionContext"], sample["explanation"])
+            for key, value in sample.items():
+                if key in {"questionContext", "explanation"}:
+                    continue
+                with self.subTest(sample=sample["id"], field=key):
+                    self.assertNotIn(value, prompt)
 
 
 class CorpusIntegrityTests(unittest.TestCase):
