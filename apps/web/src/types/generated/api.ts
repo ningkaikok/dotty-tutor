@@ -626,7 +626,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Variations */
+        /**
+         * List Variations
+         * @description 列出该错题的变式题。
+         */
         get: operations["list_variations_api_mistakes__mistake_id__variations_get"];
         put?: never;
         /** Create Variation */
@@ -3175,7 +3178,9 @@ export interface operations {
     };
     list_variations_api_mistakes__mistake_id__variations_get: {
         parameters: {
-            query?: never;
+            query?: {
+                learnerId?: string;
+            };
             header?: never;
             path: {
                 mistake_id: string;

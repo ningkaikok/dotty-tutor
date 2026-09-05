@@ -9,8 +9,21 @@ from fastapi import APIRouter, HTTPException
 from answer_evaluator import evaluate_structured_answer
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
+from domain.questions.student_view import student_question_payload
 from observability import log_event
 from routers.tutoring_routes import has_meaningful_answer
+
+
+def _public_variation(variation: dict[str, Any]) -> dict[str, Any]:
+    """变式题记录进入学生端前投影题目本身；其余字段（状态、反馈、掌握度）原样保留。
+
+    判题在服务端完成（``evaluate_structured_answer``），学生端不需要标准答案，
+    因此这里剥掉答案不会影响任何渲染或作答流程。
+    """
+    return {
+        **variation,
+        "questionPayload": student_question_payload(variation.get("questionPayload")),
+    }
 
 
 def build_practice_router(
@@ -24,10 +37,24 @@ def build_practice_router(
     router = APIRouter(tags=["practice"])
 
     @router.get("/api/mistakes/{mistake_id}/variations")
-    def list_variations(mistake_id: str) -> dict[str, Any]:
-        if not mistake_store.get(mistake_id):
+    def list_variations(
+        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+    ) -> dict[str, Any]:
+        """列出该错题的变式题。"""
+        # 变式题是掌握验证的载体：此前这里原样返回 questionPayload，答案随题目
+        # 一起下发，验证等于失效；归属校验也漏了，与紧邻的 /evidence 不一致。
+        # docstring 会进入公开 OpenAPI 描述，所以这段说明留在注释里。
+        mistake = mistake_store.get(mistake_id)
+        if not mistake:
             raise HTTPException(status_code=404, detail="错题不存在")
-        return {"items": variation_store.list_for_mistake(mistake_id)}
+        if mistake["learnerId"] != learnerId:
+            raise HTTPException(status_code=403, detail="不能访问其他学生的错题")
+        return {
+            "items": [
+                _public_variation(variation)
+                for variation in variation_store.list_for_mistake(mistake_id)
+            ]
+        }
 
     @router.get("/api/mistakes/{mistake_id}/evidence")
     def get_mistake_evidence(
@@ -89,7 +116,7 @@ def build_practice_router(
                 variation_id=existing[-1]["variationId"],
                 reason="single-validation-question",
             )
-            return existing[-1]
+            return _public_variation(existing[-1])
 
         sequence = 1
         try:
@@ -112,7 +139,7 @@ def build_practice_router(
             strategy=item["strategy"],
             variation_level=item["level"],
         )
-        return item
+        return _public_variation(item)
 
     @router.post("/api/variations/{variation_id}/answer")
     def answer_variation(
@@ -131,7 +158,7 @@ def build_practice_router(
                 item["evaluationEvidence"] = existing_attempt["evaluationEvidence"]
                 item["mastery"] = variation_store.mastery_summary(item["mistakeId"])
                 item["reviewTasks"] = review_store.list_for_mistake(item["mistakeId"])
-                return item
+                return _public_variation(item)
             raise HTTPException(status_code=409, detail="这道验证题已经答对")
         if not has_meaningful_answer(request.content, request.interactionResult):
             raise HTTPException(status_code=422, detail="请先输入或选择答案")
@@ -194,6 +221,6 @@ def build_practice_router(
             variation_id=variation_id,
             assessment=result["assessment"],
         )
-        return saved
+        return _public_variation(saved)
 
     return router
