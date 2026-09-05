@@ -34,7 +34,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
-| `GET` | `/api/metrics/model-calls?days=7` | 模型调用边界指标聚合（只读）：按 runtime/task/provider/model 分组的调用数、失败数、平均耗时与输出 token 合计 |
+| `GET` | `/api/metrics/model-calls?days=7` | 模型调用边界指标聚合（只读）：按 runtime/task/provider/model 分组的调用数、失败数、平均耗时、输出 token 合计，以及提示词稳定段占比 `stablePromptShare`（未做前缀切分的调用为 `null`，不计入分母） |
 | `GET` | `/api/reports/learning-cost?learnerId=local-demo&days=7` | 学习效果与模型成本代理指标联合报告；学习为学生累计快照，模型为全局最近窗口，成本不表示货币金额或因果关系 |
 
 ## 班级、作业与教师看板

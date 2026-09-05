@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from application.services.stateful_tutor import StatefulTutor
 from domain.contracts.tutoring import TutorMessageRequest
 from domain.questions.contracts import TutorReply
+from infrastructure.runtime.contracts import PromptParts
 from persistence.mistake_store import MistakeStore
 from persistence.tutoring_store import TutoringStore
 from routers.tutoring_routes import build_tutoring_router
@@ -30,9 +31,13 @@ class _GeneratedRuntime:
         self.selection = SimpleNamespace(provider="codex", model="test-model")
         self.generated = generated
         self.prompts: list[str] = []
+        self.prompt_parts: list[PromptParts | None] = []
 
-    def generate_json(self, prompt: str, schema: dict, max_tokens: int = 450):
-        self.prompts.append(prompt)
+    def generate_json(self, prompt: str | PromptParts, schema: dict, max_tokens: int = 450):
+        # 真实 runtime 接受 PromptParts；这里落成整段文本，让断言继续检查
+        # 学生真正看到的提示词，同时另存切分供前缀顺序断言使用。
+        self.prompt_parts.append(prompt if isinstance(prompt, PromptParts) else None)
+        self.prompts.append(prompt.text if isinstance(prompt, PromptParts) else prompt)
         return self.generated, {
             "requestedProvider": "codex",
             "provider": "codex",

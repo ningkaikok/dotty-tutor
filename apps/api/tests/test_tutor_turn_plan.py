@@ -14,6 +14,7 @@ from domain.tutoring.turn_plan import (
     select_teaching_action,
     teaching_strategy_context,
 )
+from infrastructure.runtime.contracts import PromptParts
 
 
 class _RepeatingEngine:
@@ -32,10 +33,14 @@ class _GeneratedRuntime:
         self.generated = generated
         self.calls = 0
         self.prompts: list[str] = []
+        self.prompt_parts: list[PromptParts | None] = []
 
-    def generate_json(self, prompt: str, schema: dict, max_tokens: int = 450):
+    def generate_json(self, prompt: str | PromptParts, schema: dict, max_tokens: int = 450):
         self.calls += 1
-        self.prompts.append(prompt)
+        # 真实 runtime 接受 PromptParts；这里落成整段文本，让断言继续检查
+        # 学生真正看到的提示词，同时另存切分供前缀顺序断言使用。
+        self.prompt_parts.append(prompt if isinstance(prompt, PromptParts) else None)
+        self.prompts.append(prompt.text if isinstance(prompt, PromptParts) else prompt)
         return self.generated, {
             "requestedProvider": "codex",
             "provider": "codex",
@@ -519,3 +524,61 @@ class TutorTurnPlanTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PromptPrefixSplitTests(unittest.TestCase):
+    """提示词切分的回归资产：稳定段必须真的跨轮不变，否则 Prefix Cache 永不命中。"""
+
+    @staticmethod
+    def _runtime() -> _GeneratedRuntime:
+        return _GeneratedRuntime({
+            "assessment": "partial",
+            "reply": "再看看数轴方向。",
+            "stuckAt": "数轴方向",
+            "knowledge": ["数轴"],
+            "hint": "先标点",
+            "question": "哪个点在右边？",
+            "canvasAction": "show-base",
+        })
+
+    def test_prompt_is_passed_as_parts_with_stable_prefix_first(self) -> None:
+        runtime = self._runtime()
+        StatefulTutor(runtime=runtime).reply(**TutorTurnPlanTests._stateful_inputs())
+        parts = runtime.prompt_parts[0]
+        self.assertIsNotNone(parts)
+        assert parts is not None
+        # 缓存只在稳定段是整段提示词的字面前缀时才可能命中。
+        self.assertTrue(parts.text.startswith(parts.stable))
+        self.assertTrue(parts.text.endswith(parts.dynamic))
+
+    def test_stable_prefix_holds_question_and_requirements_only(self) -> None:
+        runtime = self._runtime()
+        StatefulTutor(runtime=runtime).reply(
+            **TutorTurnPlanTests._stateful_inputs(content="我觉得 -2 更大")
+        )
+        parts = runtime.prompt_parts[0]
+        assert parts is not None
+        self.assertIn("比较 -2 和 1 的大小", parts.stable)
+        self.assertIn("assessment 必须是 correct、partial 或 incorrect", parts.stable)
+        # 本轮状态一律不得进入稳定段，否则它每轮都在变，不再是可复用前缀。
+        self.assertNotIn("我觉得 -2 更大", parts.stable)
+        self.assertNotIn("当前提示层级", parts.stable)
+        self.assertIn("我觉得 -2 更大", parts.dynamic)
+        self.assertIn("当前提示层级", parts.dynamic)
+
+    def test_stable_prefix_is_identical_across_turns_of_the_same_question(self) -> None:
+        """这是整项改动的核心性质：同一道题换学生输入和提示层级，前缀逐字不变。"""
+        runtime = self._runtime()
+        tutor = StatefulTutor(runtime=runtime)
+        first = TutorTurnPlanTests._stateful_inputs(content="我觉得 -2 更大")
+        tutor.reply(**first)
+        second = TutorTurnPlanTests._stateful_inputs(content="是不是要看数轴？")
+        second["request"].hintLevel = 1
+        second["thread"] = {"stage": "explain", "summary": "上一轮学生答错了。"}
+        tutor.reply(**second)
+
+        self.assertEqual(len(runtime.prompt_parts), 2)
+        stable_first, stable_second = (part.stable for part in runtime.prompt_parts if part)
+        self.assertEqual(stable_first, stable_second)
+        # 动态段必须真的变了，否则上面的相等是因为两轮输入本来就一样。
+        self.assertNotEqual(runtime.prompt_parts[0].dynamic, runtime.prompt_parts[1].dynamic)  # type: ignore[union-attr]

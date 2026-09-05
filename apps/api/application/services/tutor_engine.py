@@ -30,6 +30,7 @@ from domain.tutoring.checks import (
 )
 from domain.tutoring.turn_plan import normalize_misconception
 from infrastructure.runtime.contracts import (
+    PromptParts,
     RuntimeConfigSnapshot,
     attach_runtime_config,
 )
@@ -160,19 +161,23 @@ class TutorEngine:
                 f"系统校验发现学生写的 {conflict[0]} 与标准步骤 {conflict[1]} 冲突。"
                 "assessment 必须为 incorrect，绝对不能说这一步正确；只提示学生回查符号和算术。"
             )
-        prompt = f"""
+        # 提示词按“跨轮是否变化”切成两段，稳定段在前、动态段在后。
+        #
+        # 稳定段（系统规则 + 题目 + 讲解脚本 + 输出要求）在同一道题的整个陪练线程里
+        # 逐字不变；动态段只装本轮状态。这样切是 Prefix Cache 的前提——缓存只在
+        # 稳定内容是整段提示词的**字面前缀**时才可能命中，稳定内容夹在动态内容中间
+        # 就永远无法复用。当前只切分和度量，**没有启用任何缓存**。
+        #
+        # 代价要说清楚：为了让“要求”进入稳定段，它从提示词末尾移到了本轮数据之前，
+        # 这是一次真实的提示词结构改动。动态段末尾补一句收束指令来保持要求的显著性；
+        # 现有评测覆盖的是讲解质量，不覆盖陪练回复质量，因此这次改动的效果没有被
+        # 自动化手段验证——判断依据只有人工阅读。
+        stable_prefix = f"""
 你正在辅导下面这道题。先用标准讲解脚本独立核对学生的每一步计算，再判断卡点。
 
 题目：{payload['question']['prompt']}
 已知条件：{'；'.join(payload['question']['givens'])}
 标准讲解脚本：{_json_dumps(payload['lessonSteps'])}
-当前提示层级：{request.hintLevel}
-候选引导卡：{_json_dumps(current_card)}
-学生输入：{request.studentInput.strip() or '学生没有输入内容'}
-学生交互作答结果：{_json_dumps(request.interactionResult) if request.interactionResult else '无'}
-最近对话摘要：{conversation_context[:2400] or '这是本线程第一轮'}
-用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
-系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
 
 要求：
 1. assessment 必须是 correct、partial 或 incorrect。
@@ -185,10 +190,24 @@ class TutorEngine:
    unknown（无法判断）或 careless（粗心）中选择最符合的一项；必须根据本轮输入填写，不能凭空补写。
    没有证据或置信度低于 0.65 时 needsConfirmation 必须为 true，并通过问题向学生确认。
 7. 严格遵守最近对话摘要中的“学生意图”和“唯一教学动作”；不能自行改判、切换动作或推进阶段。
-""".strip()
+""".lstrip()
+        dynamic_suffix = f"""
+本轮学生状态：
+当前提示层级：{request.hintLevel}
+候选引导卡：{_json_dumps(current_card)}
+学生输入：{request.studentInput.strip() or '学生没有输入内容'}
+学生交互作答结果：{_json_dumps(request.interactionResult) if request.interactionResult else '无'}
+最近对话摘要：{conversation_context[:2400] or '这是本线程第一轮'}
+用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
+系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
+
+现在请严格按上面的七条要求，对本轮作答给出回复。
+""".rstrip()
+        prompt_parts = PromptParts(stable=stable_prefix, dynamic=dynamic_suffix)
+        prompt = prompt_parts.text
         selection = self.runtime.selection
         try:
-            generated, run = self.runtime.generate_json(prompt, HELP_SCHEMA, max_tokens=450)
+            generated, run = self.runtime.generate_json(prompt_parts, HELP_SCHEMA, max_tokens=450)
         except Exception as error:
             return build_reply(request, cards, mock_model_run(selection.provider, str(error)), question)
 

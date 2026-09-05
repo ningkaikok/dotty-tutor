@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 from infrastructure.runtime.capabilities import HEALTH_BOOK
 from infrastructure.runtime.contracts import (
+    PromptParts,
     RuntimeConfigSnapshot,
     RuntimeExecutionError,
     attach_runtime_config,
@@ -59,6 +60,13 @@ def codex_models() -> list[str]:
 class ModelSelection:
     provider: Provider
     model: str
+
+
+def _prompt_split_chars(prompt: str | PromptParts) -> tuple[int | None, int | None]:
+    """返回稳定段/动态段字符数；未切分的调用返回 (None, None)。"""
+    if isinstance(prompt, PromptParts):
+        return len(prompt.stable), len(prompt.dynamic)
+    return None, None
 
 
 class ModelRuntime:
@@ -201,6 +209,8 @@ class ModelRuntime:
         max_tokens: int | None = None,
         provider_attempts: int = 1,
         schema_fallback: bool = False,
+        stable_prompt_chars: int | None = None,
+        dynamic_prompt_chars: int | None = None,
     ) -> None:
         """把一次调用写入边界指标；存储异常绝不影响主流程。"""
         if self.metrics_store is None:
@@ -219,6 +229,10 @@ class ModelRuntime:
             "error_type": error_type,
             "provider_attempts": provider_attempts,
             "schema_fallback": schema_fallback,
+            # 未做前缀切分的调用写 None 而不是 0：0 会被平均值当成"稳定段长度为零"，
+            # 把没测过的调用算进分母，直接压低稳定占比。
+            "stable_prompt_chars": stable_prompt_chars,
+            "dynamic_prompt_chars": dynamic_prompt_chars,
         }
         try:
             self.metrics_store.record(entry)
@@ -227,11 +241,17 @@ class ModelRuntime:
 
     def generate_json(
         self,
-        prompt: str,
+        prompt: str | PromptParts,
         schema: dict[str, Any],
         max_tokens: int = 1200,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """用当前生成模型返回满足 Schema 的对象及可追踪运行记录。"""
+        """用当前生成模型返回满足 Schema 的对象及可追踪运行记录。
+
+        传入 ``PromptParts`` 时额外记录稳定段/动态段的字符数，用于判断 Prefix Cache
+        是否值得做；传入普通字符串时两个字段记 None（不适用），行为不变。
+        """
+        stable_chars, dynamic_chars = _prompt_split_chars(prompt)
+        prompt = prompt.text if isinstance(prompt, PromptParts) else prompt
         selection = ModelSelection(self.selection.provider, self.selection.model)
         if selection.provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
@@ -287,6 +307,8 @@ class ModelRuntime:
                 max_tokens=max_tokens,
                 provider_attempts=failed_run["providerAttempts"],
                 schema_fallback=failed_run["schemaFallback"]["used"],
+                stable_prompt_chars=stable_chars,
+                dynamic_prompt_chars=dynamic_chars,
             )
             log_event(
                 "model.request.failed",
@@ -311,6 +333,8 @@ class ModelRuntime:
             max_tokens=max_tokens,
             provider_attempts=self._provider_attempts_from_usage(usage),
             schema_fallback=self._schema_fallback_from_usage(usage)["used"],
+            stable_prompt_chars=stable_chars,
+            dynamic_prompt_chars=dynamic_chars,
         )
         log_event(
             "model.request.completed",
