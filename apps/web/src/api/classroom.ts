@@ -5,8 +5,20 @@ import type {
   ClassDashboard,
   ClassDetail,
   ClassSummary,
+  RosterEntry,
   StudentAssignment,
 } from "../types/classroom";
+
+/**
+ * 班级花名册，供学生端"我是谁"选择器读取。
+ *
+ * 这是名册查询、不是身份认证：返回全部学生的 learnerId 与姓名，任何人都能声称自己
+ * 是其中任意一个。接入登录后应连同学生端选择器一起删除。
+ */
+export async function loadRoster(): Promise<RosterEntry[]> {
+  const payload = await parse<{ items: RosterEntry[] }>(await fetch("/api/learners", { cache: "no-store" }));
+  return payload.items;
+}
 
 export async function loadClasses(): Promise<ClassSummary[]> {
   const payload = await parse<{ items: ClassSummary[] }>(await fetch("/api/classes", { cache: "no-store" }));

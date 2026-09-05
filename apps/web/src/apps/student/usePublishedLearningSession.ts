@@ -7,7 +7,7 @@ import {
   syncExerciseAttempts,
 } from "../../api/learning";
 import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types/index";
-import { DEMO_LEARNER_ID } from "../../api/client";
+import { currentLearnerId } from "../../api/identity";
 
 const PENDING_KEY = "dotty-learning-pending-attempts";
 
@@ -46,7 +46,7 @@ async function openOrRecoverSession(publicationId: string, assignmentId?: string
       localStorage.removeItem(sessionKey);
     }
   }
-  const session = await createLearningSession({ learnerId: DEMO_LEARNER_ID, publicationId, assignmentId });
+  const session = await createLearningSession({ learnerId: currentLearnerId(), publicationId, assignmentId });
   localStorage.setItem(sessionKey, session.sessionId);
   return { session, replacedSessionId: existingSessionId ?? "" };
 }
@@ -129,7 +129,7 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
         }).catch(() => undefined);
       }
       // 掌握度是作答日志的派生投影；先补传离线记录再加载，避免页面分数落后于答案历史。
-      void loadLearningMastery(DEMO_LEARNER_ID).then((items) => {
+      void loadLearningMastery(currentLearnerId()).then((items) => {
         if (!cancelled) setMastery(items);
       }).catch(() => undefined);
     }).catch(() => {

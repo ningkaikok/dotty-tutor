@@ -1,13 +1,13 @@
 import type { LearningProgress, ReviewTask, StructuredAnswerInput } from "../types/review";
 import { parse } from "./client";
-import { DEMO_LEARNER_ID } from "./client";
+import { currentLearnerId } from "./identity";
 
 export async function loadReviews(): Promise<{ items: ReviewTask[]; serverTime: number }> {
-  return parse(await fetch(`/api/reviews?learnerId=${DEMO_LEARNER_ID}`, { cache: "no-store" }));
+  return parse(await fetch(`/api/reviews?learnerId=${encodeURIComponent(currentLearnerId())}`, { cache: "no-store" }));
 }
 
 export async function loadLearningProgress(): Promise<LearningProgress> {
-  return parse(await fetch(`/api/progress?learnerId=${DEMO_LEARNER_ID}`, { cache: "no-store" }));
+  return parse(await fetch(`/api/progress?learnerId=${encodeURIComponent(currentLearnerId())}`, { cache: "no-store" }));
 }
 
 export async function startReview(taskId: string): Promise<ReviewTask> {

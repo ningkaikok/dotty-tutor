@@ -201,8 +201,16 @@
 - [x] 文字与视觉审核共用一个可切换的审核模型；视觉审核结果进入同一质量门禁。
 - [x] 来源明确为 A-D 而模型产生额外选项时，自动隐藏多余项并隔离题目，等待修复或重生成。
 - [x] 固定演示用户 `local-demo` 已收敛为集中配置：后端 `domain/constants.py` 的
-  `DEMO_LEARNER_ID`，前端 `api/client.ts` 的同名导出；原先散落在路由/Store/契约层的
-  默认参数全部改为引用常量。接入登录时删除常量并把调用点改为服务端身份即可。
+  `DEMO_LEARNER_ID`，前端 `api/client.ts` 的同名导出。
+- [x] 学生端身份可切换（2026-09-05）。上一条曾写"默认参数全部改为引用常量"，**这句话当时
+  不成立**：`routers/classroom_routes.py` 的 `/api/assignments` 默认值和
+  `apps/web/src/apps/student/useStudentTodayQueue.ts` 里各留着一个 `"local-demo"` 字面量，
+  而且正好都在班级作业这条路径上。后果不只是不整洁——学生端身份被写死，**老师加进班级的
+  任何学生都收不到作业**，班级看板上永远显示"未开始"。
+  现在 `apps/web/src/api/identity.ts` 持有当前身份（localStorage，默认仍是 `DEMO_LEARNER_ID`），
+  新增 `GET /api/learners` 返回花名册，学生端导航上有"我是谁"选择器。
+  **这不是登录**：任何人都能选择成为任意学生，服务端不校验也无法校验；它只覆盖"一台机器、
+  老师在场"的试用场景。接入登录时删除 `identity.ts` 与选择器，调用点改为服务端身份。
 ## T1：质量、评测与可观测性
 
 本轮已完成：单题修订版本与运行配置通过不可变审计表记录；OpenAPI Schema 生成前端类型并由脚本校验。

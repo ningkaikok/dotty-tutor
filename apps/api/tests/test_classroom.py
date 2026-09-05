@@ -5,6 +5,7 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from domain.constants import DEMO_LEARNER_ID
 from persistence.app_store import AppStore
 from routers.classroom_routes import build_classroom_router
 from routers.learning_routes import build_learning_router
@@ -211,6 +212,59 @@ class ClassroomWorkflowTests(PostgresTestCase):
         )
         self.assertEqual(response.status_code, 409)
         self.assertIn("失效", response.json()["detail"])
+
+
+class RosterEndpointTests(PostgresTestCase):
+    """花名册端点是老师端与学生端 learner_id 对上的唯一入口，必须可枚举且带班级名。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.store = AppStore(database_url=self.database_url, data_root=self.data_root)
+        self.addCleanup(self.store.close)
+        app = FastAPI()
+        app.include_router(build_classroom_router(store=self.store))
+        self.client = TestClient(app)
+        self.addCleanup(self.client.close)
+
+    def _class(self, name: str) -> str:
+        response = self.client.post("/api/classes", json={"name": name})
+        self.assertEqual(response.status_code, 200)
+        return response.json()["classId"]
+
+    def test_empty_roster_returns_empty_list(self) -> None:
+        self.assertEqual(self.client.get("/api/learners").json(), {"items": []})
+
+    def test_roster_lists_members_with_class_name(self) -> None:
+        class_id = self._class("初二数学一班")
+        self.client.post(
+            f"/api/classes/{class_id}/members",
+            json={"learnerId": "stu-001", "displayName": "小安"},
+        )
+        items = self.client.get("/api/learners").json()["items"]
+        self.assertEqual(items, [{
+            "learnerId": "stu-001",
+            "displayName": "小安",
+            "classId": class_id,
+            "className": "初二数学一班",
+        }])
+
+    def test_same_learner_in_two_classes_is_listed_once_per_class(self) -> None:
+        """去重会丢掉班级信息，而班级名正是学生端区分同名同学的唯一线索。"""
+        first = self._class("初二数学一班")
+        second = self._class("竞赛班")
+        for class_id in (first, second):
+            self.client.post(
+                f"/api/classes/{class_id}/members",
+                json={"learnerId": "stu-001", "displayName": "小安"},
+            )
+        items = self.client.get("/api/learners").json()["items"]
+        self.assertEqual(len(items), 2)
+        self.assertEqual({item["className"] for item in items}, {"初二数学一班", "竞赛班"})
+
+    def test_assignments_default_learner_matches_the_shared_demo_constant(self) -> None:
+        """默认值曾是硬编码字面量，与前端常量各自漂移；这里锁死它引用同一个常量。"""
+        response = self.client.get("/api/assignments")
+        self.assertEqual(response.json()["learnerId"], DEMO_LEARNER_ID)
 
 
 if __name__ == "__main__":

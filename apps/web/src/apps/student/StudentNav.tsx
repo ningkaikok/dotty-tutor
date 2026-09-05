@@ -1,4 +1,5 @@
 import { NavLink } from "react-router";
+import { StudentIdentityPicker } from "./StudentIdentityPicker";
 import "./student.css";
 
 const NAV_ITEMS = [
@@ -31,6 +32,7 @@ export function StudentNav() {
           {item.label}
         </NavLink>
       ))}
+      <StudentIdentityPicker />
     </nav>
   );
 }
