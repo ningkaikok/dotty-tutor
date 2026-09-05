@@ -62,8 +62,8 @@ ALLOWED_UPLOAD_SUFFIXES = {
     ".gif", ".bmp", ".tif", ".tiff", ".pdf",
 }
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-PDF_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
-PDF_CHUNK_BYTES = 5 * 1024 * 1024
+# 分块上传的大小限额见 domain/questions/contracts.py：那里是执行处，
+# 这里不再另存一份不会生效的副本。
 PDF_TAIL_CHECK_BYTES = 64 * 1024
 UPLOAD_ROOT = store.upload_root
 
