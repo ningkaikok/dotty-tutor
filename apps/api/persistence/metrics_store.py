@@ -7,6 +7,9 @@
   平均耗时与 token 合计；分母为零的组自然不会出现。
 - token 维度目前仅 Ollama 提供原生计数；Codex CLI 路径记 None，
   不用字符数冒充 token。
+- 提示词稳定段/动态段按**字符数**记录，不换算成 token：Provider 只回报整段提示词的
+  token 总数，按字符比例摊回去是估算而不是测量。占比本身用字符算已经够判断
+  Prefix Cache 值不值得做，没必要在库里存一个看起来精确的估算值。
 """
 
 from __future__ import annotations
@@ -55,12 +58,25 @@ model_call_metrics = Table(
     # 约束解码不可用时降级为普通 JSON 模式。降级率是判断模型/Provider 能力是否
     # 达标的直接信号，不能和普通失败混为一谈。
     Column("schema_fallback", Boolean, nullable=False, default=False),
+    # 提示词的稳定段/动态段字符数（陪练路径按 PromptParts 切分后写入）。
+    # 两列都**可空**：NULL 表示这次调用没有做切分（不适用），与"稳定段长度为 0"
+    # 是两种状态。用 0 回填会把没测过的调用算进分母，直接压低稳定占比，
+    # 而稳定占比正是判断 Prefix Cache 值不值得做的唯一依据。
+    Column("stable_prompt_chars", Integer),
+    Column("dynamic_prompt_chars", Integer),
+)
+
+# 做过前缀切分的行：两列都非空。任一为空都说明这次调用没有切分，不能进入占比分母。
+_prefix_split = and_(
+    model_call_metrics.c.stable_prompt_chars.is_not(None),
+    model_call_metrics.c.dynamic_prompt_chars.is_not(None),
 )
 
 _ALLOWED_KEYS = {
     "runtime", "task", "provider", "model", "duration_ms", "prompt_chars",
     "max_output_tokens", "prompt_tokens", "output_tokens", "status", "error_type",
     "provider_attempts", "schema_fallback",
+    "stable_prompt_chars", "dynamic_prompt_chars",
 }
 
 
@@ -111,6 +127,9 @@ class MetricsStore:
             func.coalesce(func.sum(model_call_metrics.c.output_tokens), 0).label("outputTokens"),
             func.coalesce(func.sum(model_call_metrics.c.provider_attempts), 0).label("provider_attempts"),
             func.sum(case((model_call_metrics.c.schema_fallback, 1), else_=0)).label("schema_fallbacks"),
+            func.sum(model_call_metrics.c.stable_prompt_chars).label("stable_prompt_chars"),
+            func.sum(model_call_metrics.c.dynamic_prompt_chars).label("dynamic_prompt_chars"),
+            func.sum(case((_prefix_split, 1), else_=0)).label("prefix_split_calls"),
         ).select_from(model_call_metrics)
         if conditions:
             statement = statement.where(*conditions)
@@ -129,6 +148,13 @@ class MetricsStore:
                 "totalOutputTokens": int(row["outputTokens"] or 0),
                 "providerAttempts": int(row["provider_attempts"] or 0),
                 "schemaFallbacks": int(row["schema_fallbacks"] or 0),
+                # 只在做过切分的调用上有值；未切分的分组三项都是 None / 0。
+                "prefixSplitCalls": int(row["prefix_split_calls"] or 0),
+                "stablePromptChars": _integer_or_none(row["stable_prompt_chars"]),
+                "dynamicPromptChars": _integer_or_none(row["dynamic_prompt_chars"]),
+                "stablePromptShare": _share(
+                    row["stable_prompt_chars"], row["dynamic_prompt_chars"]
+                ),
             }
             for row in rows
         ]
@@ -158,6 +184,9 @@ class MetricsStore:
             func.sum(case((token_measured, 1), else_=0)).label("token_measured_calls"),
             func.sum(model_call_metrics.c.provider_attempts).label("provider_attempts"),
             func.sum(case((model_call_metrics.c.schema_fallback, 1), else_=0)).label("schema_fallbacks"),
+            func.sum(model_call_metrics.c.stable_prompt_chars).label("stable_prompt_chars"),
+            func.sum(model_call_metrics.c.dynamic_prompt_chars).label("dynamic_prompt_chars"),
+            func.sum(case((_prefix_split, 1), else_=0)).label("prefix_split_calls"),
         ).select_from(model_call_metrics)
         if conditions:
             statement = statement.where(*conditions)
@@ -169,6 +198,7 @@ class MetricsStore:
         token_measured_calls = int(row["token_measured_calls"] or 0)
         provider_attempts = int(row["provider_attempts"] or 0)
         schema_fallbacks = int(row["schema_fallbacks"] or 0)
+        prefix_split_calls = int(row["prefix_split_calls"] or 0)
         return {
             "summary": {
                 "logicalCalls": logical_calls,
@@ -185,6 +215,15 @@ class MetricsStore:
                 "retryAmplification": _ratio(provider_attempts, logical_calls),
                 "schemaFallbacks": schema_fallbacks,
                 "schemaFallbackRate": _ratio(schema_fallbacks, logical_calls),
+                # Prefix Cache 判据：稳定段占提示词的比例。只统计做过切分的调用，
+                # 覆盖率单独给出——占比再高，如果只覆盖了极少数调用也不构成依据。
+                "prefixSplitCalls": prefix_split_calls,
+                "prefixSplitCoverageRate": _ratio(prefix_split_calls, logical_calls),
+                "stablePromptChars": _integer_or_none(row["stable_prompt_chars"]),
+                "dynamicPromptChars": _integer_or_none(row["dynamic_prompt_chars"]),
+                "stablePromptShare": _share(
+                    row["stable_prompt_chars"], row["dynamic_prompt_chars"]
+                ),
             },
             "items": self.aggregate(days=days),
         }
@@ -194,6 +233,16 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     if denominator <= 0:
         return None
     return round(numerator / denominator, 3)
+
+
+def _share(stable: Any, dynamic: Any) -> float | None:
+    """稳定段占整段提示词的比例；没有切分过的调用返回 None 而不是 0。"""
+    if stable is None or dynamic is None:
+        return None
+    total = int(stable) + int(dynamic)
+    if total <= 0:
+        return None
+    return round(int(stable) / total, 3)
 
 
 def _number_or_none(value: Any) -> float | None:

@@ -15,6 +15,7 @@ from unittest.mock import patch
 from application.services.learning_funnel import (
     build_funnel_snapshot,  # noqa: F401  确认应用装配可导入
 )
+from infrastructure.runtime.contracts import PromptParts
 from infrastructure.runtime.model_runtime import ModelRuntime, ModelSelection
 from persistence.app_store import AppStore
 from persistence.metrics_store import MetricsStore
@@ -219,6 +220,70 @@ class RuntimeHookTests(PostgresTestCase):
         rows = self.metrics.aggregate()
         self.assertEqual(rows[0]["calls"], 1)
         self.assertEqual(rows[0]["failures"], 1)
+
+class PromptPrefixSplitMetricsTests(PostgresTestCase):
+    """稳定段占比是判断 Prefix Cache 值不值得做的唯一依据，必须可测且不被污染。"""
+
+    def setUp(self) -> None:
+        super().setUp()
+        store = AppStore(self.database_url, self.data_root)
+        self.addCleanup(store.close)
+        self.metrics = MetricsStore(engine=store.engine)
+        self.runtime = ModelRuntime(metrics_store=self.metrics)
+        self.runtime.selection = ModelSelection("ollama", "qwen2.5:7b")
+
+    def _call(self, prompt) -> None:
+        with patch.object(
+            self.runtime, "_ollama_json",
+            return_value=({"ok": True}, {"prompt_tokens": 10, "output_tokens": 7}),
+        ):
+            self.runtime.generate_json(prompt, {"type": "object"})
+
+    def test_prompt_parts_are_recorded_and_summed_into_a_share(self) -> None:
+        self._call(PromptParts(stable="s" * 90, dynamic="d" * 10))
+        report = self.metrics.aggregate_report()["summary"]
+        self.assertEqual(report["stablePromptChars"], 90)
+        self.assertEqual(report["dynamicPromptChars"], 10)
+        self.assertEqual(report["stablePromptShare"], 0.9)
+        self.assertEqual(report["prefixSplitCalls"], 1)
+        self.assertEqual(report["prefixSplitCoverageRate"], 1.0)
+
+    def test_plain_string_prompt_records_null_not_zero(self) -> None:
+        """未切分的调用写 0 会把它算进分母，压低占比——必须是 None。"""
+        self._call("没有做切分的提示词")
+        report = self.metrics.aggregate_report()["summary"]
+        self.assertIsNone(report["stablePromptChars"])
+        self.assertIsNone(report["stablePromptShare"])
+        self.assertEqual(report["prefixSplitCalls"], 0)
+        self.assertEqual(report["prefixSplitCoverageRate"], 0.0)
+
+    def test_unsplit_calls_do_not_dilute_the_share(self) -> None:
+        self._call(PromptParts(stable="s" * 80, dynamic="d" * 20))
+        self._call("没有做切分的提示词")
+        report = self.metrics.aggregate_report()["summary"]
+        # 占比只由切分过的那一次决定；覆盖率单独暴露"只测到一半"这件事。
+        self.assertEqual(report["stablePromptShare"], 0.8)
+        self.assertEqual(report["logicalCalls"], 2)
+        self.assertEqual(report["prefixSplitCalls"], 1)
+        self.assertEqual(report["prefixSplitCoverageRate"], 0.5)
+
+    def test_failed_call_still_records_the_split(self) -> None:
+        """失败调用同样耗掉了前缀 token，漏记会高估缓存收益。"""
+        with patch.object(self.runtime, "_ollama_json", side_effect=RuntimeError("连接失败")):
+            with self.assertRaises(Exception):
+                self.runtime.generate_json(
+                    PromptParts(stable="s" * 60, dynamic="d" * 40), {"type": "object"}
+                )
+        report = self.metrics.aggregate_report()["summary"]
+        self.assertEqual(report["failures"], 1)
+        self.assertEqual(report["stablePromptShare"], 0.6)
+
+    def test_aggregate_items_expose_the_share_per_model(self) -> None:
+        self._call(PromptParts(stable="s" * 75, dynamic="d" * 25))
+        row = self.metrics.aggregate()[0]
+        self.assertEqual(row["stablePromptShare"], 0.75)
+        self.assertEqual(row["prefixSplitCalls"], 1)
+
 
 class RuntimeHookConstructionTests(unittest.TestCase):
     def test_constructor_does_not_touch_engine(self) -> None:

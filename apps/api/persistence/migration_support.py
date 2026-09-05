@@ -48,6 +48,10 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         # 未降级"回填，这是记录缺失时唯一不会夸大问题的默认值。
         "provider_attempts": "INTEGER NOT NULL DEFAULT 1",
         "schema_fallback": "BOOLEAN NOT NULL DEFAULT FALSE",
+        # 提示词前缀切分字符数刻意**可空、不回填**：历史行确实没有做过切分，
+        # 写 0 会把它们算进稳定占比的分母，得出一个偏低且没人能解释的数字。
+        "stable_prompt_chars": "INTEGER",
+        "dynamic_prompt_chars": "INTEGER",
     },
 }
 _ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
