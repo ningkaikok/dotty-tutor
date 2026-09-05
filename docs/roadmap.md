@@ -19,7 +19,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| **最高（临时，2026-08-31）** | AI 工程方向：陪练上下文分层、模型调用边界指标、评测语料继续扩充 | 待启动。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| **最高（临时，2026-08-31）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用边界指标已完成（2026-09-05 补齐回退信息落库）；其余两项待启动。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -71,7 +71,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
   内容仍无统一判题，多小问结构（`subQuestions`）已支持，但 tutor-only 小问仍不进入自动掌握判定。
 - 快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题。
 - 数据库 schema 已由 Alembic 版本链管理；数据库测试通过隔离 PostgreSQL 夹具运行，PostgreSQL 运行时不执行 DDL。
-- 已有结构化日志和请求 ID，但尚无集中式指标、追踪、错误监控和自动备份。
+- 已有结构化日志、请求 ID 和模型调用边界指标（含重试与降级维度），但尚无集中式指标、追踪、错误监控和自动备份。
 - 错题章节和知识点目前由模型建议、学生确认，尚未关联版本化教材知识树。
 - 知识点已通过 `knowledge_points` 建立稳定实体，当前按发布版本作用域隔离；掌握度已改为按最新不同题证据
   派生，并设置低证据置信度上限。跨教材聚合仍未建模，需等老师视图的真实使用场景再决定身份维度。
