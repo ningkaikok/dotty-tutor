@@ -19,6 +19,7 @@ from evaluation.corpus import (
     EXPLANATION_CORPUS_VERSION,
     EXPLANATION_SAMPLES,
     factual_labels,
+    flaw_families,
     sample_set_hash,
 )
 from evaluation.judge import JUDGE_PROMPT_VERSION, RUBRIC, run_judge_detailed
@@ -48,6 +49,25 @@ def _mean_scores(scores: list[dict[str, int]]) -> dict[str, float]:
     }
 
 
+def _family_discrimination(
+    family_scores: list[dict[str, int]], sound_mean: dict[str, float] | None
+) -> dict[str, Any]:
+    family_mean = _mean_scores(family_scores)
+    return {
+        "sampleCount": len(family_scores),
+        "byDimension": {
+            dimension: {
+                "flawedMean": family_mean[dimension],
+                "gap": (
+                    round(sound_mean[dimension] - family_mean[dimension], 2)
+                    if sound_mean else None
+                ),
+            }
+            for dimension in RUBRIC
+        },
+    }
+
+
 def _score_discrimination(results: list[dict[str, Any]]) -> dict[str, Any]:
     """按语料的事实性标注分组比较各维度均分，衡量评审是否真的能区分对错。
 
@@ -71,6 +91,20 @@ def _score_discrimination(results: list[dict[str, Any]]) -> dict[str, Any]:
             grouped[label].append(scores)
     sound_mean = _mean_scores(grouped["sound"]) if grouped["sound"] else None
     flawed_mean = _mean_scores(grouped["flawed"]) if grouped["flawed"] else None
+
+    # 按错误家族再拆一层。"flawed 整体" gap 会把"编造的以偏概全通则"和"算错一步"
+    # 混在一起平均——如果评审模型只对后者敏感，整体 gap 依然能显得不错，掩盖了
+    # 前者上的系统性漏检。家族的基线用整体 soundMean，不再按家族切正确样本：
+    # sound 代表的是"评审模型看到正确材料时的正常打分水平"，这个水平不该因为
+    # 换了话题（三角形、函数、概率……）而系统性变化，用同一条基线比更干净。
+    families = flaw_families()
+    by_family: dict[str, list[dict[str, int]]] = {}
+    for result in results:
+        scores = result["scores"]
+        family = families.get(result["id"])
+        if result["judgeSucceeded"] and isinstance(scores, dict) and family:
+            by_family.setdefault(family, []).append(scores)
+
     return {
         "soundCount": len(grouped["sound"]),
         "flawedCount": len(grouped["flawed"]),
@@ -85,6 +119,10 @@ def _score_discrimination(results: list[dict[str, Any]]) -> dict[str, Any]:
                 ),
             }
             for dimension in RUBRIC
+        },
+        "byFlawFamily": {
+            family: _family_discrimination(family_scores, sound_mean)
+            for family, family_scores in by_family.items()
         },
     }
 
