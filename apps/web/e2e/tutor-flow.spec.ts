@@ -488,7 +488,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
   await page.route("**/api/mistakes/mistake-pw-1/archive", async (route) => {
     await route.fulfill({ json: { ...items[0], status: "archived" } });
   });
-  await page.route("**/api/mistakes/mistake-pw-1/thread", async (route) => {
+  await page.route("**/api/mistakes/mistake-pw-1/thread?*", async (route) => {
     await route.fulfill({ json: tutorThread() });
   });
   await page.route("**/api/tutor/threads/thread-pw-1", async (route) => {
@@ -523,7 +523,7 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
       },
     });
   });
-  await page.route("**/api/mistakes/mistake-pw-1/variations", async (route) => {
+  await page.route("**/api/mistakes/mistake-pw-1/variations?*", async (route) => {
     if (route.request().method() === "GET") {
       await route.fulfill({ json: { items: variations } });
       return;
