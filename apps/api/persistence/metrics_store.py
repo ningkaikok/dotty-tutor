@@ -16,6 +16,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Float,
     Integer,
@@ -47,11 +48,19 @@ model_call_metrics = Table(
     Column("output_tokens", Integer),
     Column("status", String(16), nullable=False),
     Column("error_type", String(64)),
+    # 回退信息。一行 = 一次逻辑调用，provider_attempts 是这次逻辑调用真正打给
+    # Provider 的请求数（含重试），因此"逻辑调用数"和"Provider 请求数"必须分开
+    # 统计——这与 judge 报告里既有的 logicalCalls / providerAttempts 口径一致。
+    Column("provider_attempts", Integer, nullable=False, default=1),
+    # 约束解码不可用时降级为普通 JSON 模式。降级率是判断模型/Provider 能力是否
+    # 达标的直接信号，不能和普通失败混为一谈。
+    Column("schema_fallback", Boolean, nullable=False, default=False),
 )
 
 _ALLOWED_KEYS = {
     "runtime", "task", "provider", "model", "duration_ms", "prompt_chars",
     "max_output_tokens", "prompt_tokens", "output_tokens", "status", "error_type",
+    "provider_attempts", "schema_fallback",
 }
 
 
@@ -100,6 +109,8 @@ class MetricsStore:
             func.sum(case((model_call_metrics.c.status == "failed", 1), else_=0)).label("failures"),
             func.avg(model_call_metrics.c.duration_ms).label("avg_duration_ms"),
             func.coalesce(func.sum(model_call_metrics.c.output_tokens), 0).label("outputTokens"),
+            func.coalesce(func.sum(model_call_metrics.c.provider_attempts), 0).label("provider_attempts"),
+            func.sum(case((model_call_metrics.c.schema_fallback, 1), else_=0)).label("schema_fallbacks"),
         ).select_from(model_call_metrics)
         if conditions:
             statement = statement.where(*conditions)
@@ -116,6 +127,8 @@ class MetricsStore:
                 "failures": int(row["failures"] or 0),
                 "avgDurationMs": round(float(row["avg_duration_ms"] or 0), 1),
                 "totalOutputTokens": int(row["outputTokens"] or 0),
+                "providerAttempts": int(row["provider_attempts"] or 0),
+                "schemaFallbacks": int(row["schema_fallbacks"] or 0),
             }
             for row in rows
         ]
@@ -143,6 +156,8 @@ class MetricsStore:
             func.sum(model_call_metrics.c.prompt_tokens).label("prompt_tokens"),
             func.sum(model_call_metrics.c.output_tokens).label("output_tokens"),
             func.sum(case((token_measured, 1), else_=0)).label("token_measured_calls"),
+            func.sum(model_call_metrics.c.provider_attempts).label("provider_attempts"),
+            func.sum(case((model_call_metrics.c.schema_fallback, 1), else_=0)).label("schema_fallbacks"),
         ).select_from(model_call_metrics)
         if conditions:
             statement = statement.where(*conditions)
@@ -152,6 +167,8 @@ class MetricsStore:
         logical_calls = int(row["logical_calls"] or 0)
         failures = int(row["failures"] or 0)
         token_measured_calls = int(row["token_measured_calls"] or 0)
+        provider_attempts = int(row["provider_attempts"] or 0)
+        schema_fallbacks = int(row["schema_fallbacks"] or 0)
         return {
             "summary": {
                 "logicalCalls": logical_calls,
@@ -162,6 +179,12 @@ class MetricsStore:
                 "totalOutputTokens": _integer_or_none(row["output_tokens"]),
                 "tokenMeasuredCalls": token_measured_calls,
                 "tokenCoverageRate": _ratio(token_measured_calls, logical_calls),
+                # Provider 请求数与逻辑调用数分开：重试会让前者大于后者，
+                # 二者的比值就是重试放大倍数，也是"是否该换 Provider"的直接依据。
+                "providerAttempts": provider_attempts,
+                "retryAmplification": _ratio(provider_attempts, logical_calls),
+                "schemaFallbacks": schema_fallbacks,
+                "schemaFallbackRate": _ratio(schema_fallbacks, logical_calls),
             },
             "items": self.aggregate(days=days),
         }

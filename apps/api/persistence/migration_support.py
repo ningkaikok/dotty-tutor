@@ -43,6 +43,12 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     "review_tasks": {
         "evaluation_evidence_json": "JSON_OBJECT_NOT_NULL",
     },
+    "model_call_metrics": {
+        # 历史行没有这两个维度：既有调用按"一次逻辑调用 = 一次 Provider 请求、
+        # 未降级"回填，这是记录缺失时唯一不会夸大问题的默认值。
+        "provider_attempts": "INTEGER NOT NULL DEFAULT 1",
+        "schema_fallback": "BOOLEAN NOT NULL DEFAULT FALSE",
+    },
 }
 _ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
     {

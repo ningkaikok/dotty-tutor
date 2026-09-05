@@ -22,6 +22,78 @@ from routers.runtime_routes import build_runtime_router
 from tests.postgres_test_support import PostgresTestCase
 
 
+class FallbackMetricsTests(PostgresTestCase):
+    """回退信息必须真的落库。
+
+    此前 ``_record_metric`` 会把 ``provider_attempts`` 和 ``schema_fallback``
+    放进 entry，但表里没有对应列、``_ALLOWED_KEYS`` 也不含它们，而 ``record()``
+    的策略是"白名单外字段直接忽略"——两个值被静默丢弃。调用方算了、传了，
+    以为记下了，其实没有。
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        store = AppStore(self.database_url, self.data_root)
+        self.addCleanup(store.close)
+        self.metrics = MetricsStore(engine=store.engine)
+
+    def _record(self, **overrides: object) -> None:
+        entry = {
+            "runtime": "generation",
+            "task": "lesson-generation",
+            "provider": "ollama",
+            "model": "qwen2.5:7b",
+            "prompt_chars": 100,
+            "duration_ms": 100.0,
+            "status": "succeeded",
+        }
+        entry.update(overrides)
+        self.metrics.record(entry)
+
+    def test_provider_attempts_and_schema_fallback_are_persisted(self) -> None:
+        self._record(provider_attempts=3, schema_fallback=True)
+        item = self.metrics.aggregate()[0]
+        self.assertEqual(item["providerAttempts"], 3)
+        self.assertEqual(item["schemaFallbacks"], 1)
+
+    def test_defaults_do_not_overstate_retries_or_fallbacks(self) -> None:
+        """不传时按"一次逻辑调用 = 一次请求、未降级"计，避免夸大问题。"""
+        self._record()
+        item = self.metrics.aggregate()[0]
+        self.assertEqual(item["providerAttempts"], 1)
+        self.assertEqual(item["schemaFallbacks"], 0)
+
+    def test_report_separates_logical_calls_from_provider_attempts(self) -> None:
+        """重试会让 Provider 请求数大于逻辑调用数，二者不能混为一谈。"""
+        self._record(provider_attempts=1)
+        self._record(provider_attempts=4, schema_fallback=True)
+        summary = self.metrics.aggregate_report()["summary"]
+        self.assertEqual(summary["logicalCalls"], 2)
+        self.assertEqual(summary["providerAttempts"], 5)
+        self.assertEqual(summary["retryAmplification"], 2.5)
+        self.assertEqual(summary["schemaFallbacks"], 1)
+        self.assertEqual(summary["schemaFallbackRate"], 0.5)
+
+    def test_runtime_hook_actually_lands_both_fields(self) -> None:
+        """端到端：从 ModelRuntime._record_metric 走一遍，而不是只测 store。"""
+        runtime = ModelRuntime(metrics_store=self.metrics)
+        runtime.selection = ModelSelection(provider="ollama", model="qwen2.5:7b")
+        runtime._record_metric(
+            task="tutoring",
+            provider="ollama",
+            model="qwen2.5:7b",
+            started=0.0,
+            status="succeeded",
+            prompt_chars=10,
+            max_tokens=100,
+            provider_attempts=2,
+            schema_fallback=True,
+        )
+        item = self.metrics.aggregate()[0]
+        self.assertEqual(item["providerAttempts"], 2)
+        self.assertEqual(item["schemaFallbacks"], 1)
+
+
 class MetricsStoreRoundtripTests(PostgresTestCase):
     def setUp(self) -> None:
         super().setUp()

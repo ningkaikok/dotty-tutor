@@ -18,14 +18,24 @@
 或看板代码，不阻塞、也不依赖任何正在独立推进中的数据库迁移工作（本文档不记录、不跟踪
 该项迁移的状态）。
 
-1. **陪练上下文分层**（Prefix Cache，T2 原有条目，一直未开始）：将系统规则、工具定义、
+1. **陪练上下文分层**（Prefix Cache，T2 原有条目，未开始）：将系统规则、工具定义、
    题目上下文、Schema 组成稳定前缀；学生输入和最近消息组成动态后缀。先记录稳定/动态
    token、耗时、调用次数和回退率，再判断 Prefix Cache 是否有实际收益；只有 Provider
    明确支持时才启用缓存，缓存键须包含模型、Prompt、Schema、题目版本和知识点版本。
-2. **模型调用边界指标**（T2 原有条目，一直未开始）：在模型调用边界记录 provider、model、
-   task（生成/审核/陪练/OCR）、耗时、token 用量、失败和回退信息；先以 PostgreSQL 聚合表
-   落地，只有跨服务追踪需求出现后再评估完整 OpenTelemetry 栈。该指标同时是上一项和
-   模型切换评测的数据来源。
+   > 排序说明：本条的前置是第 2 项——“先记录回退率再判断收益”是它自己定的规矩，
+   > 而回退率在 2026-09-05 之前根本没有落库。前置现已满足，但仍建议排在第 3 项之后：
+   > 判断收益需要一段真实调用数据积累，而扩语料不需要等。
+2. **模型调用边界指标（已完成，2026-09-05）**：`model_call_metrics` 记录 runtime、task、
+   provider、model、耗时、prompt/output token、状态与 `error_type`，`GET /api/metrics/model-calls`
+   暴露分组聚合，不引入 OpenTelemetry。
+   > 本条此前被标为“一直未开始”，属于文档滞后：表、记录点和查询端点早已存在。
+   > 真正缺的只有回退信息——`_record_metric` 会把 `provider_attempts` 和
+   > `schema_fallback` 放进 entry，但表里没有对应列、`_ALLOWED_KEYS` 也不含它们，
+   > 而 `record()` 的策略是“白名单外字段直接忽略”，因此两个值被**静默丢弃**。
+   > 已随 `0006_model_call_fallback` 补齐：历史行按“一次逻辑调用 = 一次 Provider 请求、
+   > 未降级”回填，聚合新增 `providerAttempts` / `retryAmplification` /
+   > `schemaFallbacks` / `schemaFallbackRate`。逻辑调用数与 Provider 请求数分开统计，
+   > 与 judge 报告既有口径一致。
 3. **评测语料继续扩充**：`evaluation/leaderboard.py`（`feature/judge-leaderboard`，
    2026-08-31 已合并）已经把“多模型横向对比”从零跑通，两个报告都验证过真实模型
    （Ollama + Codex）。但 `EXPLANATION_SAMPLES` 只有 8 条，且 `run_judge_agreement` 的
