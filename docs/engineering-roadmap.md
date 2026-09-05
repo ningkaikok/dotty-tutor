@@ -36,13 +36,21 @@
    > 未降级”回填，聚合新增 `providerAttempts` / `retryAmplification` /
    > `schemaFallbacks` / `schemaFallbackRate`。逻辑调用数与 Provider 请求数分开统计，
    > 与 judge 报告既有口径一致。
-3. **评测语料继续扩充**：`evaluation/leaderboard.py`（`feature/judge-leaderboard`，
-   2026-08-31 已合并）已经把“多模型横向对比”从零跑通，两个报告都验证过真实模型
-   （Ollama + Codex）。但 `EXPLANATION_SAMPLES` 只有 8 条，且 `run_judge_agreement` 的
-   一次真实运行已经暴露一个信号：两个评审模型在 `factual` 维度的打分极差可以到 3 分
-   （满分 5），`factual` 维度在另一次 `run_generation_comparison` 里又对三个候选模型
-   全部打满分——说明当前语料在这个维度上的区分度存疑。值得追下去：扩语料、多轮次重跑，
-   判断是评审 rubric 需要收紧还是语料选得不够典型，而不是先入为主任何一个结论。
+3. **评测语料继续扩充（已完成，2026-09-05）**：`EXPLANATION_SAMPLES` 由 8 条扩到 16 条，
+   每条新增 `factualLabel`（`sound` 10 条 / `flawed` 6 条）；`flawed` 样本各植入**一处**
+   数学错误并用 `flawNote` 写明植入的是什么，语言刻意保持清晰、针对卡点，使 clarity /
+   targeting 可以当对照维度。判据新增 `judgeMetrics.scoreDiscrimination`：按标注分组比较
+   各维度均分，`gap = soundMean - flawedMean`。
+   > **结论与原假设不同。**原信号（`factual` 极差 3 分 / 生成对比全部满分）此前被记为
+   > “rubric 需要收紧还是语料不够典型”二选一，实测两者都不是主因：真正的原因是
+   > **语料里根本没有错误讲解**，`factual` 无从证伪；而两个评审模型里有一个在这个维度上
+   > 输出的是噪声。两次独立运行一致——qwen2.5:7b 的 `factual` gap 为 1.83 / 2.33
+   > （10 条 sound 全部 5 分），qwen2.5:3b 为 **-0.10 / +0.16**，即完全没有区分能力。
+   > 因此 rubric（`judge-rubric-v1`）**没有改动**：有能力的评审模型在现有 rubric 下就能
+   > 区分对错，改 rubric 会把"模型能力不足"错记成"提示词问题"。
+   > 直接可执行的结论：**qwen2.5:3b 不得用作评审模型**，`judge_cli` 的默认评审模型
+   > 必须保持 qwen2.5:7b，不得为省资源下调。详细逐样本结果见
+   > [`模型与系统测试报告`](model-evaluation-report.md) 第 10 节。
 
 三项完成或学习目标阶段性完成后，回到下面“当前执行队列”从头继续，不需要重新排序。
 
