@@ -7,11 +7,13 @@ from typing import Any
 
 from sqlalchemy import func, select
 
+from answer_evaluator import evaluate_structured_answer
 from domain.learning.mastery import (
     derive_mastery,
     knowledge_point_id,
     normalize_knowledge_point_name,
 )
+from observability import log_event
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import (
@@ -373,6 +375,13 @@ class LearningStore(DatabaseStore):
                 session=session,
                 question_id=question_id,
             )
+            verified = self._verify_assessment(
+                question=resolved["question"],
+                response=response,
+                claimed=assessment,
+                session_id=session_id,
+                question_id=question_id,
+            )
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
@@ -381,7 +390,7 @@ class LearningStore(DatabaseStore):
                 knowledge_point_id=resolved["knowledgePointId"],
                 knowledge_point=resolved["name"],
                 response_json=response,
-                assessment=assessment,
+                assessment=verified,
                 hint_level=hint_level,
                 duration_ms=duration_ms,
                 created_at=created_at,
@@ -403,6 +412,56 @@ class LearningStore(DatabaseStore):
         }
 
     @staticmethod
+    def _verify_assessment(
+        *,
+        question: dict[str, Any],
+        response: dict[str, Any],
+        claimed: str,
+        session_id: str,
+        question_id: str,
+    ) -> str:
+        """Re-grade the attempt server-side; never persist a client-declared verdict.
+
+        掌握度是老师看板、喂回出题和个性化作业的唯一输入，因此写入端不能相信
+        客户端自报的判定。判定权归确定性判题器：诚实客户端拿到的
+        ``/api/help`` 判定同样出自它，两者一致时这一步没有可观察影响。
+
+        返回 ``None`` 表示该题没有可确定判定的答案规格（开放题、含 tutor-only
+        小问的题），此时保留客户端值——这些题本来就由模型判定，与
+        ``_question_is_mastery_eligible`` 的 tutor-only 边界一致。
+
+        已知边界：``true-false`` 目前只在 ``tutor_engine`` 内联判定，
+        ``evaluate_structured_answer`` 不覆盖它，因此这一类仍走客户端值。
+        把它并入判题器会改变陪练回复文案（那段文案会显式说出正确答案），
+        属于单独一次改动，不在本次信任边界修复的范围内。
+        """
+        if not isinstance(question, dict) or not question:
+            return claimed
+        student_input = response.get("text") if isinstance(response, dict) else None
+        interaction = response.get("interactionResult") if isinstance(response, dict) else None
+        result = evaluate_structured_answer(
+            question,
+            student_input if isinstance(student_input, str) else "",
+            interaction if isinstance(interaction, dict) else None,
+        )
+        if not result:
+            return claimed
+        verified = str(result["assessment"])
+        if verified != claimed:
+            # 不拒绝请求：离线补传和模型判定路径都必须继续可用。判定以服务端为准，
+            # 分歧本身是可追查信号——既可能是客户端缺陷，也可能是伪造尝试。
+            log_event(
+                "learning.attempt.assessment_overridden",
+                level=30,
+                session_id=session_id,
+                question_id=question_id,
+                claimed=claimed,
+                verified=verified,
+                evaluator_strategy=(result.get("evaluationEvidence") or {}).get("strategy"),
+            )
+        return verified
+
+    @staticmethod
     def _question_name(lesson: Any) -> str:
         payload = decode_json(lesson["question_json"]) or {}
         question = payload.get("question") or {}
@@ -418,8 +477,12 @@ class LearningStore(DatabaseStore):
         *,
         session: Any,
         question_id: str,
-    ) -> dict[str, str]:
-        """Resolve the question from the immutable publication, never from client labels."""
+    ) -> dict[str, Any]:
+        """Resolve the question from the immutable publication, never from client labels.
+
+        同时返回已发布的题目契约本身：写入端要用它做服务端复核，而这次查询已经
+        把 lesson 取到手，再查一次只会多一趟数据库往返。
+        """
         publication = connection.execute(
             select(lesson_publications).where(
                 lesson_publications.c.publication_id == session["publication_id"]
@@ -455,7 +518,8 @@ class LearningStore(DatabaseStore):
                 ["knowledge_point_id"],
                 ["name", "normalized_name"],
             )
-            return {"knowledgePointId": point_id, "name": name}
+            question = (decode_json(lesson["question_json"]) or {}).get("question") or {}
+            return {"knowledgePointId": point_id, "name": name, "question": question}
 
         raise LookupError("题目不属于当前已发布互动试卷")
 
