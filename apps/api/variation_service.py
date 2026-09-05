@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from domain.questions.pipeline import build_question_content_blocks
 from domain.tutoring.turn_plan import ERROR_STRATEGIES, resolve_error_strategy
 
 VariationGenerator = Callable[[str], tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]]
@@ -87,6 +88,10 @@ class VariationService:
         question["variationTarget"] = reason
         question["variationAttributionSource"] = attribution_source
         question["variationLevel"] = level
+        # generate_lesson() 只在走 OCR 识别路径时才会拿到调用方拼装的 contentBlocks
+        # （见 mistake_recognition.py）；变式题没有源图片，这里直接用同一套构建函数，
+        # 否则学生端渲染会因为 contentBlocks 缺失而崩溃。
+        question["contentBlocks"] = build_question_content_blocks(payload, question.get("prompt", ""), [])
         return {
             "strategy": strategy,
             "strategyVersion": STRATEGY_VERSION,

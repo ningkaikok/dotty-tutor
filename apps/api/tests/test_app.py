@@ -89,6 +89,31 @@ class TutorResponseTests(unittest.TestCase):
             set(LESSON_SCHEMA["required"]),
         )
 
+    def test_lesson_schema_object_nodes_declare_additional_properties(self) -> None:
+        """结构化输出 API（如 Codex）在严格模式下要求每个 object 节点都显式声明
+        additionalProperties；漏掉一个就会让整次请求被 API 直接拒绝，代码只能悄悄
+        回退到 mock 桩，题目永远变成 short-answer（参见 variation_service 的确定性
+        判题门禁曾经因此必然失败）。这里递归检查，防止某个嵌套节点再次漏写。"""
+
+        def walk(node: object, path: str) -> list[str]:
+            violations: list[str] = []
+            if not isinstance(node, dict):
+                return violations
+            node_type = node.get("type")
+            is_object = node_type == "object" or (
+                isinstance(node_type, list) and "object" in node_type
+            )
+            if is_object and "additionalProperties" not in node:
+                violations.append(path)
+            for key, value in node.get("properties", {}).items():
+                violations.extend(walk(value, f"{path}.{key}"))
+            if isinstance(node.get("items"), dict):
+                violations.extend(walk(node["items"], f"{path}[]"))
+            return violations
+
+        violations = walk(LESSON_SCHEMA, "LESSON_SCHEMA")
+        self.assertEqual(violations, [])
+
     def test_answer_mode_marks_known_correct_conclusion(self) -> None:
         reply = build_reply(HelpRequest(
             questionId="geometry-perpendicular-bisector",

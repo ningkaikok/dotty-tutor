@@ -23,6 +23,85 @@ QuestionType = Literal[
     "draw-line",
 ]
 
+
+def _choice_schema() -> dict[str, Any]:
+    return {
+        "type": "array",
+        "maxItems": 6,
+        "items": {"type": "string", "maxLength": 120},
+    }
+
+
+def _blank_item_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "id": {"type": "string", "maxLength": 24},
+            "label": {"type": "string", "maxLength": 30},
+            "answerType": {"type": "string", "enum": ["text", "numeric", "expression"]},
+            "correctAnswers": _choice_schema(),
+            "tolerance": {"type": "number", "minimum": 0},
+            "unit": {"type": "string", "maxLength": 20},
+        },
+        "required": ["id", "label", "answerType", "correctAnswers", "tolerance", "unit"],
+    }
+
+
+def _answer_spec_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "answerType": {"type": "string", "enum": ["numeric", "expression"]},
+            "expected": {"type": "string", "maxLength": 120},
+            "accepted": _choice_schema(),
+            "tolerance": {"type": "number", "minimum": 0},
+            "unit": {"type": "string", "maxLength": 20},
+        },
+        "required": ["answerType", "expected", "accepted", "tolerance", "unit"],
+    }
+
+
+def _interaction_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "type": {"type": "string", "enum": ["none", "draw-line"]},
+            "instruction": {"type": "string", "maxLength": 160},
+            "points": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "id": {"type": "string", "maxLength": 8},
+                        "label": {"type": "string", "maxLength": 12},
+                        "x": {"type": "number", "minimum": 0, "maximum": 1},
+                        "y": {"type": "number", "minimum": 0, "maximum": 1},
+                    },
+                    "required": ["id", "label", "x", "y"],
+                },
+            },
+            "requiredConnections": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "maxLength": 8}},
+            },
+        },
+        "required": ["type", "instruction", "points", "requiredConnections"],
+    }
+
+
+def _nullable(schema: dict[str, Any]) -> dict[str, Any]:
+    """Widen an object schema's ``type`` to allow ``null`` without touching its shape."""
+    widened = dict(schema)
+    widened["type"] = [schema["type"], "null"]
+    return widened
+
+
 SUB_QUESTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -43,10 +122,17 @@ SUB_QUESTION_SCHEMA = {
         "correctAnswer": {"type": ["string", "null"], "maxLength": 120},
         "correctAnswers": {"type": ["array", "null"], "items": {"type": "string", "maxLength": 120}},
         "options": {"type": ["array", "null"], "items": {"type": "string", "maxLength": 120}},
-        "blanks": {"type": ["array", "null"], "items": {"type": "object"}},
-        "answerSpec": {"type": ["object", "null"]},
-        "interaction": {"type": ["object", "null"]},
-        "contentBlocks": {"type": ["array", "null"], "items": {"type": "object"}},
+        # 与 LESSON_SCHEMA 顶层 blanks/answerSpec/interaction 共用同一份对象形状（经由
+        # 上面的工厂函数），否则两处手写的 schema 会各自漂移；此前这里只写了裸 "object"，
+        # 没有 additionalProperties，触发 Codex 结构化输出 API 的 400（结构化题型生成
+        # 因此每次都静默回退到 mock 桩，题型固定为 short-answer）。
+        "blanks": {"type": ["array", "null"], "maxItems": 8, "items": _blank_item_schema()},
+        "answerSpec": _nullable(_answer_spec_schema()),
+        "interaction": _nullable(_interaction_schema()),
+        # contentBlocks 只是模型必须提交的占位字段，真正展示给学生的版本由
+        # build_question_content_blocks 在生成后重新构建（见 domain/questions/pipeline.py），
+        # 所以这里不需要真实结构，只需要满足严格 schema 要求的合法空对象。
+        "contentBlocks": {"type": ["array", "null"], "items": {"type": "object", "additionalProperties": False}},
     },
     "required": [
         "id", "label", "prompt", "questionType", "evaluation", "correctAnswer",
@@ -126,14 +212,6 @@ GUIDE_CARDS = [
 ]
 
 
-def _choice_schema() -> dict[str, Any]:
-    return {
-        "type": "array",
-        "maxItems": 6,
-        "items": {"type": "string", "maxLength": 120},
-    }
-
-
 LESSON_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -146,64 +224,9 @@ LESSON_SCHEMA = {
         "prompt": {"type": "string", "maxLength": 800},
         "correctAnswer": {"type": "string", "maxLength": 120},
         "correctAnswers": _choice_schema(),
-        "blanks": {
-            "type": "array",
-            "maxItems": 8,
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "properties": {
-                    "id": {"type": "string", "maxLength": 24},
-                    "label": {"type": "string", "maxLength": 30},
-                    "answerType": {"type": "string", "enum": ["text", "numeric", "expression"]},
-                    "correctAnswers": _choice_schema(),
-                    "tolerance": {"type": "number", "minimum": 0},
-                    "unit": {"type": "string", "maxLength": 20},
-                },
-                "required": ["id", "label", "answerType", "correctAnswers", "tolerance", "unit"],
-            },
-        },
-        "answerSpec": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "answerType": {"type": "string", "enum": ["numeric", "expression"]},
-                "expected": {"type": "string", "maxLength": 120},
-                "accepted": _choice_schema(),
-                "tolerance": {"type": "number", "minimum": 0},
-                "unit": {"type": "string", "maxLength": 20},
-            },
-            "required": ["answerType", "expected", "accepted", "tolerance", "unit"],
-        },
-        "interaction": {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "type": {"type": "string", "enum": ["none", "draw-line"]},
-                "instruction": {"type": "string", "maxLength": 160},
-                "points": {
-                    "type": "array",
-                    "maxItems": 12,
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "id": {"type": "string", "maxLength": 8},
-                            "label": {"type": "string", "maxLength": 12},
-                            "x": {"type": "number", "minimum": 0, "maximum": 1},
-                            "y": {"type": "number", "minimum": 0, "maximum": 1},
-                        },
-                        "required": ["id", "label", "x", "y"],
-                    },
-                },
-                "requiredConnections": {
-                    "type": "array",
-                    "maxItems": 12,
-                    "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "string", "maxLength": 8}},
-                },
-            },
-            "required": ["type", "instruction", "points", "requiredConnections"],
-        },
+        "blanks": {"type": "array", "maxItems": 8, "items": _blank_item_schema()},
+        "answerSpec": _answer_spec_schema(),
+        "interaction": _interaction_schema(),
         "subQuestions": {
             "type": "array",
             "maxItems": 12,
