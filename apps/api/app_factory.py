@@ -6,6 +6,7 @@ import os
 import time
 import uuid
 from collections import deque
+from secrets import compare_digest
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -104,7 +105,6 @@ def create_app() -> FastAPI:
     @app.get("/api/debug/errors")
     def debug_errors(
         request: Request,
-        x_debug_token: str = "",
         request_id: str = "",
     ) -> JSONResponse:
         """管理员调试入口（P1 收尾）：按 request_id 查最近失败请求的内部摘要。
@@ -113,10 +113,15 @@ def create_app() -> FastAPI:
         token 不匹配返回 403；匹配才返回环形缓冲中的脱敏摘要。
         正常 Problem JSON 响应仍然不含任何内部信息，两者互补。
         """
+        # token 只从 X-Debug-Token 读取。此前签名上还有一个 x_debug_token 查询
+        # 参数，但函数体从不读它——按签名传查询参数的人只会拿到 403 并误判成
+        # token 配错，因此删掉而不是补上支持：凭据不该出现在 URL 里（会进访问
+        # 日志、浏览器历史和 Referer）。docstring 会进公开 OpenAPI 描述，
+        # 所以这段说明留在注释里。
         expected = os.getenv("DOTTY_DEBUG_TOKEN", "").strip()
         if not expected:
             raise HTTPException(status_code=404, detail="Not Found")
-        if request.headers.get("X-Debug-Token") != expected:
+        if not compare_digest(request.headers.get("X-Debug-Token") or "", expected):
             raise HTTPException(status_code=403, detail="Forbidden")
         items = list(_DEBUG_ERROR_RING)
         if request_id:
