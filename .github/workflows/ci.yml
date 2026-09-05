@@ -9,8 +9,18 @@ permissions:
   contents: read
 
 jobs:
-  backend:
+  # 真正跑门禁的矩阵 job。它不叫 backend：矩阵会把检查名变成
+  # "backend (3.12)"/"backend (3.14)"，而仓库 ruleset 要求的必需检查名是
+  # 恰好的 "backend"，改名会让那个检查永远不出现、PR 永远无法合并。
+  backend-matrix:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # pyproject 声明 requires-python = ">=3.12"，但门禁此前只验证 3.12，
+      # 而本地开发实际跑在 3.14。矩阵覆盖支持区间的两个端点，避免"本地过
+      # CI 挂"或反过来的情况只能在运行时才发现。
+      matrix:
+        python-version: ["3.12", "3.14"]
     services:
       postgres:
         image: postgres:17
@@ -33,7 +43,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       # 只用系统 Python（pyproject: python-preference=only-system），不下载解释器。
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -50,6 +60,19 @@ jobs:
         run: uv --directory apps/api run pyright
       - name: Run backend tests in isolated PostgreSQL databases
         run: bash scripts/test-backend-postgres.sh
+
+  # 聚合 job：ruleset 要求的必需检查名。只有全部矩阵分支成功它才成功，
+  # 因此必需检查依然是真门禁，而不是被降级成摆设。
+  backend:
+    runs-on: ubuntu-latest
+    needs: [backend-matrix]
+    if: always()
+    steps:
+      - name: Require every backend matrix leg to pass
+        run: |
+          result='${{ needs.backend-matrix.result }}'
+          echo "backend-matrix result: $result"
+          test "$result" = success
 
   frontend:
     runs-on: ubuntu-latest
