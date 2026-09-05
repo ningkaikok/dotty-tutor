@@ -46,6 +46,46 @@ class ClassroomStore(DatabaseStore):
             ))
         return self.get_class(class_id)  # type: ignore[return-value]
 
+    def list_roster(self) -> list[dict[str, Any]]:
+        """列出全部班级花名册条目，供学生端"我是谁"选择器使用。
+
+        这是一个**只读的名册查询，不是身份认证**：调用方能看到所有学生的
+        learnerId 和姓名，任何人都可以声称自己是其中任意一个。当前单机试用场景下
+        （老师在场、一台机器）这是可接受的边界；接入登录后本方法应当连同学生端的
+        选择器一起删除，由服务端身份直接给出 learner_id。
+
+        同一个学生可能同时在多个班里，因此按 (learner_id, class_id) 逐条返回，
+        不做去重——去重会丢掉"这个学生属于哪个班"这个学生端用来区分同名的唯一信息。
+        """
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            rows = connection.execute(
+                select(
+                    class_memberships.c.learner_id,
+                    class_memberships.c.display_name,
+                    class_memberships.c.class_id,
+                    learning_classes.c.name.label("class_name"),
+                )
+                .select_from(class_memberships.join(
+                    learning_classes,
+                    class_memberships.c.class_id == learning_classes.c.class_id,
+                ))
+                .order_by(
+                    learning_classes.c.name.asc(),
+                    class_memberships.c.display_name.asc(),
+                    class_memberships.c.learner_id.asc(),
+                )
+            ).mappings().all()
+        return [
+            {
+                "learnerId": row["learner_id"],
+                "displayName": row["display_name"],
+                "classId": row["class_id"],
+                "className": row["class_name"],
+            }
+            for row in rows
+        ]
+
     def get_class(self, class_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
         with self.engine.connect() as connection:

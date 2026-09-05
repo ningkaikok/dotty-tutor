@@ -134,3 +134,11 @@ export interface ClassDashboard {
   };
   metricDefinition: string;
 }
+
+/** 花名册条目。同一学生可能出现在多个班里，因此按 (learnerId, classId) 逐条返回。 */
+export interface RosterEntry {
+  learnerId: string;
+  displayName: string;
+  classId: string;
+  className: string;
+}

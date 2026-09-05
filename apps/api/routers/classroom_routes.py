@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.personalized_assignment import PersonalizedAssignmentError
+from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.classroom import (
     AssignmentCreate,
     AssignmentPlanCreate,
@@ -163,8 +164,13 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
 
+    @router.get("/learners")
+    def list_roster() -> dict[str, Any]:
+        """列出班级花名册，供学生端选择当前身份。"""
+        return {"items": store.list_roster()}
+
     @router.get("/assignments")
-    def list_student_assignments(learnerId: str = "local-demo") -> dict[str, Any]:
+    def list_student_assignments(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
         return {"learnerId": learnerId, "items": store.list_assignments_for_learner(learnerId)}
 
     return router

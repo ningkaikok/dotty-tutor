@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { loadPublishedPublications } from "../../api/publications";
 import { loadStudentAssignments } from "../../api/classroom";
+import { useLearnerId } from "../../api/identity";
 import { loadMistakes } from "../../api/mistakes";
 import { loadLearningProgress } from "../../api/reviews";
 import type { PublicationSummary } from "../../types/index";
@@ -49,6 +50,9 @@ function hasStartedSession(publicationId: string): boolean {
  * 其他内容，因此用 allSettled 语义（Promise.all 分别 catch）而不是让一次失败直接让整页失败。
  */
 export function useStudentTodayQueue(): StudentTodayQueue {
+  // 身份进入依赖数组：切换学生后四路数据必须整体重取，否则页面会把上一个学生的
+  // 作业和错题继续显示给下一个学生。
+  const learnerId = useLearnerId();
   const [pendingConfirmCount, setPendingConfirmCount] = useState(0);
   const [dueReviewCount, setDueReviewCount] = useState(0);
   const [unmasteredCount, setUnmasteredCount] = useState(0);
@@ -60,13 +64,14 @@ export function useStudentTodayQueue(): StudentTodayQueue {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     // 试卷目录支持取消，卸载时直接中止在途请求；错题和复习进度的 loader 还没有
     // signal 参数，仍靠 cancelled 守卫拦住迟到的 setState。两者目的相同。
     const controller = new AbortController();
 
     const errors: string[] = [];
 
-    const assignmentsRequest = loadStudentAssignments("local-demo")
+    const assignmentsRequest = loadStudentAssignments(learnerId)
       .then((items) => {
         if (!cancelled) setAssignments(items);
       })
@@ -115,7 +120,7 @@ export function useStudentTodayQueue(): StudentTodayQueue {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [learnerId]);
 
   return { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, assignments, loading, error, allFailed };
 }
