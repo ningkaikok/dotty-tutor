@@ -1,16 +1,27 @@
 import type { MistakeEvidence, VariationExercise } from "../types/practice";
 import { parse } from "./client";
+import { currentLearnerId } from "./identity";
 
-export async function listVariations(mistakeId: string): Promise<VariationExercise[]> {
+export async function listVariations(
+  mistakeId: string,
+  learnerId: string = currentLearnerId(),
+): Promise<VariationExercise[]> {
   const result = await parse<{ items: VariationExercise[] }>(
-    await fetch(`/api/mistakes/${mistakeId}/variations`, { cache: "no-store" }),
+    await fetch(`/api/mistakes/${mistakeId}/variations?learnerId=${encodeURIComponent(learnerId)}`, {
+      cache: "no-store",
+    }),
   );
   return result.items;
 }
 
-export async function createVariation(mistakeId: string): Promise<VariationExercise> {
+export async function createVariation(
+  mistakeId: string,
+  learnerId: string = currentLearnerId(),
+): Promise<VariationExercise> {
   return parse<VariationExercise>(
-    await fetch(`/api/mistakes/${mistakeId}/variations`, { method: "POST" }),
+    await fetch(`/api/mistakes/${mistakeId}/variations?learnerId=${encodeURIComponent(learnerId)}`, {
+      method: "POST",
+    }),
   );
 }
 
@@ -25,6 +36,13 @@ export async function answerVariation(
   }));
 }
 
-export async function loadMistakeEvidence(mistakeId: string): Promise<MistakeEvidence> {
-  return parse<MistakeEvidence>(await fetch(`/api/mistakes/${mistakeId}/evidence`, { cache: "no-store" }));
+export async function loadMistakeEvidence(
+  mistakeId: string,
+  learnerId: string = currentLearnerId(),
+): Promise<MistakeEvidence> {
+  return parse<MistakeEvidence>(
+    await fetch(`/api/mistakes/${mistakeId}/evidence?learnerId=${encodeURIComponent(learnerId)}`, {
+      cache: "no-store",
+    }),
+  );
 }

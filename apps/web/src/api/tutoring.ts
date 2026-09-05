@@ -1,8 +1,16 @@
 import type { TutorReply, TutorThread, TutorTurnResult } from "../types/tutoring";
 import { parse } from "./client";
+import { currentLearnerId } from "./identity";
 
-export async function createTutorThread(mistakeId: string): Promise<TutorThread> {
-  return parse<TutorThread>(await fetch(`/api/mistakes/${mistakeId}/thread`, { method: "POST" }));
+export async function createTutorThread(
+  mistakeId: string,
+  learnerId: string = currentLearnerId(),
+): Promise<TutorThread> {
+  return parse<TutorThread>(
+    await fetch(`/api/mistakes/${mistakeId}/thread?learnerId=${encodeURIComponent(learnerId)}`, {
+      method: "POST",
+    }),
+  );
 }
 
 export async function loadTutorThread(threadId: string): Promise<TutorThread> {
