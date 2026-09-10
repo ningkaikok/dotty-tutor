@@ -18,6 +18,10 @@
 或看板代码，不阻塞、也不依赖任何正在独立推进中的数据库迁移工作（本文档不记录、不跟踪
 该项迁移的状态）。
 
+本节的 AI 能力实验不以真实试用信号为前置。真实信号只决定老师端功能和生产化能力何时排期；
+为了跟踪模型、多模态、工具调用和评测方法的演进，可以先在本地脱敏或合成数据上启动。每个实验仍必须
+有固定范围、可复现对照、明确的状态写入边界和可回滚结果，不能因为是实验就绕过确定性判题与学习证据约束。
+
 1. **陪练上下文分层（切分与度量已完成，2026-09-05；缓存未启用）**：陪练提示词按
    “跨轮是否变化”切成两段并**重排为稳定段在前**——系统规则、题目、已知条件、标准讲解
    脚本、输出要求组成稳定前缀，提示层级、候选引导卡、学生输入、交互结果、最近对话摘要
@@ -30,7 +34,7 @@
    > 稳定占比 76.6% → 73.5% → 72.9%。但这个数字会随对话摘要增长而下降——摘要打满
    > 2400 字符上限时降到约 27%。也就是说 Prefix Cache 的收益在**线程早期最大**，
    > 长线程里逐渐摊薄，这一点在决定是否启用时不能忽略。
-   > **缓存仍未启用**，两个前置都还没满足：一是需要真实调用数据（现在才刚开始落库），
+   > **缓存仍未启用**，两个前置都还没满足：一是需要足够的真实调用数据来验证收益，
    > 二是路线图自己定的规矩——只有 Provider 明确支持时才启用，而 Ollama / Codex CLI
    > 是否支持前缀复用尚未验证。缓存键须包含模型、Prompt、Schema、题目版本和知识点版本。
    > **代价要记下**：为了让“要求”七条进入稳定段，它从提示词末尾移到了本轮数据之前，
@@ -75,6 +79,44 @@
 三项的当前状态：第 2、3 项已完成；第 1 项的切分与度量已完成，是否启用缓存待真实数据
 与 Provider 支持确认后再决定。学习目标阶段性完成后，回到下面“当前执行队列”从头继续，
 不需要重新排序。
+
+## 当前 AI 能力实验路线（2026-09-10）
+
+项目的主要目标是跟踪 AI 工程和模型能力演进，因此新增实验路线不等待真实老师试用。首个实验建议从
+`feature/multimodal-tutor-input` 开始，并保持为一条可独立删除的垂直切片：
+
+1. **统一多模态输入**：定义 `TutorInput`，承载学生文字、题图裁切、画板快照、公式识别结果和结构化答案；
+   增加独立观察适配器，输出观察事实、置信度和证据区域。原图、识别文本、模型观察和学生修正分层保存，
+   低置信度结果必须先由学生确认。
+2. **受约束工具调用**：在现有 `Tutor Turn Plan` 和状态机上增加类型化 `ToolProposal`，优先覆盖
+   `evaluate_answer`、`explain_mistake`、`generate_variation`、`record_evidence` 和 `schedule_review`。
+   模型只能提出建议，领域服务和确定性状态机决定是否执行；先不把整个项目迁移到 LangGraph。
+3. **Tutor 专用评测实验室**：扩展现有离线语料，比较 OCR 加模型与原生视觉模型，测量错误定位、苏格拉底提问、
+   提示升级、图片理解、策略遵守、工具越权、延迟和调用成本。评测应同时保留规则指标、结构指标和独立 Judge，
+   不以最终答案正确率代表教学质量。
+4. **交互数学画布**：作为多模态 Tutor 的结构化输出表面，先支持一个最小函数或几何场景；画布动作进入
+   `interactionSpec` 和 `answerSpec`，不让模型直接操作学习状态。它是 AI 输出与学生操作之间的实验，不是先做动画库选型。
+5. **检索实验**：如果要追踪 RAG，先做教材片段的 PostgreSQL 全文检索和页码/版本证据，不先引入向量数据库；
+   只有对照实验显示全文检索不足，才比较混合检索和 reranker。
+
+### 可借鉴的开源项目
+
+- [MMTutorBench](https://github.com/TangciuYueng/MMTutorBench)：借鉴多模态数学辅导的 Insight、Formulation、
+  Execution 评测维度和带 rubric 的数据结构；使用前先核对数据许可。
+- [MathTutorBench](https://github.com/eth-lre/mathtutorbench)：借鉴错误定位、苏格拉底提问、脚手架和多任务
+  模型比较方式，不把它当作线上运行时。
+- [AI Math Tutor](https://github.com/zicojiao/ai-math-tutor) 与 [MathVoice](https://github.com/llSourcell/mathvoice)：
+  借鉴图片/语音/白板的垂直切片，以及 Brain、Whiteboard、Voice 的职责分离；不直接照搬其 Demo 后端。
+- [OATutor](https://github.com/CAHLR/OATutor-AI-Feedback-Experiment)：借鉴 BKT、技能模型、提示脚手架和
+  自适应选题的数据结构。
+- [Tutor MCP](https://github.com/ArnaudGuiovanna/tutor-mcp)：借鉴把学习者状态、复习调度、误区和教学决策
+  暴露为工具的思路；先做自己的类型化契约，再考虑 MCP 兼容层。
+- [Open WebUI](https://github.com/open-webui/open-webui)：借鉴多 Provider、工具调用、模型目录、PWA 和本地运行
+  体验；不把通用聊天平台的权限或状态模型复制进学生领域。
+- [DSPy metrics and evaluation](https://github.com/stanfordnlp/dspy/blob/main/docs/docs/diving-deeper/metrics-and-evaluation.md)：
+  借鉴“指标先行、再做 Prompt 优化”的离线循环；不把 Prompt 优化器直接放进生产陪练路径。
+
+以上路线用于 AI 工程学习和可复现实验，不改变登录鉴权、多租户、公网高可用等部署边界。
 
 ## 当前执行队列（2026-08）
 
@@ -245,13 +287,12 @@
    唯一 `runId`，且配置或样本不一致时只报告不可比原因，不计算虚假分差。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
 4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
-5. [ ] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
-   **基建已落地**（`evaluation/judge.py` + `judge_cli.py`）：固定 rubric（clarity/targeting/factual，
-   1-5 分）+ 版本化提示词 + 输出校验门禁（分值越界/缺依据/置信度越界一律拒绝）+ 按需 CLI
-   （`python -m evaluation.judge_cli`，报告落 output/eval-reports/judge/）。judge 需真实模型调用，
-   不进入确定性重放链路；内置三条讲解样本语料（分层引导卡模板产物）。**真实运行已完成**（2026-08-25，ollama/qwen2.5:7b ×3 样本全成功）：
-clarity 均分 3.67、targeting 4.00、factual 5.00，置信度 0.9-0.95；报告落
-output/eval-reports/judge/。后续可定期运行对比不同讲解版本的分数漂移。
+5. [x] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
+   **第一版基建与真实运行已完成**（`evaluation/judge.py` + `judge_cli.py`）：固定 rubric
+   （clarity/targeting/factual，1-5 分）+ 版本化提示词 + 输出校验门禁（分值越界/缺依据/置信度越界一律拒绝）+
+   按需 CLI（`python -m evaluation.judge_cli`，报告落 `output/eval-reports/judge/`）。judge 需真实模型调用，
+   不进入确定性重放链路；后续待完成的是扩充至不少于 50 道人工金标准并完成不同生成模型、审校模型和视觉模型的
+   统计性横向评测，不把这项后续工作与第一版基建混为一谈。
 6. [x] 建立学习效果和模型成本的 PostgreSQL 聚合报告，不提前引入独立数据平台。
    已完成：`GET /api/reports/learning-cost?learnerId=local-demo&days=N` 联合返回学习者累计漏斗和全局滚动窗口的模型调用代理指标；报告包含失败率、加权平均耗时、Token 总量/覆盖率和原有分组明细。旧数据库中没有 `variation_attempts` 的历史已回答投影会补计且不重复。前端 `/studio/metrics` 已展示联合报告。边界为无货币价格、无学生级模型成本归因、无因果推断；当前再错率限定为同一学生、同一发布版本内有后续作答的知识点路径。
 7. [x] 引入 Python Ruff 与前端 ESLint 门禁（`pyproject.toml` + `apps/web/eslint.config.js`，
@@ -306,15 +347,17 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 - [x] 进程内轻量健康记录：连续失败计数 + 最近一次失败原因（阈值 3 次）；只影响
   `eligible_for_role` 候选筛选，绝不覆盖已开始运行的 `RunSnapshot`，任何成功调用即复位。
   已挂接 generate_json / generate_json_as 两条路径（覆盖生成、审核文字+视觉+修复、陪练）。
-- [ ] 按任务能力筛选模型：服务端筛选函数已就绪，学生端只暴露产品允许的陪练选项的
-  界面裁剪待接；**模型切换前后的固定评测集比较依赖评测集的模型维度**（见 T1 第 1 条
-  进行中事项），语料补齐后自动解锁。
+- [x] 按任务能力筛选模型：服务端筛选函数已就绪，`providers()` 返回能力和健康信息，调用路径按角色
+  过滤候选，并保持已开始运行的 `RunSnapshot` 不变。
+- [ ] 学生端只暴露产品允许的陪练选项的界面裁剪，以及模型切换前后的固定评测集比较仍待完成；后者依赖评测集
+  的模型维度和不少于 50 道人工金标准语料，语料补齐后再解锁。
 
 ### 模型调用边界指标
 
-- [ ] 在模型调用边界记录 provider、model、task（生成/审核/陪练/OCR）、耗时、token 用量、失败和
-  回退信息；先以 PostgreSQL 聚合表落地，只有跨服务追踪需求出现后再评估完整 OpenTelemetry 栈。
-  该指标同时是"陪练上下文分层"和模型切换评测的数据来源。
+- [x] 在模型调用边界记录 provider、model、task（生成/审核/陪练/OCR）、耗时、token 用量、失败和
+  回退信息；已通过 PostgreSQL 聚合表和 `GET /api/metrics/model-calls` 落地，只有跨服务追踪需求出现后
+  再评估完整 OpenTelemetry 栈。该指标同时是"陪练上下文分层"和模型切换评测的数据来源；跨模型比较仍待评测集
+  模型维度补齐。
 
 ### 开发期只读工具
 
@@ -333,8 +376,9 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 ### 陪练上下文分层
 
-- [ ] 将系统规则、工具定义、题目上下文、Schema 组成稳定前缀；学生输入和最近消息组成动态后缀。
-- [ ] 先记录稳定/动态 token、耗时、调用次数和回退率，再判断 Prefix Cache 是否有实际收益。
+- [x] 将系统规则、工具定义、题目上下文、Schema 组成稳定前缀；学生输入和最近消息组成动态后缀。
+- [x] 先记录稳定/动态提示字符数、耗时、调用次数和回退率，再判断 Prefix Cache 是否有实际收益；当前
+  `model_call_metrics` 已记录 `stable_prompt_chars` / `dynamic_prompt_chars` 并提供覆盖率聚合。
 - [ ] 只有 Provider 明确支持时才启用缓存；缓存键包含模型、Prompt、Schema、题目版本和知识点版本。
 
 - [ ] **批次熔断与系统性失败识别**：当前一个批次里的题各自失败各自记录，但没有区分
@@ -411,8 +455,9 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 历史正确性修复、`RunSnapshot`、事件模型、可恢复后台任务和整卷任务汇总已经完成；新的 PR 顺序为：
 
-`test/offline-ai-evaluation`（已完成） → `feature/badcase-replay-loop`（已完成） → `feat/ocr-preflight-report` →
-`feat/model-capability-registry` → `test/postgres-integration` → `chore/public-test-hardening`。
+`test/offline-ai-evaluation`（已完成） → `feature/badcase-replay-loop`（已完成） → `feat/ocr-preflight-report`（已完成） →
+`feat/model-capability-registry`（第一版已完成） → `test/postgres-integration`（已完成） →
+`chore/public-test-hardening`（已完成）。后续按需推进模型筛选界面、跨模型评测、陪练全链路事件、批次熔断和环境依赖自检。
 
 前两项种子数据直接复用本轮已核实的真实坏样本（见“当前执行队列”），不必重新采集；建成后再回头评估
 T0 里剩下的几条开放项（题号识别子问题 A——子问题 B 已随 `fix/reconstruct-line-breaks-from-mineru-layout`
