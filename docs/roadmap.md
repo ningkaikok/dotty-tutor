@@ -19,14 +19,14 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| **最高（临时，2026-08-31）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用边界指标已完成（2026-09-05 补齐回退信息落库）；其余两项待启动。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| **最高（临时，2026-08-31）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量已完成；评测语料继续扩充，Prefix Cache 待真实数据和 Provider 支持确认。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
-| T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 进行中（离线评测、Judge/Badcase 回放和学习效果/模型成本联合报告第一版已完成） | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 第一版已完成；人工金标准扩充至 50+ 题和跨模型统计横评仍待完成 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 并行卫生 | `local-demo` 收敛、Ruff/ESLint/Pyright 门禁、超长文件拆分边界评估 | 已完成（拆分执行按需触发，不单独排期） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 数据门控 | MathText 讲解通道、图片纯位置归属、subQuestions 多小问 | MathText 与 subQuestions 已完成；图片纯位置归属等待真实 Badcase 信号 | [`engineering-roadmap.md`](engineering-roadmap.md) |
-| P1 教学法 | 分类型复习间隔、定量/定性双门槛、推进由掌握度算出、错因双归因（四条一组，依赖 T0） | 待启动 | [`product-roadmap.md`](product-roadmap.md) |
-| T2 韧性 | 批次熔断与系统性失败识别、部分成功状态、依赖自检 preflight | 待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| P1 教学法 | 分类型复习间隔、定量/定性双门槛、推进由掌握度算出、错因双归因 | 前三项待启动；错因双归因已完成 | [`product-roadmap.md`](product-roadmap.md) |
+| T2 韧性 | 批次熔断与系统性失败识别、部分成功状态、依赖自检 preflight | 部分成功已有整卷结果汇总；批次熔断和依赖自检待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 备选池 | 仿真卷、出题增量发射、内容块模板、教材定位与注释模型、拍照单次多模态、题图视觉复审、生成前审形状+成本估算（价值已论证，各自等触发信号） | 未排期 | [`product-roadmap.md`](product-roadmap.md) |
 | P2 实验 | 互动数学库二选一、WebLLM 提示兜底、知识点树派生索引、动画表现层 | 按信号暂缓 | 本文件“前端知识表达与互动技术选型” |
 | 生产化 | 登录鉴权、多租户隔离、商业化、高可用和公网运营 | 明确暂缓 | 本文件“暂缓范围” |
@@ -204,6 +204,9 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 
 ### 阶段 B：统一多模态输入
 
+这是当前首个 AI 能力实验方向，建议以 `feature/multimodal-tutor-input` 做独立垂直切片；真实试用信号不是启动前置。
+先在本地脱敏/合成数据上完成输入契约、观察适配器、置信度确认和证据分层，再接入学生端交互。
+
 - [ ] 定义统一 `TutorInput`，承载文字、结构化答案、题图裁切、画板快照和公式识别结果。
 - [ ] 图片和画板先进入独立的理解适配器，产出“观察事实 + 置信度 + 证据区域”，不直接拼接为长文本。
 - [ ] 低置信度结果要求学生确认；原图、识别文本和人工修正分层保存，避免覆盖原始证据。
@@ -211,12 +214,19 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 
 ### 阶段 C：受约束工具与学习者画像
 
+阶段 C 的第一步是类型化工具提案和确定性执行器，不要求引入完整 Agent 框架。模型只能提出建议，状态机、Schema
+校验和领域服务拥有最终决定权；MCP 先作为开发期兼容性实验，不进入生产学习状态写入路径。
+
 - [ ] 将判题、错误原因建议、提示选择、变式生成、掌握更新和复习安排暴露为显式工具契约。
 - [ ] 模型只能提出工具调用建议；状态机、Schema 校验和领域服务决定是否执行。
 - [ ] 建立按知识点聚合的学习者画像，仅保存错误模式、提示依赖和掌握证据，不保存无边界聊天历史。
 - [ ] 回复上下文分为题目快照、线程摘要、最近必要消息和知识点画像，并分别设置长度与生命周期。
 
 ### 阶段 D：评测、观测与按信号升级
+
+AI 工程学习可以先做离线对照；“按信号升级”约束的是生产化基础设施和复杂编排，不阻止多模态、工具调用和评测实验。
+评测参考 [MMTutorBench](https://github.com/TangciuYueng/MMTutorBench) 与 [MathTutorBench](https://github.com/eth-lre/mathtutorbench)
+的过程维度和教学能力拆分，数据许可和隐私边界另行确认。
 
 - [ ] 建立脱敏回放集，测量判题一致性、提示重复率、阶段越权率、首次有效提示率、耗时和调用次数。
 - [ ] 为模型超时、回退、工具拒绝、图片理解低置信度和状态迁移记录稳定事件。
