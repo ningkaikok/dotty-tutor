@@ -12,6 +12,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from application.errors import AppError
 from application.services.learning_funnel import (
     build_funnel_snapshot,  # noqa: F401  确认应用装配可导入
 )
@@ -171,7 +172,10 @@ class MetricsStoreRoundtripTests(PostgresTestCase):
 
     def test_learning_cost_report_has_explicit_scopes_and_clamped_window(self) -> None:
         router = build_runtime_router(
-            store=SimpleNamespace(engine=self.metrics.engine),
+            store=SimpleNamespace(
+                engine=self.metrics.engine,
+                schema_status=lambda: {"ready": True},
+            ),
             question_payload=lambda: {},
             tutor_runtime=SimpleNamespace(catalog=lambda: {}),
             metrics_store=self.metrics,
@@ -186,6 +190,28 @@ class MetricsStoreRoundtripTests(PostgresTestCase):
             "costUnit": "proxy_only",
         })
         self.assertIn("不提供学生级成本归因", " ".join(report["limitations"]))
+
+    def test_learning_cost_report_returns_schema_error_before_querying_stale_columns(self) -> None:
+        router = build_runtime_router(
+            store=SimpleNamespace(
+                engine=self.metrics.engine,
+                schema_status=lambda: {
+                    "ready": False,
+                    "version": "0005_mistake_attributions",
+                    "head": "0007_prompt_prefix_split",
+                    "versionState": "outdated",
+                    "missingColumns": {"model_call_metrics": ["provider_attempts"]},
+                },
+            ),
+            question_payload=lambda: {},
+            tutor_runtime=SimpleNamespace(catalog=lambda: {}),
+            metrics_store=self.metrics,
+        )
+        endpoint = next(route.endpoint for route in router.routes if route.path == "/api/reports/learning-cost")
+        with self.assertRaises(AppError) as context:
+            endpoint(learnerId="learner-1", days=7)
+        self.assertEqual(context.exception.status_code, 503)
+        self.assertEqual(context.exception.error_code, "SCHEMA_OUT_OF_DATE")
 
 
 class RuntimeHookTests(PostgresTestCase):
