@@ -40,45 +40,50 @@ def build_runtime_router(
     azure_speech_region = os.getenv("AZURE_SPEECH_REGION", "")
     azure_speech_voice = os.getenv("AZURE_SPEECH_VOICE", "zh-CN-XiaoxiaoNeural")
 
-    @router.get("/api/health")
-    def health() -> dict[str, str]:
+    def require_ready_schema() -> None:
+        """Reject database-backed metrics queries before schema drift becomes a 500."""
         try:
             schema = store.schema_status()
         except Exception as error:
-            log_event("service.health.failed", level=40, dependency="database")
+            log_event("service.schema_check.failed", level=40, dependency="database")
             raise AppError(
                 "数据库不可用",
                 status_code=503,
                 error_code="DATABASE_UNAVAILABLE",
                 retryable=True,
             ) from error
-        if not schema["ready"]:
-            log_event(
-                "service.health.failed",
-                level=40,
-                dependency="database-schema",
-                schema_version=schema.get("version"),
-                missing_tables=len(schema.get("missingTables", [])),
-                missing_columns=len(schema.get("missingColumns", {})),
-            )
-            raise AppError(
-                "数据库 schema 未就绪，请先执行迁移命令",
-                status_code=503,
-                error_code="SCHEMA_OUT_OF_DATE",
-                retryable=False,
-                details={
-                    "version": schema.get("version"),
-                    "head": schema.get("head"),
-                    "versionState": schema.get("versionState"),
-                    "missingTables": schema.get("missingTables", []),
-                    "missingColumns": schema.get("missingColumns", {}),
-                    "missingIndexes": schema.get("missingIndexes", []),
-                    "missingForeignKeys": schema.get("missingForeignKeys", []),
-                    "orphanCounts": schema.get("orphanCounts", {}),
-                    "autoFixable": schema.get("autoFixable", {}),
-                    "manualActionRequired": schema.get("manualActionRequired", {}),
-                },
-            )
+        if schema["ready"]:
+            return
+        log_event(
+            "service.schema_check.failed",
+            level=40,
+            dependency="database-schema",
+            schema_version=schema.get("version"),
+            missing_tables=len(schema.get("missingTables", [])),
+            missing_columns=len(schema.get("missingColumns", {})),
+        )
+        raise AppError(
+            "数据库 schema 未就绪，请先执行迁移命令",
+            status_code=503,
+            error_code="SCHEMA_OUT_OF_DATE",
+            retryable=False,
+            details={
+                "version": schema.get("version"),
+                "head": schema.get("head"),
+                "versionState": schema.get("versionState"),
+                "missingTables": schema.get("missingTables", []),
+                "missingColumns": schema.get("missingColumns", {}),
+                "missingIndexes": schema.get("missingIndexes", []),
+                "missingForeignKeys": schema.get("missingForeignKeys", []),
+                "orphanCounts": schema.get("orphanCounts", {}),
+                "autoFixable": schema.get("autoFixable", {}),
+                "manualActionRequired": schema.get("manualActionRequired", {}),
+            },
+        )
+
+    @router.get("/api/health")
+    def health() -> dict[str, str]:
+        require_ready_schema()
         log_event("service.health.ok", level=10, database=store.backend)
         return {"status": "ok", "database": store.backend, "schema": "current"}
 
@@ -178,6 +183,7 @@ def build_runtime_router(
         """模型调用边界指标聚合（只读；按 runtime/task/provider/model 分组）。"""
         if metrics_store is None:
             raise HTTPException(status_code=503, detail="指标存储未注入")
+        require_ready_schema()
         window = max(1, min(days, 90))
         return {"days": window, "items": metrics_store.aggregate(days=window)}
 
@@ -193,6 +199,7 @@ def build_runtime_router(
         """
         if metrics_store is None:
             raise HTTPException(status_code=503, detail="指标存储未注入")
+        require_ready_schema()
         window = max(1, min(days, 90))
         return {
             "learnerId": learnerId,
