@@ -1281,7 +1281,17 @@ class TextbookProcessingService:
             raise
         except Exception as error:
             self.audit.fail(run["runId"], error, stage=target_stage)
-            raise HTTPException(status_code=422, detail=f"阶段重跑失败：{error}") from error
+            log_event(
+                "question.stage_rerun.failed",
+                level=40,
+                upload_id=upload_id,
+                question_key=source_question_key,
+                stage=target_stage,
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise HTTPException(status_code=422, detail="阶段重跑失败，请稍后重试") from error
         finally:
             processing.discard(lock_key)
 

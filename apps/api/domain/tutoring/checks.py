@@ -27,8 +27,8 @@ from infrastructure.runtime.contracts import (
 )
 
 EQUATION_PATTERN = re.compile(
-    r"(?<![0-9A-Za-z])([0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*\s*=\s*"
-    r"-?\s*[0-9A-Za-z]+(?:\s*[+\-*/]\s*[0-9A-Za-z]+)*)(?![0-9A-Za-z])"
+    r"(?<![0-9A-Za-z])([0-9A-Za-z]++(?:\s*+[+\-*/]\s*+[0-9A-Za-z]++)*+\s*+="
+    r"\s*+-?\s*+[0-9A-Za-z]++(?:\s*+[+\-*/]\s*+[0-9A-Za-z]++)*+)(?![0-9A-Za-z])"
 )
 
 # 画布当前只实现了几何演示。旧数据或模型故障时如果把几何引导卡复用到

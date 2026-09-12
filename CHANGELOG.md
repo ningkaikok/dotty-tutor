@@ -19,6 +19,7 @@ Semantic Versioning。
 
 ### Fixed
 
+- Hardened equation checks and stage rerun errors against pathological input and internal stack-trace exposure.
 - 错题导入、列表、详情、确认和归档接口现在统一使用学生题目白名单，避免下发阶段产物、模型运行信息、质量审核和核验字段；服务端仍保留完整题目载荷用于判题与陪练。
 - 阶段重跑现在使用不可复用的 rerun token，目标阶段及下游不会误命中旧缓存；审核后的题干、题号、选项和小问重新锁回 QuestionIR，学生发布载荷也改为顶层白名单投影。
 - Schema 落后于应用版本时，学习成本和模型指标接口返回可执行的迁移错误，不再被统一成无诊断信息的 500。
