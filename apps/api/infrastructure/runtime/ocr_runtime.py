@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from infrastructure.runtime import selection_store
 from infrastructure.runtime.contracts import (
     RuntimeConfigSnapshot,
     attach_runtime_config,
@@ -34,7 +35,8 @@ class OcrRuntime:
     """保存进程级 OCR 选择，并隔离 MinerU 命令行细节。"""
 
     def __init__(self) -> None:
-        configured = os.getenv("OCR_PROVIDER", "mineru").strip().lower()
+        stored = (selection_store.load("ocr") or {}).get("provider", "")
+        configured = stored or os.getenv("OCR_PROVIDER", "mineru").strip().lower()
         self.selection = OcrSelection(
             provider=configured if configured in {"auto", "mineru", "pypdf"} else "mineru"  # type: ignore[arg-type]
         )
@@ -108,6 +110,7 @@ class OcrRuntime:
         if provider == "mineru" and not self.mineru_command():
             raise ValueError("MinerU 尚未安装")
         self.selection.provider = provider
+        selection_store.save("ocr", {"provider": provider})
         return self.catalog()
 
     def should_use_mineru(self) -> bool:
