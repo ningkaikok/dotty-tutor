@@ -8,6 +8,11 @@ from fastapi import APIRouter, HTTPException
 
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.tutoring import TutorMessageRequest
+from domain.questions.student_view import (
+    student_tutor_action,
+    student_tutor_reply,
+    student_tutor_thread,
+)
 from domain.tutoring.turn_plan import ERROR_STRATEGIES
 from observability import log_event
 
@@ -59,7 +64,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         thread = tutoring_store.create_or_get(mistake_id, learnerId)
         log_event("tutor.thread.ready", thread_id=thread["threadId"], mistake_id=mistake_id)
         # create_or_get 可能返回不含消息的轻量记录；统一补载消息，让创建与恢复拥有相同响应结构。
-        return tutoring_store.get(thread["threadId"]) or thread
+        return student_tutor_thread(tutoring_store.get(thread["threadId"]) or thread)
 
     @router.get("/api/tutor/threads/{thread_id}")
     def get_thread(thread_id: str) -> dict[str, Any]:
@@ -67,7 +72,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         thread = tutoring_store.get(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="辅导线程不存在")
-        return thread
+        return student_tutor_thread(thread)
 
     @router.post("/api/tutor/threads/{thread_id}/messages")
     def append_message(thread_id: str, request: TutorMessageRequest) -> dict[str, Any]:
@@ -139,9 +144,9 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             source=result["reply"].source,
         )
         return {
-            "thread": saved,
-            "reply": result["reply"].model_dump(),
-            "action": result["action"],
+            "thread": student_tutor_thread(saved),
+            "reply": student_tutor_reply(result["reply"].model_dump()),
+            "action": student_tutor_action(result["action"]),
         }
 
     return router

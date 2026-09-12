@@ -168,9 +168,11 @@ class StatefulTutoringTests(PostgresTestCase):
         self.assertEqual(action["tutorTurnPlan"]["intent"]["id"], "submit-answer")
         self.assertEqual(action["tutorTurnPlan"]["teachingAction"], "inspect-first-error")
         self.assertTrue(action["tutorTurnPlan"]["misconception"]["needsConfirmation"])
-        self.assertEqual(action["modelRun"]["provider"], "mock")
+        self.assertNotIn("modelRun", action)
         self.assertEqual(action["deduplication"]["retryCount"], 0)
-        self.assertIn("modelRun", incorrect.json()["reply"])
+        self.assertNotIn("modelRun", incorrect.json()["reply"])
+        stored = self.threads.get(thread_id)
+        self.assertEqual(stored["messages"][-1]["modelRun"]["provider"], "mock")
 
         correct = self.client.post(f"/api/tutor/threads/{thread_id}/messages", json={
             "content": "我重新选择 A",

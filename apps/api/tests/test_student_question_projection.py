@@ -10,7 +10,15 @@ from __future__ import annotations
 import json
 import unittest
 
-from domain.questions.student_view import student_question, student_question_payload
+from domain.questions.student_view import (
+    student_question,
+    student_question_payload,
+    student_review_task,
+    student_tutor_action,
+    student_tutor_reply,
+    student_tutor_thread,
+    student_variation_item,
+)
 from routers.publication_routes import _public_lesson
 
 # 覆盖每一种带答案的结构：顶层、填空、数值、画线、多小问。
@@ -93,12 +101,67 @@ class StudentQuestionProjectionTests(unittest.TestCase):
         payload = {"question": FULL_QUESTION, "lessonSteps": [{"id": "s"}], "architecture": {}}
         projected = student_question_payload(payload)
         self.assertEqual(projected["lessonSteps"], [{"id": "s"}])
+        self.assertNotIn("architecture", projected)
         self.assertNotIn("correctAnswer", projected["question"])
 
     def test_non_dict_input_is_safe(self) -> None:
         self.assertEqual(student_question(None), {})
         self.assertEqual(student_question("x"), {})
         self.assertEqual(student_question_payload(None), {})
+
+    def test_student_domain_projections_drop_internal_generation_fields(self) -> None:
+        payload = {
+            "question": FULL_QUESTION,
+            "lessonSteps": [],
+            "stageArtifacts": {"solution": {"correctAnswer": "2"}},
+            "sourceProvenance": {"sourcePages": [1]},
+            "verification": {"status": "verified"},
+        }
+        variation = student_variation_item({
+            "variationId": "v-1",
+            "mistakeId": "m-1",
+            "questionPayload": payload,
+            "modelRun": {"provider": "secret"},
+            "quality": {"status": "ready"},
+            "review": {},
+        })
+        review = student_review_task({
+            "taskId": "r-1",
+            "questionPayload": payload,
+            "modelRun": {"provider": "secret"},
+            "solution": {"correctAnswer": "2"},
+        })
+        for projected in (variation, review):
+            for key in ("modelRun", "stageArtifacts", "sourceProvenance", "verification", "quality", "review", "solution"):
+                self.assertNotIn(key, projected)
+        serialized = json.dumps({"variation": variation, "review": review}, ensure_ascii=False)
+        self.assertNotIn('"modelRun"', serialized)
+        self.assertNotIn('"stageArtifacts"', serialized)
+        self.assertEqual(variation["questionPayload"]["question"]["prompt"], FULL_QUESTION["prompt"])
+
+    def test_student_tutor_projections_remove_model_metadata_at_every_level(self) -> None:
+        action = {
+            "assessment": "partial",
+            "modelRun": {"provider": "secret"},
+            "tutorTurnPlan": {
+                "teachingAction": "complete-step",
+                "verification": {"status": "verified"},
+                "nested": {"cacheKey": "secret"},
+            },
+            "deduplication": {"modelRun": {"provider": "secret"}, "status": "accepted"},
+        }
+        thread = student_tutor_thread({
+            "threadId": "t-1",
+            "messages": [{"messageId": "m-1", "action": action, "modelRun": {"provider": "secret"}}],
+        })
+        reply = student_tutor_reply({"reply": "继续", "source": "answer-check", "modelRun": {"provider": "secret"}})
+        self.assertNotIn("modelRun", thread["messages"][0])
+        self.assertNotIn("modelRun", thread["messages"][0]["action"])
+        self.assertNotIn("verification", thread["messages"][0]["action"]["tutorTurnPlan"])
+        self.assertNotIn("cacheKey", thread["messages"][0]["action"]["tutorTurnPlan"]["nested"])
+        self.assertNotIn("modelRun", thread["messages"][0]["action"]["deduplication"])
+        self.assertNotIn("modelRun", reply)
+        self.assertNotIn("modelRun", student_tutor_action(action))
 
 
 class PublicLessonTests(unittest.TestCase):
@@ -132,7 +195,8 @@ class PublicLessonTests(unittest.TestCase):
         self.assertNotIn("quality", payload)
         self.assertNotIn("publicationStatus", payload["question"])
         self.assertNotIn("sourceArtifactUrl", payload["question"])
-        self.assertEqual(payload["modelRun"]["provider"], "published")
+        self.assertNotIn("modelRun", payload)
+        self.assertNotIn("architecture", payload)
         self.assertEqual(public["guideCards"], [])
         # 题目仍然可渲染。
         self.assertEqual(payload["question"]["prompt"], "解方程 $x^2=4$")

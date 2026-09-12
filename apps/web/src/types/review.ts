@@ -1,5 +1,4 @@
 import type { Question, QuestionPayload } from "./question";
-import type { ModelRun } from "./runtime";
 import type { EvaluationEvidence } from "./tutoring";
 
 export interface StructuredAnswerInput {
@@ -15,7 +14,6 @@ export interface ReviewTask {
   dueAt: number;
   status: "scheduled" | "ready" | "completed" | "cancelled";
   questionPayload?: QuestionPayload;
-  modelRun: ModelRun | Record<string, never>;
   response: StructuredAnswerInput | Record<string, never>;
   assessment?: "correct" | "partial" | "incorrect";
   /** Older review responses may omit evidence until the persisted response contains it. */

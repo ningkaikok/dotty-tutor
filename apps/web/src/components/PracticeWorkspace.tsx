@@ -208,10 +208,8 @@ export function PracticeWorkspace({
               )}
               <span>
                 {reply.source === "model-generated"
-                  ? `实时生成 · ${reply.modelRun.provider}/${reply.modelRun.model}`
-                  : reply.modelRun.fallback
-                    ? `模型失败，已回退 · ${reply.modelRun.error ?? "Mock"}`
-                    : reply.source === "stored-guide-card" ? "来自预制引导卡" : "已检查学生答案"}
+                  ? "实时生成"
+                  : reply.source === "stored-guide-card" ? "来自预制引导卡" : "已检查学生答案"}
               </span>
             </div>
             <p><RichText text={reply.reply} /></p>

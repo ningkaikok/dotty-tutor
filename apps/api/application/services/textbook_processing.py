@@ -11,18 +11,26 @@ import os
 import re
 import shutil
 import time
+import uuid
 from typing import Any
 
 from fastapi import HTTPException
 from pypdf import PdfReader
 
 from application.job_worker import JobCancelled
+from application.services.lesson_generation import (
+    generate_lesson,
+    generate_question_from_ir,
+    write_staged_prompt_artifact,
+)
 from application.services.question_processing import (
+    _attach_question_ir_provenance,
     _generate_validated_question,
     process_question_sources,
 )
+from application.services.staged_question_generation import normalize_stage
 from domain.contracts.lesson import lesson_document_from_payload
-from domain.questions.pipeline import write_model_prompt_artifact
+from domain.questions.exam_ir import build_exam_ir
 from domain.questions.quality import build_import_quality_report
 from domain.questions.source import (
     MARKDOWN_IMAGE_PATTERN,
@@ -204,6 +212,18 @@ class TextbookProcessingService:
             f"\n\n[页码说明：识别内容来自第 {ocr_start_page + 1}-{end_page + 1} 页；"
             f"目标批次为第 {start_page + 1}-{end_page + 1} 页。前一页只用于补齐跨页题干。]\n"
         )
+        exam_ir = build_exam_ir(
+            lesson_source,
+            asset_dir=asset_dir,
+            batch_id=batch["id"],
+            start_page=ocr_start_page + 1,
+            end_page=end_page + 1,
+            provider=str(ocr_run.get("provider") or "unknown"),
+        )
+        result.setdefault("examIRByBatch", {})[batch["id"]] = exam_ir.as_dict()
+        result.setdefault("questionIRsByBatch", {})[batch["id"]] = [
+            question.as_dict() for question in exam_ir.questions[:question_limit]
+        ]
         blocks = split_question_sources(lesson_source, asset_dir=asset_dir)
         if not blocks and looks_like_multi_question_document(lesson_source):
             # 切分失败时下面会回退成“整页当作一道题”。对真正的单题文本这是合理兜底，
@@ -213,15 +233,22 @@ class TextbookProcessingService:
                 status_code=422,
                 detail="OCR 题号切分失败：检测到多个题目候选，已阻止整页作为一道题生成，请刷新 OCR 后重试",
             )
-        question_sources = limited_question_sources(lesson_source, question_limit, asset_dir=asset_dir)
+        question_sources = [
+            (question["number"], question["sourceText"], list(question["visualAssetIds"]))
+            for question in exam_ir.as_dict()["questions"][:question_limit]
+        ]
         excluded = {str(number).strip() for number in (exclude_question_numbers or set()) if str(number).strip()}
         if excluded:
             question_sources = [item for item in question_sources if item[0] not in excluded]
-        if not blocks:
+            result["questionIRsByBatch"][batch["id"]] = [
+                item for item in result["questionIRsByBatch"][batch["id"]]
+                if str(item.get("number") or "") not in excluded
+            ]
+        if not blocks or not question_sources:
             question_sources = [
                 ("", context_note + lesson_source, MARKDOWN_IMAGE_PATTERN.findall(lesson_source))
             ]
-        write_model_prompt_artifact(asset_dir, question_sources)
+        write_staged_prompt_artifact(asset_dir, question_sources)
         ocr_run["sourceArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/source.md"
         ocr_run["promptArtifactUrl"] = f"/api/uploads/{upload_id}/artifacts/{batch['id']}/model-prompt.md"
         return lesson_source, ocr_run, asset_dir, question_sources
@@ -424,6 +451,17 @@ class TextbookProcessingService:
             "首批内容已提取，正在按题号拆分并生成课程",
         )
         asset_dir = job["directory"] / "assets" / first_batch["id"]
+        exam_ir = build_exam_ir(
+            lesson_source,
+            asset_dir=asset_dir,
+            batch_id=first_batch["id"],
+            start_page=first_batch["startPage"],
+            end_page=first_batch["endPage"],
+            provider=str(ocr_run.get("provider") or "unknown"),
+        )
+        question_irs = [
+            question.as_dict() for question in exam_ir.questions[:first_batch_question_limit]
+        ]
         question_sources = limited_question_sources(
             lesson_source, first_batch_question_limit, asset_dir=asset_dir
         )
@@ -438,7 +476,7 @@ class TextbookProcessingService:
             total_pages=page_count,
         )
         quality_report["scope"] = "preview"
-        write_model_prompt_artifact(asset_dir, question_sources)
+        write_staged_prompt_artifact(asset_dir, question_sources)
         ocr_run["sourceArtifactUrl"] = (
             f"/api/uploads/{upload_id}/artifacts/{first_batch['id']}/source.md"
         )
@@ -446,7 +484,7 @@ class TextbookProcessingService:
             f"/api/uploads/{upload_id}/artifacts/{first_batch['id']}/model-prompt.md"
         )
         payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
-            question_sources,
+            question_irs or question_sources,
             first_batch,
             ocr_run,
             asset_dir,
@@ -494,6 +532,8 @@ class TextbookProcessingService:
                 "mode": f"model-from-{ocr_run['provider']}" if lesson_source else "demo-seed-no-ocr",
             },
             "batches": batches,
+            "examIRByBatch": {first_batch["id"]: exam_ir.as_dict()},
+            "questionIRsByBatch": {first_batch["id"]: question_irs},
             "qualityReport": quality_report,
             "questionPayload": payload,
             "questionPayloads": payloads,
@@ -868,7 +908,7 @@ class TextbookProcessingService:
             )
             self._check_cancel(cancellation_check)
             payloads, guide_cards_list, model_runs, review_runs = process_question_sources(
-                question_sources,
+                result.get("questionIRsByBatch", {}).get(batch_id) or question_sources,
                 batch,
                 ocr_run,
                 asset_dir,
@@ -1099,6 +1139,159 @@ class TextbookProcessingService:
                 exc_info=True,
             )
             raise HTTPException(status_code=422, detail=f"题目修复失败：{error}") from error
+        finally:
+            processing.discard(lock_key)
+
+    def review_queue(self, upload_id: str, source_question_key: str) -> dict[str, Any]:
+        """返回单题审核所需的来源证据、问题和阶段运行摘要。"""
+        job = self.upload_registry.get(upload_id)
+        payloads = job.get("batchPayloads") or {
+            str(item.get("question", {}).get("sourceQuestionKey")): item
+            for item in (job.get("result") or {}).get("questionPayloads", [])
+            if isinstance(item, dict) and item.get("question", {}).get("sourceQuestionKey")
+        }
+        payload = payloads.get(source_question_key)
+        if not payload:
+            raise HTTPException(status_code=404, detail="没有找到要审核的题目")
+        question = payload.get("question", {})
+        provenance = question.get("sourceProvenance") or {
+            "sourceQuestionKey": source_question_key,
+            "sourceOrigin": "legacy-payload",
+        }
+        issues: list[dict[str, Any]] = []
+        quality = payload.get("quality") or {}
+        for error in quality.get("errors", []) if isinstance(quality, dict) else []:
+            issues.append({"code": "QUALITY_GATE", "message": str(error)})
+        for warning in provenance.get("warnings", []) if isinstance(provenance, dict) else []:
+            issues.append({"code": str(warning), "message": str(warning)})
+        verification = question.get("verification") or {}
+        if verification.get("status") != "verified":
+            issues.append({"code": "ANSWER_NOT_VERIFIED", "message": "答案尚未通过独立核验"})
+        if isinstance(verification.get("conflicts"), list):
+            issues.extend({"code": "ANSWER_CONFLICT", "message": str(item)} for item in verification["conflicts"])
+        stages = (payload.get("modelRun") or {}).get("stages", [])
+        return {
+            "uploadId": upload_id,
+            "sourceQuestionKey": source_question_key,
+            "questionPayload": payload,
+            "provenance": provenance,
+            "issues": issues,
+            "stageRuns": stages if isinstance(stages, list) else [],
+        }
+
+    def rerun_stage(
+        self,
+        upload_id: str,
+        source_question_key: str,
+        stage: str,
+    ) -> dict[str, Any]:
+        """只重跑目标阶段和下游阶段；上游从已持久化阶段产物读取。"""
+        target_stage = normalize_stage(stage)
+        job = self.upload_registry.get(upload_id)
+        result = job.get("result")
+        old_payload = job.get("batchPayloads", {}).get(source_question_key)
+        if job.get("status") != "complete" or not result or not old_payload:
+            raise HTTPException(status_code=404, detail="没有找到可重跑的题目")
+        batch_id = old_payload.get("question", {}).get("sourceBatchId")
+        batch = next((item for item in result.get("batches", []) if item.get("id") == batch_id), None)
+        if not batch:
+            raise HTTPException(status_code=404, detail="没有找到题目所属批次")
+        run = self.audit.start(
+            "stage_rerun",
+            "question",
+            upload_id=upload_id,
+            question_key=source_question_key,
+            config=build_run_config(operation_details={"stage": target_stage}),
+        )
+        processing = job.setdefault("processingBatches", set())
+        lock_key = f"stage:{source_question_key}:{target_stage}"
+        if lock_key in processing:
+            raise HTTPException(status_code=409, detail="这个阶段正在重跑")
+        processing.add(lock_key)
+        try:
+            _source, ocr_run, asset_dir, question_sources = self._load_batch_sources(
+                upload_id=upload_id,
+                job=job,
+                batch=batch,
+                result=result,
+                question_limit=MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
+            )
+            target = next(
+                ((index, number, block, images) for index, (number, block, images) in enumerate(question_sources)
+                 if question_key(batch_id, number, index) == source_question_key),
+                None,
+            )
+            if target is None:
+                raise HTTPException(status_code=409, detail="OCR 结果中已找不到这道题")
+            index, number, block, images = target
+            question_ir = next(
+                (
+                    item
+                    for item in result.get("questionIRsByBatch", {}).get(batch_id, [])
+                    if isinstance(item, dict)
+                    and item.get("sourceQuestionKey") == source_question_key
+                ),
+                None,
+            )
+            if question_ir is not None:
+                payload, cards, model_run = generate_question_from_ir(
+                    question_ir,
+                    asset_dir=asset_dir,
+                    target_stage=target_stage,
+                    prior_stage_artifacts=old_payload.get("stageArtifacts") or {},
+                    rerun_token=uuid.uuid4().hex,
+                )
+            else:
+                payload, cards, model_run = generate_lesson(
+                    block,
+                    asset_dir=asset_dir,
+                    target_stage=target_stage,
+                    prior_stage_artifacts=old_payload.get("stageArtifacts") or {},
+                    rerun_token=uuid.uuid4().hex,
+                )
+            payload["question"]["sourceQuestionKey"] = source_question_key
+            payload["question"]["sourceBatchId"] = batch_id
+            _attach_question_ir_provenance(
+                payload,
+                number=number,
+                block=block,
+                images=images,
+                batch=batch,
+                ocr_run=ocr_run,
+                asset_dir=asset_dir,
+            )
+            self._persist_lessons(upload_id, [payload], [cards], run_id=run["runId"], operation="stage_rerun")
+            job.setdefault("batchPayloads", {})[source_question_key] = payload
+            job.setdefault("batchGuideCards", {})[source_question_key] = cards
+            self.upload_registry.update(job, "complete", 100, f"已重跑 {target_stage} 阶段")
+            completed = self.audit.finish(run["runId"], result={"stage": target_stage, "modelRun": model_run})
+            return {
+                "run": completed,
+                "batch": batch,
+                "questionPayload": payload,
+                "guideCards": cards,
+                "modelRun": model_run,
+                "reviewRun": None,
+                "stage": target_stage,
+                "stages": model_run.get("stages", []),
+                "regeneration": {"scope": "stage", "operation": "stage_rerun", "stage": target_stage},
+            }
+        except HTTPException as error:
+            self.audit.fail(run["runId"], error, stage=target_stage)
+            raise
+        except Exception as error:
+            self.audit.fail(run["runId"], error, stage=target_stage)
+            log_event(
+                "question.stage_rerun.failed",
+                level=40,
+                upload_id=upload_id,
+                question_key=source_question_key,
+                stage=target_stage,
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise HTTPException(status_code=422, detail="阶段重跑失败，请稍后重试") from error
         finally:
             processing.discard(lock_key)
 

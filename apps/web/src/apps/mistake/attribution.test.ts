@@ -10,7 +10,6 @@ function message(category: string, needsConfirmation: boolean): TutorMessage {
     content: "分析",
     inputMode: "text",
     action: { tutorTurnPlan: { misconception: { category, needsConfirmation } } },
-    modelRun: {},
     createdAt: 1,
   };
 }

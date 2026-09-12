@@ -51,6 +51,39 @@ _INTERACTION_KEEP = frozenset({"type", "instruction", "points"})
 _SUB_QUESTION_KEEP = frozenset({
     "id", "label", "prompt", "questionType", "evaluation", "options", "contentBlocks",
 })
+_PAYLOAD_KEEP = frozenset({"question", "lessonSteps"})
+_LESSON_STEP_KEEP = frozenset({"id", "title", "text", "speechText", "action"})
+_VARIATION_KEEP = frozenset({
+    "variationId", "mistakeId", "learnerId", "strategy", "attributionSource", "level",
+    "sequence", "questionPayload", "status", "assessment", "response", "feedback",
+    "createdAt", "answeredAt", "attemptId", "evaluationEvidence", "tutorStage", "mastery",
+})
+_REVIEW_KEEP = frozenset({
+    "taskId", "mistakeId", "learnerId", "intervalDays", "dueAt", "status", "questionPayload",
+    "response", "evaluationEvidence", "assessment", "feedback", "createdAt", "startedAt",
+    "completedAt", "mistake",
+})
+_REVIEW_MISTAKE_KEEP = frozenset({"chapter", "knowledgePoint", "prompt"})
+_THREAD_KEEP = frozenset({
+    "threadId", "mistakeId", "learnerId", "stage", "summary", "hintLevel", "messageCount",
+    "createdAt", "updatedAt", "messages",
+})
+_TUTOR_MESSAGE_KEEP = frozenset({
+    "messageId", "threadId", "role", "content", "inputMode", "assessment", "action", "createdAt",
+})
+_TUTOR_REPLY_KEEP = frozenset({"reply", "guideContext", "nextHintLevel", "canvasAction", "source"})
+_INTERNAL_TUTOR_KEYS = frozenset({
+    "stageArtifacts", "solution", "modelRun", "quality", "review", "sourceProvenance",
+    "verification", "cacheKey", "sourceImagePath", "correctAnswer", "correctAnswers",
+    "expected", "accepted", "requiredConnections",
+})
+_MISTAKE_KEEP = frozenset({
+    "mistakeId", "learnerId", "sourceFilename", "contentType", "sourceImageUrl",
+    "questionPayload", "guideCards", "originalAnswer", "subject", "gradeBand",
+    "chapter", "knowledgePoint", "errorReason", "aiErrorReason",
+    "aiErrorReasonConfidence", "notes", "status", "createdAt", "updatedAt",
+    "confirmedAt",
+})
 
 
 def _pick(source: Any, keep: frozenset[str]) -> dict[str, Any]:
@@ -112,9 +145,98 @@ def student_question(question: Any) -> dict[str, Any]:
 
 
 def student_question_payload(payload: Any) -> dict[str, Any]:
-    """投影整个 questionPayload，只替换 question，其余键交给调用方决定。"""
+    """按顶层白名单投影 questionPayload，内部阶段和模型字段默认全部丢弃。"""
     if not isinstance(payload, dict):
         return {}
-    projected = dict(payload)
+    projected = {key: value for key, value in payload.items() if key in _PAYLOAD_KEEP}
     projected["question"] = student_question(payload.get("question"))
+    if isinstance(payload.get("lessonSteps"), list):
+        projected["lessonSteps"] = [
+            _pick(step, _LESSON_STEP_KEEP)
+            for step in payload["lessonSteps"]
+            if isinstance(step, dict)
+        ]
     return projected
+
+
+def student_mistake_item(item: Any) -> dict[str, Any]:
+    """Project a mistake record while keeping the Store payload private.
+
+    This is shared by the mistake CRUD routes and the learning endpoint's ``autoMistake``
+    response so a student cannot receive the full server-side question snapshot through a
+    second API path.
+    """
+    if not isinstance(item, dict):
+        return {}
+    projected = {key: value for key, value in item.items() if key in _MISTAKE_KEEP}
+    projected["questionPayload"] = student_question_payload(item.get("questionPayload"))
+    return projected
+
+
+def student_variation_item(item: Any) -> dict[str, Any]:
+    """Project a generated variation while keeping grading data server-side."""
+    projected = _pick(item, _VARIATION_KEEP)
+    projected["questionPayload"] = student_question_payload(
+        item.get("questionPayload") if isinstance(item, dict) else None
+    )
+    if isinstance(item, dict) and isinstance(item.get("reviewTasks"), list):
+        projected["reviewTasks"] = [student_review_task(task) for task in item["reviewTasks"]]
+    return projected
+
+
+def student_review_task(item: Any) -> dict[str, Any]:
+    """Project a spaced-review task without exposing its model run or answer key."""
+    projected = _pick(item, _REVIEW_KEEP)
+    projected["questionPayload"] = student_question_payload(
+        item.get("questionPayload") if isinstance(item, dict) else None
+    )
+    mistake = item.get("mistake") if isinstance(item, dict) else None
+    if isinstance(mistake, dict):
+        projected["mistake"] = _pick(mistake, _REVIEW_MISTAKE_KEEP)
+    return projected
+
+
+def student_tutor_message(item: Any) -> dict[str, Any]:
+    """Project a persisted tutoring message without internal model metadata."""
+    projected = _pick(item, _TUTOR_MESSAGE_KEEP)
+    if isinstance(item, dict) and isinstance(item.get("action"), dict):
+        projected["action"] = student_tutor_action(item["action"])
+    return projected
+
+
+def student_tutor_thread(item: Any) -> dict[str, Any]:
+    """Project a tutoring thread and its messages for the student application."""
+    projected = _pick(item, _THREAD_KEEP)
+    if isinstance(item, dict) and isinstance(item.get("messages"), list):
+        projected["messages"] = [student_tutor_message(message) for message in item["messages"]]
+    return projected
+
+
+def student_tutor_reply(item: Any) -> dict[str, Any]:
+    """Project one tutor reply; model/provider details are server-only."""
+    return _pick(item, _TUTOR_REPLY_KEEP)
+
+
+def student_tutor_action(item: Any) -> dict[str, Any]:
+    """Keep the explainable action while removing its internal model run."""
+    projected = _pick(item, frozenset({
+        "type", "previousStage", "nextStage", "assessment", "prompt", "tutorTurnPlan",
+        "deduplication",
+    }))
+    for key in ("tutorTurnPlan", "deduplication"):
+        if key in projected:
+            projected[key] = _remove_internal_tutor_fields(projected[key])
+    return projected
+
+
+def _remove_internal_tutor_fields(value: Any) -> Any:
+    """Recursively remove internal fields from legacy or future tutor actions."""
+    if isinstance(value, dict):
+        return {
+            key: _remove_internal_tutor_fields(item)
+            for key, item in value.items()
+            if key not in _INTERNAL_TUTOR_KEYS
+        }
+    if isinstance(value, list):
+        return [_remove_internal_tutor_fields(item) for item in value]
+    return value

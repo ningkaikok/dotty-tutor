@@ -7,6 +7,8 @@ import type {
   LibraryItem,
   PdfUploadTask,
   QuestionRegenerationResult,
+  QuestionReviewItem,
+  QuestionStageRerunResult,
   TextbookImportResult,
 } from "../types/textbook";
 import { GeneratedSuccess, parse } from "./client";
@@ -115,6 +117,28 @@ export async function regenerateQuestion(
       { method: "POST" },
     ),
   );
+}
+
+export async function loadReviewQueue(uploadId: string): Promise<{ uploadId: string; items: QuestionReviewItem[] }> {
+  return parse(await fetch(`/api/uploads/${encodeURIComponent(uploadId)}/review-queue`, { cache: "no-store" }));
+}
+
+export async function rerunQuestionStage(
+  uploadId: string,
+  sourceQuestionKey: string,
+  stage: "extraction" | "solution" | "verification" | "tutor-script",
+): Promise<QuestionStageRerunResult> {
+  return parse(await fetch(
+    `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}/stages/${encodeURIComponent(stage)}/rerun`,
+    { method: "POST" },
+  ));
+}
+
+export async function loadQuestionReview(uploadId: string, sourceQuestionKey: string): Promise<QuestionReviewItem> {
+  return parse<QuestionReviewItem>(await fetch(
+    `/api/uploads/${encodeURIComponent(uploadId)}/review-queue/${encodeURIComponent(sourceQuestionKey)}`,
+    { cache: "no-store" },
+  ));
 }
 
 export async function loadLibrary(): Promise<LibraryItem[]> {

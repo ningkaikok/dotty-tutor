@@ -171,8 +171,12 @@ TUTOR_MODEL_PROVIDER=codex
 TUTOR_MODEL_NAME=gpt-5.6-sol
 ```
 
-每轮陪练响应的 `modelRun` 会记录实际 provider、model 和是否回退；看到 `provider=mock` 或
-`source=stored-guide-card` 说明本轮没有调用大模型。
+每轮陪练在服务端记录 `modelRun`，包含实际 provider、model 和是否回退；看到 `provider=mock` 或
+`source=stored-guide-card` 说明本轮没有调用大模型。该字段只用于本地排障和指标，学生端公开响应会主动移除。
+
+题目阶段缓存默认写入每个批次的 `assets/{batchId}/stage-cache`，可通过环境变量调整：
+`DOTTY_STAGE_CACHE_ENABLED=0` 关闭，`DOTTY_STAGE_CACHE_MAX_ENTRIES` 控制文件数，
+`DOTTY_STAGE_CACHE_MAX_BYTES` 控制目录总字节数。缓存格式或内容损坏会安全按 miss 处理。
 
 题目生成和审核共用同一份 Codex 订阅模型目录，但审核仍是独立 Runtime；图片审核不会再额外占用一套
 模型选择。Codex 目录默认包含 `default`、`gpt-5.6-sol`、`gpt-5.6-luna`、`gpt-5.6-terra`、
@@ -410,6 +414,10 @@ MinerU 输出的 Markdown、模型提示词和题图保存在对应上传任务�
 单批 OCR 或模型异常会进入 `failedBatches` 和 `summary.batches`，其它批次继续处理。取消只在批次之间和
 OCR/题目循环安全点生效；长任务运行时仍可查看和编辑首批预览题。达到页数或题数上限时汇总返回
 `limitReached=true`，不会继续产生 OCR 或模型调用。
+
+阶段产物缓存位于每个批次的 `assets/{batchId}/stage-cache`，键同时包含阶段、提示词、模型、provider 和 schema 版本。
+缓存损坏时安全 miss，写入使用同目录临时文件原子替换，并限制单条目与总条目数量。审核工作台可从指定阶段重跑，
+上游阶段只读复用；`verification.status != verified` 时教学脚本阶段被门禁阻断。
 
 ## Qwen3-TTS
 

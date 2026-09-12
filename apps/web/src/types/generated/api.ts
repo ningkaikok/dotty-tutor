@@ -1312,6 +1312,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{upload_id}/questions/{question_source_key}/stages/{stage}/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rerun Question Stage */
+        post: operations["rerun_question_stage_api_uploads__upload_id__questions__question_source_key__stages__stage__rerun_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/review-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review Queue
+         * @description 返回一个上传任务中需要人工关注的题目审核队列。
+         */
+        get: operations["get_review_queue_api_uploads__upload_id__review_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/review-queue/{question_source_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Question Review Queue */
+        get: operations["get_question_review_queue_api_uploads__upload_id__review_queue__question_source_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads/{upload_id}/status": {
         parameters: {
             query?: never;
@@ -1790,6 +1844,39 @@ export interface components {
             revision?: components["schemas"]["RevisionSummary"] | null;
             run: components["schemas"]["RunSummary"];
         };
+        /**
+         * QuestionReviewQueueResponse
+         * @description 题目工作台所需的来源、问题和阶段运行快照。
+         */
+        QuestionReviewQueueResponse: {
+            /** Issues */
+            issues?: {
+                [key: string]: unknown;
+            }[];
+            /** Provenance */
+            provenance?: {
+                [key: string]: unknown;
+            };
+            /** Questionpayload */
+            questionPayload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Sourcequestionkey */
+            sourceQuestionKey: string;
+            /** Stageruns */
+            stageRuns?: {
+                [key: string]: unknown;
+            }[];
+            /** Uploadid */
+            uploadId: string;
+        };
+        /** ReviewQueueResponse */
+        ReviewQueueResponse: {
+            /** Items */
+            items?: components["schemas"]["QuestionReviewQueueResponse"][];
+            /** Uploadid */
+            uploadId: string;
+        };
         /** RevisionSummary */
         RevisionSummary: {
             /** Createdat */
@@ -1798,7 +1885,7 @@ export interface components {
              * Operation
              * @enum {string}
              */
-            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch";
+            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
             /** Previousrevisionid */
             previousRevisionId?: string | null;
             /** Revisionid */
@@ -1828,7 +1915,7 @@ export interface components {
              * Operation
              * @enum {string}
              */
-            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch";
+            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
             /** Result */
             result?: {
                 [key: string]: unknown;
@@ -1850,6 +1937,69 @@ export interface components {
             targetQuestionKey?: string | null;
             /** Targetuploadid */
             targetUploadId?: string | null;
+        };
+        /**
+         * StageRerunResponse
+         * @description 指定阶段及其下游重跑结果。
+         */
+        StageRerunResponse: {
+            /** Batch */
+            batch?: {
+                [key: string]: unknown;
+            } | null;
+            /** Guidecards */
+            guideCards?: {
+                [key: string]: unknown;
+            }[];
+            /** Modelrun */
+            modelRun?: {
+                [key: string]: unknown;
+            } | null;
+            /** Ocrrun */
+            ocrRun?: {
+                [key: string]: unknown;
+            } | null;
+            /** Questionpayload */
+            questionPayload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Regeneration */
+            regeneration: {
+                [key: string]: unknown;
+            };
+            /** Reviewrun */
+            reviewRun?: {
+                [key: string]: unknown;
+            } | null;
+            revision?: components["schemas"]["RevisionSummary"] | null;
+            run: components["schemas"]["RunSummary"];
+            /** Stage */
+            stage: string;
+            /** Stages */
+            stages?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /**
+         * StudentTutorReply
+         * @description 学生端陪练回复契约；模型提供商和运行信息只留在服务端。
+         */
+        StudentTutorReply: {
+            /** Canvasaction */
+            canvasAction: string;
+            /** Guidecontext */
+            guideContext: {
+                [key: string]: unknown;
+            };
+            /** Nexthintlevel */
+            nextHintLevel: number;
+            /** Reply */
+            reply: string;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "stored-guide-card" | "answer-check" | "model-generated";
         };
         /**
          * TeacherReviewCreate
@@ -1911,28 +2061,6 @@ export interface components {
              * @enum {string}
              */
             mode: "answer" | "help";
-        };
-        /** TutorReply */
-        TutorReply: {
-            /** Canvasaction */
-            canvasAction: string;
-            /** Guidecontext */
-            guideContext: {
-                [key: string]: unknown;
-            };
-            /** Modelrun */
-            modelRun?: {
-                [key: string]: unknown;
-            };
-            /** Nexthintlevel */
-            nextHintLevel: number;
-            /** Reply */
-            reply: string;
-            /**
-             * Source
-             * @enum {string}
-             */
-            source: "stored-guide-card" | "answer-check" | "model-generated";
         };
         /** ValidationError */
         ValidationError: {
@@ -2454,7 +2582,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TutorReply"];
+                    "application/json": components["schemas"]["StudentTutorReply"];
                 };
             };
             /** @description Validation Error */
@@ -4424,6 +4552,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rerun_question_stage_api_uploads__upload_id__questions__question_source_key__stages__stage__rerun_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_source_key: string;
+                stage: string;
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageRerunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_queue_api_uploads__upload_id__review_queue_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewQueueResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_question_review_queue_api_uploads__upload_id__review_queue__question_source_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_source_key: string;
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionReviewQueueResponse"];
                 };
             };
             /** @description Validation Error */

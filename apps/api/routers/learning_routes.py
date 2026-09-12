@@ -14,6 +14,7 @@ from domain.contracts.lesson import (
     LearningSyncCreate,
     LessonDocument,
 )
+from domain.questions.student_view import student_mistake_item
 from observability import log_event
 
 
@@ -71,7 +72,7 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
             question_id=request.questionId,
             mistake_id=mistake["mistakeId"],
         )
-        return mistake
+        return student_mistake_item(mistake)
 
     @router.post("/lessons")
     def save_lesson(document: LessonDocument) -> dict[str, Any]:

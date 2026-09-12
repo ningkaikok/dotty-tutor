@@ -6,6 +6,14 @@ export interface ModelRun {
   model: string;
   fallback: boolean;
   error?: string;
+  stages?: Array<{
+    name: string;
+    provider?: string;
+    model?: string;
+    fallback: boolean;
+    cacheHit?: boolean;
+    skipped?: boolean;
+  }>;
 }
 
 export interface ModelCatalog {

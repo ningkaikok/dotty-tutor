@@ -13,6 +13,7 @@ from answer_evaluator import evaluate_structured_answer
 from application.services.learning_funnel import build_funnel_snapshot
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
+from domain.questions.student_view import student_review_task
 from observability import log_event
 from routers.tutoring_routes import has_meaningful_answer
 
@@ -43,7 +44,10 @@ def build_review_router(
                 "knowledgePoint": mistake["knowledgePoint"],
                 "prompt": mistake["questionPayload"]["question"]["prompt"],
             } if mistake else None
-        return {"items": items, "serverTime": time.time()}
+        return {
+            "items": [student_review_task(item) for item in items],
+            "serverTime": time.time(),
+        }
 
     @router.get("/api/progress")
     def get_progress(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
@@ -94,7 +98,7 @@ def build_review_router(
         if not task:
             raise HTTPException(status_code=404, detail="复习任务不存在")
         if task["status"] == "ready":
-            return task
+            return student_review_task(task)
         if task["status"] != "scheduled":
             raise HTTPException(status_code=409, detail="这项复习任务已经完成")
         mistake = mistake_store.get(task["mistakeId"])
@@ -112,7 +116,7 @@ def build_review_router(
         if not started:
             raise HTTPException(status_code=409, detail="复习任务状态已变化，请刷新")
         log_event("review.started", task_id=task_id, mistake_id=task["mistakeId"])
-        return started
+        return student_review_task(started)
 
     @router.post("/api/reviews/{task_id}/answer")
     def answer_review(task_id: str, request: VariationAnswerRequest) -> dict[str, Any]:
@@ -145,6 +149,6 @@ def build_review_router(
             mistake_id=task["mistakeId"],
             assessment=result["assessment"],
         )
-        return saved
+        return student_review_task(saved)
 
     return router

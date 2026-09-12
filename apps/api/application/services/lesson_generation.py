@@ -6,17 +6,21 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 import time
 import uuid
 from pathlib import Path
 from typing import Any
 
+from application.services.legacy_question_adapter import project_question_ir
+from application.services.stage_artifact_cache import StageArtifactCache
+from application.services.staged_question_generation import normalize_stage
 from application.services.tutor_engine import TutorEngine
 from domain.questions.contracts import (
     CANVAS_ACTIONS,
     GUIDE_CARDS,
-    LESSON_SCHEMA,
     LESSON_STEPS,
     PERSONALIZED_ASSIGNMENT_PROMPT_VERSION,
     PERSONALIZED_ASSIGNMENT_SCHEMA,
@@ -25,23 +29,29 @@ from domain.questions.contracts import (
     HelpRequest,
     TutorReply,
 )
+from domain.questions.exam_ir import first_question_ir
+from domain.questions.ir import bounded_confidence, stage_cache_key
 from domain.questions.pipeline import (
     apply_question_quality_gate,
     audit_image_placeholders,
-    build_lesson_prompt,
     build_personalized_assignment_prompt,
     clean_question_stem,
     normalize_model_math_text,
     normalize_question_interaction,
     normalize_text_choices_from_source,
     protect_image_references,
-    restore_image_placeholders,
     strip_choice_text_from_prompt,
 )
 from domain.questions.source import (
     safe_string_list,
     safe_text,
     select_complete_question_source,
+)
+from domain.questions.staged_contracts import (
+    QUESTION_EXTRACTION_SCHEMA,
+    SOLUTION_SCHEMA,
+    TUTOR_SCRIPT_SCHEMA,
+    VERIFICATION_SCHEMA,
 )
 from domain.tutoring.checks import (
     generic_guide_cards,
@@ -56,6 +66,15 @@ from observability import log_event
 # 该缓存仅加速单进程 Demo，PostgreSQL 才是持久化课程的真相来源。
 # 多 Worker 部署应改用共享缓存或 Store，不能尝试在进程间同步这个字典。
 lesson_store: dict[str, dict[str, Any]] = {}
+
+STAGE_VERSIONS = {
+    "extraction": ("question-extraction-v1", "question-ir-v1"),
+    "solution": ("math-solver-v1", "solution-ir-v1"),
+    "verification": ("answer-verifier-v1", "verification-ir-v1"),
+    "tutor-script": ("tutor-script-v1", "tutor-script-v1"),
+}
+STAGE_CACHE_LIMIT = 128
+_stage_artifact_cache: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
 
 
 def new_question_id(prefix: str, source: str) -> str:
@@ -263,10 +282,338 @@ def _fallback_lesson(
     return payload, cards
 
 
+def _stage_prompt(stage: str, question_ir: dict[str, Any], *, repair_errors: list[str] | None = None) -> str:
+    """为每个模型阶段构造独立提示词，只暴露该阶段需要的上下文。"""
+    # provenance 中的 block 原文可能包含本地 images/... 路径；模型只需要稳定的
+    # asset id，不能看到宿主路径后自行拼接或把路径写回题干。
+    prompt_ir = dict(question_ir)
+    prompt_ir.pop("sourceBlocks", None)
+    source = str(question_ir.get("sourceText") or question_ir.get("stem") or "").strip()
+    repair = ""
+    if repair_errors:
+        repair = "\n上一轮确定性校验发现的问题：\n" + "\n".join(
+            f"- {str(error)[:180]}" for error in repair_errors[:8]
+        )
+    if stage == "extraction":
+        return f"""你是试卷结构抽取器。只从下面这一道已切出的原题中提取结构，不求解，不解释，不补写缺失内容。
+必须保留题干原文、题号、小问顺序、选项顺序和图片占位符；图片只记录来源中已有的引用。
+题目来源证据：{question_ir.get('sourceBlockIds', [])}
+图片证据：{question_ir.get('visualAssetIds', [])}
+
+原题：
+---
+{source}
+---{repair}""".strip()
+    if stage == "solution":
+        return f"""你是独立的数学题求解器。只根据已确认的 QuestionIR 求解，不改写题干，不生成新题。
+如果来源不足以确定答案，返回空答案并保持题型；不要猜测。输出只包含答案契约和知识点。
+
+QuestionIR：
+---
+{json.dumps(prompt_ir, ensure_ascii=False)}
+---{repair}""".strip()
+    if stage == "verification":
+        return f"""你是独立答案核验器。对照原题来源和 SolutionIR 检查题干完整性、选项对齐、单位、公式和答案。
+不要改写题目或答案。求解结论与来源答案冲突、来源不完整或无法核验时，必须返回 conflict 或 needs_review。
+
+QuestionIR 与 SolutionIR：
+---
+{json.dumps(prompt_ir, ensure_ascii=False)}
+---{repair}""".strip()
+    return f"""你是教学脚本编排器。根据已确认的原题和独立求解结果，生成恰好 4 步讲解和 3 张递进提示卡。
+不得改变题干、选项或标准答案；开场步骤不得提前泄露答案，提示卡只引导下一步。
+
+QuestionIR 与 SolutionIR：
+---
+{json.dumps(prompt_ir, ensure_ascii=False)}
+---{repair}""".strip()
+
+
+def _merge_stage_runs(stage_runs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    """把三次调用汇总成兼容旧前端的 modelRun，同时保留阶段审计。"""
+    last = dict(stage_runs[-1][1]) if stage_runs else mock_model_run()
+    # tutor-script 可能因 verifier 门禁被跳过；顶层旧 modelRun 仍应代表实际模型调用，
+    # 否则历史客户端会把一次成功的抽取/求解误显示成 provider=gate。
+    for _name, candidate in reversed(stage_runs):
+        if not candidate.get("skipped") and candidate.get("provider") != "gate":
+            last = dict(candidate)
+            break
+    last["stages"] = [
+        {
+            "name": name,
+            "provider": run.get("provider"),
+            "model": run.get("model"),
+            "fallback": bool(run.get("fallback")),
+            "promptVersion": STAGE_VERSIONS[name][0],
+            "schemaVersion": STAGE_VERSIONS[name][1],
+            "cacheKey": run.get("cacheKey"),
+            "cacheHit": bool(run.get("cacheHit")),
+        }
+        for name, run in stage_runs
+    ]
+    last["fallback"] = any(bool(run.get("fallback")) for _, run in stage_runs)
+    return last
+
+
+def _staged_lesson(
+    source: str,
+    *,
+    repair_errors: list[str] | None = None,
+    asset_dir: Path | None = None,
+    target_stage: str | None = None,
+    prior_stage_artifacts: dict[str, dict[str, Any]] | None = None,
+    question_ir: dict[str, Any] | None = None,
+    rerun_token: str | None = None,
+) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
+    """执行“原题抽取 → 独立求解 → 教学脚本”三阶段生成。"""
+    selection = runtime.selection
+    selected_number, selected_source, selected_images = select_complete_question_source(source)
+    question_ir = copy.deepcopy(question_ir) if question_ir is not None else first_question_ir(
+        selected_source or source, asset_dir=asset_dir,
+    )
+    # 来源图片是确定性事实，不信任模型在 extraction 阶段返回的路径。
+    question_ir["number"] = selected_number or question_ir.get("number", "")
+    question_ir["visualAssetIds"] = [Path(image).name for image in selected_images]
+    question_ir["sourceText"] = question_ir.get("sourceText") or selected_source or source
+    protected_source, placeholder_context = protect_image_references(question_ir["sourceText"])
+    question_ir["sourceText"] = protected_source
+
+    stage_runs: list[tuple[str, dict[str, Any]]] = []
+    raw_extraction: dict[str, Any] = {}
+    raw_solution: dict[str, Any] = {}
+    raw_script: dict[str, Any] = {}
+    raw_verification: dict[str, Any] = {}
+    stage_artifacts: dict[str, dict[str, Any]] = {}
+    target_index = -1 if target_stage is None else list(STAGE_VERSIONS).index(normalize_stage(target_stage))
+    effective_rerun_token = rerun_token or (uuid.uuid4().hex if target_index >= 0 else "")
+    disk_cache = StageArtifactCache(asset_dir) if asset_dir is not None else None
+    source_stable_id = str(question_ir.get("sourceStableId") or question_ir.get("sourceQuestionKey") or "source")
+    for name, schema, max_tokens in (
+        ("extraction", QUESTION_EXTRACTION_SCHEMA, 1100),
+        ("solution", SOLUTION_SCHEMA, 1300),
+        ("verification", VERIFICATION_SCHEMA, 900),
+        ("tutor-script", TUTOR_SCRIPT_SCHEMA, 1500),
+    ):
+        prompt_ir = dict(question_ir)
+        if name == "extraction":
+            prompt_ir["sourceText"] = protected_source
+        elif name == "solution":
+            prompt_ir["extraction"] = raw_extraction
+        elif name == "verification":
+            prompt_ir["extraction"] = raw_extraction
+            prompt_ir["solution"] = raw_solution
+        else:
+            prompt_ir["solution"] = raw_solution
+            prompt_ir["extraction"] = raw_extraction
+            prompt_ir["verification"] = raw_verification
+        stage_prompt = _stage_prompt(name, prompt_ir, repair_errors=repair_errors)
+        stage_index = list(STAGE_VERSIONS).index(name)
+        cache_key = stage_cache_key(
+            name,
+            stage_prompt,
+            provider=selection.provider,
+            model=selection.model,
+            prompt_version=STAGE_VERSIONS[name][0],
+            schema_version=STAGE_VERSIONS[name][1],
+            rerun_token=effective_rerun_token if target_index >= 0 and stage_index >= target_index else "",
+        )
+        if target_index >= 0 and stage_index < target_index:
+            cached_prior = (prior_stage_artifacts or {}).get(name)
+            if not cached_prior or not isinstance(cached_prior.get("raw"), dict):
+                raise ValueError(f"缺少 {name} 阶段产物，无法只重跑 {target_stage}")
+            raw = copy.deepcopy(cached_prior["raw"])
+            run = {"provider": "artifact", "model": "stored", "fallback": False, "cacheHit": True, "stageReused": True}
+        else:
+            forced = target_index >= 0 and stage_index >= target_index
+            cached = _stage_artifact_cache.get(cache_key) if not repair_errors and not forced else None
+            if cached is None and disk_cache is not None and not repair_errors and not forced:
+                disk_value = disk_cache.load(source_stable_id, name, cache_key)
+                if disk_value and isinstance(disk_value.get("raw"), dict):
+                    cached = (disk_value["raw"], disk_value.get("run") or {})
+            if cached is not None:
+                raw, run = copy.deepcopy(cached[0]), copy.deepcopy(cached[1])
+                run["cacheHit"] = True
+            elif name == "tutor-script" and raw_verification.get("status") != "verified":
+                raw = {"lessonSteps": [], "guideCards": [], "schemaVersion": "tutor-script-v1"}
+                run = {"provider": "gate", "model": "verification", "fallback": False, "skipped": True, "blockedBy": "verification"}
+            else:
+                raw, run = runtime.generate_json(
+                    stage_prompt,
+                    schema,
+                    max_tokens=max_tokens,
+                )
+                if not run.get("fallback") and not repair_errors:
+                    _stage_artifact_cache[cache_key] = (copy.deepcopy(raw), copy.deepcopy(run))
+                    if disk_cache is not None:
+                        disk_cache.save(
+                            source_stable_id,
+                            name,
+                            cache_key,
+                            {"raw": copy.deepcopy(raw), "run": copy.deepcopy(run)},
+                        )
+                    if len(_stage_artifact_cache) > STAGE_CACHE_LIMIT:
+                        del _stage_artifact_cache[next(iter(_stage_artifact_cache))]
+        run = dict(run)
+        run["cacheKey"] = cache_key
+        stage_runs.append((name, run))
+        stage_artifacts[name] = {"raw": copy.deepcopy(raw), "run": copy.deepcopy(run), "cacheKey": cache_key}
+        if name == "extraction":
+            raw_extraction = raw
+            # Older adapters return the original one-shot lesson schema. Keep that
+            # compatibility path single-call so existing clients/tests do not turn a
+            # legacy response into three meaningless downstream calls.
+            if isinstance(raw, dict) and ("lessonSteps" in raw or ("prompt" in raw and "stem" not in raw)):
+                legacy_question = {
+                    "id": new_question_id("generated", selected_source or source),
+                    "questionType": safe_text(raw.get("questionType"), "short-answer", 30),
+                    "chapter": safe_text(raw.get("chapter"), "教材练习", 80),
+                    "knowledgePoint": safe_text(raw.get("knowledgePoint"), "分步推理", 120),
+                    "questionNumber": selected_number,
+                    "prompt": normalize_model_math_text(safe_text(raw.get("prompt"), question_ir.get("stem") or source, 4_000)),
+                    "correctAnswer": safe_text(raw.get("correctAnswer"), "", 120),
+                    "correctAnswers": safe_string_list(raw.get("correctAnswers"), [], 8),
+                    "selectionMode": "single",
+                    "blanks": _normalized_blanks(raw),
+                    "answerSpec": _normalized_answer_spec(raw),
+                    "interaction": normalize_question_interaction(raw.get("interaction"), safe_text(raw.get("questionType"), "short-answer", 30)),
+                    "givens": safe_string_list(raw.get("givens"), [], 8),
+                    "options": safe_string_list(raw.get("options"), [], 8),
+                    "subQuestions": _normalized_sub_questions(raw),
+                    "imageReferences": selected_images,
+                    "sourceProvenance": question_ir.get("sourceProvenance", {}),
+                }
+                legacy_run = dict(run)
+                legacy_run["stages"] = [{"name": "legacy", "provider": run.get("provider"), "model": run.get("model"), "fallback": bool(run.get("fallback"))}]
+                payload = question_payload(legacy_question, _normalized_steps(raw, legacy_question), legacy_run)
+                payload["stageArtifacts"] = {"extraction": {"raw": copy.deepcopy(raw), "run": copy.deepcopy(run)}}
+                payload["modelRun"]["imagePlaceholderAudit"] = audit_image_placeholders(
+                    str(raw.get("prompt") or ""), placeholder_context,
+                )
+                cards = _normalized_guide_cards(raw, legacy_question["knowledgePoint"], legacy_question)
+                lesson_store[legacy_question["id"]] = {"payload": payload, "guideCards": cards}
+                return payload, cards, payload["modelRun"]
+        elif name == "solution":
+            raw_solution = raw
+        elif name == "verification":
+            raw_verification = raw
+        else:
+            raw_script = raw
+
+    question_type = safe_text(raw_solution.get("questionType"), safe_text(raw_extraction.get("questionType"), "short-answer", 30), 30)
+    if question_type not in {"choice", "multi-select", "true-false", "short-answer", "fill-blank", "numeric", "draw-line"}:
+        question_type = "short-answer"
+    options = safe_string_list(raw_extraction.get("options"), [], 8)
+    if not options:
+        options = safe_string_list(raw_solution.get("options"), [], 8)
+    question = {
+        "id": new_question_id("generated", selected_source or source),
+        "questionType": question_type,
+        "chapter": safe_text(raw_extraction.get("chapter"), safe_text(raw_solution.get("chapter"), "教材练习", 80), 80),
+        "knowledgePoint": safe_text(raw_solution.get("knowledgePoint"), safe_text(raw_extraction.get("knowledgePoint"), "分步推理", 120), 120),
+        "questionNumber": selected_number or safe_text(raw_extraction.get("questionNumber"), "", 30),
+        # 原题复刻以 QuestionIR 为准；模型只负责结构标注，不得改写来源文字。
+        "prompt": normalize_model_math_text(strip_choice_text_from_prompt(clean_question_stem(selected_number, selected_source or source), options)),
+        "correctAnswer": safe_text(raw_solution.get("correctAnswer"), "", 120),
+        "correctAnswers": safe_string_list(raw_solution.get("correctAnswers"), [], 8),
+        "selectionMode": "multiple" if question_type == "multi-select" else "single",
+        "blanks": _normalized_blanks(raw_solution),
+        "answerSpec": _normalized_answer_spec(raw_solution),
+        "interaction": normalize_question_interaction(raw_solution.get("interaction"), question_type),
+        "givens": safe_string_list(raw_extraction.get("givens"), [], 8),
+        "options": options,
+        "subQuestions": _normalized_sub_questions(raw_extraction),
+        "imageReferences": selected_images,
+        "sourceProvenance": {
+            "sourceQuestionKey": question_ir.get("sourceQuestionKey"),
+            "sourcePages": question_ir.get("sourcePages", []),
+            "sourceBlockIds": question_ir.get("sourceBlockIds", []),
+            "visualAssetIds": question_ir.get("visualAssetIds", []),
+            "confidence": question_ir.get("confidence", 0),
+            "warnings": question_ir.get("warnings", []),
+            "diagnostics": question_ir.get("diagnostics", {}),
+            "sourceAnswerReference": question_ir.get("sourceAnswerReference"),
+            "sourceOrigin": question_ir.get("sourceOrigin", "markdown-fallback"),
+            "sourceBlocks": question_ir.get("sourceBlocks", []),
+            "version": "question-ir-v1",
+        },
+        "verification": {
+            "status": safe_text(raw_verification.get("status"), "needs_review", 20),
+            "solverAgreement": bool(raw_verification.get("solverAgreement")),
+            "sourceAnswer": safe_text(raw_verification.get("sourceAnswer"), "", 160),
+            "conflicts": safe_string_list(raw_verification.get("conflicts"), [], 12),
+            "checks": safe_string_list(raw_verification.get("checks"), [], 12),
+            "confidence": bounded_confidence(raw_verification.get("confidence")),
+            "needsHumanReview": bool(raw_verification.get("needsHumanReview", True)),
+        },
+    }
+    payload = question_payload(question, _normalized_steps(raw_script, question), _merge_stage_runs(stage_runs))
+    payload["stageArtifacts"] = stage_artifacts
+    # 只审计模型是否保持占位符；真正的图片绑定稍后由来源证据重建。
+    payload["modelRun"]["imagePlaceholderAudit"] = audit_image_placeholders(
+        str(raw_extraction.get("stem") or raw_extraction.get("prompt") or raw_script.get("stem") or raw_script.get("prompt") or ""),
+        placeholder_context,
+    )
+    cards = _normalized_guide_cards(raw_script, question["knowledgePoint"], question)
+    lesson_store[question["id"]] = {"payload": payload, "guideCards": cards}
+    return payload, cards, payload["modelRun"]
+
+
+def write_staged_prompt_artifact(asset_dir: Path, question_sources: list[tuple[str, str, list[str]]]) -> Path:
+    """写入本次实际使用的四阶段提示词，避免审计文件继续展示旧单提示词。"""
+    asset_dir.mkdir(parents=True, exist_ok=True)
+    sections = [
+        "# OCR 后分阶段模型提示词\n",
+        "> OCR 不使用自然语言提示词；以下是本次题块的阶段提示词基线，后续阶段运行时会追加前一阶段结构化结果。\n",
+        "> 阶段版本：" + ", ".join(f"`{name}:{STAGE_VERSIONS[name][0]}`" for name in STAGE_VERSIONS) + "\n",
+    ]
+    for index, (number, block, images) in enumerate(question_sources, start=1):
+        question_ir = first_question_ir(block)
+        question_ir["number"] = number
+        question_ir["visualAssetIds"] = [Path(image).name for image in images]
+        protected, _context = protect_image_references(block)
+        question_ir["sourceText"] = protected
+        sections.append(f"\n## 第 {number or index} 题\n")
+        for stage in ("extraction", "solution", "verification", "tutor-script"):
+            sections.append(f"\n### {stage}\n\n```text\n{_stage_prompt(stage, question_ir)}\n```\n")
+    path = asset_dir / "model-prompt.md"
+    path.write_text("\n".join(sections), encoding="utf-8")
+    return path
+
+
+def generate_question_from_ir(
+    question_ir: dict[str, Any],
+    *,
+    asset_dir: Path | None = None,
+    target_stage: str | None = None,
+    prior_stage_artifacts: dict[str, dict[str, Any]] | None = None,
+    repair_errors: list[str] | None = None,
+    rerun_token: str | None = None,
+) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
+    """以 QuestionIR 为唯一来源事实生成题目；旧 ``generate_lesson`` 只是文本适配器。"""
+    source = str(question_ir.get("sourceText") or question_ir.get("stem") or "").strip()
+    payload, cards, run = _staged_lesson(
+        source,
+        repair_errors=repair_errors,
+        asset_dir=asset_dir,
+        target_stage=target_stage,
+        prior_stage_artifacts=prior_stage_artifacts,
+        question_ir=question_ir,
+        rerun_token=rerun_token,
+    )
+    payload["question"] = project_question_ir(question_ir, payload.get("question", {}))
+    payload["question"]["sourceQuestionKey"] = question_ir.get("sourceQuestionKey") or payload["question"].get("sourceQuestionKey")
+    lesson_store[payload["question"]["id"]] = {"payload": payload, "guideCards": cards}
+    return payload, cards, run
+
+
 def generate_lesson(
     source_text: str,
     *,
     repair_errors: list[str] | None = None,
+    asset_dir: Path | None = None,
+    target_stage: str | None = None,
+    prior_stage_artifacts: dict[str, dict[str, Any]] | None = None,
+    rerun_token: str | None = None,
 ) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
     """Generate one validated-shape lesson, optionally repairing known errors."""
     selection = runtime.selection
@@ -280,8 +627,6 @@ def generate_lesson(
     if selected_number:
         source = selected_source
 
-    protected_source, image_placeholder_context = protect_image_references(source)
-
     if selection.provider == "mock":
         run = mock_model_run()
         if not provided_source:
@@ -294,10 +639,13 @@ def generate_lesson(
         return payload, cards, run
 
     try:
-        generated, run = runtime.generate_json(
-            build_lesson_prompt(protected_source, repair_errors),
-            LESSON_SCHEMA,
-            max_tokens=1600,
+        payload, cards, run = _staged_lesson(
+            source,
+            repair_errors=repair_errors,
+            asset_dir=asset_dir,
+            target_stage=target_stage,
+            prior_stage_artifacts=prior_stage_artifacts,
+            rerun_token=rerun_token,
         )
     except Exception as error:
         run = mock_model_run(selection.provider, str(error))
@@ -315,57 +663,14 @@ def generate_lesson(
             exc_info=True,
         )
         return payload, cards, run
-
-    run["imagePlaceholderAudit"] = audit_image_placeholders(
-        str(generated.get("prompt", "")), image_placeholder_context
-    )
-    generated = restore_image_placeholders(generated, image_placeholder_context)
-
-    question_id = new_question_id("generated", source)
-    question_type = safe_text(generated.get("questionType"), "short-answer", 30)
-    if question_type not in {
-        "choice", "multi-select", "true-false", "short-answer", "fill-blank", "numeric", "draw-line",
-    }:
-        question_type = "short-answer"
-    givens = [
-        item for item in safe_string_list(generated.get("givens"), [], 5)
-        if "images/" not in item and "![" not in item
-    ]
-    options = [
-        normalize_model_math_text(option)
-        for option in (safe_string_list(generated.get("options"), [], 6) if generated.get("options") else [])
-    ]
-    prompt = clean_question_stem(selected_number, selected_source) if selected_number else safe_text(generated.get("prompt"), QUESTION["prompt"], 4000)
-    knowledge_point = safe_text(generated.get("knowledgePoint"), "分步推理", 120)
-    question = {
-        "id": question_id,
-        "questionType": question_type,
-        "chapter": safe_text(generated.get("chapter"), "教材练习", 80),
-        "knowledgePoint": knowledge_point,
-        "questionNumber": selected_number or safe_text(generated.get("questionNumber"), "", 30),
-        "prompt": normalize_model_math_text(strip_choice_text_from_prompt(prompt, options)),
-        "correctAnswer": safe_text(generated.get("correctAnswer"), "", 120),
-        "correctAnswers": safe_string_list(generated.get("correctAnswers"), [], 6),
-        "selectionMode": "multiple" if question_type == "multi-select" else "single",
-        "blanks": _normalized_blanks(generated),
-        "answerSpec": _normalized_answer_spec(generated),
-        "interaction": normalize_question_interaction(generated.get("interaction"), question_type),
-        "givens": givens,
-        "options": options,
-        "subQuestions": _normalized_sub_questions(generated),
-        "imageReferences": selected_images or (safe_string_list(generated.get("imageReferences"), [], 4) if generated.get("imageReferences") else []),
-    }
-    guide_cards = _normalized_guide_cards(generated, knowledge_point, question)
-    payload = question_payload(question, _normalized_steps(generated, question), run)
-    lesson_store[question_id] = {"payload": payload, "guideCards": guide_cards}
     log_event(
         "model.generation.completed",
         provider=run.get("provider"),
         model=run.get("model"),
         duration_ms=round((time.perf_counter() - started) * 1000, 1),
-        question_type=question_type,
+        question_type=payload["question"].get("questionType"),
     )
-    return payload, guide_cards, run
+    return payload, cards, run
 
 
 class PersonalizedLessonGenerationError(ValueError):
@@ -488,10 +793,21 @@ def attach_question_source(
     """Attach source lineage without leaking images from adjacent questions."""
     question = payload["question"]
     question["sourceBatchId"] = batch["id"]
-    question["sourcePages"] = {
-        "start": ocr_run.get("startPage", batch["startPage"]),
-        "end": ocr_run.get("endPage", batch["endPage"]),
-    }
+    provenance = question.get("sourceProvenance")
+    provenance_pages = provenance.get("sourcePages") if isinstance(provenance, dict) else None
+    if isinstance(provenance_pages, list) and provenance_pages:
+        question["sourcePages"] = {
+            "start": min(int(page) for page in provenance_pages),
+            "end": max(int(page) for page in provenance_pages),
+        }
+    else:
+        question["sourcePages"] = {
+            "start": ocr_run.get("startPage", batch["startPage"]),
+            "end": ocr_run.get("endPage", batch["endPage"]),
+        }
+    if isinstance(provenance, dict):
+        question["sourceBlockIds"] = list(provenance.get("sourceBlockIds") or [])
+        question["visualAssetIds"] = list(provenance.get("visualAssetIds") or [])
     question["sourceArtifactUrl"] = ocr_run.get("sourceArtifactUrl")
     question["promptArtifactUrl"] = ocr_run.get("promptArtifactUrl")
     available_images = [
@@ -516,6 +832,7 @@ def review_lesson_payload(
     lesson_source: str,
     asset_dir: Path | list[Path],
     guide_cards: list[dict[str, Any]],
+    question_ir: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run the review adapter and refresh the in-process lesson cache."""
     _number, question_block, _images = select_complete_question_source(lesson_source)
@@ -525,6 +842,12 @@ def review_lesson_payload(
         if (asset_dir / Path(url).name).is_file()
     ]
     reviewed_payload, review_run = runtime_reviewer.review(payload, question_block, image_paths)
+    if question_ir is not None:
+        # Review is advisory. Source facts are re-projected immediately so a reviewer
+        # cannot silently rewrite the original stem, numbering, choices or subquestions.
+        reviewed_payload["question"] = project_question_ir(
+            question_ir, reviewed_payload.get("question", {})
+        )
     lesson_store[reviewed_payload["question"]["id"]] = {
         "payload": reviewed_payload,
         "guideCards": guide_cards,

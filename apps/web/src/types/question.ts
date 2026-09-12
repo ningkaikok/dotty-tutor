@@ -185,6 +185,7 @@ export interface Question {
   /** Stable OCR source identity; regenerated revisions keep this key. */
   sourceQuestionKey?: string;
   sourcePages?: { start: number; end: number };
+  sourceProvenance?: Record<string, unknown>;
   visualContext?: Array<{ description: string; facts: string[]; conflicts: string[] }>;
   /** Optional independent parts; each part owns its answer/evaluation boundary. */
   subQuestions?: SubQuestion[];
