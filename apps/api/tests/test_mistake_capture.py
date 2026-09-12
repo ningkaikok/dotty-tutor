@@ -6,10 +6,11 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from domain.questions.student_view import student_mistake_item
 from persistence.mistake_store import MistakeStore, mistake_attributions
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
-from routers.mistake_routes import build_mistake_router
+from routers.mistake_routes import _public_item, build_mistake_router
 from tests.postgres_test_support import PostgresTestCase
 
 
@@ -33,9 +34,19 @@ def fake_recognize(
             "contentBlocks": [
                 {"id": "stem-1", "type": "text", "text": prompt, "sourceOrder": 0},
             ],
+            "answer": "x=1",
+            "verification": {"status": "verified"},
+            "sourceProvenance": {"sourceBlockIds": ["block-1"]},
         },
         "lessonSteps": [],
         "architecture": {},
+        "stageArtifacts": {"solution": {"answer": "x=1"}},
+        "solution": {"answer": "x=1"},
+        "verification": {"status": "verified"},
+        "quality": {"status": "ready"},
+        "review": {"status": "passed"},
+        "sourceProvenance": {"sourceBlockIds": ["block-1"]},
+        "cacheKey": "secret-cache-key",
         "modelRun": {"provider": "mock", "model": "fixture", "fallback": False},
     }
     return (
@@ -68,6 +79,22 @@ class MistakeCaptureApiTests(PostgresTestCase):
         self.cleared.append((mistake_id, learner_id))
         return 1
 
+    def assert_public_mistake(self, response: dict, *, prompt: str) -> None:
+        """Every student mistake response keeps answer inputs but not pipeline internals."""
+        self.assertNotIn("sourceImagePath", response)
+        for key in ("modelRun", "ocrRun", "stageArtifacts", "solution", "verification", "quality", "review", "sourceProvenance", "cacheKey"):
+            self.assertNotIn(key, response)
+        payload = response["questionPayload"]
+        self.assertEqual(payload["question"]["prompt"], prompt)
+        self.assertEqual(payload["question"]["questionType"], "short-answer")
+        self.assertNotIn("stageArtifacts", payload)
+        self.assertNotIn("solution", payload)
+        for key in ("modelRun", "verification", "quality", "review", "sourceProvenance", "cacheKey"):
+            self.assertNotIn(key, payload)
+        self.assertNotIn("answer", payload["question"])
+        self.assertIn("originalAnswer", response)
+        self.assertIn("options", payload["question"])
+
     def test_import_confirm_list_and_archive_mistake(self) -> None:
         response = self.client.post(
             "/api/mistakes/import",
@@ -76,6 +103,7 @@ class MistakeCaptureApiTests(PostgresTestCase):
         )
         self.assertEqual(response.status_code, 200)
         imported = response.json()
+        self.assert_public_mistake(imported, prompt="解方程 x + 1 = 3")
         self.assertEqual(imported["status"], "pending_confirmation")
         self.assertEqual(imported["questionPayload"]["question"]["prompt"], "解方程 x + 1 = 3")
         self.assertNotIn("sourceImagePath", imported)
@@ -100,6 +128,7 @@ class MistakeCaptureApiTests(PostgresTestCase):
         )
         self.assertEqual(confirmed_response.status_code, 200)
         confirmed = confirmed_response.json()
+        self.assert_public_mistake(confirmed, prompt="解方程 $x + 1 = 3$")
         self.assertEqual(confirmed["status"], "unmastered")
         self.assertEqual(confirmed["errorReason"], "calculation")
         self.assertIsNotNone(confirmed["confirmedAt"])
@@ -116,12 +145,18 @@ class MistakeCaptureApiTests(PostgresTestCase):
 
         listed = self.client.get("/api/mistakes").json()["items"]
         self.assertEqual([item["mistakeId"] for item in listed], [imported["mistakeId"]])
+        self.assert_public_mistake(listed[0], prompt="解方程 $x + 1 = 3$")
+
+        detail = self.client.get(f"/api/mistakes/{imported['mistakeId']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assert_public_mistake(detail.json(), prompt="解方程 $x + 1 = 3$")
 
         archived = self.client.patch(
             f"/api/mistakes/{imported['mistakeId']}/archive",
             json={"archived": True},
         )
         self.assertEqual(archived.json()["status"], "archived")
+        self.assert_public_mistake(archived.json(), prompt="解方程 $x + 1 = 3$")
         self.assertEqual(self.cleared, [(imported["mistakeId"], "local-demo")])
         self.assertEqual(self.client.get("/api/mistakes").json()["items"], [])
 
@@ -317,6 +352,81 @@ class MistakeCaptureApiTests(PostgresTestCase):
             self.assertEqual(new_thread["messages"], [])
         finally:
             client.close()
+
+
+class MistakePublicProjectionTests(unittest.TestCase):
+    def test_public_projection_is_safe_for_all_mistake_response_paths(self) -> None:
+        """Import/list/detail/confirm/archive all share this student-safe boundary."""
+        full_payload = {
+            "question": {
+                "id": "q-1",
+                "questionType": "choice",
+                "questionNumber": "7",
+                "prompt": "原题题干",
+                "options": ["A", "B"],
+                "givens": ["已知条件"],
+                "subQuestions": [{"id": "a", "prompt": "小问", "correctAnswer": "1"}],
+                "imageReferences": ["img-1"],
+                "correctAnswer": "B",
+                "sourceProvenance": {"sourceBlockIds": ["block-1"]},
+                "verification": {"status": "verified"},
+            },
+            "lessonSteps": [{"id": "step-1", "text": "先观察", "solution": "secret"}],
+            "stageArtifacts": {"solution": {"answer": "B"}},
+            "solution": {"answer": "B"},
+            "verification": {"status": "verified"},
+            "quality": {"status": "ready"},
+            "review": {"status": "passed"},
+            "sourceProvenance": {"sourceBlockIds": ["block-1"]},
+            "cacheKey": "secret-cache-key",
+            "modelRun": {"provider": "secret-provider"},
+        }
+        full_item = {
+            "mistakeId": "mistake-1",
+            "learnerId": "local-demo",
+            "sourceFilename": "question.png",
+            "contentType": "image/png",
+            "sourceImagePath": "/private/secret/question.png",
+            "sourceImageUrl": "/api/mistakes/mistake-1/source",
+            "questionPayload": full_payload,
+            "guideCards": [],
+            "ocrRun": {"provider": "secret-ocr"},
+            "modelRun": {"provider": "secret-model"},
+            "quality": {"status": "ready"},
+            "review": {"status": "passed"},
+            "verification": {"status": "verified"},
+            "originalAnswer": "A",
+            "subject": "数学",
+            "gradeBand": "初中",
+            "chapter": "章节",
+            "knowledgePoint": "知识点",
+            "notes": "备注",
+            "status": "pending_confirmation",
+            "createdAt": 1.0,
+            "updatedAt": 1.0,
+        }
+
+        public = _public_item(full_item)
+
+        self.assertEqual(public["questionPayload"]["question"]["prompt"], "原题题干")
+        self.assertEqual(public["questionPayload"]["question"]["options"], ["A", "B"])
+        self.assertEqual(public["questionPayload"]["question"]["givens"], ["已知条件"])
+        self.assertEqual(public["questionPayload"]["question"]["subQuestions"][0]["prompt"], "小问")
+        self.assertEqual(public["originalAnswer"], "A")
+        for key in (
+            "sourceImagePath", "ocrRun", "modelRun", "quality", "review", "verification",
+            "stageArtifacts", "solution", "sourceProvenance", "cacheKey",
+        ):
+            self.assertNotIn(key, public)
+            self.assertNotIn(key, public["questionPayload"])
+        self.assertNotIn("correctAnswer", public["questionPayload"]["question"])
+        self.assertNotIn("correctAnswer", public["questionPayload"]["question"]["subQuestions"][0])
+        self.assertNotIn("solution", public["questionPayload"]["lessonSteps"][0])
+
+        # The adapter returns a new projection and never mutates the Store-owned full payload.
+        self.assertIn("stageArtifacts", full_item["questionPayload"])
+        self.assertIn("correctAnswer", full_item["questionPayload"]["question"])
+        self.assertEqual(student_mistake_item(full_item), public)
 
 
 if __name__ == "__main__":

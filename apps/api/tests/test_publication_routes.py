@@ -39,7 +39,7 @@ class PublicationBoundaryTests(unittest.TestCase):
         self.assertNotIn("quality", payload)
         self.assertNotIn("sourceArtifactUrl", payload["question"])
         self.assertNotIn("promptArtifactUrl", payload["question"])
-        self.assertEqual(payload["modelRun"]["provider"], "published")
+        self.assertNotIn("modelRun", payload)
         self.assertEqual(public["guideCards"], [])
 
     def test_all_quarantined_questions_return_structured_diagnostics(self) -> None:

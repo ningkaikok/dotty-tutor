@@ -48,6 +48,24 @@ body::before {
 .publication-stages li:not(:last-child)::after { content: "→"; margin-left: 8px; color: #c7cdc6; font-weight: 400; }
 .publication-stages li.done { color: #197b5e; background: #e5f1eb; }
 .publication-stages li.current { color: #183f31; background: #dff3e8; box-shadow: 0 0 0 1px rgba(24, 63, 49, 0.18); }
+.question-review-panel { margin: 14px 0; padding: 14px 16px; border: 1px solid #dce5de; border-radius: 12px; background: #fbfdfb; }
+.question-review-heading, .question-review-meta, .question-review-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.question-review-heading { justify-content: space-between; color: #183f31; }
+.question-review-heading span, .question-review-meta { color: #6b776f; font-size: 12px; }
+.question-review-issues { margin: 9px 0; padding-left: 18px; color: #9b4f32; font-size: 12px; }
+.question-review-error { color: #b33d32; font-size: 12px; }
+.question-review-actions { margin-top: 10px; }
+.question-review-actions button { border: 1px solid #c8d7cd; border-radius: 7px; padding: 6px 10px; color: #24523f; background: #fff; cursor: pointer; }
+.question-review-actions button:disabled { cursor: wait; opacity: .6; }
+.question-review-panel { margin: 14px 0; padding: 14px 16px; border: 1px solid #dce5de; border-radius: 12px; background: #fbfdfb; }
+.question-review-heading, .question-review-meta, .question-review-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.question-review-heading { justify-content: space-between; color: #183f31; }
+.question-review-heading span, .question-review-meta { color: #6b776f; font-size: 12px; }
+.question-review-issues { margin: 9px 0; padding-left: 18px; color: #9b4f32; font-size: 12px; }
+.question-review-error { color: #b33d32; font-size: 12px; }
+.question-review-actions { margin-top: 10px; }
+.question-review-actions button { border: 1px solid #c8d7cd; border-radius: 7px; padding: 6px 10px; color: #24523f; background: #fff; cursor: pointer; }
+.question-review-actions button:disabled { cursor: wait; opacity: .6; }
 .publication-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 .studio-notice-stack { display: grid; gap: 8px; margin: -4px 0 18px; }

@@ -49,7 +49,7 @@ dotty-tutor/
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
-│   │   │   ├── questions/      # 题目来源、Schema 和质量纯函数
+│   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
@@ -175,11 +175,12 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
-  → domain/questions/source.py（按题号切分 Markdown、图注/坐标归属和审计；
+  → domain/questions/source.py（按题号提出候选边界、图注/坐标归属和审计；
      切分失败且 `looks_like_multi_question_document()` 判定为多题文档时，由调用方报 422，
      不走"整页当作一道题"的兜底）
+  → domain/questions/exam_ir.py + ir.py（把候选提升为 ExamIR/QuestionIR，保留页码、块 ID、图片 ID、置信度）
   → domain/questions/quality.py（导入质量报告：题数、题号、页面和图片归属）
-  → application/services/question_processing.py（生成、审校、确定性修复和质量门禁）
+  → application/services/question_processing.py（按 QuestionIR 生成、审校、确定性修复和质量门禁）
   → persistence/textbook_store.py（题目和上传任务）
   → persistence/learning_store.py（生成后的课程文档）
 ```
@@ -190,6 +191,11 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
 
 `persistence/job_store.py` 只管理任务生命周期、幂等、租约和错误，不管理教材批次；教材领域进度仍由
 `upload_registry.py` 与教材 Store 负责。保持这两层分离可以避免一次任务重试篡改教材当前视图。
+
+题目生成的模型边界分为四次调用：`staged_contracts.py` 定义原题结构抽取、独立求解、答案核验和教学脚本四个严格
+Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。原题题干、题号、选项和图片归属以
+`QuestionIR`/OCR 为准，模型不能通过提示词改变题目边界或凭空补题。最终 `modelRun.stages` 保留每次调用的
+provider、model 和回退状态；前端继续消费原有的 `questionPayload` 契约。
 
 ### 错题链路
 

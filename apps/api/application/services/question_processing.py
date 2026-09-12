@@ -7,13 +7,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence
 
+from application.services.legacy_question_adapter import project_question_ir
 from application.services.lesson_generation import (
     attach_question_source,
     generate_lesson,
+    generate_question_from_ir,
     review_lesson_payload,
 )
+from domain.questions.exam_ir import build_exam_ir
 from domain.questions.pipeline import (
     apply_question_quality_gate,
     normalize_image_choice_question,
@@ -30,6 +33,49 @@ ProgressUpdater = Callable[[dict[str, Any], str, int, str], None]
 # A failed question gets one targeted repair. A third full generation/review pass has a
 # poor quality-to-cost ratio and can be retried explicitly from the workbench instead.
 QUALITY_REPAIR_ATTEMPTS = 1
+
+
+def _attach_question_ir_provenance(
+    payload: dict[str, Any],
+    *,
+    number: str,
+    block: str,
+    images: list[str],
+    batch: dict[str, Any],
+    ocr_run: dict[str, Any],
+    asset_dir: Path,
+    question_ir: dict[str, Any] | None = None,
+) -> None:
+    """在模型审核后写回来源 IR，防止模型篡改题号、图片或来源键。"""
+    exam = None if question_ir is not None else build_exam_ir(
+        block,
+        asset_dir=asset_dir,
+        batch_id=str(batch["id"]),
+        start_page=int(ocr_run.get("startPage") or batch.get("startPage") or 1),
+        end_page=int(ocr_run.get("endPage") or batch.get("endPage") or 1),
+        provider=str(ocr_run.get("provider") or "unknown"),
+    )
+    question = payload["question"]
+    candidate = question_ir or (exam.questions[0].as_dict() if exam and exam.questions else {})
+    provenance = {
+        "sourceQuestionKey": question.get("sourceQuestionKey") or question_key(batch["id"], number, 0),
+        "sourceStableId": candidate.get("sourceStableId") or question.get("sourceStableId") or "",
+        "sourcePages": candidate.get("sourcePages") or list(range(batch["startPage"], batch["endPage"] + 1)),
+        "sourceBlockIds": candidate.get("sourceBlockIds") or [],
+        "visualAssetIds": [Path(image).name for image in images],
+        "confidence": candidate.get("confidence", 0.2),
+        "warnings": candidate.get("warnings", []),
+        "diagnostics": question_ir.get("diagnostics", {}) if question_ir else (exam.diagnostics if exam else {}),
+        "sourceAnswerReference": candidate.get("sourceAnswerReference"),
+        "sourceOrigin": candidate.get("sourceOrigin", "markdown-fallback"),
+        "sourceBlocks": candidate.get("sourceBlocks", []),
+        "documentId": str(ocr_run.get("sourceFingerprint") or ""),
+        "ocrProvider": str(ocr_run.get("provider") or "unknown"),
+        "ocrVersion": str(ocr_run.get("pipelineVersion") or "unknown"),
+        "segmentationVersion": str(ocr_run.get("questionSegmentationVersion") or "unknown"),
+        "version": "question-ir-v1",
+    }
+    question["sourceProvenance"] = provenance
 
 
 def _runtime_available(model_run: dict[str, Any], review_run: dict[str, Any]) -> bool:
@@ -53,6 +99,7 @@ def _generate_validated_question(
     ocr_run: dict[str, Any],
     asset_dir: Path,
     run_id: str | None = None,
+    question_ir: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
     """生成单题，并对未通过质量门禁的结果进行有限自动重试。
 
@@ -66,22 +113,75 @@ def _generate_validated_question(
     repair_errors: list[str] = []
     for attempt in range(1, attempts + 1):
         completed_attempts = attempt
-        payload, guide_cards, model_run = generate_lesson(
-            block,
-            repair_errors=repair_errors or None,
-        )
+        if question_ir is not None:
+            payload, guide_cards, model_run = generate_question_from_ir(
+                question_ir,
+                repair_errors=repair_errors or None,
+                asset_dir=asset_dir,
+            )
+        else:
+            try:
+                payload, guide_cards, model_run = generate_lesson(
+                    block,
+                    repair_errors=repair_errors or None,
+                    asset_dir=asset_dir,
+                )
+            except TypeError as error:
+                # Preserve third-party/test adapters implementing the old two-argument
+                # generator while the built-in path uses the durable stage cache.
+                if "unexpected keyword argument 'asset_dir'" not in str(error):
+                    raise
+                payload, guide_cards, model_run = generate_lesson(
+                    block,
+                    repair_errors=repair_errors or None,
+                )
+        projection_ir = dict(question_ir) if question_ir is not None else None
+        if projection_ir is not None:
+            # Freeze extraction-owned fields before the advisory review call. This gives
+            # the reviewer context without allowing its response to become a new source.
+            if not projection_ir.get("givens"):
+                projection_ir["givens"] = list(payload["question"].get("givens") or [])
+            if not projection_ir.get("subQuestions"):
+                projection_ir["subQuestions"] = [
+                    dict(item) for item in payload["question"].get("subQuestions") or []
+                    if isinstance(item, dict)
+                ]
         attach_question_source(payload, batch, ocr_run, images)
         if number:
             payload["question"]["questionNumber"] = number
         payload["question"]["sourceQuestionKey"] = question_key(batch["id"], number, index)
-        payload, review_run = review_lesson_payload(
-            payload,
-            block,
-            question_image_paths(asset_dir, images),
-            guide_cards,
-        )
+        try:
+            payload, review_run = review_lesson_payload(
+                payload,
+                block,
+                question_image_paths(asset_dir, images),
+                guide_cards,
+                question_ir=projection_ir,
+            )
+        except TypeError as error:
+            if "unexpected keyword argument 'question_ir'" not in str(error):
+                raise
+            payload, review_run = review_lesson_payload(
+                payload,
+                block,
+                question_image_paths(asset_dir, images),
+                guide_cards,
+            )
+            if projection_ir is not None:
+                payload["question"] = project_question_ir(projection_ir, payload["question"])
         # 审核模型可能会删掉图片或把文件名写回文字字段。来源图片是 OCR 的确定性事实，
         # 审核只能补充说明，不能改变题目与图片的归属；因此审核后再次绑定来源。
+        attach_question_source(payload, batch, ocr_run, images)
+        _attach_question_ir_provenance(
+            payload,
+            number=number,
+            block=block,
+            images=images,
+            batch=batch,
+            ocr_run=ocr_run,
+            asset_dir=asset_dir,
+            question_ir=projection_ir,
+        )
         attach_question_source(payload, batch, ocr_run, images)
         normalize_stacked_equation_choices(payload, block)
         normalize_text_choices_from_source(payload, str(payload["question"].get("prompt", "")))
@@ -97,6 +197,8 @@ def _generate_validated_question(
             )
         )
         normalize_image_choice_question(payload, block, images)
+        if projection_ir is not None:
+            payload["question"] = project_question_ir(projection_ir, payload["question"])
         placeholder_audits = [
             audit
             for audit in (model_run.get("imagePlaceholderAudit"), review_run.get("imagePlaceholderAudit"))
@@ -106,6 +208,15 @@ def _generate_validated_question(
             # 这是质量门禁的瞬时输入，不进入最终题目契约；门禁会把失败证据写入 quality。
             payload["_imagePlaceholderAudits"] = placeholder_audits
         quality = apply_question_quality_gate(payload, block, images)
+        verification = payload["question"].get("verification")
+        if isinstance(verification, dict) and verification.get("status") != "verified":
+            reason = "答案核验未通过"
+            conflicts = safe_string_list(verification.get("conflicts"), [], 3)
+            if conflicts:
+                reason = f"{reason}：{'；'.join(conflicts)}"
+            quality.setdefault("errors", []).append(reason[:300])
+            quality["status"] = "needs_review"
+            payload["question"]["publicationStatus"] = "needs_review"
         can_retry = (
             quality["status"] != "ready"
             and attempt < attempts
@@ -196,7 +307,7 @@ def _quarantine_duplicate_question_number(
 
 
 def process_question_sources(
-    question_sources: list[tuple[str, str, list[str]]],
+    question_sources: Sequence[tuple[str, str, list[str]] | dict[str, Any]],
     batch: dict[str, Any],
     ocr_run: dict[str, Any],
     asset_dir: Path,
@@ -216,7 +327,15 @@ def process_question_sources(
     total = max(1, len(question_sources))
     seen_numbers: set[str] = set()
     log_event("question.batch.started", question_count=len(question_sources), batch_id=batch.get("id"), run_id=run_id)
-    for index, (number, block, images) in enumerate(question_sources):
+    for index, source_item in enumerate(question_sources):
+        if isinstance(source_item, dict):
+            question_ir = source_item
+            number = str(source_item.get("number") or "")
+            block = str(source_item.get("sourceText") or "")
+            images = [str(item) for item in source_item.get("visualAssetIds", []) if str(item).strip()]
+        else:
+            question_ir = None
+            number, block, images = source_item
         log_event("question.started", batch_id=batch.get("id"), question_number=number or index + 1, image_count=len(images), run_id=run_id)
         payload, guide_cards, model_run, review_run = _generate_validated_question(
             number=number,
@@ -227,6 +346,7 @@ def process_question_sources(
             ocr_run=ocr_run,
             asset_dir=asset_dir,
             run_id=run_id,
+            question_ir=question_ir,
         )
         if number:
             if number in seen_numbers:

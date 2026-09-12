@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 RunOperation = Literal[
     "question_repair",
@@ -12,6 +12,7 @@ RunOperation = Literal[
     "batch_regenerate",
     "publication_rereview",
     "initial_batch",
+    "stage_rerun",
 ]
 
 
@@ -58,6 +59,33 @@ class QuestionRegenerationResponse(AuditedOperationResponse):
     reviewRun: dict[str, Any] | None = None
     regeneration: dict[str, Any]
     revision: RevisionSummary | None = None
+
+
+class QuestionReviewQueueResponse(BaseModel):
+    """题目工作台所需的来源、问题和阶段运行快照。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    uploadId: str
+    sourceQuestionKey: str
+    questionPayload: dict[str, Any] | None = None
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    issues: list[dict[str, Any]] = Field(default_factory=list)
+    stageRuns: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ReviewQueueResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    uploadId: str
+    items: list[QuestionReviewQueueResponse] = Field(default_factory=list)
+
+
+class StageRerunResponse(QuestionRegenerationResponse):
+    """指定阶段及其下游重跑结果。"""
+
+    stage: str
+    stages: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class BatchProcessResponse(BaseModel):

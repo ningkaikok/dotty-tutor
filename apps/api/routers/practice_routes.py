@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from answer_evaluator import evaluate_structured_answer
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
-from domain.questions.student_view import student_question_payload
+from domain.questions.student_view import student_review_task, student_variation_item
 from observability import log_event
 from routers.tutoring_routes import has_meaningful_answer
 
@@ -20,10 +20,7 @@ def _public_variation(variation: dict[str, Any]) -> dict[str, Any]:
     判题在服务端完成（``evaluate_structured_answer``），学生端不需要标准答案，
     因此这里剥掉答案不会影响任何渲染或作答流程。
     """
-    return {
-        **variation,
-        "questionPayload": student_question_payload(variation.get("questionPayload")),
-    }
+    return student_variation_item(variation)
 
 
 def build_practice_router(
@@ -88,7 +85,7 @@ def build_practice_router(
             "status": mistake["status"],
             "masteryTransition": "unmastered → mastered" if mistake["status"] == "mastered" else "unmastered",
             "variations": variations,
-            "reviewTasks": reviews,
+            "reviewTasks": [student_review_task(review) for review in reviews],
         }
 
     @router.post("/api/mistakes/{mistake_id}/variations")

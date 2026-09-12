@@ -35,15 +35,19 @@ from application.textbook_jobs import build_textbook_registry
 from domain.contracts.audit import (
     BackgroundJobSummary,
     QuestionRegenerationResponse,
+    QuestionReviewQueueResponse,
+    ReviewQueueResponse,
     RevisionSummary,
     RunSummary,
+    StageRerunResponse,
 )
 from domain.questions.contracts import (
     GUIDE_CARDS,
     HelpRequest,
     PdfUploadInitRequest,
-    TutorReply,
+    StudentTutorReply,
 )
+from domain.questions.student_view import student_tutor_reply
 from infrastructure.files.upload_registry import UploadRegistry
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from observability import log_event
@@ -398,12 +402,13 @@ def get_full_paper_summary(upload_id: str) -> dict[str, Any]:
         "uploadId": upload_id,
         "job": _job_response(latest) if latest else None,
         "summary": summary,
+        "examIRByBatch": result.get("examIRByBatch") or {},
         "questionPayloads": (result.get("questionPayloads") or [])[:MAX_FULL_PAPER_QUESTIONS],
     }
 
 
-@router.post("/api/help", response_model=TutorReply)
-def get_help(request: HelpRequest) -> TutorReply:
+@router.post("/api/help", response_model=StudentTutorReply)
+def get_help(request: HelpRequest) -> StudentTutorReply:
     """Generate one answer/help turn and emit assessment telemetry."""
     started = time.perf_counter()
     if request.publicationId:
@@ -438,7 +443,7 @@ def get_help(request: HelpRequest) -> TutorReply:
         assessment=reply.guideContext.get("assessment"),
         duration_ms=round((time.perf_counter() - started) * 1000, 1),
     )
-    return reply
+    return StudentTutorReply.model_validate(student_tutor_reply(reply.model_dump()))
 
 
 @router.post(
@@ -501,6 +506,37 @@ def regenerate_question(
         question_source_key,
         refresh_ocr=refreshOcr,
     )
+
+
+@router.get(
+    "/api/uploads/{upload_id}/review-queue",
+    response_model=ReviewQueueResponse,
+)
+def get_review_queue(upload_id: str) -> dict[str, Any]:
+    """返回一个上传任务中需要人工关注的题目审核队列。"""
+    job = upload_job(upload_id)
+    payloads = job.get("batchPayloads") or {
+        str(item.get("question", {}).get("sourceQuestionKey")): item
+        for item in (job.get("result") or {}).get("questionPayloads", [])
+        if isinstance(item, dict) and item.get("question", {}).get("sourceQuestionKey")
+    }
+    return {"uploadId": upload_id, "items": [processing_service.review_queue(upload_id, key) for key in payloads]}
+
+
+@router.get(
+    "/api/uploads/{upload_id}/review-queue/{question_source_key}",
+    response_model=QuestionReviewQueueResponse,
+)
+def get_question_review_queue(upload_id: str, question_source_key: str) -> dict[str, Any]:
+    return processing_service.review_queue(upload_id, question_source_key)
+
+
+@router.post(
+    "/api/uploads/{upload_id}/questions/{question_source_key}/stages/{stage}/rerun",
+    response_model=StageRerunResponse,
+)
+def rerun_question_stage(upload_id: str, question_source_key: str, stage: str) -> dict[str, Any]:
+    return processing_service.rerun_stage(upload_id, question_source_key, stage)
 
 
 @router.get("/api/runs/{run_id}", response_model=RunSummary)

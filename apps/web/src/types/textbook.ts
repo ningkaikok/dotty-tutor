@@ -3,7 +3,7 @@ import type { ModelRun, OcrRun, ReviewRun } from "./runtime";
 
 export interface RunSummary {
   runId: string;
-  operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch";
+  operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
   scope: string;
   targetUploadId?: string | null;
   targetQuestionKey?: string | null;
@@ -14,6 +14,15 @@ export interface RunSummary {
   error?: Record<string, unknown> | null;
   startedAt: number;
   completedAt?: number | null;
+}
+
+export interface QuestionReviewItem {
+  uploadId: string;
+  sourceQuestionKey: string;
+  questionPayload?: QuestionPayload | null;
+  provenance: Record<string, unknown>;
+  issues: Array<{ code: string; message: string }>;
+  stageRuns: Array<{ name: string; provider?: string; model?: string; fallback?: boolean; cacheHit?: boolean; skipped?: boolean }>;
 }
 
 export interface RevisionSummary {
@@ -159,6 +168,18 @@ export interface QuestionRegenerationResult {
   };
   run: RunSummary;
   revision?: RevisionSummary | null;
+}
+
+export interface QuestionStageRerunResult {
+  batch: NonNullable<TextbookImportResult["batches"]>[number];
+  questionPayload: QuestionPayload;
+  guideCards: Array<Record<string, unknown>>;
+  modelRun: ModelRun;
+  reviewRun?: ReviewRun | null;
+  stage: string;
+  stages: QuestionReviewItem["stageRuns"];
+  regeneration: { scope: "stage"; operation: "stage_rerun"; stage: string };
+  run: RunSummary;
 }
 
 export interface PdfUploadTask {

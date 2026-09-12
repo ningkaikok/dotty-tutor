@@ -63,18 +63,21 @@ npm run check:api     # 只校验，过期时返回非零状态
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/question` | 返回内置示例题和讲解 |
-| `POST` | `/api/textbook/import` | 上传单页图片或小 PDF，返回一道结构化题目 |
+| `POST` | `/api/textbook/import` | 上传单页图片或小 PDF，返回一道结构化题目；题目包含 `sourceProvenance`，模型运行记录的 `stages` 标识原题抽取、独立求解、答案核验和教学脚本阶段 |
 | `POST` | `/api/uploads/init` | 初始化最大 500 MB 的 PDF 分块任务 |
 | `PUT` | `/api/uploads/{uploadId}/chunks/{index}` | 幂等上传一个 5 MB 分块 |
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
 | `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；返回 `202 + jobId`；支持 `Idempotency-Key` |
-| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport` 和题目载荷 |
+| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport`、各批次 `examIRByBatch` 和题目载荷 |
 | `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
 | `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
 | `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate` | 修复单题；传 `refreshOcr=true` 时先重新 OCR |
+| `GET` | `/api/uploads/{uploadId}/review-queue` | 返回题目审核队列；每项包含 `provenance`、`issues`、`stageRuns` 和当前题目载荷 |
+| `GET` | `/api/uploads/{uploadId}/review-queue/{sourceQuestionKey}` | 读取单题来源证据、诊断和阶段运行摘要 |
+| `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/stages/{stage}/rerun` | 从指定阶段开始，重跑该阶段及下游；核验非 `verified` 时不调用教学脚本模型 |
 | `GET` | `/api/runs/{runId}` | 查询冻结的运行配置、状态和结果/失败证据 |
 | `GET` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions` | 按来源题键读取不可变题目修订链 |
 
@@ -88,6 +91,12 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 整本导入的 `qualityReport` 是确定性 OCR 检查结果：`ready` 表示可继续生成，`warning` 允许继续但需人工留意，
 `blocked` 表示检测到题号/图片归属等阻断项，Worker 不会继续调用模型。报告同时返回预计题数、题号范围、重复
 题号、缺失页、图片归属冲突以及坐标归属审计 `imageAttributionAudit`，便于定位后重新上传或修复 OCR。
+
+题目来源优先读取批次目录中的 `source.content_list.json` 与 `source.middle.json`，并写入
+`assets/{batchId}/exam-ir.json`。每个 `QuestionIR` 保留真实 `sourceBlockIds`、页码、bbox、`textHash`、
+图片 ID、顺序和来源 origin；缺失结构化产物时明确标记 `markdown-fallback`。审核队列会暴露
+`SOURCE_BLOCK_MISSING`、`SOURCE_TEXT_NOT_RECONSTRUCTABLE`、`PAGE_RANGE_INVALID`、
+`IMAGE_OWNER_CONFLICT`、`ANSWER_REFERENCE_AMBIGUOUS` 和 `BOUNDARY_LOW_CONFIDENCE` 等诊断。
 
 ## 学习与语音
 
@@ -258,7 +267,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | --- | --- | --- |
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
-| `GET` | `/api/mistakes/{mistakeId}` | 读取题目快照、原答案、两路归因和运行信息；旧兼容归因列仍保留 |
+| `GET` | `/api/mistakes/{mistakeId}` | 读取学生安全的题目快照、原答案和两路归因；服务端保留的运行信息不下发 |
 | `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |

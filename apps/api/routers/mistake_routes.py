@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
+from domain.questions.student_view import student_mistake_item
 from observability import log_event
 
 MAX_MISTAKE_IMAGE_BYTES = 10 * 1024 * 1024
@@ -171,4 +172,11 @@ def build_mistake_router(
 
 
 def _public_item(item: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in item.items() if key != "sourceImagePath"}
+    """Project a mistake record at the student API boundary.
+
+    The store deliberately keeps the full payload for server-side tutoring and grading. A
+    mistake response is a student response, however, so its payload must use the same
+    whitelist as published questions; a future diagnostic field must not become public by
+    merely being added to the store record.
+    """
+    return student_mistake_item(item)

@@ -77,7 +77,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
               <ol>{question.options.map((option) => <li key={option}><RichText text={optionText(option)} /></li>)}</ol>
             ) : null}
           </div>
-          <small>{fromPublishedPaper ? "来源：已发布互动试卷" : `OCR：${item.ocrRun.provider} · 模型：${item.modelRun.provider}`}</small>
+          <small>{fromPublishedPaper ? "来源：已发布互动试卷" : "来源：上传的错题图片"}</small>
         </aside>
 
         <div className="mistake-confirm-form">

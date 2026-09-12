@@ -1,5 +1,4 @@
 import type { QuestionPayload } from "./question";
-import type { ModelRun, OcrRun } from "./runtime";
 
 export type MistakeErrorReason =
   | "concept"
@@ -19,8 +18,6 @@ export interface MistakeItem {
   sourceImageUrl: string;
   questionPayload: QuestionPayload;
   guideCards: Array<Record<string, unknown>>;
-  ocrRun: OcrRun;
-  modelRun: ModelRun;
   originalAnswer: string;
   subject: string;
   gradeBand: string;

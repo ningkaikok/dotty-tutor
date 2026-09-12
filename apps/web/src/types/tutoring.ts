@@ -1,6 +1,5 @@
 import type { CanvasAction } from "./question";
 import type { MistakeErrorReason } from "./mistake";
-import type { ModelRun } from "./runtime";
 
 /**
  * 确定性判题提供给学生的事实集合；刻意不包含标准答案或期望值内容。
@@ -87,7 +86,6 @@ export interface TutorReply {
   nextHintLevel: number;
   canvasAction: CanvasAction;
   source: "stored-guide-card" | "answer-check" | "model-generated";
-  modelRun: ModelRun;
 }
 
 export interface TutorMessage {
@@ -98,7 +96,6 @@ export interface TutorMessage {
   inputMode: "text" | "structured";
   assessment?: "correct" | "partial" | "incorrect";
   action: Record<string, unknown>;
-  modelRun: ModelRun | Record<string, never>;
   createdAt: number;
 }
 
@@ -188,6 +185,5 @@ export interface TutorTurnResult {
       fallbackUsed: boolean;
       similarity?: number;
     };
-    modelRun: Partial<ModelRun>;
   };
 }

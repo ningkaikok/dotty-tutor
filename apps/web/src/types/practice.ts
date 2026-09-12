@@ -1,5 +1,4 @@
 import type { QuestionPayload } from "./question";
-import type { ModelRun } from "./runtime";
 import type { MistakeErrorReason, MistakeStatus } from "./mistake";
 import type { ReviewTask } from "./review";
 import type { EvaluationEvidence } from "./tutoring";
@@ -23,7 +22,6 @@ export interface VariationExercise {
   level: VariationLevel;
   sequence: number;
   questionPayload: QuestionPayload;
-  modelRun: ModelRun;
   status: "ready" | "answered";
   assessment?: "correct" | "partial" | "incorrect";
   response: {

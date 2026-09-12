@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 
 from domain.contracts.audit import PublicationRevisionResponse
 from domain.contracts.lesson import PublicationCreate, PublicationStatusUpdate
-from domain.questions.student_view import student_question
+from domain.questions.student_view import student_question_payload
 from observability import log_event
 from publication_quality import PublicationQualityError
 
@@ -23,20 +23,7 @@ def _public_lesson(lesson: dict[str, Any]) -> dict[str, Any]:
     ``answerSpec.expected``/``subQuestions[].correctAnswer``/
     ``interaction.requiredConnections`` 会随题目一起发到学生浏览器。
     """
-    payload = dict(lesson.get("questionPayload") or {})
-    question = student_question(payload.get("question"))
-    for key in ("publicationStatus", "sourceArtifactUrl", "promptArtifactUrl"):
-        question.pop(key, None)
-    payload["question"] = question
-    payload.pop("review", None)
-    payload.pop("quality", None)
-    payload["architecture"] = {}
-    payload["modelRun"] = {
-        "requestedProvider": "published",
-        "provider": "published",
-        "model": "published",
-        "fallback": False,
-    }
+    payload = student_question_payload(lesson.get("questionPayload"))
     return {
         "lessonId": lesson["lessonId"],
         "title": lesson["title"],

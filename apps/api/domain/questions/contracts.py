@@ -364,6 +364,16 @@ class TutorReply(BaseModel):
     modelRun: dict[str, Any] = Field(default_factory=dict)
 
 
+class StudentTutorReply(BaseModel):
+    """学生端陪练回复契约；模型提供商和运行信息只留在服务端。"""
+
+    reply: str
+    guideContext: dict
+    nextHintLevel: int
+    canvasAction: str
+    source: Literal["stored-guide-card", "answer-check", "model-generated"]
+
+
 class ModelSelectionRequest(BaseModel):
     provider: Provider
     model: str = Field(min_length=1, max_length=100)

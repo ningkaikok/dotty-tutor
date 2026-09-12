@@ -15,6 +15,7 @@ import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
 import { TextbookImport } from "../../TextbookImport";
 import { PublicationStatusBar } from "./PublicationStatusBar";
+import { QuestionReviewPanel } from "./QuestionReviewPanel";
 import type {
   BackgroundJob,
   CanvasAction,
@@ -471,6 +472,15 @@ export function TextbookApp() {
         <span>扫描页</span><strong>{textbookImport.filename}</strong><b>→</b>
         <span>识别完成</span><strong>{textbookImport.extraction.questionCount} 道题 · {textbookImport.extraction.guideCardCount} 张引导卡</strong>
       </section>
+
+      <QuestionReviewPanel
+        uploadId={textbookImport.uploadId}
+        payload={payload}
+        onPayload={(nextPayload) => {
+          setQuestionBank((current) => current.map((item) => item.question.sourceQuestionKey === nextPayload.question.sourceQuestionKey ? nextPayload : item));
+          setPayload(nextPayload);
+        }}
+      />
 
       <LessonPlayer payload={payload} onActionChange={setCanvasAction} />
 
