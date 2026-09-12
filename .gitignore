@@ -26,3 +26,4 @@ vite.config.js
 vite.config.d.ts
 data/
 tmp/
+.dotty-runtime-selection.json

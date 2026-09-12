@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from infrastructure.runtime import selection_store
 from infrastructure.runtime.capabilities import HEALTH_BOOK
 from infrastructure.runtime.contracts import (
     PromptParts,
@@ -85,13 +86,14 @@ class ModelRuntime:
         """
         provider_name = f"{env_prefix}MODEL_PROVIDER" if env_prefix else "MODEL_PROVIDER"
         model_name = f"{env_prefix}MODEL_NAME" if env_prefix else "MODEL_NAME"
+        self.runtime_name = "tutoring" if env_prefix else "generation"
+        stored = selection_store.load(self.runtime_name)
         self.selection = ModelSelection(
-            provider=os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
-            model=os.getenv(model_name, "default"),
+            provider=(stored or {}).get("provider") or os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
+            model=(stored or {}).get("model") or os.getenv(model_name, "default"),
         )
         # 调用边界指标（roadmap T2）：只追加写入；存储缺失时为 no-op。
         self.metrics_store = metrics_store
-        self.runtime_name = "tutoring" if env_prefix else "generation"
 
     def ollama_models(self) -> tuple[list[str], str | None]:
         try:
@@ -173,6 +175,7 @@ class ModelRuntime:
         if model not in provider_info["models"]:
             raise ValueError(f"{provider} 中没有模型 {model}")
         self.selection = ModelSelection(provider, model)
+        selection_store.save(self.runtime_name, {"provider": provider, "model": model})
         return self.catalog()
 
     def config_snapshot(

@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from infrastructure.runtime import selection_store
 from infrastructure.runtime.contracts import (
     RuntimeConfigSnapshot,
     attach_runtime_config,
@@ -180,8 +181,9 @@ class ReviewRuntime:
 
     def __init__(self) -> None:
         # 文字和题图审核使用同一个裁判模型，避免一题得到两套相互矛盾的审核结论。
-        self.text_provider: Provider = os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
-        self.text_model = os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
+        stored = selection_store.load("review")
+        self.text_provider: Provider = (stored or {}).get("provider") or os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
+        self.text_model = (stored or {}).get("model") or os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
 
     def _audit_run(
         self,
@@ -229,6 +231,7 @@ class ReviewRuntime:
             raise ValueError(f"{provider} 中没有审核模型 {model}")
         self.text_provider = provider
         self.text_model = model
+        selection_store.save("review", {"provider": provider, "model": model})
         return self.catalog()
 
     def review(
