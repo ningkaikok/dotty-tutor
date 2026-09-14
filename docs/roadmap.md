@@ -19,7 +19,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| **最高（临时，2026-08-31；本轮已收口）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache 与真实数据扩充仍按信号推进。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| **最高（临时，2026-08-31；本轮已收口）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache、跨模型评测和真实数据扩充纳入主动实验队列。AI 前沿实验线已建立，下一步优先扩充跨模型评测和工具安全评测。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 第一版已完成；人工金标准扩充至 50+ 题和跨模型统计横评仍待完成 | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -28,7 +28,7 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 | P1 教学法 | 分类型复习间隔、定量/定性双门槛、推进由掌握度算出、错因双归因 | 前三项待启动；错因双归因已完成 | [`product-roadmap.md`](product-roadmap.md) |
 | T2 韧性 | 批次熔断与系统性失败识别、部分成功状态、依赖自检 preflight | 部分成功已有整卷结果汇总；批次熔断和依赖自检待启动 | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | 备选池 | 仿真卷、出题增量发射、内容块模板、教材定位与注释模型、拍照单次多模态、题图视觉复审、生成前审形状+成本估算（价值已论证，各自等触发信号） | 未排期 | [`product-roadmap.md`](product-roadmap.md) |
-| P2 实验 | 互动数学库二选一、WebLLM 提示兜底、知识点树派生索引、动画表现层 | 按信号暂缓 | 本文件“前端知识表达与互动技术选型” |
+| P2 实验 | 互动数学库二选一、WebLLM 提示兜底、知识点树派生索引、动画表现层 | 纳入 AI 前沿实验线，主动评估并保持独立可回滚 | 本文件“前端知识表达与互动技术选型” |
 | 生产化 | 登录鉴权、多租户隔离、商业化、高可用和公网运营 | 明确暂缓 | 本文件“暂缓范围” |
 
 > **方向 ≠ 部署（2026-08-29）**：产品方向已明确为“先服务一个学科组、主用户是老师”，
@@ -80,9 +80,9 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 ## 工程决策摘要
 
-- **暂不引入 LangChain、LangGraph 等代理编排框架**：现有路由/领域服务/状态机已覆盖全部流程。
-  只有出现"多代理并行编排、跨请求长流程恢复、同一编排逻辑在两个以上流程重复"信号时，才局部评估；
-  详细触发条件见 [engineering-roadmap](engineering-roadmap.md) 的架构边界一节。
+- **暂不引入全局 LangChain、LangGraph 等代理编排框架**：现有路由/领域服务/状态机继续负责生产流程，
+  但相关框架会纳入 AI 前沿实验线，主动在隔离环境比较多代理并行、跨请求长流程恢复和可复用编排能力；
+  详细边界见 [engineering-roadmap](engineering-roadmap.md)。
 - **暂不引入 TanStack Query / Zod**：理由和重评条件见 engineering-roadmap 的前端工具决策一节。
 - **学习数据采用显式迁移**：统一 CLI 通过 `preflight → upgrade → verify` 管理版本链；旧 mastery/归因数据以保留式
   projection 和幂等回填升级。进入公网生产前仍需补充备份恢复演练和低权限账号。
@@ -94,7 +94,8 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 [engineering-roadmap](engineering-roadmap.md) T1 执行队列：陪练结构化日志和统一
 `ModelRequest` / `ModelResult`；脱敏离线评测集与 Badcase/Judge 回放第一版已落地。
 
-Redis、OpenTelemetry、LangGraph 和 MCP 都属于按信号升级项，不是完成上述计划的前置依赖。
+Redis、OpenTelemetry、LangGraph 和 MCP 都属于可主动评估的实验项，不是完成上述计划的前置依赖；
+是否进入生产仍需通过性能、安全和可运维性验证。
 
 ## 前端知识表达与互动技术选型
 
@@ -222,16 +223,17 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 - [ ] 建立按知识点聚合的学习者画像，仅保存错误模式、提示依赖和掌握证据，不保存无边界聊天历史。
 - [ ] 回复上下文分为题目快照、线程摘要、最近必要消息和知识点画像，并分别设置长度与生命周期。
 
-### 阶段 D：评测、观测与按信号升级
+### 阶段 D：评测、观测与持续 AI 实验
 
-AI 工程学习可以先做离线对照；“按信号升级”约束的是生产化基础设施和复杂编排，不阻止多模态、工具调用和评测实验。
+AI 工程学习采用主动跟踪策略：新模型、新工具、新编排、新检索和新交互方向先做离线对照，
+再决定是否进入产品链路。生产化基础设施和复杂编排仍必须通过安全、可靠性、成本和回滚验证。
 评测参考 [MMTutorBench](https://github.com/TangciuYueng/MMTutorBench) 与 [MathTutorBench](https://github.com/eth-lre/mathtutorbench)
 的过程维度和教学能力拆分，数据许可和隐私边界另行确认。
 
 - [x] 建立 Tutor 专用脱敏评测实验室，覆盖错误定位、苏格拉底提问、提示升级、图片理解、工具越权和延迟/成本六维度 30 cases。
 - [x] 为模型回退、工具策略、图片观察确认和状态迁移记录稳定事件；更大规模 Judge 横评仍待扩充语料。
-- [ ] 只有出现跨请求暂停恢复、复杂并行工具或两个以上流程重复编排时，才局部评估 LangGraph；
-  LangChain、LangGraph 和多智能体都不是阶段 A 至 C 的前置依赖。
+- [ ] 主动对 LangGraph、LangChain 和多智能体做隔离评测；它们不是阶段 A 至 C 的前置依赖，
+  也不得绕过现有状态机直接写入学生学习状态。
 
 `feature/tutor-turn-planning` 已先行完成，`feature/multimodal-tutor-input` 已完成本轮垂直切片；后续扩充移动端体验、
 学习者画像和跨模型统计评测时继续保持独立 PR 和可回滚边界。
