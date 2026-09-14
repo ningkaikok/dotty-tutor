@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api/tutoring";
-import { assembleSubQuestionText, hasMeaningfulSubQuestionAnswer } from "../../answerAssembly";
 import type { MistakeItem, SubQuestionAnswer, TutorStage, TutorThread } from "../../types/index";
+import { buildStructuredAnswer } from "./structuredAnswer";
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasMeaningfulValue);
+  if (value && typeof value === "object") return Object.values(value).some(hasMeaningfulValue);
+  return typeof value === "boolean" || (value !== null && value !== undefined && String(value).trim().length > 0);
+}
 
 /**
  * 管理一个持久化陪练线程的客户端状态。
@@ -49,40 +55,15 @@ export function useMistakeTutor(item: MistakeItem) {
     setStudentInput(`我选择${next.join("、")}${answerText && !multiple ? `：${answerText}` : ""}`);
   };
 
-  const submit = async (mode: "answer" | "help") => {
+  const submit = async (mode: "answer" | "help", inputId?: string) => {
     if (!thread || sending) return;
-    const questionType = item.questionPayload.question.questionType;
-    // 所有可视化作答控件都转换为后端共享结构；自由文本继续承载思路，
-    // 但确定性判题优先使用无歧义的结构化字段。
-    const interactionResult = item.questionPayload.question.subQuestions?.length
-      ? { subQuestionAnswers }
-      : questionType === "fill-blank"
-      ? { blankAnswers }
-      : questionType === "numeric"
-        ? { numericAnswer }
-        : questionType === "choice" || questionType === "multi-select" || questionType === "true-false"
-          ? { selectedOptions }
-          : questionType === "draw-line"
-            ? { connections: drawConnections }
-            : {};
-    const hasStructuredAnswer = item.questionPayload.question.subQuestions?.length
-      ? hasMeaningfulSubQuestionAnswer(subQuestionAnswers)
-      : questionType === "fill-blank"
-      ? Object.values(blankAnswers).some((answer) => answer.trim())
-      : questionType === "numeric"
-        ? Boolean(numericAnswer.trim())
-        : questionType === "choice" || questionType === "multi-select" || questionType === "true-false"
-          ? selectedOptions.length > 0
-          : questionType === "draw-line"
-            ? drawConnections.length > 0
-            : false;
-    const subQuestionText = assembleSubQuestionText(item.questionPayload.question, subQuestionAnswers);
-    const content = studentInput.trim()
-      || subQuestionText
-      || (questionType === "fill-blank" ? Object.values(blankAnswers).join("；") : "")
-      || (questionType === "numeric" ? numericAnswer : "")
-      || (selectedOptions.length ? `我选择${selectedOptions.join("、")}` : "")
-      || (drawConnections.length ? "我完成了画线作答" : "");
+    const structured = buildStructuredAnswer(
+      item.questionPayload.question, selectedOptions, blankAnswers, numericAnswer,
+      drawConnections, subQuestionAnswers,
+    );
+    const interactionResult = structured.interactionResult;
+    const hasStructuredAnswer = hasMeaningfulValue(interactionResult);
+    const content = studentInput.trim() || structured.content;
     if (mode === "answer" && !content && !hasStructuredAnswer) {
       setError("请先输入或选择答案");
       return;
@@ -97,6 +78,7 @@ export function useMistakeTutor(item: MistakeItem) {
         content,
         mode,
         hintLevel: thread.hintLevel,
+        ...(inputId ? { inputId } : {}),
         ...(Object.keys(meaningfulInteractionResult).length > 0
           ? { interactionResult: meaningfulInteractionResult }
           : {}),

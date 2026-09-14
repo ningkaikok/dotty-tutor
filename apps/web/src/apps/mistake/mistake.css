@@ -141,6 +141,25 @@
 .tutor-input { display: block; padding: 0 20px; }
 .tutor-input span { display: block; margin-bottom: 7px; color: #526159; font-size: 12px; font-weight: 700; }
 .tutor-input textarea { width: 100%; min-height: 82px; resize: vertical; border: 1px solid #d6ddd7; border-radius: 13px; padding: 12px; background: #fafbf8; font: inherit; box-sizing: border-box; }
+.tutor-input-composer { display: grid; gap: 7px; }
+.tutor-photo-action { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px; }
+.tutor-photo-action button { border: 1px dashed #9bbcaf; border-radius: 10px; padding: 8px 11px; color: #27755d; background: #f3faf6; cursor: pointer; }
+.tutor-photo-action .tutor-canvas-toggle { border-color: #b7c8e0; color: #385a83; background: #f5f8fd; }
+.interactive-math-canvas { margin: 0 20px; padding: 12px; border: 1px solid #d8e0dc; border-radius: 13px; background: #fbfdfc; }
+.interactive-math-canvas p { margin: 0 0 8px; color: #63736b; font-size: .86rem; }
+.interactive-math-canvas svg { display: block; width: 100%; max-height: 300px; border-radius: 9px; cursor: crosshair; touch-action: none; }
+.math-canvas-paper { fill: #fff; stroke: #cfdad4; }
+.math-canvas-grid { stroke: #e7eeea; stroke-width: .35; }
+.math-canvas-axis { stroke: #9aaba2; stroke-width: .7; }
+.math-canvas-student-point { fill: #d86b43; stroke: #fff; stroke-width: 1.2; }
+.math-canvas-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: #43544c; font-size: .88rem; }
+.math-canvas-controls span { margin-right: auto; }
+.math-canvas-controls .ghost { padding: 4px 8px; border: 1px solid #cbd5cf; border-radius: 7px; background: #fff; cursor: pointer; }
+.tutor-observation-review { margin: 12px 20px 0; padding: 14px; border: 1px solid #e5c98a; border-radius: 14px; background: #fffaf0; color: #654f24; }
+.tutor-observation-review p { margin: 7px 0; font-size: 12px; line-height: 1.5; }
+.tutor-observation-review label { display: block; font-size: 12px; font-weight: 700; }
+.tutor-observation-review textarea { display: block; width: 100%; min-height: 65px; margin-top: 6px; box-sizing: border-box; border: 1px solid #e1d5b6; border-radius: 9px; padding: 9px; font: inherit; }
+.tutor-observation-review small { display: block; margin-top: 7px; color: #87754b; }
 .tutor-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 12px 20px 5px; }
 .tutor-actions button { border: 1px solid #cbd5cf; border-radius: 11px; padding: 10px 14px; background: #fff; cursor: pointer; }
 .tutor-actions .mistake-primary-action { color: #fff; border-color: #183f31; background: #183f31; }

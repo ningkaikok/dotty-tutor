@@ -1090,6 +1090,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tutor/inputs/{input_id}/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Artifact */
+        get: operations["get_artifact_api_tutor_inputs__input_id__artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tutor/inputs/{input_id}/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Decide Observation */
+        patch: operations["decide_observation_api_tutor_inputs__input_id__observations_patch"];
+        trace?: never;
+    };
+    "/api/tutor/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_tutor_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tutor/search/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild */
+        post: operations["rebuild_api_tutor_search_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tutor/threads/{thread_id}": {
         parameters: {
             query?: never;
@@ -1110,6 +1178,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tutor/threads/{thread_id}/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Input */
+        post: operations["create_input_api_tutor_threads__thread_id__inputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tutor/threads/{thread_id}/messages": {
         parameters: {
             query?: never;
@@ -1124,6 +1209,26 @@ export interface paths {
          * @description Evaluate one learner turn, generate guidance and persist both messages.
          */
         post: operations["append_message_api_tutor_threads__thread_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tutor/threads/{thread_id}/tool-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tool Events
+         * @description Return the server-side shadow audit for a tutor thread.
+         */
+        get: operations["list_tool_events_api_tutor_threads__thread_id__tool_events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1496,6 +1601,43 @@ export interface components {
             /** Updatedat */
             updatedAt: number;
         };
+        /** Body_create_input_api_tutor_threads__thread_id__inputs_post */
+        Body_create_input_api_tutor_threads__thread_id__inputs_post: {
+            /**
+             * Canvasstate
+             * @default
+             */
+            canvasState: string;
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Formularecognitions
+             * @default []
+             */
+            formulaRecognitions: string;
+            /**
+             * Interactionresult
+             * @default {}
+             */
+            interactionResult: string;
+            /**
+             * Learnerid
+             * @default local-demo
+             */
+            learnerId: string;
+            /**
+             * Mode
+             * @default text
+             */
+            mode: string;
+            /** Photo */
+            photo?: string | null;
+            /** Questionimage */
+            questionImage?: string | null;
+        };
         /** Body_import_mistake_api_mistakes_import_post */
         Body_import_mistake_api_mistakes_import_post: {
             /** File */
@@ -1578,11 +1720,21 @@ export interface components {
         };
         /** HelpRequest */
         HelpRequest: {
+            /** Canvasstate */
+            canvasState?: {
+                [key: string]: unknown;
+            } | null;
+            /** Formularecognitions */
+            formulaRecognitions?: {
+                [key: string]: unknown;
+            }[];
             /**
              * Hintlevel
              * @default 0
              */
             hintLevel: number;
+            /** Inputid */
+            inputId?: string | null;
             /** Interactionresult */
             interactionResult?: {
                 [key: string]: unknown;
@@ -2039,18 +2191,111 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * TutorCanvasState
+         * @description Replayable structured canvas state; raster snapshots remain evidence only.
+         */
+        TutorCanvasState: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "point-placement";
+            /** Operations */
+            operations?: {
+                [key: string]: unknown;
+            }[];
+            /** Points */
+            points?: {
+                [key: string]: number | string;
+            }[];
+            /**
+             * Schemaversion
+             * @default math-canvas-v1
+             */
+            schemaVersion: string;
+            /**
+             * Xmax
+             * @default 10
+             */
+            xMax: number;
+            /**
+             * Xmin
+             * @default -10
+             */
+            xMin: number;
+            /**
+             * Ymax
+             * @default 10
+             */
+            yMax: number;
+            /**
+             * Ymin
+             * @default -10
+             */
+            yMin: number;
+        };
+        /**
+         * TutorEvidenceRegion
+         * @description Normalized evidence box shared by OCR, vision and formula adapters.
+         */
+        TutorEvidenceRegion: {
+            /** Height */
+            height: number;
+            /** Width */
+            width: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /**
+         * TutorFormulaRecognition
+         * @description An untrusted formula candidate that needs learner confirmation before grading.
+         */
+        TutorFormulaRecognition: {
+            /**
+             * Authority
+             * @default model
+             * @enum {string}
+             */
+            authority: "model" | "learner-confirmed";
+            /** Confidence */
+            confidence: number;
+            /** Evidenceregions */
+            evidenceRegions?: components["schemas"]["TutorEvidenceRegion"][];
+            /**
+             * Latex
+             * @default
+             */
+            latex: string;
+            /**
+             * Normalized
+             * @default
+             */
+            normalized: string;
+            /** Recognitionid */
+            recognitionId: string;
+            /** Sourceartifactid */
+            sourceArtifactId?: string | null;
+        };
         /** TutorMessageRequest */
         TutorMessageRequest: {
+            canvasState?: components["schemas"]["TutorCanvasState"] | null;
             /**
              * Content
              * @default
              */
             content: string;
+            /** Formularecognitions */
+            formulaRecognitions?: components["schemas"]["TutorFormulaRecognition"][];
             /**
              * Hintlevel
              * @default 0
              */
             hintLevel: number;
+            /** Inputid */
+            inputId?: string | null;
             /** Interactionresult */
             interactionResult?: {
                 [key: string]: unknown;
@@ -2061,6 +2306,31 @@ export interface components {
              * @enum {string}
              */
             mode: "answer" | "help";
+        };
+        /**
+         * TutorObservationDecision
+         * @description Append-only learner decision; it never mutates the original observation.
+         */
+        TutorObservationDecision: {
+            /** Correctedfacts */
+            correctedFacts?: string[];
+            /** Correctedformulacandidates */
+            correctedFormulaCandidates?: string[];
+            /**
+             * Correctedtext
+             * @default
+             */
+            correctedText: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "confirm" | "correct" | "reject";
+        };
+        /** TutorSearchIndexRequest */
+        TutorSearchIndexRequest: {
+            /** Publicationid */
+            publicationId: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -4193,6 +4463,149 @@ export interface operations {
             };
         };
     };
+    get_artifact_api_tutor_inputs__input_id__artifacts__artifact_id__get: {
+        parameters: {
+            query?: {
+                learnerId?: string;
+            };
+            header?: never;
+            path: {
+                artifact_id: string;
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_observation_api_tutor_inputs__input_id__observations_patch: {
+        parameters: {
+            query?: {
+                learnerId?: string;
+            };
+            header?: never;
+            path: {
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorObservationDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_tutor_search_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                publicationId?: string | null;
+                q?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_api_tutor_search_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorSearchIndexRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_thread_api_tutor_threads__thread_id__get: {
         parameters: {
             query?: never;
@@ -4203,6 +4616,43 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_input_api_tutor_threads__thread_id__inputs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_input_api_tutor_threads__thread_id__inputs_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4250,6 +4700,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tool_events_api_tutor_threads__thread_id__tool_events_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Validation Error */

@@ -34,13 +34,17 @@ dotty-tutor/
 │   │   ├── app_factory.py      # 中间件、安全头、CORS、请求日志
 │   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
-│   │   │   ├── tutoring_routes.py # 错题陪练线程 API
+│   │   │   ├── tutoring_routes.py # 错题陪练线程 API、工具策略审计
+│   │   │   ├── tutor_input_routes.py # 文字/结构化/图片/公式/画布输入 API
+│   │   │   ├── tutor_search_routes.py # Tutor PostgreSQL 全文检索 API
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
+│   │   │   ├── tutor_input_service.py # 输入证据与低置信度确认门禁
+│   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
@@ -51,7 +55,7 @@ dotty-tutor/
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
-│   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数
+│   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数（含观察、工具、画布）
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
 │   │   ├── mistake_recognition.py # 复用教材流水线的错题识别适配
 │   │   ├── variation_service.py # 错题变式验证题生成、归因采信和题型门禁
@@ -73,6 +77,8 @@ dotty-tutor/
 │   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
+│   │       ├── tutoring_store.py # TutorInput、线程、工具事件
+│   │       ├── search_store.py # PostgreSQL FTS 文档和证据引用
 │   │       └── schema.py        # 教材/学习领域表声明
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
 │   │   └── migrations/           # 唯一正式 schema migration 版本链
@@ -90,6 +96,7 @@ dotty-tutor/
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
 │   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
 │   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
+│   │   │   ├── InteractiveMathCanvas.tsx # 最小点放置数学画布
 │   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告
 │   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
 │   │   │   ├── answerAssembly.ts # 多小问及画线等交互答案的统一组装

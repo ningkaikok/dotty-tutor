@@ -79,16 +79,17 @@ projections`：引入 `knowledge_points`，让知识点身份由发布版本作�
 
 ## 二、当前 schema 的组织方式
 
-`schema_registry.py` 当前汇总 6 个领域、24 张业务表。各领域的职责如下：
+`schema_registry.py` 当前汇总 7 个领域、29 张业务表。各领域的职责如下：
 
 | 领域 | 当前表 | 主要职责 |
 | --- | --- | --- |
 | core | `upload_jobs`、`background_jobs`、`batch_questions`、`lesson_documents`、`lesson_publications`、`learning_classes`、`class_memberships`、`assignments`、`assignment_plans`、`knowledge_points`、`run_snapshots`、`question_revisions`、`learning_sessions`、`exercise_attempts`、`mastery_states`、`teacher_review_events` | 教材、发布、学习、掌握度、班级和作业核心记录 |
 | mistake | `mistake_items`、`mistake_attributions` | 错题兼容投影和追加式错因历史 |
-| tutoring | `tutor_threads`、`tutor_messages` | 陪练线程、有限上下文消息和判题证据 |
+| tutoring | `tutor_threads`、`tutor_inputs`、`tutor_artifacts`、`tutor_observation_events`、`tutor_messages`、`tutor_tool_events` | 多模态输入、确认事件、陪练线程、有限上下文消息和工具策略审计 |
 | variation | `variation_exercises`、`variation_attempts` | 变式题当前投影与每次尝试历史 |
 | review | `review_tasks` | 间隔复习排期、答案和 `evaluation_evidence_json` |
 | metrics | `model_call_metrics` | 模型调用边界指标和成本代理数据 |
+| search | `lesson_search_documents` | 已发布题目正文、来源定位和 PostgreSQL `tsvector + GIN` 检索 |
 
 当前代码中的 SQLAlchemy metadata 是“模型描述”，不是生产变更命令。各领域 metadata 通过
 registry 被 Alembic 检查、readiness 报告和 PostgreSQL 测试夹具复用，避免再次出现同名表由导入顺序决定事实来源。
@@ -130,7 +131,7 @@ schema；`PostgresTestCase` 负责为数据库测试创建一次性 PostgreSQL �
    不替代业务数据库。
 2. **Alembic 是 schema 版本权威。** 当前唯一正式版本链是
    `apps/api/migrations/versions/0001_adopt_current_schema.py` 到
-   `0005_mistake_attributions.py`；生产变更必须进入有序 revision。
+   `0010_tutor_search_and_tools.py`；生产变更必须进入有序 revision。
 3. **SQLAlchemy metadata 描述当前模型。** `schema.py` 及各领域 Store 的表声明用于查询、
    registry、检查和新库建表语义；它们不授权业务进程直接改变 PostgreSQL。
 4. **业务进程不得 DDL。** PostgreSQL 运行时不执行 `create_all()`、`ALTER TABLE` 或隐式回填；
@@ -149,10 +150,13 @@ schema；`PostgresTestCase` 负责为数据库测试创建一次性 PostgreSQL �
 | `0003_assignment_governance` | 补齐班级、作业、assignment plan 及其索引；为 assignment 关联外键准备安全检查。 |
 | `0004_teacher_variation` | 补齐教师复核事件、变式归因来源和变式尝试历史。 |
 | `0005_mistake_attributions` | 创建 append-only 错因归因历史，并从旧错题兼容列做幂等双写/回填。 |
+| `0008_tutor_multimodal_input` | 创建 TutorInput、多模态证据引用和观察确认事件。 |
+| `0009_tutor_tools_and_canvas` | 增加结构化画布、公式候选兼容列和工具提案审计表。 |
+| `0010_tutor_search_and_tools` | 注册 Tutor 检索文档及 PostgreSQL 全文检索索引。 |
 
 `env.py` 在 PostgreSQL 事务内取得 advisory lock；`migration_cli.py` 提供
 `current`、`head`、`preflight`、`upgrade`、`verify` 五个统一入口；`schema_registry.py` 保证
-六个领域的 metadata 在迁移、检查和 PostgreSQL 测试夹具中保持同一份注册事实。
+七个领域的 metadata 在迁移、检查和 PostgreSQL 测试夹具中保持同一份注册事实。
 
 ## 五、PostgreSQL-only 现状
 

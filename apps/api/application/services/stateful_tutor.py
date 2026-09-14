@@ -101,12 +101,16 @@ class StatefulTutor:
             ai_error_reason=mistake.get("aiErrorReason"),
         )
         model_context = f"{context}\n{strategy_context}"[-2_700:]
+        formula_recognitions = getattr(request, "formulaRecognitions", []) or []
+        canvas_state = getattr(request, "canvasState", None)
         tutor_request = HelpRequest(
             questionId=question_id,
             studentInput=request.content,
             hintLevel=request.hintLevel,
             mode=request.mode,
             interactionResult=request.interactionResult,
+            formulaRecognitions=[item.model_dump() if hasattr(item, "model_dump") else item for item in formula_recognitions],
+            canvasState=canvas_state,
             language="zh",
         )
         if student_intent["id"] == "confirm-ready":
@@ -177,6 +181,7 @@ class StatefulTutor:
             "tutorTurnPlan": plan,
             "deduplication": deduplication,
             "modelRun": self._model_audit(tutor_reply.modelRun),
+            "toolProposals": tutor_reply.toolProposals,
         }
         summary = self._updated_summary(
             thread.get("summary", ""),

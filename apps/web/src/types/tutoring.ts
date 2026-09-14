@@ -58,6 +58,74 @@ export type EvaluationEvidence =
 /** 陪练只能沿这些可解释的阶段三状态前进，避免模型任意跳转流程。 */
 export type TutorStage = "diagnose" | "explain" | "practice" | "verify";
 
+export type TutorInputStatus = "received" | "needs_confirmation" | "confirmed" | "rejected";
+
+export interface TutorObservation {
+  facts: string[];
+  recognizedText: string;
+  formulaCandidates: string[];
+  confidence: number;
+  evidenceRegions: Array<{ x: number; y: number; width: number; height: number }>;
+  adapter: string;
+  adapterVersion: string;
+  runtimeRef: Record<string, unknown>;
+  fallback: boolean;
+}
+
+export interface TutorFormulaRecognition {
+  recognitionId: string;
+  latex: string;
+  normalized: string;
+  confidence: number;
+  evidenceRegions: Array<{ x: number; y: number; width: number; height: number }>;
+  sourceArtifactId?: string;
+  authority: "model" | "learner-confirmed";
+}
+
+export interface TutorCanvasState {
+  schemaVersion: "math-canvas-v1";
+  kind: "point-placement";
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+  points: Array<{ id: string; x: number; y: number }>;
+  operations: Array<Record<string, unknown>>;
+}
+
+export interface TutorArtifactRef {
+  artifactId: string;
+  inputId: string;
+  threadId: string;
+  learnerId: string;
+  kind: "question-image" | "solution-photo" | "canvas-snapshot" | "formula-crop" | "text" | "structured-answer";
+  mediaType: string;
+  filename: string;
+  byteSize: number;
+  sha256: string;
+  storagePath?: string;
+  createdAt: number;
+}
+
+export interface TutorInput {
+  inputId: string;
+  schemaVersion: "tutor-input-v1";
+  threadId: string;
+  mistakeId: string;
+  learnerId: string;
+  mode: "text" | "structured";
+  content: string;
+  interactionResult: Record<string, unknown>;
+  status: TutorInputStatus;
+  observation: TutorObservation | null;
+  artifacts: TutorArtifactRef[];
+  formulaRecognitions: TutorFormulaRecognition[];
+  canvasState: TutorCanvasState | null;
+  observationEvents?: Array<Record<string, unknown>>;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface GuideContext {
   assessment?: "correct" | "partial" | "incorrect";
   assessmentAuthority?: "deterministic" | "guided";

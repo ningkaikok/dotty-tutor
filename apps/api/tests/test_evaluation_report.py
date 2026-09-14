@@ -36,7 +36,9 @@ def _seed(directory: Path) -> None:
     # Judge 报告
     judge_dir = directory / "judge"
     judge_dir.mkdir()
-    (judge_dir / "judge-ollama-qwen2.5:7b.json").write_text(json.dumps({
+    # Windows treats `:` as an alternate data stream separator; production
+    # reports use `_safe_model_name` before constructing this filename.
+    (judge_dir / "judge-ollama-qwen2.5-7b.json").write_text(json.dumps({
         "provider": "ollama", "model": "qwen2.5:7b",
         "totals": {"samples": 3, "judged": 3, "failed": 0},
         "results": [

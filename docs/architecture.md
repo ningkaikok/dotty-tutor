@@ -211,7 +211,11 @@ flowchart TB
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
-| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
+| 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
+| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件 |
+| 工具策略 | `apps/api/domain/tutoring/tools.py` | 五种固定 ToolProposal、阶段门禁、证据引用和策略版本 |
+| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 全文检索，返回题目来源和证据定位 |
+| Tutor 评测 | `apps/api/evaluation/tutor/` | 六维度 30 case 的确定性语料检查、质量和延迟/成本指标 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |

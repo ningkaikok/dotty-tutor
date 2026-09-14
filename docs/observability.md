@@ -35,6 +35,9 @@ systemd、Loki、ELK 或云日志服务采集。
 - `mistake.archived`：错题归档状态变化。
 - `tutor.thread.ready`：创建或恢复单题辅导线程。
 - `tutor.turn.completed`：完成一轮判题、提示、状态推进和消息持久化。
+- `tutor.observation.reviewed`：记录图片/公式观察的确认、修正或拒绝结果，不记录原图内容。
+- `tutor.tool.policy`：记录工具提案的 allow/deny、策略版本和执行状态；当前执行状态固定为 `shadow`。
+- 模型指标中的 `duration_ms`、`provider_attempts` 和 token 字段用于评测实验室的延迟/成本汇总。
 
 ## 日志格式
 

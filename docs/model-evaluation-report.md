@@ -1,5 +1,19 @@
 # Dotty Tutor 模型与系统测试报告
 
+## Tutor 专用评测实验室（2026-09）
+
+错题陪练新增 `apps/api/evaluation/tutor/` 确定性评测实验室，覆盖错误定位、苏格拉底提问、提示升级、
+图片理解、工具越权和延迟/成本六个维度，共 30 个可脱敏 case。入口为：
+
+```bash
+cd apps/api
+uv run python -m evaluation.tutor.runner --check
+```
+
+实验室只检查语料完整性并提供纯函数指标，不伪造真实模型质量；接入运行结果时使用
+`metrics.py` 的证据命中、问题不泄露答案、提示重试上限、图片置信度/证据区域、工具策略和 P50/P95/成本汇总。
+工具提案当前为 shadow 模式，拒绝结果和策略版本写入 `tutor_tool_events`，便于先测越权率再开启执行器。
+
 ## 1. 报告信息
 
 | 项目 | 内容 |

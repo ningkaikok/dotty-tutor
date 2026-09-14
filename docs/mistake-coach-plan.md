@@ -59,12 +59,14 @@ diagnose → explain → practice → verify → mastered
 智能体根据学生的文字、选项、公式、图片或画板输入决定下一步，并通过受约束工具写入业务数据：
 
 - `evaluate_answer`：调用确定性判题，模型不自行宣布对错。
-- `diagnose_error_reason`：生成可由学生确认的错误原因。
-- `explain_misconception`：按当前误区生成短解释。
-- `select_next_hint`：只返回当前所需的一层提示。
-- `generate_practice_question`：生成同知识点、不同表述的练习。
-- `update_mastery`：根据验证结果更新掌握状态。
-- `schedule_review`：创建后续复习任务。
+- `explain_mistake`：按当前已确认证据生成短解释。
+- `generate_variation`：生成同知识点、不同表述的练习。
+- `record_evidence`：保存已有输入和判题证据引用。
+- `schedule_review`：在 verify 且判定正确后提出复习排期。
+
+模型只能返回工具名、理由和已有证据引用；`domain/tutoring/tools.py` 按阶段、输入确认状态和证据引用做
+allow/deny，路由只记录 `tutor_tool_events` 的 shadow 审计，不在本阶段执行副作用工具。
+文字、结构化答案、题图、画布和公式识别统一封装为 `tutor-input-v1`；图片/公式低置信度必须先由学生确认。
 
 达到“已掌握”需要完成一道验证题并答对。答错时保留同一道题，允许学生修改后重新提交，避免不断生成
 新题掩盖原来的误区。MVP 的复习间隔为 1、3、7 天；后续再基于题目难度和历史表现调整。
