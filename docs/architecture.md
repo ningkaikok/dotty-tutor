@@ -156,6 +156,7 @@ flowchart TB
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `apps/web/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
+| TutorInput 交互 | `apps/web/src/apps/mistake/components/TutorInputComposer.tsx`、`TutorObservationReview.tsx`、`useTutorInput.ts` | 统一文字、结构化答案、题图/步骤图、公式候选和画布输入；低置信度观察确认 |
 | 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
 | 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
@@ -167,7 +168,7 @@ flowchart TB
 | 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `apps/web/src/api/`、`apps/web/src/types/` | 按产品域组织请求和类型 |
 | 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
-| 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
+| 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx`、`apps/web/src/InteractiveMathCanvas.tsx` | 画线作答、几何演示和 Tutor 最小点放置画布 |
 | ASGI 组合根 | `apps/api/app.py`、`apps/api/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
 | 教材 HTTP 边界 | `apps/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
 | 教材处理服务 | `apps/api/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |

@@ -66,7 +66,7 @@ dotty-tutor/
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
 │   │   │   └── files/          # 上传注册和文件边界
-│   │   ├── evaluation/         # 脱敏语料、Badcase、重放和 Judge 工具
+│   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
 │   │       ├── schema_registry.py # 各领域 metadata 注册和重复表名检查
@@ -81,7 +81,7 @@ dotty-tutor/
 │   │       ├── search_store.py # PostgreSQL FTS 文档和证据引用
 │   │       └── schema.py        # 教材/学习领域表声明
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
-│   │   └── migrations/           # 唯一正式 schema migration 版本链
+│   │   └── migrations/           # 唯一正式 schema migration 版本链（含 Tutor 多模态/工具/检索）
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
 │   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
@@ -244,6 +244,9 @@ SQLite 的三阶段路线，见[数据库设计与治理演进](database-evoluti
   → 0003 assignment governance
   → 0004 teacher review + variation provenance
   → 0005 mistake_attributions + legacy column backfill
+  → 0008 tutor_multimodal_input
+  → 0009 tutor_tools_and_canvas
+  → 0010 tutor_search_and_tools
 ```
 
 `DatabaseStore` 及各领域 Store 只连接 PostgreSQL，且不执行 DDL；只有显式 Alembic 命令会修改生产

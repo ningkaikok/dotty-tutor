@@ -1,7 +1,7 @@
 # 数据库设计与治理演进
 
 本文记录 Dotty Tutor 数据库从快速验证到正式运行治理的演进。内容以仓库 Git 历史、当前
-`apps/api/persistence/` 代码和测试为依据，快照日期为 **2026-08-31**。它解释为什么当前
+`apps/api/persistence/` 代码和测试为依据，快照日期为 **2026-09-14**。它解释为什么当前
 PostgreSQL 是正式运行时、业务脚本和数据库测试的唯一数据库。文中的 SQLite 仅用于解释历史
 设计和迁移背景，不代表当前支持的运行时或测试入口。
 
@@ -107,7 +107,7 @@ schema。
 
 教材/学习、错题、陪练、变式、复习和指标曾各自拥有 metadata。若迁移只看到其中一部分，或者
 某个 Store 在自己的首次请求中懒建表，数据库就会出现业务可访问但迁移工具看不到的表。当前
-registry 明确列出六个 metadata，并在导入时拒绝重复表名。
+registry 明确列出七个 metadata，并在导入时拒绝重复表名。
 
 ### 运行时懒建表不应改变正式 schema
 
@@ -160,7 +160,7 @@ schema；`PostgresTestCase` 负责为数据库测试创建一次性 PostgreSQL �
 
 ## 五、PostgreSQL-only 现状
 
-截至 2026-08-31，PostgreSQL 是唯一支持的数据库目标：
+截至 2026-09-14，PostgreSQL 是唯一支持的数据库目标：
 
 - `resolve_database_url()` 只接受 PostgreSQL URL；`DOTTY_DATA_DIR` 只决定 PDF、Markdown、题图等文件资产目录；
 - 生产 Store、Worker、业务脚本和迁移 CLI 都使用 PostgreSQL，Store 不执行 schema DDL；
