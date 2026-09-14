@@ -155,7 +155,8 @@ Canvas/SVG，不影响其他题型。
 - [ ] MathJax：当前 KaTeX 已统一且性能更适合题目列表；只有遇到 KaTeX 不支持的教材公式时再做局部评估。
 - [ ] MDX/unified：当前模型生成内容以 JSON 契约为主；人工课程创作需求出现后再作为离线内容生产格式。
 - [ ] Khan Perseus：借鉴其 Widget、答案契约和渐进提示设计，不直接替换现有题目系统。
-- [ ] LangChain、LangGraph 和多智能体：继续遵循“出现复杂跨请求编排信号后局部评估”的决策。
+- [ ] LangChain、LangGraph 和多智能体：纳入 AI 前沿实验线，主动做隔离评测；评测结果不得绕过现有状态机
+  直接写入学生学习状态，也不以真实试用信号作为实验启动前置。
 
 建议拆分为独立 PR：`refactor/lesson-block-contracts`、`feature/interactive-math-canvas`、
 `experiment/mafs-renderer` 或 `experiment/jsxgraph-renderer`、`chore/animation-worker`。每个实验都必须
