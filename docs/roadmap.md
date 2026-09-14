@@ -15,11 +15,11 @@ Dotty Tutor 当前是本地优先的 MVP。核心教材数字化、互动辅导�
 
 本文件保留历史阶段和已完成记录，并提供一页式优先级索引；具体执行状态以两份新路线图为准。
 
-## 当前优先级索引（2026-08）
+## 当前优先级索引（2026-09）
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| **最高（临时，2026-08-31）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量已完成；评测语料继续扩充，Prefix Cache 待真实数据和 Provider 支持确认。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| **最高（临时，2026-08-31；本轮已收口）** | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache 与真实数据扩充仍按信号推进。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库，无登录权限） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 第一版已完成；人工金标准扩充至 50+ 题和跨模型统计横评仍待完成 | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -109,11 +109,11 @@ Canvas/SVG 和错题掌握闭环。新增能力必须先复用这些边界，不
 - [x] 使用 React 组件、Canvas/SVG 和 Renderer Registry 支撑选择题、判断题、画线题和分步讲解。
 - [x] 使用错题本、变式题、掌握验证和 1/3/7 天复习任务实现 Khan/Duolingo 式学习闭环的基础版本。
 
-### 第一阶段：稳定内容模型和互动渲染边界
+### 第一阶段：稳定内容模型和互动渲染边界（Tutor 最小版已完成）
 
 - [ ] 在 `apps/web/src/types/lesson.ts` 和 `apps/api/domain/contracts/lesson.py` 明确 `markdown`、`formula`、`diagram`、
   `interactive-math`、`quiz`、`animation` 内容块的版本化契约。
-- [ ] 新增 `InteractiveMathCanvas` 渲染边界；页面只组合它，不直接依赖具体绘图库。
+- [x] 新增 `InteractiveMathCanvas` 渲染边界；当前先作为 TutorInput 的最小点放置画布，页面只组合它，不直接依赖具体绘图库。
 - [ ] 为每种内容块补充 MathText、图片、键盘输入、画布动作和错误回退的 Playwright 回归案例。
 - [ ] 在文档中记录“Canvas 负责图形，HTML/MathText 负责公式文字”的边界，避免公式重新回到 `fillText` 路径。
 
@@ -202,23 +202,23 @@ Agent 只作为开发期工具使用（读报告、跑脚本），不进入生�
 单一教学动作约束、重复提示的确定性升级回退，均有单元测试覆盖。验收记录见 git 历史与
 `apps/api/tests/test_tutor_turn_plan.py`。
 
-### 阶段 B：统一多模态输入
+### 阶段 B：统一多模态输入（已完成，2026-09-14）
 
-这是当前首个 AI 能力实验方向，建议以 `feature/multimodal-tutor-input` 做独立垂直切片；真实试用信号不是启动前置。
-先在本地脱敏/合成数据上完成输入契约、观察适配器、置信度确认和证据分层，再接入学生端交互。
+这是首个 AI 能力实验方向，已在 `feature/multimodal-tutor-input` 垂直切片中完成；真实试用信号不是启动前置。
+当前实现先在本地脱敏/合成数据上完成输入契约、观察适配器、置信度确认和证据分层，学生端接入保留为后续体验迭代。
 
-- [ ] 定义统一 `TutorInput`，承载文字、结构化答案、题图裁切、画板快照和公式识别结果。
-- [ ] 图片和画板先进入独立的理解适配器，产出“观察事实 + 置信度 + 证据区域”，不直接拼接为长文本。
-- [ ] 低置信度结果要求学生确认；原图、识别文本和人工修正分层保存，避免覆盖原始证据。
-- [ ] 为移动端上传、取消、压缩、失败重试和隐私提示补充交互与 Playwright 测试。
+- [x] 定义统一 `TutorInput`，承载文字、结构化答案、题图裁切、画板快照和公式识别结果。
+- [x] 图片和画板先进入独立的理解适配器，产出“观察事实 + 置信度 + 证据区域”，不直接拼接为长文本。
+- [x] 低置信度结果要求学生确认；原图、识别文本和人工修正分层保存，避免覆盖原始证据。
+- [ ] 移动端上传、取消、压缩、失败重试和隐私提示仍需结合真实移动端试用补齐；当前 Playwright 已覆盖主要上传与确认流程。
 
 ### 阶段 C：受约束工具与学习者画像
 
-阶段 C 的第一步是类型化工具提案和确定性执行器，不要求引入完整 Agent 框架。模型只能提出建议，状态机、Schema
+阶段 C 的第一步已完成类型化工具提案和 shadow 策略，不要求引入完整 Agent 框架。模型只能提出建议，状态机、Schema
 校验和领域服务拥有最终决定权；MCP 先作为开发期兼容性实验，不进入生产学习状态写入路径。
 
-- [ ] 将判题、错误原因建议、提示选择、变式生成、掌握更新和复习安排暴露为显式工具契约。
-- [ ] 模型只能提出工具调用建议；状态机、Schema 校验和领域服务决定是否执行。
+- [x] 将判题、错误原因解释、变式生成、证据保存和复习安排暴露为五种显式 `ToolProposal` 契约。
+- [x] 模型只能提出工具调用建议；状态机、Schema 校验和领域服务决定是否执行，当前仅记录 shadow 审计。
 - [ ] 建立按知识点聚合的学习者画像，仅保存错误模式、提示依赖和掌握证据，不保存无边界聊天历史。
 - [ ] 回复上下文分为题目快照、线程摘要、最近必要消息和知识点画像，并分别设置长度与生命周期。
 
@@ -228,13 +228,13 @@ AI 工程学习可以先做离线对照；“按信号升级”约束的是生�
 评测参考 [MMTutorBench](https://github.com/TangciuYueng/MMTutorBench) 与 [MathTutorBench](https://github.com/eth-lre/mathtutorbench)
 的过程维度和教学能力拆分，数据许可和隐私边界另行确认。
 
-- [ ] 建立脱敏回放集，测量判题一致性、提示重复率、阶段越权率、首次有效提示率、耗时和调用次数。
-- [ ] 为模型超时、回退、工具拒绝、图片理解低置信度和状态迁移记录稳定事件。
+- [x] 建立 Tutor 专用脱敏评测实验室，覆盖错误定位、苏格拉底提问、提示升级、图片理解、工具越权和延迟/成本六维度 30 cases。
+- [x] 为模型回退、工具策略、图片观察确认和状态迁移记录稳定事件；更大规模 Judge 横评仍待扩充语料。
 - [ ] 只有出现跨请求暂停恢复、复杂并行工具或两个以上流程重复编排时，才局部评估 LangGraph；
   LangChain、LangGraph 和多智能体都不是阶段 A 至 C 的前置依赖。
 
-建议按 `feature/tutor-turn-planning`、`feature/multimodal-tutor-input`、
-`feature/tutor-tools-profile` 和 `test/tutor-evaluation-suite` 拆分 PR，每个阶段可单独测试和回滚。
+`feature/tutor-turn-planning` 已先行完成，`feature/multimodal-tutor-input` 已完成本轮垂直切片；后续扩充移动端体验、
+学习者画像和跨模型统计评测时继续保持独立 PR 和可回滚边界。
 
 ## 当前阶段：互动试卷发布与学生消费
 

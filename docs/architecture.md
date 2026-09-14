@@ -156,6 +156,7 @@ flowchart TB
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `apps/web/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
+| TutorInput 交互 | `apps/web/src/apps/mistake/components/TutorInputComposer.tsx`、`TutorObservationReview.tsx`、`useTutorInput.ts` | 统一文字、结构化答案、题图/步骤图、公式候选和画布输入；低置信度观察确认 |
 | 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
 | 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
@@ -167,7 +168,7 @@ flowchart TB
 | 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
 | API 契约 | `apps/web/src/api/`、`apps/web/src/types/` | 按产品域组织请求和类型 |
 | 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
-| 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx` | 画线作答和几何演示 |
+| 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx`、`apps/web/src/InteractiveMathCanvas.tsx` | 画线作答、几何演示和 Tutor 最小点放置画布 |
 | ASGI 组合根 | `apps/api/app.py`、`apps/api/app_factory.py` | 创建 FastAPI、注册路由和注入共享适配器；不承载业务流程 |
 | 教材 HTTP 边界 | `apps/api/routers/textbook_routes.py` | 单页导入、PDF 分块接收、状态查询、资源响应和 Help 接口 |
 | 教材处理服务 | `apps/api/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
@@ -211,7 +212,11 @@ flowchart TB
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
-| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段和模型运行信息 |
+| 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
+| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件 |
+| 工具策略 | `apps/api/domain/tutoring/tools.py` | 五种固定 ToolProposal、阶段门禁、证据引用和策略版本 |
+| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 全文检索，返回题目来源和证据定位 |
+| Tutor 评测 | `apps/api/evaluation/tutor/` | 六维度 30 case 的确定性语料检查、质量和延迟/成本指标 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |

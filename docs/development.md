@@ -279,7 +279,7 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 ## 数据库迁移、版本检查与隔离
 
 所有正式 schema 变更统一由 Alembic 管理。迁移配置位于 `apps/api/alembic.ini`，registry 汇总核心、错题、
-陪练、变式、复习和指标六个领域的 metadata；Alembic autogenerate 使用这组 metadata，并在导入时拒绝重复表名。
+陪练、变式、复习、指标和检索七个领域的 metadata；Alembic autogenerate 使用这组 metadata，并在导入时拒绝重复表名。
 
 从仓库根目录执行时：
 
@@ -294,7 +294,8 @@ uv run python -m persistence.migration_cli verify --database-url "$DATABASE_URL"
 
 `preflight` 和 `verify` 只读；五个命令的输出都不会打印数据库 URL、密码或 SQL 凭据。`upgrade` 会先取得
 PostgreSQL advisory lock，再在事务中执行有序版本链。`0001` 可以 adoption 空库、完整的 v0.27.0 schema（即使
-没有 `alembic_version`）以及当前这种部分迁移库；`0002`–`0005` 逐领域补齐 mastery、作业、教师/变式和错因归因。
+没有 `alembic_version`）以及当前这种部分迁移库；`0002`–`0005` 逐领域补齐 mastery、作业、教师/变式和错因归因，
+`0008`–`0010` 补齐 Tutor 多模态输入、工具审计、结构化画布和 PostgreSQL 全文检索。
 迁移只增加表/列/索引或保留式投影，不删除数据；mastery 旧表会保留为 `mastery_states_legacy`。
 
 旧的 `scripts/migrate_mastery_v2.py`、`migrate_class_assignments.py`、`migrate_assignment_plans.py`、

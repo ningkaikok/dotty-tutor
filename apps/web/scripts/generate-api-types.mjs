@@ -18,8 +18,10 @@ function pythonExecutable() {
     process.env.PYTHON,
     resolve(repositoryRoot, ".venv/bin/python"),
     resolve(repositoryRoot, "apps/api/.venv/bin/python"),
+    resolve(repositoryRoot, ".venv/Scripts/python.exe"),
+    resolve(repositoryRoot, "apps/api/.venv/Scripts/python.exe"),
   ].filter(Boolean);
-  return candidates.find((candidate) => existsSync(candidate)) || "python3";
+  return candidates.find((candidate) => existsSync(candidate)) || (process.platform === "win32" ? "python" : "python3");
 }
 
 function generateWithOpenapiTypescript() {
@@ -27,7 +29,8 @@ function generateWithOpenapiTypescript() {
   // openapi-typescript 7 currently declares TypeScript 5 as its peer. npm ci
   // installs that compiler at the workspace root, so the generator can stay
   // deterministic without silently downloading a second runtime during checks.
-  const cliPath = resolve(frontendRoot, "node_modules/.bin/openapi-typescript");
+  const cliBase = resolve(frontendRoot, "node_modules/.bin/openapi-typescript");
+  const cliPath = process.platform === "win32" ? `${cliBase}.CMD` : cliBase;
   if (!existsSync(cliPath)) {
     throw new Error("缺少 openapi-typescript，请先在 frontend 目录执行 npm ci；生成脚本不会联网临时下载依赖。");
   }
@@ -39,6 +42,7 @@ function generateWithOpenapiTypescript() {
   }
   execFileSync(cliPath, argumentsForCli, {
     cwd: frontendRoot,
+    shell: process.platform === "win32",
     stdio: "inherit",
   });
 }

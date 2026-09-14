@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -13,6 +15,7 @@ from domain.questions.student_view import (
     student_tutor_reply,
     student_tutor_thread,
 )
+from domain.tutoring.tools import TOOL_POLICY_VERSION, validate_tool_proposal
 from domain.tutoring.turn_plan import ERROR_STRATEGIES
 from observability import log_event
 
@@ -83,6 +86,21 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         mistake = mistake_store.get(thread["mistakeId"])
         if not mistake:
             raise HTTPException(status_code=404, detail="原错题不存在")
+        if request.inputId:
+            input_item = tutoring_store.get_input(request.inputId)
+            if not input_item or input_item["threadId"] != thread_id:
+                raise HTTPException(status_code=404, detail="TutorInput 不存在")
+            if input_item["status"] != "confirmed":
+                raise HTTPException(status_code=409, detail="请先确认解题步骤识别结果")
+            # New clients submit an immutable input envelope; legacy clients keep
+            # their JSON body unchanged. The persisted envelope wins when fields
+            # are present so a caller cannot alter confirmed evidence in transit.
+            request = request.model_copy(update={
+                "content": request.content or input_item["content"],
+                "interactionResult": request.interactionResult or input_item["interactionResult"],
+                "formulaRecognitions": request.formulaRecognitions or input_item.get("formulaRecognitions", []),
+                "canvasState": request.canvasState or input_item.get("canvasState"),
+            })
         if request.mode == "answer" and not has_meaningful_answer(
             request.content,
             request.interactionResult,
@@ -95,6 +113,42 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             recent_messages=tutoring_store.recent_messages(thread_id),
             request=request,
         )
+        proposals = result["reply"].toolProposals
+        policy_decisions: list[dict[str, Any]] = []
+        for proposal in proposals:
+            decision = validate_tool_proposal(
+                proposal,
+                stage=thread["stage"],
+                input_item=input_item if request.inputId else None,
+                action=result["action"],
+            )
+            policy_decisions.append(decision.model_dump())
+            key_source = json.dumps(
+                {"thread": thread_id, "input": request.inputId, "proposal": proposal, "stage": thread["stage"]},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            tutoring_store.append_tool_event(
+                thread_id=thread_id,
+                input_id=request.inputId,
+                learner_id=thread["learnerId"],
+                tool_name=str(proposal.get("name") or "unknown"),
+                proposal=proposal,
+                policy_version=TOOL_POLICY_VERSION,
+                decision=decision.decision,
+                reason=decision.reason,
+                execution_status="shadow",
+                idempotency_key=hashlib.sha256(key_source.encode("utf-8")).hexdigest(),
+            )
+            log_event(
+                "tutor.tool.policy",
+                thread_id=thread_id,
+                tool_name=decision.name,
+                decision=decision.decision,
+                policy_version=decision.policyVersion,
+                execution_status="shadow",
+            )
+        result["action"]["toolPolicy"] = policy_decisions
         plan = result["action"].get("tutorTurnPlan")
         diagnosis = plan.get("misconception") if isinstance(plan, dict) else None
         # AI attribution is written only after the same evidence/confidence gate
@@ -134,6 +188,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             stage=result["stage"],
             hint_level=result["reply"].nextHintLevel,
             summary=result["summary"],
+            input_id=request.inputId,
         )
         log_event(
             "tutor.turn.completed",
@@ -148,5 +203,13 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             "reply": student_tutor_reply(result["reply"].model_dump()),
             "action": student_tutor_action(result["action"]),
         }
+
+    @router.get("/api/tutor/threads/{thread_id}/tool-events")
+    def list_tool_events(thread_id: str) -> list[dict[str, Any]]:
+        """Return the server-side shadow audit for a tutor thread."""
+        thread = tutoring_store.get(thread_id, message_limit=1)
+        if not thread:
+            raise HTTPException(status_code=404, detail="辅导线程不存在")
+        return tutoring_store.list_tool_events(thread_id)
 
     return router

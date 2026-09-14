@@ -21,6 +21,7 @@ from domain.questions.contracts import (
     HelpRequest,
     TutorReply,
 )
+from domain.tutoring.canvas import evaluate_point_placement
 from domain.tutoring.checks import (
     build_reply,
     equation_conflict,
@@ -28,6 +29,7 @@ from domain.tutoring.checks import (
     normalize_guide_cards,
     safe_canvas_action,
 )
+from domain.tutoring.tools import normalize_tool_proposals
 from domain.tutoring.turn_plan import normalize_misconception
 from infrastructure.runtime.contracts import (
     PromptParts,
@@ -98,6 +100,35 @@ class TutorEngine:
                 source="answer-check",
                 modelRun=mock_model_run(),
             )
+        interaction = question.get("interaction") or {}
+        if interaction.get("type") == "point-placement" and request.canvasState:
+            point_result = evaluate_point_placement(
+                request.canvasState,
+                target=interaction.get("targetPoint") or interaction.get("target") or {},
+            )
+            if point_result:
+                assessment = point_result["assessment"]
+                return TutorReply(
+                    reply=(
+                        "点的位置符合要求。请说说你是怎样根据坐标范围定位它的。"
+                        if assessment == "correct"
+                        else "这个点还没有落在目标位置附近。先检查横坐标，再检查纵坐标。"
+                    ),
+                    guideContext={
+                        "assessment": assessment,
+                        "assessmentAuthority": "deterministic",
+                        "stuckAt": "需要把坐标条件落实到画布上的点。",
+                        "knowledge": [question.get("knowledgePoint", "坐标定位")],
+                        "hint": "先读横坐标，再读纵坐标。",
+                        "question": "你放置这个点时先确定了哪个坐标？",
+                        "misconception": normalize_misconception(None),
+                        "evaluationEvidence": point_result,
+                    },
+                    nextHintLevel=min(request.hintLevel + 1, 3),
+                    canvasAction="show-base",
+                    source="answer-check",
+                    modelRun=mock_model_run(),
+                )
         # 判断题此前在这里内联判定。它已并入 evaluate_structured_answer，
         # 由上面的通用分支统一处理——那条路径同时被写入端复核和变式/复习复用，
         # 留两份实现只会让三个调用方各自漂移。
@@ -197,6 +228,8 @@ class TutorEngine:
 候选引导卡：{_json_dumps(current_card)}
 学生输入：{request.studentInput.strip() or '学生没有输入内容'}
 学生交互作答结果：{_json_dumps(request.interactionResult) if request.interactionResult else '无'}
+公式识别候选（未经学生确认前只能视为待确认观察）：{_json_dumps(request.formulaRecognitions) if request.formulaRecognitions else '无'}
+结构化画布状态（只使用其结构化状态，不把截图当作判题事实）：{_json_dumps(request.canvasState) if request.canvasState else '无'}
 最近对话摘要：{conversation_context[:2400] or '这是本线程第一轮'}
 用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
 系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
@@ -282,4 +315,5 @@ class TutorEngine:
             canvasAction=action,
             source="model-generated",
             modelRun=run,
+            toolProposals=normalize_tool_proposals(generated.get("toolProposals")),
         )

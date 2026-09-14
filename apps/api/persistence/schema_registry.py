@@ -14,6 +14,7 @@ from persistence.metrics_store import metadata as metrics_metadata
 from persistence.mistake_store import mistake_metadata
 from persistence.review_store import review_metadata
 from persistence.schema import metadata as core_metadata
+from persistence.search_store import metadata as search_metadata
 from persistence.tutoring_store import tutoring_metadata
 from persistence.variation_store import variation_metadata
 
@@ -24,6 +25,7 @@ SCHEMA_METADATA: tuple[MetaData, ...] = (
     variation_metadata,
     review_metadata,
     metrics_metadata,
+    search_metadata,
 )
 
 DOMAIN_METADATA: dict[str, MetaData] = {
@@ -33,6 +35,7 @@ DOMAIN_METADATA: dict[str, MetaData] = {
     "variation": variation_metadata,
     "review": review_metadata,
     "metrics": metrics_metadata,
+    "search": search_metadata,
 }
 
 
@@ -63,4 +66,4 @@ def iter_metadata(*, exclude_tables: Iterable[str] = ()) -> Iterable[tuple[MetaD
 
 # Runtime health uses this stable value without importing Alembic's command
 # layer. The migration files and the CLI use the same revision identifier.
-SCHEMA_HEAD_REVISION = "0007_prompt_prefix_split"
+SCHEMA_HEAD_REVISION = "0010_tutor_search_and_tools"

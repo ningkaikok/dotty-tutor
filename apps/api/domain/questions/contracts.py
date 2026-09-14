@@ -328,10 +328,30 @@ HELP_SCHEMA = {
             # Codex strict schema 要求 required 覆盖 properties 中的每一个字段。
             "required": ["hypothesis", "evidence", "confidence", "needsConfirmation", "category"],
         },
+        "toolProposals": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "enum": [
+                            "evaluate_answer", "explain_mistake", "generate_variation",
+                            "record_evidence", "schedule_review",
+                        ],
+                    },
+                    "reason": {"type": "string", "minLength": 1, "maxLength": 240},
+                    "evidenceRefs": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 160}},
+                },
+                "required": ["name", "reason", "evidenceRefs"],
+            },
+        },
     },
     "required": [
         "assessment", "reply", "stuckAt", "knowledge", "hint", "question",
-        "canvasAction", "misconception",
+        "canvasAction", "misconception", "toolProposals",
     ],
 }
 
@@ -344,6 +364,9 @@ class HelpRequest(BaseModel):
     language: Literal["zh", "en"] = "zh"
     mode: Literal["answer", "help"] = "help"
     interactionResult: dict[str, Any] = Field(default_factory=dict)
+    inputId: str | None = Field(default=None, max_length=64)
+    formulaRecognitions: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
+    canvasState: dict[str, Any] | None = None
 
 
 class TtsRequest(BaseModel):
@@ -362,6 +385,7 @@ class TutorReply(BaseModel):
     canvasAction: str
     source: Literal["stored-guide-card", "answer-check", "model-generated"]
     modelRun: dict[str, Any] = Field(default_factory=dict)
+    toolProposals: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class StudentTutorReply(BaseModel):

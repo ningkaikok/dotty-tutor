@@ -296,6 +296,12 @@ concept | reading | calculation | missing_step | unknown | careless
 | `POST` | `/api/mistakes/{mistakeId}/thread` | 为已确认错题创建或恢复唯一线程 |
 | `GET` | `/api/tutor/threads/{threadId}` | 获取当前阶段、摘要和最近最多 40 条消息 |
 | `POST` | `/api/tutor/threads/{threadId}/messages` | 提交文字或结构化答案并完成一轮辅导 |
+| `POST` | `/api/tutor/threads/{threadId}/inputs` | 创建统一 TutorInput；可携带文字、结构化答案、`photo`/`questionImage`、公式识别候选和 `math-canvas-v1` 画布状态 |
+| `PATCH` | `/api/tutor/inputs/{inputId}/observations` | 确认、修正或拒绝观察结果；低置信度输入未确认前不能提交判题 |
+| `GET` | `/api/tutor/inputs/{inputId}/artifacts/{artifactId}` | 读取当前学生拥有的证据资源 |
+| `GET` | `/api/tutor/threads/{threadId}/tool-events` | 读取服务端工具提案策略和 shadow 审计 |
+| `GET` | `/api/tutor/search?q=...&publicationId=...` | 在已建立索引的发布题目中进行 PostgreSQL 全文检索并返回来源证据引用 |
+| `POST` | `/api/tutor/search/rebuild` | 为已发布互动试卷建立或刷新全文检索索引 |
 
 选择题可以同时携带用户可读文字和结构化答案：
 
@@ -322,6 +328,11 @@ concept | reading | calculation | missing_step | unknown | careless
 响应中的 `stage` 是 `diagnose`、`explain`、`practice` 或 `verify`；`assessment` 是确定性判题产生的
 `correct`、`partial` 或 `incorrect`；`action` 描述本轮是否推进阶段。模型只负责解释、提示和追问，
 不能自行修改正确性或把错题标记为已掌握。
+
+TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`、`confidence` 和归一化
+`evidenceRegions`；置信度低于 0.80、缺少证据区域或使用回退适配器时，状态为 `needs_confirmation`。
+公式识别候选同样默认为待确认。`toolProposals` 只允许五种固定工具名、理由和证据引用，服务端按当前阶段、
+输入确认状态和证据引用做策略判定，当前不会执行工具。
 
 待确认或已归档错题返回 `409`；线程不存在返回 `404`；`answer` 模式没有任何有效文字或结构化内容时
 返回 `422`。当前匿名 Demo 使用 `local-demo`，它不是可靠鉴权。

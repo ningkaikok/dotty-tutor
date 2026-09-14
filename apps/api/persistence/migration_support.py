@@ -53,6 +53,14 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "stable_prompt_chars": "INTEGER",
         "dynamic_prompt_chars": "INTEGER",
     },
+    "tutor_messages": {
+        "input_id": "VARCHAR(64)",
+    },
+    "tutor_inputs": {
+        "mistake_id": "VARCHAR(64) NOT NULL DEFAULT ''",
+        "formula_recognitions_json": "JSONB NOT NULL DEFAULT '[]'::jsonb",
+        "canvas_state_json": "JSONB",
+    },
 }
 _ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
     {

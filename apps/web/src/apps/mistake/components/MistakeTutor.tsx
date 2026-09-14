@@ -4,12 +4,17 @@ import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { RichText } from "../../../RichText";
 import { displayedPrompt } from "../../../questionPresentation";
 import type { MistakeErrorReason, MistakeItem, TutorStage } from "../../../types/index";
+import type { TutorCanvasState } from "../../../types/tutoring";
 import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { resolveMistakeAttribution } from "../attribution";
 import { useMistakeTutor } from "../useMistakeTutor";
 import { ERROR_REASONS } from "../errorReasons";
 import { MistakeAttribution } from "./MistakeAttribution";
 import { VariationPractice } from "./VariationPractice";
+import { TutorInputComposer } from "./TutorInputComposer";
+import { TutorObservationReview } from "./TutorObservationReview";
+import { useTutorInput } from "../useTutorInput";
+import { buildStructuredAnswer } from "../structuredAnswer";
 
 interface MistakeTutorProps {
   item: MistakeItem;
@@ -43,6 +48,7 @@ function messageEvidence(action: Record<string, unknown>): Record<string, unknow
 
 export function MistakeTutor({ item }: MistakeTutorProps) {
   const state = useMistakeTutor(item);
+  const inputState = useTutorInput(state.thread?.threadId ?? "");
   const messagesEnd = useRef<HTMLDivElement>(null);
 
   // 只有错题确认时没有留下错因，才需要在陪练首轮补一次自评；已经有值时
@@ -53,6 +59,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
   const [selectedReason, setSelectedReason] = useState<MistakeErrorReason | "">("");
   const [savingReason, setSavingReason] = useState(false);
   const [reasonError, setReasonError] = useState("");
+  const [canvasState, setCanvasState] = useState<TutorCanvasState | null>(null);
 
   useEffect(() => {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -67,6 +74,61 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
   const understanding = visibleStage(thread.stage) === "understanding";
   const hasSubmittedTurn = Boolean(thread.messages?.some((message) => message.role === "student"));
   const attribution = resolveMistakeAttribution(item.errorReason, thread.messages);
+
+  const attachPhoto = async (file: File) => {
+    try {
+      const created = await inputState.create(state.studentInput, {}, file, canvasState);
+      if (created.status === "confirmed") {
+        await state.submit("answer", created.inputId);
+        inputState.clear();
+      }
+    } catch {
+      // The hook exposes a user-safe error beside the composer.
+    }
+  };
+
+  const decidePhoto = async (decision: "confirm" | "correct" | "reject", correctedText?: string) => {
+    try {
+      const saved = await inputState.decide(decision, correctedText);
+      if (!saved) return;
+      if (decision === "reject") {
+        inputState.clear();
+      } else if (saved.status === "confirmed") {
+        await state.submit("answer", saved.inputId);
+        inputState.clear();
+      }
+    } catch {
+      // Error text is rendered from the hook.
+    }
+  };
+
+  const submitTurn = async (mode: "answer" | "help") => {
+    if (mode === "answer" && canvasState) {
+      const structured = buildStructuredAnswer(
+        question,
+        state.selectedOptions,
+        state.blankAnswers,
+        state.numericAnswer,
+        state.drawConnections,
+        state.subQuestionAnswers,
+      );
+      try {
+        const saved = await inputState.create(
+          state.studentInput,
+          structured.interactionResult,
+          undefined,
+          canvasState,
+        );
+        await state.submit(mode, saved.inputId);
+        setCanvasState(null);
+        inputState.clear();
+      } catch {
+        // The hook exposes a user-safe error beside the composer.
+      }
+      return;
+    }
+    await state.submit(mode);
+  };
 
   const submitSelfAssessment = async (reason: MistakeErrorReason) => {
     if (savingReason) return;
@@ -194,19 +256,19 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
               <div ref={messagesEnd} />
             </div>
 
-            {understanding && <label className="tutor-input">
-              <span>继续回答或描述你的想法</span>
-              <textarea
-                value={state.studentInput}
-                onChange={(event) => state.setStudentInput(event.target.value)}
-                placeholder="例如：我觉得要先比较这些数和 1 的大小……"
-                disabled={state.sending}
-              />
-            </label>}
-            {understanding && state.error && <p className="mistake-error" role="alert">{state.error}</p>}
+            {understanding && <TutorInputComposer
+              value={state.studentInput}
+              disabled={state.sending || inputState.sending}
+              onChange={state.setStudentInput}
+              onPhoto={(file) => void attachPhoto(file)}
+              canvasState={canvasState}
+              onCanvasChange={setCanvasState}
+            />}
+            {understanding && inputState.input?.status === "needs_confirmation" && <TutorObservationReview input={inputState.input} disabled={inputState.sending} onDecision={(decision, text) => void decidePhoto(decision, text)} />}
+            {understanding && (state.error || inputState.error) && <p className="mistake-error" role="alert">{state.error || inputState.error}</p>}
             {understanding && <div className="tutor-actions">
-              <button disabled={state.sending} onClick={() => void state.submit("help")}>给我一点提示</button>
-              <button className="mistake-primary-action compact" disabled={state.sending} onClick={() => void state.submit("answer")}>
+              <button disabled={state.sending || inputState.sending} onClick={() => void submitTurn("help")}>给我一点提示</button>
+              <button className="mistake-primary-action compact" disabled={state.sending || inputState.sending} onClick={() => void submitTurn("answer")}>
                 {state.sending ? "正在思考…" : hasSubmittedTurn ? "重新提交" : "提交这一轮"}
               </button>
             </div>}

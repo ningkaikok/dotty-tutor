@@ -11,15 +11,19 @@ from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.stateful_tutor import StatefulTutor
+from application.services.tutor_input_service import TutorInputService
+from application.services.tutor_search_service import TutorSearchService
 from domain.questions.pipeline import build_question_content_blocks
 from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
+from infrastructure.runtime.tutor_observation_adapter import TutorObservationAdapter
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
+from persistence.search_store import TutorSearchStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from publication_revision import PublicationRevisionService
@@ -32,6 +36,8 @@ from routers.review_routes import build_review_router
 from routers.runtime_routes import build_runtime_router
 from routers.textbook_routes import processing_service
 from routers.textbook_routes import router as textbook_router
+from routers.tutor_input_routes import build_tutor_input_router
+from routers.tutor_search_routes import build_tutor_search_router
 from routers.tutoring_routes import build_tutoring_router
 from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
@@ -84,6 +90,12 @@ app.include_router(textbook_router)
 # 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
 tutoring_store = TutoringStore(engine=store.engine)
 stateful_tutor = StatefulTutor(runtime=tutor_runtime)
+tutor_input_service = TutorInputService(
+    store=tutoring_store,
+    observation_adapter=TutorObservationAdapter(runtime=tutor_runtime),
+)
+tutor_search_store = TutorSearchStore(engine=store.engine)
+tutor_search_service = TutorSearchService(search_store=tutor_search_store)
 
 # 错题域复用 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_recognizer = build_mistake_recognizer(
@@ -101,6 +113,16 @@ app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,
     tutor=stateful_tutor,
+))
+app.include_router(build_tutor_input_router(
+    tutoring_store=tutoring_store,
+    input_service=tutor_input_service,
+    mistake_store=mistake_store,
+))
+app.include_router(build_tutor_search_router(
+    store=store,
+    search_service=tutor_search_service,
+    search_store=tutor_search_store,
 ))
 
 # 计分变式练习与自由对话分开持久化。这样作答证据保持不可变，掌握度和复习策略也不会依赖

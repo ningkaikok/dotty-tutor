@@ -86,10 +86,11 @@ export interface InteractionPoint {
 }
 
 export interface QuestionInteraction {
-  type: "none" | "draw-line";
+  type: "none" | "draw-line" | "point-placement";
   instruction: string;
   points: InteractionPoint[];
   requiredConnections: string[][];
+  targetPoint?: { x: number; y: number; tolerance?: number };
 }
 
 export type QuestionType =
