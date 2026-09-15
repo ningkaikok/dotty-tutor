@@ -30,3 +30,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # codeql-action 的 init 和 analyze 来自同一次 release，版本必须一致；
+      # 分开升级会让先合并的一个和还没跟上的另一个不匹配，CodeQL 直接报
+      # configuration error（已经实际发生过，见 #228/#229）。用 patterns
+      # 强制它们永远出现在同一个 PR 里，而不是分别评估更新类型。
+      codeql-action:
+        patterns:
+          - "github/codeql-action/*"
+      github-actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
