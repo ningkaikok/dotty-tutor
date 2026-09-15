@@ -22,7 +22,7 @@ API 仍建议只运行一个 Uvicorn worker；Worker 是单独进程，和 API �
 ```
 
 目标生产架构应增加对象存储、认证、监控和备份；当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
-[路线图](roadmap.md)。
+[项目方向](VISION.md)。
 
 ## 服务器准备
 
