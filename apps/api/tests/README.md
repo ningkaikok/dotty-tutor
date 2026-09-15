@@ -37,3 +37,15 @@ service 并始终设置上述 admin 变量。
 
 测试代码仍保持单层目录，避免为当前规模引入额外测试框架；数据库行为集中在 PostgreSQL
 测试设施中，纯函数和状态边界继续使用 `unittest`。
+
+## 测试纪律：mock 只打在外部边界，时间只用注入的 now=
+
+测试行为，不测试实现：`unittest.mock` 只允许用来隔离真正的外部系统（模型/OCR/TTS/
+审校 Runtime），不能用来 mock 同进程的业务逻辑（Store、领域算法、状态机），否则重构
+一次实现就会碎一地测试，却证明不了行为对不对。时间相关的行为（幂等窗口、租约过期、
+复习排期）要给被测代码显式传入 `now=` 参数，不要 `time.sleep()` 之后再祈祷断言成立。
+
+`scripts/check_test_discipline.py` 在 CI 和 pre-commit 里检查这两条：任何测试文件引入
+`unittest.mock` 或调用 `time.sleep()`，且不在脚本里的 `ALLOWED_MOCK_FILES` /
+`ALLOWED_SLEEP_FILES` 清单，检查就会失败。真的需要例外（比如测试真实多线程/多连接竞争，
+没有时钟可以注入）时，把文件名显式加进清单并在 PR 里说明理由，而不是绕开检查。

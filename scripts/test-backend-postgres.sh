@@ -9,4 +9,13 @@ if [[ -z "${DOTTY_TEST_POSTGRES_ADMIN_URL:-}" ]]; then
 fi
 
 cd "$ROOT_DIR/apps/api"
-exec uv run python -m tests.postgres_test_runner
+
+# 覆盖率只出报告，不影响退出码：先看真实分布，未来再决定是否按模块设基线。
+set +e
+uv run coverage run -m tests.postgres_test_runner
+test_status=$?
+set -e
+
+uv run coverage report -m || true
+
+exit "$test_status"

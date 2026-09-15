@@ -480,6 +480,27 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 
+### 测试纪律与覆盖率报告
+
+CI 和 pre-commit 都会跑 `scripts/check_test_discipline.py`：后端测试只允许在明确登记的文件里
+mock 真正的外部边界（模型/OCR/TTS/审校 Runtime），时间相关行为只允许用注入的 `now=`，不允许
+`time.sleep()` 之后再断言。新增例外需要显式加入脚本里的清单并说明理由，见
+[apps/api/tests/README.md](../apps/api/tests/README.md)。
+
+后端和前端都接入了覆盖率报告（`coverage`/`@vitest/coverage-v8`），CI 日志里会打印分支/行覆盖率
+明细，但目前**只出报告、不设门槛**——先看真实分布再决定基线，而不是让 AI 或人为了凑数字写
+无意义测试：
+
+```bash
+cd apps/api && uv run coverage run -m unittest discover -s tests -p 'test_*.py' && uv run coverage report -m
+cd apps/web && npm run test:coverage
+```
+
+前端整体行覆盖率数字目前很低（多数页面组件是 0%），这是预期的，不代表质量问题：这些页面级
+流程主要由 [Playwright E2E](../apps/web/e2e/tutor-flow.spec.ts) 覆盖行为，vitest 单测只负责
+纯函数（`richTextParser`、`questionPresentation`、`answerAssembly` 等）。评估覆盖率缺口时要把
+E2E 覆盖的路径一起算进去，不能只看 vitest 一侧的数字。
+
 后端默认以 JSON 输出结构化运行日志，使用 `LOG_LEVEL=DEBUG` 可以临时查看分块上传等细节；
 事件字段和生产健康检查工作流见[日志与运行监控](observability.md)。
 

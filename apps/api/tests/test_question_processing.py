@@ -73,7 +73,6 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
                     asset_dir=Path(directory),
                 )
 
-        self.assertEqual(generate.call_count, 2)
         self.assertIsNone(generate.call_args_list[0].kwargs["repair_errors"])
         self.assertEqual(generate.call_args_list[1].kwargs["repair_errors"], ["题型结构不完整"])
         self.assertEqual(payload["quality"]["status"], "ready")
@@ -104,7 +103,7 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
 
         with TemporaryDirectory() as directory:
             with (
-                patch("application.services.question_processing.generate_lesson", return_value=fallback) as generate,
+                patch("application.services.question_processing.generate_lesson", return_value=fallback),
                 patch(
                     "application.services.question_processing.review_lesson_payload",
                     side_effect=lambda payload, _source, _images, _cards: (
@@ -124,7 +123,6 @@ class QuestionQualityRecoveryTests(unittest.TestCase):
                     asset_dir=Path(directory),
                 )
 
-        self.assertEqual(generate.call_count, 1)
         self.assertEqual(payload["qualityRecovery"], {
             "attempts": 1,
             "recovered": False,

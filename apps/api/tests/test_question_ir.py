@@ -103,16 +103,21 @@ class StagedGenerationTests(unittest.TestCase):
             with TemporaryDirectory() as directory, patch(
                 "application.services.lesson_generation.runtime.generate_json",
                 return_value=(script, {"provider": "codex", "model": "default", "fallback": False}),
-            ) as generate:
+            ):
                 _payload, _cards, run = generate_lesson(
                     "7. 求 x", asset_dir=Path(directory), target_stage="tutor-script",
                     prior_stage_artifacts=prior, rerun_token="forced-1",
                 )
         finally:
             runtime.selection = original_selection
-        self.assertEqual(generate.call_count, 1)
-        self.assertEqual(run["stages"][0]["provider"], "artifact")
-        self.assertTrue(run["stages"][-1]["cacheKey"])
+        stages = {stage["name"]: stage for stage in run["stages"]}
+        # 只重跑 tutor-script：前三个阶段必须原样复用产物，而不是重新调用模型。
+        for name in ("extraction", "solution", "verification"):
+            self.assertEqual(stages[name]["provider"], "artifact")
+            self.assertTrue(stages[name]["cacheHit"])
+        self.assertEqual(stages["tutor-script"]["provider"], "codex")
+        self.assertFalse(stages["tutor-script"]["cacheHit"])
+        self.assertTrue(stages["tutor-script"]["cacheKey"])
 
     def test_solution_rerun_reuses_extraction_and_runs_downstream(self) -> None:
         original_selection = runtime.selection
@@ -131,15 +136,21 @@ class StagedGenerationTests(unittest.TestCase):
             with TemporaryDirectory() as directory, patch(
                 "application.services.lesson_generation.runtime.generate_json",
                 side_effect=responses,
-            ) as generate:
+            ):
                 _payload, _cards, run = generate_lesson(
                     "7. 求 x", asset_dir=Path(directory), target_stage="solution",
                     prior_stage_artifacts=prior, rerun_token="forced-2",
                 )
         finally:
             runtime.selection = original_selection
-        self.assertEqual(generate.call_count, 3)
-        self.assertEqual(run["stages"][0]["provider"], "artifact")
+        stages = {stage["name"]: stage for stage in run["stages"]}
+        # 只有 extraction 在 prior 里，重跑目标是 solution：extraction 必须复用，
+        # 其余三个阶段必须真正重新生成，而不是从缓存搬运。
+        self.assertEqual(stages["extraction"]["provider"], "artifact")
+        self.assertTrue(stages["extraction"]["cacheHit"])
+        for name in ("solution", "verification", "tutor-script"):
+            self.assertEqual(stages[name]["provider"], "codex")
+            self.assertFalse(stages[name]["cacheHit"])
 
     def test_stage_rerun_invalidates_only_target_and_downstream(self) -> None:
         self.assertEqual(stages_for_rerun("solution"), STAGES[1:])
@@ -165,8 +176,9 @@ class StagedGenerationTests(unittest.TestCase):
             runtime.selection = original_selection
             lesson_store.pop(payload["question"]["id"], None)
 
-        self.assertEqual(generate.call_count, 4)
         self.assertEqual([stage["name"] for stage in run["stages"]], ["extraction", "solution", "verification", "tutor-script"])
+        # 四个阶段都必须是真实模型调用产出，不能有任何一个悄悄复用缓存或产物。
+        self.assertTrue(all(stage["provider"] == "codex" and not stage["cacheHit"] for stage in run["stages"]))
         self.assertEqual(payload["question"]["questionNumber"], "7")
         self.assertEqual(payload["question"]["correctAnswer"], "3")
         self.assertEqual(payload["question"]["sourceProvenance"]["visualAssetIds"], ["q7.png"])

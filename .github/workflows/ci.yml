@@ -56,6 +56,8 @@ jobs:
       - name: Lint backend (ruff)
         working-directory: apps/api
         run: uv run ruff check .
+      - name: Check backend test discipline (no internal mock / no sleep)
+        run: python scripts/check_test_discipline.py
       - name: Type check (pyright)
         run: uv --directory apps/api run pyright
       - name: Run backend tests in isolated PostgreSQL databases
@@ -101,7 +103,9 @@ jobs:
         run: pnpm run lint
       - name: Unit tests (vitest)
         working-directory: apps/web
-        run: npm run test
+        # 覆盖率目前只出报告、不设门槛：先看真实分布，多数业务流程由 Playwright E2E
+        # 覆盖，vitest 只测纯函数，因此总体行覆盖率低是预期的，不代表质量问题。
+        run: npm run test:coverage
       - name: Verify generated API types
         working-directory: apps/web
         run: |

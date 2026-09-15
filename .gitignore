@@ -8,6 +8,7 @@
 output/
 .coverage
 htmlcov/
+coverage/
 *.log
 .playwright-cli/
 **/__pycache__/

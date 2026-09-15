@@ -22,3 +22,8 @@ repos:
         entry: npm run lint --prefix apps/web
         language: system
         pass_filenames: false
+      - id: test-discipline-backend
+        name: test discipline (backend)
+        entry: python scripts/check_test_discipline.py
+        language: system
+        pass_filenames: false

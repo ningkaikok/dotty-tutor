@@ -16,11 +16,26 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["ruff==0.16.4", "pyright==1.1.411"]
+dev = ["ruff==0.16.4", "pyright==1.1.411", "coverage==7.11.3"]
 
 [tool.uv]
 # 只用系统/已装 Python，避免 CI 或本机意外下载解释器。
 python-preference = "only-system"
+
+[tool.coverage.run]
+# 只出报告、不设门槛：先看真实分布，再决定要不要按模块定基线（见测试策略讨论）。
+branch = true
+source = ["."]
+omit = [
+    "tests/*",
+    "migrations/*",
+    "evaluation/*",
+    "scripts/*",
+]
+
+[tool.coverage.report]
+skip_covered = false
+show_missing = true
 
 [tool.ruff]
 # 中文注释和长 URL 让部分行天然超过 100 字符；行宽检查交给人工审查，
