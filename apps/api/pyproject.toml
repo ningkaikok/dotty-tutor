@@ -5,18 +5,18 @@ name = "dotty-tutor-backend"
 version = "0.31.0"
 requires-python = ">=3.12"
 dependencies = [
-    "alembic>=1.16.0,<2",
+    "alembic>=1.20.0,<2",
     "fastapi>=0.141.1,<1",
     "httpx2>=2.10.0,<3",
-    "pypdf>=6.15.0,<7",
+    "pypdf>=6.18.1,<7",
     "python-multipart>=0.0.32,<1",
-    "psycopg[binary]>=3.3.4,<4",
+    "psycopg[binary]>=3.3.5,<4",
     "SQLAlchemy>=2.0.52,<3",
-    "uvicorn[standard]>=0.52.1,<1",
+    "uvicorn[standard]>=0.52.4,<1",
 ]
 
 [dependency-groups]
-dev = ["ruff==0.16.4", "pyright==1.1.411", "coverage==7.11.3"]
+dev = ["ruff==0.16.7", "pyright==1.1.414", "coverage==7.16.0"]
 
 [tool.uv]
 # 只用系统/已装 Python，避免 CI 或本机意外下载解释器。
