@@ -1,8 +1,18 @@
-# Dotty Tutor 产品路线图
+# Dotty Tutor 产品路线图（已归档，2026-09-15）
+
+> **状态：已归档，不再是当前方向。** 本文记录的“主用户是学科组/教师”这一产品方向已被替换为
+> “个人自部署用户”，见 [`../VISION.md`](../VISION.md)。教师工作台、班级、作业指派相关内容
+> 不再新增功能，已完成的代码保留原状、不回滚。本文中与教师/班级无关的部分（外部评审对照、
+> 已论证但未排期的功能清单）仍有参考价值，已摘录关键条目到 VISION.md 或
+> [`../engineering-roadmap.md`](../engineering-roadmap.md)，此处原文保留作为完整历史记录。
+
+---
+
+# Dotty Tutor 产品路线图（原文，历史存档）
 
 > 本文只回答“学生和内容生产者先获得什么能力”。技术实现顺序请看
-> [`engineering-roadmap.md`](engineering-roadmap.md)，运行治理细节请看
-> [`runtime-governance-plan.md`](runtime-governance-plan.md)。
+> [`../engineering-roadmap.md`](../engineering-roadmap.md)，运行治理细节请看
+> [`../runtime-governance-plan.md`](../runtime-governance-plan.md)。
 
 ## 产品定位
 

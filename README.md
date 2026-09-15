@@ -17,26 +17,30 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 
 ## 功能
 
-### 内容生产工作台（`/studio`）
+> 项目定位为**个人自部署**的 AI 学习工具，主用户是学生、家长或自学者本人，不是学校/教师 SaaS。
+> 详见[项目方向](docs/VISION.md)。
 
-把 PDF 教材变成可作答、可审校、带来源的结构化题库：大 PDF 分块上传与批次处理、MinerU/pypdf 双路 OCR、
-多模型生成路径、统一审校与质量门禁、送审发布和不可变运行审计。细节见
-[系统架构](docs/architecture.md)。
+### AI 错题陪练（`/mistakes`，旗舰功能）
+
+拍照录题、错误原因归因、单题多轮陪练线程、变式掌握验证和 1/3/7 天复习计划，形成完整闭环。
+产品设计见 [AI 错题陪练产品规划](docs/mistake-coach-plan.md)。
 
 ### 学生学习空间（`/learn`）
 
 只暴露学习本身，不暴露 OCR、模型和上传配置：七种题型交互、分层 Help、可编程课程播放器，
 以及断网可恢复的学习会话与掌握度记录。
 
-### 教师工作台（`/teacher`）
+### 内容生产工作台（`/studio`，内部/进阶工具）
 
-面向单机单库内的教师试用：创建班级、维护本地学生名单、基于班级掌握度和错因证据生成作业计划，
-审阅并确认作业指派，再查看单次作业的完成率和知识点掌握分布。登录、角色权限和多租户隔离仍未加入。
+把 PDF 教材变成可作答、可审校、带来源的结构化题库：大 PDF 分块上传与批次处理、MinerU/pypdf 双路 OCR、
+多模型生成路径、统一审校与质量门禁、送审发布和不可变运行审计。面向自部署用户或贡献者自己建题库，
+不是对外首页入口。细节见 [系统架构](docs/architecture.md)。
 
-### AI 错题陪练（`/mistakes`）
+### 教师工作台（`/teacher`，已归档，不再新增功能）
 
-拍照录题、错误原因归因、单题多轮陪练线程、变式掌握验证和 1/3/7 天复习计划，形成完整闭环。
-产品设计见 [AI 错题陪练产品规划](docs/mistake-coach-plan.md)。
+此前面向单机单库内的教师试用：创建班级、维护本地学生名单、基于班级掌握度和错因证据生成作业计划，
+审阅并确认作业指派，再查看单次作业的完成率和知识点掌握分布。**该方向已归档**（详见
+[项目方向](docs/VISION.md)），已完成代码保留原状但不再扩展。
 
 ### 平台
 
@@ -48,9 +52,10 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 ```text
 产品首页
   ├─ 学生学习空间：已发布互动试卷 / 错题陪练 / 掌握与复习
-  │    └─ AI 错题陪练：拍照错题 → 确认归类 → 多轮陪练 → 变式验证 → 复习计划
-  ├─ 教师工作台：班级 → 掌握度证据 → 作业计划审阅 → 确认指派 → 作业看板
-  └─ 内容生产工作台：PDF / 扫描教材 → OCR → 结构化出题 → 审校 → 互动预览
+  │    └─ AI 错题陪练（旗舰）：拍照错题 → 确认归类 → 多轮陪练 → 变式验证 → 复习计划
+  └─ 内容生产工作台（内部/进阶工具）：PDF / 扫描教材 → OCR → 结构化出题 → 审校 → 互动预览
+
+已归档（不再新增功能）：教师工作台 —— 班级 → 掌握度证据 → 作业计划审阅 → 确认指派 → 作业看板
 ```
 
 登录鉴权、微信内体验和更完整的数学判题属于后续生产化范围，按[产品规划](docs/mistake-coach-plan.md)逐步评估。
@@ -100,22 +105,21 @@ docker compose up --build --detach
 
 ## 文档
 
+- [项目方向：主用户画像与取舍边界](docs/VISION.md)
+- [AI 错题陪练产品规划（旗舰功能）](docs/mistake-coach-plan.md)
 - [系统架构与调用流程](docs/architecture.md)
 - [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
-- [产品路线图](docs/product-roadmap.md)
 - [技术路线图](docs/engineering-roadmap.md)
-- [学科组试用方案](docs/pilot-plan.md)
 - [AI 运行治理与后台任务演进计划](docs/runtime-governance-plan.md)
 - [后端架构学习指南](docs/backend-learning-guide.md)
 - [前端架构学习指南](docs/frontend-learning-guide.md)
-- [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
 - [本地开发与模型配置](docs/development.md)
 - [API 接口](docs/api.md)
 - [可编程课程与学习闭环](docs/programmable-learning.md)
 - [部署与运维](docs/deployment.md)
 - [日志与运行监控](docs/observability.md)
-- [路线图与生产边界](docs/roadmap.md)
 - [模型与系统测试报告](docs/model-evaluation-report.md)
+- [历史方向存档（学科组/教师场景）](docs/archive/)
 - [参与贡献](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 - [支持说明](SUPPORT.md)
