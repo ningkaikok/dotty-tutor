@@ -12,7 +12,7 @@ dependencies = [
     "python-multipart>=0.0.32,<1",
     "psycopg[binary]>=3.3.4,<4",
     "SQLAlchemy>=2.0.52,<3",
-    "uvicorn[standard]>=0.52.1,<1",
+    "uvicorn[standard]>=0.52.4,<1",
 ]
 
 [dependency-groups]
