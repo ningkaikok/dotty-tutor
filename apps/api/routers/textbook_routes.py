@@ -34,8 +34,10 @@ from application.services.textbook_processing import (
 from application.textbook_jobs import build_textbook_registry
 from domain.contracts.audit import (
     BackgroundJobSummary,
+    QuestionEditResponse,
     QuestionRegenerationResponse,
     QuestionReviewQueueResponse,
+    QuestionRevisionActivateResponse,
     ReviewQueueResponse,
     RevisionSummary,
     RunSummary,
@@ -45,6 +47,7 @@ from domain.questions.contracts import (
     GUIDE_CARDS,
     HelpRequest,
     PdfUploadInitRequest,
+    QuestionEditRequest,
     StudentTutorReply,
 )
 from domain.questions.student_view import student_tutor_reply
@@ -506,6 +509,44 @@ def regenerate_question(
         question_source_key,
         refresh_ocr=refreshOcr,
     )
+
+
+@router.patch(
+    "/api/uploads/{upload_id}/questions/{question_source_key}",
+    response_model=QuestionEditResponse,
+)
+def edit_question(
+    upload_id: str,
+    question_source_key: str,
+    request: QuestionEditRequest,
+) -> dict[str, Any]:
+    """人工编辑题目内容字段；乐观并发冲突返回 409 并带回服务端最新版本。"""
+    patch = request.model_dump(exclude={"baseRevisionId", "guideCards"}, exclude_unset=True)
+    guide_cards_patch = (
+        [card.model_dump() for card in request.guideCards]
+        if request.guideCards is not None
+        else None
+    )
+    return processing_service.edit_question(
+        upload_id,
+        question_source_key,
+        base_revision_id=request.baseRevisionId,
+        question_patch=patch,
+        guide_cards_patch=guide_cards_patch,
+    )
+
+
+@router.post(
+    "/api/uploads/{upload_id}/questions/{question_source_key}/revisions/{revision_id}/activate",
+    response_model=QuestionRevisionActivateResponse,
+)
+def activate_question_revision(
+    upload_id: str,
+    question_source_key: str,
+    revision_id: str,
+) -> dict[str, Any]:
+    """把题目当前展示版本回滚/指向某个历史修订，不追加新的 revision。"""
+    return processing_service.activate_question_revision(upload_id, question_source_key, revision_id)
 
 
 @router.get(

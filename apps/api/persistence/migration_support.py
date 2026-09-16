@@ -61,6 +61,16 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
         "formula_recognitions_json": "JSONB NOT NULL DEFAULT '[]'::jsonb",
         "canvas_state_json": "JSONB",
     },
+    "batch_questions": {
+        # 人工编辑/回滚需要知道题目当前展示版本对应哪一条 revision，才能做乐观并发
+        # 校验；历史行没有这个概念，留空表示"还没有任何 revision"。
+        "current_revision_id": "VARCHAR(64)",
+    },
+    "question_revisions": {
+        # 历史行都来自模型生成/重跑流水线，回填为 model_generated 不会误标任何一条
+        # 真正的人工编辑（人工编辑功能上线后才会写入 manual_edit）。
+        "revision_source": "VARCHAR(32) NOT NULL DEFAULT 'model_generated'",
+    },
 }
 _ADDITIVE_FOREIGN_KEYS: tuple[dict[str, Any], ...] = (
     {

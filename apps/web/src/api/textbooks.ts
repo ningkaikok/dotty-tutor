@@ -6,14 +6,20 @@ import type {
   FullPaperSummary,
   LibraryItem,
   PdfUploadTask,
+  QuestionEditRequest,
+  QuestionEditResult,
   QuestionRegenerationResult,
   QuestionReviewItem,
+  QuestionRevisionActivateResult,
   QuestionStageRerunResult,
+  RevisionSummary,
   TextbookImportResult,
 } from "../types/textbook";
 import { GeneratedSuccess, parse } from "./client";
 
 type GeneratedQuestionRepairResponse = GeneratedSuccess<"regenerate_question_api_uploads__upload_id__questions__question_source_key__regenerate_post">;
+type GeneratedQuestionEditResponse = GeneratedSuccess<"edit_question_api_uploads__upload_id__questions__question_source_key__patch">;
+type GeneratedQuestionRevisionActivateResponse = GeneratedSuccess<"activate_question_revision_api_uploads__upload_id__questions__question_source_key__revisions__revision_id__activate_post">;
 
 export async function loadQuestion(): Promise<QuestionPayload> {
   return parse<QuestionPayload>(await fetch("/api/question"));
@@ -138,6 +144,41 @@ export async function loadQuestionReview(uploadId: string, sourceQuestionKey: st
   return parse<QuestionReviewItem>(await fetch(
     `/api/uploads/${encodeURIComponent(uploadId)}/review-queue/${encodeURIComponent(sourceQuestionKey)}`,
     { cache: "no-store" },
+  ));
+}
+
+/** 人工编辑题目内容字段；绑定 baseRevisionId 做乐观并发，冲突时服务端返回 409。 */
+export async function editQuestion(
+  uploadId: string,
+  sourceQuestionKey: string,
+  patch: QuestionEditRequest,
+): Promise<QuestionEditResult> {
+  return parse<QuestionEditResult & GeneratedQuestionEditResponse>(await fetch(
+    `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    },
+  ));
+}
+
+export async function listQuestionRevisions(uploadId: string, sourceQuestionKey: string): Promise<RevisionSummary[]> {
+  return parse<RevisionSummary[]>(await fetch(
+    `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}/revisions`,
+    { cache: "no-store" },
+  ));
+}
+
+/** 把题目当前展示版本回滚/指向某个历史修订，不会新增 revision。 */
+export async function activateQuestionRevision(
+  uploadId: string,
+  sourceQuestionKey: string,
+  revisionId: string,
+): Promise<QuestionRevisionActivateResult> {
+  return parse<QuestionRevisionActivateResult & GeneratedQuestionRevisionActivateResponse>(await fetch(
+    `/api/uploads/${encodeURIComponent(uploadId)}/questions/${encodeURIComponent(sourceQuestionKey)}/revisions/${encodeURIComponent(revisionId)}/activate`,
+    { method: "POST" },
   ));
 }
 

@@ -66,4 +66,4 @@ def iter_metadata(*, exclude_tables: Iterable[str] = ()) -> Iterable[tuple[MetaD
 
 # Runtime health uses this stable value without importing Alembic's command
 # layer. The migration files and the CLI use the same revision identifier.
-SCHEMA_HEAD_REVISION = "0010_tutor_search_and_tools"
+SCHEMA_HEAD_REVISION = "0011_question_manual_edit"
