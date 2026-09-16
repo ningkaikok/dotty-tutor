@@ -85,6 +85,9 @@ batch_questions = Table(
     Column("payload_json", json_document, nullable=False),
     Column("guide_cards_json", json_document, nullable=False, default=list),
     Column("created_at", Float, nullable=False),
+    # 指向 question_revisions 里"当前展示版本"的指针。人工编辑会指向新追加的
+    # revision；人工回滚只移动这个指针，不追加新 revision，因此审计链依旧只增不改。
+    Column("current_revision_id", String(64)),
 )
 
 lesson_documents = Table(
@@ -207,6 +210,9 @@ question_revisions = Table(
     Column("guide_cards_json", json_document, nullable=False, default=list),
     Column("run_id", String(64), nullable=False),
     Column("created_at", Float, nullable=False),
+    # 区分这一条 revision 是模型生成/重跑产生的，还是老师手工编辑字段产生的；
+    # 审校面板据此显示"人改的"还是"模型跑出来的"，回滚操作本身不追加新行。
+    Column("revision_source", String(32), nullable=False, default="model_generated"),
 )
 
 learning_sessions = Table(

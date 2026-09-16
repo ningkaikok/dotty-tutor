@@ -95,7 +95,7 @@ class StagedGenerationTests(unittest.TestCase):
         prior = {
             "extraction": {"raw": {"questionNumber": "7", "stem": "7. 求 x"}, "run": {}},
             "solution": {"raw": {"questionType": "numeric", "correctAnswer": "3"}, "run": {}},
-            "verification": {"raw": {"status": "verified", "solverAgreement": True}, "run": {}},
+            "verification": {"raw": {"status": "verified"}, "run": {}},
         }
         script = {"lessonSteps": [{"title": "读题", "text": "先读题", "speechText": "先读题"}] * 4,
                   "guideCards": [{"hint": "看条件", "question": "条件是什么？"}] * 3}
@@ -127,7 +127,7 @@ class StagedGenerationTests(unittest.TestCase):
         }
         responses = [
             ({"questionType": "numeric", "correctAnswer": "3"}, {"provider": "codex", "model": "default", "fallback": False}),
-            ({"status": "verified", "solverAgreement": True}, {"provider": "codex", "model": "default", "fallback": False}),
+            ({"status": "verified"}, {"provider": "codex", "model": "default", "fallback": False}),
             ({"lessonSteps": [{"title": "读题", "text": "先读题", "speechText": "先读题"}] * 4,
               "guideCards": [{"hint": "看条件", "question": "条件是什么？"}] * 3},
              {"provider": "codex", "model": "default", "fallback": False}),
@@ -166,7 +166,7 @@ class StagedGenerationTests(unittest.TestCase):
         responses = [
             ({"questionNumber": "7", "stem": "7. 如图，计算 AB。 ⟦IMG_1⟧", "questionType": "numeric", "chapter": "几何", "knowledgePoint": "长度计算", "givens": ["AB"], "options": [], "subQuestions": [], "imageReferences": []}, runs[0]),
             ({"questionType": "numeric", "correctAnswer": "3", "correctAnswers": [], "blanks": [], "answerSpec": {"answerType": "numeric", "expected": "3", "accepted": ["3"], "tolerance": 0, "unit": ""}, "interaction": {"type": "none", "instruction": "", "points": [], "requiredConnections": []}, "chapter": "几何", "knowledgePoint": "长度计算"}, runs[1]),
-            ({"status": "verified", "solverAgreement": True, "sourceAnswer": "", "conflicts": [], "checks": ["题干完整"], "confidence": 0.9, "needsHumanReview": False}, runs[2]),
+            ({"status": "verified", "sourceAnswer": "", "conflicts": [], "checks": ["题干完整"], "confidence": 0.9, "needsHumanReview": False}, runs[2]),
             ({"lessonSteps": [{"title": "读题", "text": "找出条件", "speechText": "先找条件"}] * 4, "guideCards": [{"stuckAt": "", "knowledge": [], "hint": "看已知", "question": "有哪些条件？"}] * 3}, runs[3]),
         ]
         try:

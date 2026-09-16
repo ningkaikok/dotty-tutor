@@ -68,6 +68,11 @@
    > 直接可执行的结论：**qwen2.5:3b 不得用作评审模型**，`judge_cli` 的默认评审模型
    > 必须保持 qwen2.5:7b，不得为省资源下调。详细逐样本结果见
    > [`模型与系统测试报告`](model-evaluation-report.md) 第 10 节。
+   > **结论精确化（2026-09-16）**：该测量在扩容前的 16 条语料上做的；语料扩到当前 21 条
+   > （即本节下方追加调查用的同一批 `fabricated-rule` 样本）后重新跑两次独立横评，
+   > `qwen2.5:3b` 的 factual gap 变成方向一致的正值（+1.14、+0.76），不再等价随机，
+   > 但仍明显弱于 7b（7b 全维度 gap 是 3b 的 2.5～4 倍）。**默认评审模型仍保持 7b 不变**，
+   > 详见 [`模型与系统测试报告`](model-evaluation-report.md) 第 10.10 节。
    > **追加调查（2026-09-05）**：原结论第 4 条"失败模式集中在听起来合理的错误通则"当时只有
    > 1 条样本（SSA 全等判定）支撑。把 `fabricated-rule` 家族扩到 6 条并加上
    > `scoreDiscrimination.byFlawFamily` 分组后，结论**变精确了、也变小了**：不是"编造通则"
@@ -245,6 +250,11 @@
   > 实验方式：主动补充等价形态语料并比较符号引擎、模型辅助和确定性回退；通过评测后再进入判题主链路。
   > 当前语料的主要坏样本仍是切分与图片归属，实验不得因此绕过既有判题边界。
   > 边界：只用于判等价，不用它解方程、不生成解题步骤。
+  > **本条仍未完成，但工作量已显著下降**：`domain/questions/answer_solver.py` 已为**核验阶段**
+  > （解答与来源答案是否一致）落地同一套分层判等，`sympy` 依赖、科学计数法、根式/π、代数式展开
+  > 和三态语义都已实现并有单测。本条剩下的是**学生作答**这条路径——把 `check_answer_agreement`
+  > 接进 `answer_evaluator` 的归一化判否分支，并补齐它尚未覆盖的“多解集合的顺序与写法”。
+  > 注意延迟：学生每次提交都会走这条路，而核验阶段是离线批量，两者的成本约束不同。
 
 - [ ] 图片与题目的版面级对应关系：图片归属曾经完全由 MinerU 的线性阅读顺序决定
   （`apps/api/domain/questions/source.py` 按纯文本位置分配），多图页面可能把图错绑到相邻题。
@@ -409,21 +419,30 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 - [ ] 主动验证各 Provider 的 Prefix Cache 能力；不支持的 Provider 记录实验结论并保持安全回退，
   缓存键必须包含模型、Prompt、Schema、题目版本和知识点版本。
 
-- [ ] **批次熔断与系统性失败识别**：当前一个批次里的题各自失败各自记录，但没有区分
-  “这一题没做出来”和“在你去修配置之前什么都做不出来”。API key 过期、配额耗尽、上游超时这三类
-  属于后者，连续命中若干次应当**暂停整个批次并给出可展示的具体原因**（如 `rate_limit: 429 …`），
-  而不是把剩下的题逐一磨成失败记录。同时把“部分成功”确立为正经状态：20 页 OCR 成功 18 页就
-  展示 18 页，而不是整批算失败。
-  > 优先级：中。本地开发同样会遇到（换机器、key 过期），不依赖是否部署。
-  > 但要等 Badcase 语料跑起来后确认这三类失败在真实运行里的占比，再决定阈值怎么设。
+- [x] **批次熔断与系统性失败识别**：`generate_full_paper` 的批次循环里新增
+  `_systemic_failure_signal`，只识别三类"在你去修配置之前什么都做不出来"的系统性失败——API key
+  过期/配额耗尽、429 限流、上游超时——优先用 HTTP 状态码判断（复用
+  `application/job_worker.py` 的 `RETRYABLE_HTTP_STATUS_CODES`，`textbook_jobs.py` 的 Worker 重试
+  分类同样引用这个常量），状态码不可用时再退回错误文案关键词兜底。连续命中默认 3 次
+  （`DOTTY_SYSTEMIC_FAILURE_HALT_THRESHOLD` 可调）就把 `summary.haltedEarly=true`、
+  `summary.haltReason` 置为具体原因（如 `rate_limit: 429 ...`）并停止剩余批次，不再逐题磨到失败；
+  已经成功的批次不受影响，仍按既有的成功/失败/隔离/跳过部分成功语义保留。其他失败（OCR 解析、
+  题目质量不达标等）继续逐题记录，不参与熔断计数。测试见 `tests/test_textbook_processing.py`
+  的 `SystemicFailureSignalTests` 和批次熔断相关用例。
 
-- [ ] **依赖自检（preflight）**：本项目依赖 MinerU、pypdf、Ollama、Codex CLI、Azure Speech、
-  Qwen3-TTS 和 PostgreSQL，任何一个没配好都要等到运行时才炸。做一个“现在这条链路能不能跑”的
-  自检页：每项一条 `{key, label, ok, detail, optional}`，**任何检查都不抛异常**（失败的导入或
-  缺失的配置变成一条失败/可选记录，不是异常），整体 ok = 所有必需项通过。
-  > 优先级：中。价值不只在部署——换机器、换环境、新人上手时同样省往返。
-  > 与 `feat/ocr-preflight-report`（页面级脏页预检）不是同一件事：那条检查的是**内容**，
-  > 这条检查的是**环境**，两者可以复用同一套报告结构但不要合并。
+- [x] **依赖自检（preflight）**：新增 `apps/api/dependency_preflight.py`，对 MinerU、pypdf、
+  Ollama、Codex CLI、Azure Speech、Qwen3-TTS 和 PostgreSQL 逐项探测，每项返回
+  `{key, label, ok, detail, optional}`；每项探测都被 `_safe_check` 包裹，任何内部异常（缺失的导入、
+  连不上的服务）都收敛成 `ok: false` 的失败记录，绝不向上抛出。整体 `ok` 只看非 optional 项——
+  pypdf 和 PostgreSQL 没有等价回退路径标记为必需，其余五项都有回退（pypdf 文字层、另一个模型
+  Provider、浏览器语音）标记为可选。只读端点 `GET /api/system/dependency-preflight`
+  （`apps/api/routers/dependency_preflight_routes.py`，独立路由避免与并行改动
+  `textbook_routes.py` 冲突）暴露同一份报告。与 `ocr_preflight.py`（页面级脏页预检）不是同一件事：
+  那条检查的是**内容**，这条检查的是**环境**，两者复用同一套 `{key, ..., optional}` 报告结构但没有
+  合并成同一个模块。测试见 `tests/test_dependency_preflight.py`。
+  > **自检页已补齐（2026-09-16）**：`/studio/dependency-preflight`（`DependencyPreflightApp.tsx`），
+  > 入口在 `/studio` 首屏顶栏。接口补上 `response_model=DependencyPreflightReport`（`DependencyCheck`
+  > 列表），前端不再依赖裸 `unknown` 类型。
 
 ## T2：可恢复的长任务
 
@@ -485,7 +504,8 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 `test/offline-ai-evaluation`（已完成） → `feature/badcase-replay-loop`（已完成） → `feat/ocr-preflight-report`（已完成） →
 `feat/model-capability-registry`（第一版已完成） → `test/postgres-integration`（已完成） →
-`chore/public-test-hardening`（已完成）。后续按需推进模型筛选界面、跨模型评测、陪练全链路事件、批次熔断和环境依赖自检。
+`chore/public-test-hardening`（已完成）→ 批次熔断与环境依赖自检（已完成，含自检页 UI，见下方对应
+条目）。后续按需推进模型筛选界面、跨模型评测、陪练全链路事件。
 
 前两项种子数据直接复用本轮已核实的真实坏样本（见“当前执行队列”），不必重新采集；建成后再回头评估
 T0 里剩下的几条开放项（题号识别子问题 A——子问题 B 已随 `fix/reconstruct-line-breaks-from-mineru-layout`

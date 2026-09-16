@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from infrastructure.runtime.model_runtime import Provider
 from infrastructure.runtime.ocr_runtime import OcrProvider
@@ -413,6 +413,38 @@ PDF_MAX_UPLOAD_BYTES = 500 * 1024 * 1024
 PDF_MAX_CHUNK_BYTES = 5 * 1024 * 1024
 PDF_MIN_CHUNK_BYTES = 1024
 PDF_MAX_CHUNKS = 200
+
+
+class QuestionGuideCardEdit(BaseModel):
+    """人工编辑引导卡时允许改的字段；结构与 GUIDE_CARDS 示例保持一致。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    level: int | None = Field(default=None, ge=0, le=5)
+    stuckAt: str = Field(min_length=1, max_length=200)
+    knowledge: list[str] = Field(default_factory=list, max_length=6)
+    hint: str = Field(min_length=1, max_length=300)
+    question: str = Field(min_length=1, max_length=300)
+    canvasAction: str | None = Field(default=None, max_length=40)
+
+
+class QuestionEditRequest(BaseModel):
+    """人工字段级编辑请求。
+
+    只允许改题干、选项、标准答案和引导卡文本这类题目内容字段；来源溯源
+    （``sourceProvenance``）、模型运行记录（``modelRun``）、答案核验结果
+    （``verification``）等审计字段不在这里出现，服务端也永远不会用这份请求覆盖它们。
+    ``baseRevisionId`` 是乐观并发的依据：必须等于服务端当前版本，否则拒绝这次编辑。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    baseRevisionId: str | None = Field(default=None, max_length=64)
+    prompt: str | None = Field(default=None, min_length=1, max_length=800)
+    options: list[str] | None = Field(default=None, max_length=6)
+    correctAnswer: str | None = Field(default=None, max_length=120)
+    correctAnswers: list[str] | None = Field(default=None, max_length=6)
+    guideCards: list[QuestionGuideCardEdit] | None = Field(default=None, max_length=3)
 
 
 class PdfUploadInitRequest(BaseModel):

@@ -25,6 +25,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，details 会列出缺失表/列/索引/外键及 orphan count，并以 `autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项，不会等业务查询触发缺列 `500` |
+| `GET` | `/api/system/dependency-preflight` | 环境依赖自检（MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL）：`response_model=DependencyPreflightReport`，返回 `{ok, checks: [{key, label, ok, detail, optional}]}`；任何一项检查内部失败都会被收敛成 `ok: false` 的记录而不是异常响应，整体 `ok` 只看非 optional 项（当前只有 `pypdf`、`postgresql` 是必需项）。前端页面见 `/studio/dependency-preflight` |
 | `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
@@ -63,14 +64,14 @@ npm run check:api     # 只校验，过期时返回非零状态
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/question` | 返回内置示例题和讲解 |
-| `POST` | `/api/textbook/import` | 上传单页图片或小 PDF，返回一道结构化题目；题目包含 `sourceProvenance`，模型运行记录的 `stages` 标识原题抽取、独立求解、答案核验和教学脚本阶段 |
+| `POST` | `/api/textbook/import` | 上传单页图片或小 PDF，返回一道结构化题目；题目包含 `sourceProvenance`，模型运行记录的 `stages` 标识原题抽取、独立求解、答案核验和教学脚本阶段；题目的 `verification.solverAgreement` 由确定性符号等价判等（`answer_solver.py`）算出，不是模型自报，详情见 `verification.solverCheck`（`status: agree/disagree/undecidable`、`method`、`solverVersion`） |
 | `POST` | `/api/uploads/init` | 初始化最大 500 MB 的 PDF 分块任务 |
 | `PUT` | `/api/uploads/{uploadId}/chunks/{index}` | 幂等上传一个 5 MB 分块 |
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
 | `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；返回 `202 + jobId`；支持 `Idempotency-Key` |
-| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport`、各批次 `examIRByBatch` 和题目载荷 |
+| `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport`、各批次 `examIRByBatch` 和题目载荷；批次循环连续命中系统性失败（API key 过期/配额耗尽、429 限流、上游超时）达到阈值时会提前停止剩余批次，此时 `summary.haltedEarly=true` 且 `summary.haltReason` 给出具体原因（如 `rate_limit: 429 ...`），已成功批次不受影响 |
 | `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
 | `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
@@ -78,8 +79,10 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/uploads/{uploadId}/review-queue` | 返回题目审核队列；每项包含 `provenance`、`issues`、`stageRuns` 和当前题目载荷 |
 | `GET` | `/api/uploads/{uploadId}/review-queue/{sourceQuestionKey}` | 读取单题来源证据、诊断和阶段运行摘要 |
 | `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/stages/{stage}/rerun` | 从指定阶段开始，重跑该阶段及下游；核验非 `verified` 时不调用教学脚本模型 |
+| `PATCH` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}` | 人工编辑题干/选项/标准答案/引导卡文本；必须带 `baseRevisionId` 做乐观并发，且编辑结果要过与模型生成路径相同的质量门禁 |
 | `GET` | `/api/runs/{runId}` | 查询冻结的运行配置、状态和结果/失败证据 |
-| `GET` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions` | 按来源题键读取不可变题目修订链 |
+| `GET` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions` | 按来源题键读取不可变题目修订链；每条记录带 `revisionSource`（`model_generated`/`manual_edit`） |
+| `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/revisions/{revisionId}/activate` | 把题目当前展示版本回滚/指向某条历史修订；只移动指针，不追加新 revision |
 
 PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF` 结束标记。文件缺少
 `%%EOF` 通常表示源 PDF 本身被截断，需要重新下载或重新导出。
@@ -168,9 +171,23 @@ mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确�
 已经丢失，接口返回 `409`，需要重新上传原 PDF，而不是使用已污染的题干继续猜测。
 
 内容生产操作会返回审计摘要：`question_repair` 复用 OCR，`question_reocr` 显式刷新 OCR，
-`batch_regenerate` 重新生成批次，`publication_rereview` 创建整套审核新版。摘要包含 `runId`、题目
-`revisionNumber`、实际模型/审核/OCR provider 及 Prompt/Schema/validator 版本或摘要；不会返回完整 Prompt、密钥或学生数据。
-运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
+`batch_regenerate` 重新生成批次，`publication_rereview` 创建整套审核新版，`question_manual_edit`
+是老师人工编辑字段，`question_revision_activate` 是把当前展示版本回滚到某条历史修订。摘要包含
+`runId`、题目 `revisionNumber`、实际模型/审核/OCR provider 及 Prompt/Schema/validator 版本或摘要；
+不会返回完整 Prompt、密钥或学生数据。运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
+
+人工字段级编辑（PATCH）只接受题目内容字段（`prompt`、`options`、`correctAnswer`、`correctAnswers`、
+`guideCards`），绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单
+过滤，未列出字段直接 `422`。请求必须带 `baseRevisionId`（从 `review-queue` 响应的 `currentRevisionId`
+读取，或上一次编辑/回滚返回的 `revision.revisionId`）；服务端当前版本一旦与之不一致（说明期间有人也改过
+这道题），返回 `409` 并在 `detail` 里带回服务端当前的 `currentRevisionId` 和完整 `questionPayload`，不做
+字段级合并，客户端必须整体拒绝并基于最新内容重试。编辑结果会重新跑一次与模型生成路径完全相同的质量门禁
+（`apply_question_quality_gate`），门禁不通过整体拒绝，不会把更差的题目静默保存。写入的 revision 标记
+`revisionSource=manual_edit`，区别于模型生成/重跑产生的 `model_generated`。
+
+回滚（`.../revisions/{revisionId}/activate`）不会创建新的 revision，只把题目当前展示版本这个指针指回历史
+某一条；`question_revisions` 追加写入链不受影响，历史证据永远不会被覆盖或删除，这与整份内容不可变审计的
+既有原则一致。
 
 Help 示例：
 

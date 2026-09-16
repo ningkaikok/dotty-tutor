@@ -12,6 +12,7 @@ from typing import Any, Callable
 from fastapi import HTTPException
 
 from application.job_worker import (
+    RETRYABLE_HTTP_STATUS_CODES,
     JobCancelled,
     RetryableJobError,
     TaskRegistry,
@@ -33,7 +34,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
             result = call()
         except HTTPException as error:
             details = {"statusCode": error.status_code}
-            if error.status_code in {408, 425, 429, 500, 502, 503, 504}:
+            if error.status_code in RETRYABLE_HTTP_STATUS_CODES:
                 raise RetryableJobError(str(error.detail), details=details) from error
             raise TerminalJobError(str(error.detail), details=details) from error
         if cancellation_check():

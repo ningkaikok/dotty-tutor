@@ -71,6 +71,7 @@ class TextbookStore(DatabaseStore):
                     batch_questions.c.batch_id,
                     batch_questions.c.payload_json,
                     batch_questions.c.guide_cards_json,
+                    batch_questions.c.current_revision_id,
                 )
                 .where(batch_questions.c.upload_id == upload_id)
                 .order_by(batch_questions.c.created_at, batch_questions.c.batch_id)
@@ -99,6 +100,12 @@ class TextbookStore(DatabaseStore):
             },
             "batchGuideCards": {
                 item["batch_id"]: decode_json(item["guide_cards_json"])
+                for item in question_rows
+            },
+            # 每道题当前展示版本对应的 revision_id；人工编辑/回滚做乐观并发校验时
+            # 直接读这份缓存，不需要为每次 PATCH 单独查一次数据库。
+            "batchCurrentRevisionIds": {
+                item["batch_id"]: item["current_revision_id"]
                 for item in question_rows
             },
             # The mapping is part of the persisted result, so a Worker restarted between
@@ -296,6 +303,7 @@ class TextbookStore(DatabaseStore):
         payload: dict[str, Any],
         guide_cards: list[dict[str, Any]],
         run_id: str,
+        revision_source: str = "model_generated",
     ) -> dict[str, Any]:
         """Append a revision and never update an existing payload."""
         self._ensure_initialized()
@@ -317,12 +325,13 @@ class TextbookStore(DatabaseStore):
                 revision_number=number, operation=operation,
                 previous_revision_id=previous["revision_id"] if previous else None,
                 payload_json=payload, guide_cards_json=guide_cards, run_id=run_id, created_at=created_at,
+                revision_source=revision_source,
             ))
         return {
             "revisionId": revision_id, "uploadId": upload_id, "sourceQuestionKey": source_question_key,
             "revisionNumber": number, "operation": operation,
             "previousRevisionId": previous["revision_id"] if previous else None,
-            "runId": run_id, "createdAt": created_at,
+            "runId": run_id, "createdAt": created_at, "revisionSource": revision_source,
         }
 
     def append_revision_and_save_question(
@@ -334,6 +343,7 @@ class TextbookStore(DatabaseStore):
         payload: dict[str, Any],
         guide_cards: list[dict[str, Any]],
         run_id: str,
+        revision_source: str = "model_generated",
     ) -> dict[str, Any]:
         """Single-question convenience wrapper around the batch transaction."""
         return self.append_revisions_and_save_questions(
@@ -341,6 +351,7 @@ class TextbookStore(DatabaseStore):
             questions=[(source_question_key, payload, guide_cards)],
             operation=operation,
             run_id=run_id,
+            revision_source=revision_source,
         )[0]
 
     def append_revisions_and_save_questions(
@@ -351,6 +362,7 @@ class TextbookStore(DatabaseStore):
         operation: str,
         run_id: str,
         replace_keys: list[str] | None = None,
+        revision_source: str = "model_generated",
     ) -> list[dict[str, Any]]:
         """Atomically append a whole batch and update its latest question views.
 
@@ -396,6 +408,7 @@ class TextbookStore(DatabaseStore):
                     revision_number=number, operation=operation,
                     previous_revision_id=previous["revision_id"] if previous else None,
                     payload_json=payload, guide_cards_json=guide_cards, run_id=run_id, created_at=created_at,
+                    revision_source=revision_source,
                 ))
                 self._upsert(
                     connection,
@@ -407,16 +420,19 @@ class TextbookStore(DatabaseStore):
                         "payload_json": payload,
                         "guide_cards_json": guide_cards,
                         "created_at": created_at,
+                        # 这一批题目刚写入的 revision 立刻成为当前展示版本；这是"当前
+                        # 视图 = 最新 revision"这条既有事实第一次被显式记录下来。
+                        "current_revision_id": revision_id,
                     },
                     ["upload_id", "batch_id"],
-                    ["question_id", "payload_json", "guide_cards_json", "created_at"],
+                    ["question_id", "payload_json", "guide_cards_json", "created_at", "current_revision_id"],
                 )
                 revisions.append({
                     "revisionId": revision_id, "uploadId": upload_id,
                     "sourceQuestionKey": source_question_key, "revisionNumber": number,
                     "operation": operation,
                     "previousRevisionId": previous["revision_id"] if previous else None,
-                    "runId": run_id, "createdAt": created_at,
+                    "runId": run_id, "createdAt": created_at, "revisionSource": revision_source,
                 })
         return revisions
 
@@ -433,4 +449,63 @@ class TextbookStore(DatabaseStore):
             "revisionNumber": row["revision_number"], "operation": row["operation"],
             "previousRevisionId": row["previous_revision_id"], "payload": decode_json(row["payload_json"]),
             "guideCards": decode_json(row["guide_cards_json"]), "runId": row["run_id"], "createdAt": row["created_at"],
+            "revisionSource": row["revision_source"],
         } for row in rows]
+
+    def get_current_question_revision_id(self, upload_id: str, source_question_key: str) -> str | None:
+        """返回题目当前展示版本指向的 revision_id；从未创建过 revision 时为 None。"""
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(batch_questions.c.current_revision_id)
+                .where(batch_questions.c.upload_id == upload_id, batch_questions.c.batch_id == source_question_key)
+            ).mappings().first()
+        return row["current_revision_id"] if row else None
+
+    def activate_question_revision(
+        self,
+        *,
+        upload_id: str,
+        source_question_key: str,
+        revision_id: str,
+    ) -> dict[str, Any]:
+        """把题目当前视图指回一条已存在的历史 revision，绝不追加新 revision。
+
+        回滚只移动 ``batch_questions.current_revision_id`` 这个指针，并把当前视图的
+        payload/guide_cards 换成目标 revision 的内容；``question_revisions`` 本身不
+        新增、不修改任何一行，因此这依旧是一次只读历史、只改指针的操作。
+        """
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            target = connection.execute(
+                select(question_revisions).where(
+                    question_revisions.c.revision_id == revision_id,
+                    question_revisions.c.upload_id == upload_id,
+                    question_revisions.c.source_question_key == source_question_key,
+                )
+            ).mappings().first()
+            if not target:
+                raise LookupError("这条历史修订不存在，或不属于这道题")
+            payload = decode_json(target["payload_json"])
+            guide_cards = decode_json(target["guide_cards_json"])
+            self._upsert(
+                connection,
+                batch_questions,
+                {
+                    "upload_id": upload_id,
+                    "batch_id": source_question_key,
+                    "question_id": payload["question"]["id"],
+                    "payload_json": payload,
+                    "guide_cards_json": guide_cards,
+                    "created_at": time.time(),
+                    "current_revision_id": target["revision_id"],
+                },
+                ["upload_id", "batch_id"],
+                ["question_id", "payload_json", "guide_cards_json", "created_at", "current_revision_id"],
+            )
+        return {
+            "revisionId": target["revision_id"], "uploadId": upload_id, "sourceQuestionKey": source_question_key,
+            "revisionNumber": target["revision_number"], "operation": target["operation"],
+            "previousRevisionId": target["previous_revision_id"], "payload": payload, "guideCards": guide_cards,
+            "runId": target["run_id"], "createdAt": target["created_at"], "revisionSource": target["revision_source"],
+        }

@@ -350,7 +350,12 @@ erDiagram
     每批复用 OCR 缓存和 `process_batch`，成功批次由稳定 `sourceQuestionKey` 持久化；Worker 重试跳过已成功批次，单批异常记录在
     `summary.batches` 后继续。`totalBatches`、`processedBatches`、`succeededBatches`、`failedBatches`、
     `quarantinedQuestions`、`skippedBatches`、`questionCount` 和 `limitReached` 组成可恢复结果汇总。整批重生成会替换
-    题目当前视图并清除不再存在的旧题，但保留不可变 revision 审计链。
+    题目当前视图并清除不再存在的旧题，但保留不可变 revision 审计链。批次循环带一个熔断：只识别三类系统性
+    失败信号（API key 过期/配额耗尽、429 限流、上游超时，判据复用 `application/job_worker.py` 的
+    `RETRYABLE_HTTP_STATUS_CODES` 状态码集合，不可用时退回错误文案关键词），连续命中默认 3 次
+    （`DOTTY_SYSTEMIC_FAILURE_HALT_THRESHOLD`）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩余批次，
+    不再逐题磨到失败；已经成功或跳过的批次不受影响，其他业务失败（OCR 解析、质量不达标等）仍按原样逐题
+    记录、不计入熔断。
 
 取消采用协作式边界：排队任务直接收敛为 `cancelled`，运行任务设置 `cancel_requested`，应用服务在合并、OCR
 和题目循环的安全点终止。Worker 必须持有有效租约才可提交成功或失败，避免进程暂停后由旧执行者覆盖新结果。
@@ -360,6 +365,15 @@ erDiagram
 当前系统已经具备统一模型适配、OCR 页面路由、不可变运行快照、PostgreSQL `background_jobs`、单 Worker、
 领域状态机、结构化日志和请求 ID。PDF 完成与批次处理已经脱离 HTTP 请求；它是模块化单体中的可恢复任务，
 不是 Redis 队列、分布式调度平台或 Agent 编排框架。
+
+环境依赖（MinerU、pypdf、Ollama、Codex CLI、Azure Speech、Qwen3-TTS、PostgreSQL）也有一次性自检：
+`apps/api/dependency_preflight.py` 逐项探测，任何一项检查内部异常都被收敛成 `{key, label, ok, detail,
+optional}` 失败记录而不是向上抛出；整体 `ok` 只看非 optional 项（当前只有 pypdf 和 PostgreSQL 没有等价
+回退路径，标记为必需）。只读端点 `GET /api/system/dependency-preflight`
+（`apps/api/routers/dependency_preflight_routes.py`，`response_model=DependencyPreflightReport`）暴露
+同一份报告。这条检查的是**环境**能否跑通，和检查页面**内容**的 `ocr_preflight.py` 是两件事，两者复用
+同一套报告结构但不合并。内容生产端 `/studio/dependency-preflight`（`DependencyPreflightApp.tsx`）提供
+对应的自检页，入口在 `/studio` 首屏顶栏，学生端不可见。
 
 下一阶段按以下最小边界演进：
 
@@ -456,7 +470,10 @@ flowchart TD
 
 题目切分规则有独立版本号（当前为 `question-segmentation-v4`）。已生成的 `source.md`、`model-prompt.md` 和题目
 revision 是不可变证据；规则修复不会偷偷改写历史产物，必须通过“刷新 OCR/重新生成”创建新 revision。这能区分
-“代码已修复但页面仍展示旧结果”和“新运行再次误切”两类问题，也便于回放同一份 OCR 输入。
+“代码已修复但页面仍展示旧结果”和“新运行再次误切”两类问题，也便于回放同一份 OCR 输入。人工编辑
+（`PATCH .../questions/{sourceQuestionKey}`）遵守同一条规则：编辑结果同样只会追加一条新 revision
+（`revisionSource=manual_edit`），不会覆盖旧的；回滚（`.../revisions/{revisionId}/activate`）也不追加新
+revision，只移动"当前展示版本"这个指针，历史证据链条完整保留。
 
 这里的“切题”不是单纯的正则分割：题型章节标题允许 OCR 空格/换行；标题缺失时先用考试说明语义黑名单跳过
 “注意事项、准考证、答题卡、涂黑”等前置块，再以题号白名单创建候选题。模型生成前后的门禁都保留这条来源边界。
@@ -469,7 +486,9 @@ revision 是不可变证据；规则修复不会偷偷改写历史产物，必�
   → ExamIR/QuestionIR 保存题号、原始块、页码、sourceBlockIds 和 visualAssetIds
   → 原题抽取模型只输出题型、选项、条件和小问，不输出答案
   → 独立求解模型只接收 QuestionIR，输出答案、空格/数值/画线判题契约
-  → 独立核验模型检查求解结论、来源答案和公式/单位冲突
+  → 独立核验模型检查题干完整性、选项对齐和公式/单位冲突，只如实抄录来源答案原文
+  → answer_solver.py 用确定性符号等价（sympy 兜底）核对求解结论与来源答案是否一致，
+    得到 solverAgreement——这一步不再由模型自证
   → 教学脚本模型只接收 QuestionIR + SolutionIR，输出四步讲解和三张引导卡
   → 确定性校验占位符数量与顺序，再恢复原始图片引用
   → attach_question_source 绑定题号、页码、题干图和选项图
@@ -483,6 +502,15 @@ revision 是不可变证据；规则修复不会偷偷改写历史产物，必�
 不能改写 QuestionIR；脚本模型不能改写题目或答案。核验冲突或来源不足时，题目进入 `needs_review`，不会用默认
 答案掩盖失败。`modelRun.stages` 保留各阶段的 provider、model 和回退状态，`sourceProvenance` 保留题目级
 页码、OCR 块 ID、图片 ID、置信度和诊断。
+
+`verification.solverAgreement` 是确定性程序算出来的，不是模型自我断言的布尔值：`answer_solver.py` 把
+求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做符号等价判等
+（数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。三态而不是
+两态的原因是核验阶段面对的多数是几何证明、开放题——CAS 判不了是常态，必须能区分"判不了"和"判定冲突"。
+`disagree` 会把 `status` 强制改成 `conflict` 并要求人工复核（确定性证据的否决权）；`agree`/`undecidable`
+都不会把模型给出的 `needs_review` 提升为 `verified`，因为核验阶段其余检查（题干完整性、选项对齐、单位）
+仍然只能靠模型或人工，代码没有证据替它们背书——只做否决、不做提升。详细判定过程记录在
+`verification.solverCheck`（status/method/solverVersion/比较的两段文本），供审校面板解释"为什么"。
 
 文字审核和图片审核不是两个可独立选择的模型。`ReviewRuntime` 使用同一组
 `REVIEW_PROVIDER`/`REVIEW_MODEL`，但在有图片时会产生独立的 `textModelRun` 和 `visionModelRun` 审计记录，
@@ -500,7 +528,8 @@ OCR 题块 + 来源图片
   → 生成模型前将 Markdown 图片引用替换为 `⟦IMG_N⟧` 占位符
   → extraction 按 JSON Schema 输出候选结构，不输出答案或教案
   → solving 只根据 QuestionIR 输出答案契约
-  → verification 独立检查求解结论、来源答案和公式/单位冲突
+  → verification 独立检查题干完整性、选项对齐和公式/单位冲突；solverAgreement 由
+    answer_solver.py 做确定性符号等价判等，不是模型自我断言
   → tutor-script 只在题目结构稳定后输出 4 步/3 卡
   → 确定性校验占位符数量与顺序，再恢复原始图片引用
   → attach_question_source 绑定来源
@@ -603,7 +632,11 @@ POST /api/tts
 ## 持久化
 
 - `upload_jobs.result_json` 保存上传任务和教材结果。
-- `batch_questions.payload_json` 保存结构化题目和审校信息。
+- `batch_questions.payload_json` 保存结构化题目和审校信息，是题目"当前展示版本"的唯一存储位置；
+  `batch_questions.current_revision_id` 指向 `question_revisions` 里对应的那一条，人工编辑靠比较这个
+  指针做乐观并发，回滚也只移动这个指针，绝不修改或删除 `question_revisions` 里的任何一行。
+- `question_revisions` 是追加写入的题目修订链，`revision_source` 区分 `model_generated`（生成/重跑产生）
+  和 `manual_edit`（人工编辑产生）；回滚不会在这张表里新增行。
 - `guide_cards_json` 保存分层提示。
 - `lesson_documents` 保存带版本的课程内容块。
 - `learning_classes`、`class_memberships` 和 `assignments` 保存本地班级、学生名单和不可变发布版本指派；

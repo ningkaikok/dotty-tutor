@@ -6,10 +6,13 @@ HTTP 路由只负责请求解析和文件响应；本服务拥有两个长流程
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import re
 import shutil
+import socket
+import subprocess
 import time
 import uuid
 from typing import Any
@@ -31,6 +34,7 @@ from application.services.question_processing import (
 from application.services.staged_question_generation import normalize_stage
 from domain.contracts.lesson import lesson_document_from_payload
 from domain.questions.exam_ir import build_exam_ir
+from domain.questions.pipeline import apply_question_quality_gate
 from domain.questions.quality import build_import_quality_report
 from domain.questions.source import (
     MARKDOWN_IMAGE_PATTERN,
@@ -66,6 +70,61 @@ MAX_FULL_PAPER_QUESTIONS = _bounded_env_int(
     "DOTTY_MAX_FULL_PAPER_QUESTIONS", 100, minimum=1, maximum=100,
 )
 
+# 批次熔断（roadmap T2）：连续命中这么多次"系统性失败"信号后暂停整批剩余部分，
+# 不再把剩下的题逐一磨成失败记录。已经成功/跳过的批次不受影响。
+SYSTEMIC_FAILURE_HALT_THRESHOLD = _bounded_env_int(
+    "DOTTY_SYSTEMIC_FAILURE_HALT_THRESHOLD", 3, minimum=1, maximum=20,
+)
+
+# 三类"系统性失败"文案信号：API key 过期/配额耗尽、429 限流、上游超时。这些是
+# roadmap 明确列出的边界；除此之外的失败（OCR 解析、题目质量不达标等）继续按
+# 现状逐题记录，不参与熔断计数。Provider 适配层（Codex CLI/Ollama）大多把错误
+# 包成纯文本，没有统一的结构化错误码，因此在状态码之外仍需要少量文案信号兜底。
+_RATE_LIMIT_MARKERS = ("429", "rate limit", "rate_limit", "too many requests", "限流")
+_QUOTA_OR_AUTH_MARKERS = (
+    "401", "403", "unauthorized", "invalid_api_key", "invalid api key",
+    "insufficient_quota", "quota", "api key", "过期", "配额",
+)
+_UPSTREAM_TIMEOUT_MARKERS = ("timed out", "timeout", "deadline exceeded", "超时")
+
+
+def _systemic_failure_signal(error: BaseException) -> tuple[str, str] | None:
+    """识别一次批次失败是否属于"在你去修配置之前什么都做不出来"的系统性失败。
+
+    沿 ``__cause__``/``__context__`` 链向上查找（``RuntimeExecutionError`` 等
+    包装类型会把原始 Provider 异常挂在 ``cause`` 上），优先用 HTTP 状态码判断
+    （429/401/403/408/504，与 ``job_worker.RETRYABLE_HTTP_STATUS_CODES`` 同一套
+    编号语义），状态码不可用时再退回到错误文案里的关键词信号。命中返回
+    ``(category, 可展示原因)``；未命中返回 ``None``，调用方按现状逐题记录。
+    """
+    node: BaseException | None = error
+    seen: set[int] = set()
+    depth = 0
+    while node is not None and id(node) not in seen and depth < 4:
+        seen.add(id(node))
+        depth += 1
+        if isinstance(node, (subprocess.TimeoutExpired, socket.timeout, TimeoutError)):
+            return "upstream_timeout", f"upstream_timeout: {node}"[:300]
+        status_code = getattr(node, "status_code", None)
+        if not isinstance(status_code, int):
+            code = getattr(node, "code", None)  # urllib.error.HTTPError 用 .code
+            status_code = code if isinstance(code, int) else None
+        if status_code == 429:
+            return "rate_limit", f"rate_limit: HTTP 429 {node}"[:300]
+        if status_code in {401, 403}:
+            return "quota_or_auth", f"quota_or_auth: HTTP {status_code} {node}"[:300]
+        if status_code in {408, 504}:
+            return "upstream_timeout", f"upstream_timeout: HTTP {status_code} {node}"[:300]
+        text = str(node).lower()
+        if any(marker in text for marker in _RATE_LIMIT_MARKERS):
+            return "rate_limit", f"rate_limit: {node}"[:300]
+        if any(marker in text for marker in _QUOTA_OR_AUTH_MARKERS):
+            return "quota_or_auth", f"quota_or_auth: {node}"[:300]
+        if any(marker in text for marker in _UPSTREAM_TIMEOUT_MARKERS):
+            return "upstream_timeout", f"upstream_timeout: {node}"[:300]
+        node = node.__cause__ or node.__context__
+    return None
+
 
 class TextbookProcessingService:
     """协调一份 PDF 的 OCR、题目生成、批次状态和持久化。"""
@@ -85,6 +144,7 @@ class TextbookProcessingService:
         run_id: str | None = None,
         operation: str = "initial_batch",
         replace_keys: list[str] | None = None,
+        revision_source: str = "model_generated",
     ) -> list[dict[str, Any]]:
         """保存课程文档，并在一个事务中提交题目当前视图与 revision 证据。
 
@@ -109,6 +169,7 @@ class TextbookProcessingService:
                 operation=operation,
                 run_id=run_id,
                 replace_keys=replace_keys,
+                revision_source=revision_source,
             )
         else:
             self.store.save_questions(upload_id, list(zip(question_keys, payloads, guide_cards_list)))
@@ -604,6 +665,10 @@ class TextbookProcessingService:
             "batches": [],
             "qualityReport": quality_report,
             "blockedByQualityReport": not quality_report["readyForFullPaper"],
+            # 批次熔断：连续命中系统性失败后提前停止时，向 UI 展示具体原因；
+            # 正常跑完或只遇到偶发的单题失败时保持 False/None。
+            "haltedEarly": False,
+            "haltReason": None,
         }
         # Persist intermediate summary so the UI can show progress while the worker runs.
         result["fullPaper"] = summary
@@ -618,6 +683,25 @@ class TextbookProcessingService:
                 "questionPayloads": payloads,
                 "batches": result.get("batches", []),
             }
+        # 连续命中次数；任何一次成功或跳过（即"不是系统性失败"）都会重置为 0，
+        # 只有连续的系统性失败才会累积到阈值并触发熔断。
+        consecutive_systemic_failures = 0
+
+        def _register_batch_failure(error: BaseException) -> None:
+            """更新熔断计数；连续命中阈值时把原因记进 ``summary``。
+
+            只更新计数与 ``summary`` 里的 ``haltedEarly``/``haltReason`` 标记，
+            不在这里做任何持久化——每个批次结束后统一的落盘逻辑（无论成功、跳过
+            还是失败都会执行）负责刷新 ``job``/``result`` 并写入进度，避免这里
+            另开一条持久化路径导致两边不同步。
+            """
+            nonlocal consecutive_systemic_failures
+            signal = _systemic_failure_signal(error)
+            consecutive_systemic_failures = consecutive_systemic_failures + 1 if signal else 0
+            if signal and consecutive_systemic_failures >= SYSTEMIC_FAILURE_HALT_THRESHOLD:
+                summary["haltedEarly"] = True
+                summary["haltReason"] = signal[1]
+
         for index, batch_snapshot in enumerate(batches):
             self._check_cancel(cancellation_check)
             # process_batch reloads and persists its own snapshot; refresh it here so a
@@ -649,6 +733,7 @@ class TextbookProcessingService:
                 and existing
                 and len(existing) >= batch_question_limit
             ):
+                consecutive_systemic_failures = 0
                 summary["skippedBatches"] += 1
                 summary["processedBatches"] += 1
                 summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
@@ -670,6 +755,7 @@ class TextbookProcessingService:
             # 首批快速预览只生成 5 题，不能直接当成“整批已完成”。整卷任务首次经过
             # 一个批次时会复用 OCR 缓存扩展题量；Worker 重试则依靠该标记跳过成功批次。
             if batch.get("fullPaperProcessed") and existing:
+                consecutive_systemic_failures = 0
                 summary["skippedBatches"] += 1
                 summary["processedBatches"] += 1
                 quarantined = sum(
@@ -709,6 +795,7 @@ class TextbookProcessingService:
                     bool(item.get("qualityRecovery", {}).get("quarantined"))
                     for item in generated_payloads
                 )
+                consecutive_systemic_failures = 0
                 summary["succeededBatches"] += 1
                 summary["processedBatches"] += 1
                 summary["quarantinedQuestions"] += quarantined
@@ -728,6 +815,7 @@ class TextbookProcessingService:
                     "id": batch_id, "status": "failed", "error": str(error.detail),
                     "questionCount": 0, "quarantinedQuestions": 0,
                 })
+                _register_batch_failure(error)
             except Exception as error:
                 summary["failedBatches"] += 1
                 summary["processedBatches"] += 1
@@ -735,11 +823,20 @@ class TextbookProcessingService:
                     "id": batch_id, "status": "failed", "error": str(error)[:500],
                     "questionCount": 0, "quarantinedQuestions": 0,
                 })
+                _register_batch_failure(error)
             job = self.upload_registry.get(upload_id)
             result = job.get("result") or result
             self._reconcile_batch_question_keys(job, result)
             summary["questionCount"] = len(self._ordered_batch_payloads(job, result, limit=limit))
             result["fullPaper"] = summary
+            if summary["haltedEarly"]:
+                # 熔断命中：仍然走上面同一条落盘路径，只是进度提示换成具体原因；
+                # 随后立即退出循环，不再尝试剩余批次。
+                self.upload_registry.update(
+                    job, "complete", round((index + 1) / max(1, len(batches)) * 100),
+                    f"整套试卷检测到连续系统性失败，已暂停剩余批次：{summary['haltReason']}",
+                )
+                break
             self.upload_registry.update(
                 job, "complete", round((index + 1) / max(1, len(batches)) * 100),
                 f"整套试卷已处理 {index + 1}/{len(batches)} 个批次",
@@ -1177,6 +1274,7 @@ class TextbookProcessingService:
             "provenance": provenance,
             "issues": issues,
             "stageRuns": stages if isinstance(stages, list) else [],
+            "currentRevisionId": job.get("batchCurrentRevisionIds", {}).get(source_question_key),
         }
 
     def rerun_stage(
@@ -1292,6 +1390,269 @@ class TextbookProcessingService:
                 exc_info=True,
             )
             raise HTTPException(status_code=422, detail="阶段重跑失败，请稍后重试") from error
+        finally:
+            processing.discard(lock_key)
+
+    _EDITABLE_QUESTION_FIELDS = ("prompt", "options", "correctAnswer", "correctAnswers")
+
+    def edit_question(
+        self,
+        upload_id: str,
+        source_question_key: str,
+        *,
+        base_revision_id: str | None,
+        question_patch: dict[str, Any],
+        guide_cards_patch: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        """人工编辑题目内容字段（题干/选项/标准答案/引导卡文本）。
+
+        只允许改写 ``_EDITABLE_QUESTION_FIELDS`` 里列出的题目字段；来源溯源、模型
+        运行记录、答案核验结果等审计字段永远原样保留。写入前必须绑定
+        ``base_revision_id`` 做乐观并发校验，并让编辑结果重新过一次与模型生成路径
+        完全相同的 ``apply_question_quality_gate``——门禁不通过就整体拒绝，不落盘。
+        """
+        job = self.upload_registry.get(upload_id)
+        result = job.get("result")
+        if job.get("status") != "complete" or not result:
+            raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+
+        old_payload = job.setdefault("batchPayloads", {}).get(source_question_key)
+        if not old_payload:
+            raise HTTPException(status_code=404, detail="没有找到要编辑的题目")
+        batch_id = old_payload.get("question", {}).get("sourceBatchId")
+        batch = next((item for item in result.get("batches", []) if item["id"] == batch_id), None)
+        if not batch:
+            raise HTTPException(status_code=404, detail="没有找到题目所属批次")
+
+        current_revision_id = job.get("batchCurrentRevisionIds", {}).get(source_question_key)
+        if (base_revision_id or None) != (current_revision_id or None):
+            old_guide_cards = job.get("batchGuideCards", {}).get(source_question_key) or []
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "题目已被其他修改更新，请基于最新版本重新编辑",
+                    "currentRevisionId": current_revision_id,
+                    "questionPayload": old_payload,
+                    "guideCards": old_guide_cards,
+                },
+            )
+
+        unknown_fields = sorted(set(question_patch) - set(self._EDITABLE_QUESTION_FIELDS))
+        if unknown_fields:
+            raise HTTPException(status_code=422, detail=f"不支持编辑这些字段：{', '.join(unknown_fields)}")
+
+        processing = job.setdefault("processingBatches", set())
+        lock_key = f"question:{source_question_key}"
+        if lock_key in processing:
+            raise HTTPException(status_code=409, detail="这个题目正在修复中")
+        processing.add(lock_key)
+        run = self.audit.start(
+            "question_manual_edit",
+            "question",
+            upload_id=upload_id,
+            question_key=source_question_key,
+            config=build_run_config(operation_details={"fields": sorted(question_patch)}),
+        )
+        run_id = run["runId"]
+        try:
+            # 门禁需要重建 contentBlocks，必须用当次仍然有效的 OCR 来源块，否则无法
+            # 区分"人工编辑引入的问题"和"来源本身就有问题"。
+            _lesson_source, _ocr_run, _asset_dir, question_sources = self._load_batch_sources(
+                upload_id=upload_id,
+                job=job,
+                batch=batch,
+                result=result,
+                question_limit=MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
+            )
+            target = next(
+                (
+                    (block, images)
+                    for index, (number, block, images) in enumerate(question_sources)
+                    if question_key(batch_id, number, index) == source_question_key
+                ),
+                None,
+            )
+            if target is None:
+                raise HTTPException(status_code=409, detail="OCR 结果中已找不到这道题，无法重新校验质量门禁")
+            source_block, source_images = target
+
+            payload = copy.deepcopy(old_payload)
+            question = payload["question"]
+            for field in self._EDITABLE_QUESTION_FIELDS:
+                if field in question_patch:
+                    question[field] = question_patch[field]
+            guide_cards = (
+                copy.deepcopy(guide_cards_patch)
+                if guide_cards_patch is not None
+                else copy.deepcopy(job.get("batchGuideCards", {}).get(source_question_key) or [])
+            )
+
+            quality = apply_question_quality_gate(payload, source_block, source_images)
+            if quality.get("status") != "ready":
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "message": "编辑后的题目未通过质量门禁，已拒绝保存",
+                        "errors": quality.get("errors", []),
+                    },
+                )
+
+            revisions = self._persist_lessons(
+                upload_id, [payload], [guide_cards],
+                run_id=run_id, operation="question_manual_edit", revision_source="manual_edit",
+            )
+            revision = revisions[0] if revisions else None
+            job["batchPayloads"][source_question_key] = payload
+            job.setdefault("batchGuideCards", {})[source_question_key] = guide_cards
+            job.setdefault("batchCurrentRevisionIds", {})[source_question_key] = (
+                revision["revisionId"] if revision else current_revision_id
+            )
+            result["questionPayload"] = payload
+            ordered_keys = [
+                key
+                for current_batch in result.get("batches", [])
+                for key in job.setdefault("batchQuestionKeys", {}).get(current_batch["id"], [])
+            ]
+            result["questionPayloads"] = [
+                job["batchPayloads"][key] for key in ordered_keys if key in job["batchPayloads"]
+            ]
+            self.upload_registry.update(job, "complete", 100, f"已人工编辑题目 {source_question_key}")
+            log_event(
+                "upload.question.manual_edit.completed",
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                batch_id=batch_id,
+                run_id=run_id,
+                fields=sorted(question_patch),
+            )
+            run = self.audit.finish(run_id, result={
+                "revisionId": revision["revisionId"] if revision else None,
+            })
+            return {
+                "run": run,
+                "batch": batch,
+                "questionPayload": payload,
+                "guideCards": guide_cards,
+                "edit": {"scope": "question", "operation": "question_manual_edit", "fields": sorted(question_patch)},
+                "revision": revision,
+            }
+        except HTTPException as error:
+            self.audit.fail(run_id, error, stage="question")
+            raise
+        except Exception as error:
+            self.audit.fail(run_id, error, stage="question")
+            log_event(
+                "upload.question.manual_edit.failed",
+                level=40,
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                error_type=type(error).__name__,
+                error=str(error)[:300],
+                exc_info=True,
+            )
+            raise HTTPException(status_code=422, detail=f"题目编辑失败：{error}") from error
+        finally:
+            processing.discard(lock_key)
+
+    def activate_question_revision(
+        self,
+        upload_id: str,
+        source_question_key: str,
+        revision_id: str,
+    ) -> dict[str, Any]:
+        """把题目当前展示版本回滚/指向一条历史 revision，不追加新的 revision。
+
+        这是"审校老师改主意选回更早的版本"的实现：只移动
+        ``batch_questions.current_revision_id`` 这个指针并把当前视图换成目标 revision
+        的内容，``question_revisions`` 追加写入链不受影响，历史证据永远不会被覆盖。
+        """
+        job = self.upload_registry.get(upload_id)
+        result = job.get("result")
+        if job.get("status") != "complete" or not result:
+            raise HTTPException(status_code=409, detail="请先完成教材首批处理")
+        old_payload = job.setdefault("batchPayloads", {}).get(source_question_key)
+        if not old_payload:
+            raise HTTPException(status_code=404, detail="没有找到要回滚的题目")
+
+        processing = job.setdefault("processingBatches", set())
+        lock_key = f"question:{source_question_key}"
+        if lock_key in processing:
+            raise HTTPException(status_code=409, detail="这个题目正在修复中")
+        processing.add(lock_key)
+        run = self.audit.start(
+            "question_revision_activate",
+            "question",
+            upload_id=upload_id,
+            question_key=source_question_key,
+            config=build_run_config(operation_details={"revisionId": revision_id}),
+        )
+        run_id = run["runId"]
+        try:
+            activated = self.store.activate_question_revision(
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                revision_id=revision_id,
+            )
+        except LookupError as error:
+            self.audit.fail(run_id, error, stage="question")
+            processing.discard(lock_key)
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except Exception as error:
+            self.audit.fail(run_id, error, stage="question")
+            processing.discard(lock_key)
+            raise
+        try:
+            payload = activated["payload"]
+            guide_cards = activated["guideCards"]
+            batch_id = payload.get("question", {}).get("sourceBatchId")
+            batch = next((item for item in result.get("batches", []) if item.get("id") == batch_id), None)
+            job["batchPayloads"][source_question_key] = payload
+            job.setdefault("batchGuideCards", {})[source_question_key] = guide_cards
+            job.setdefault("batchCurrentRevisionIds", {})[source_question_key] = activated["revisionId"]
+            # lesson_documents 是学生入口读取的独立边界，回滚必须同步覆盖，否则已发布
+            # 课程仍会展示回滚之前的内容。这里刻意直接写 lesson，不追加新 revision。
+            self.store.save_lesson(lesson_document_from_payload(
+                payload, source_upload_id=upload_id, guide_cards=guide_cards,
+            ))
+            result["questionPayload"] = payload
+            ordered_keys = [
+                key
+                for current_batch in result.get("batches", [])
+                for key in job.setdefault("batchQuestionKeys", {}).get(current_batch["id"], [])
+            ]
+            result["questionPayloads"] = [
+                job["batchPayloads"][key] for key in ordered_keys if key in job["batchPayloads"]
+            ]
+            self.upload_registry.update(
+                job, "complete", 100,
+                f"已回滚题目 {source_question_key} 到第 {activated['revisionNumber']} 版",
+            )
+            log_event(
+                "upload.question.revision_activated",
+                upload_id=upload_id,
+                source_question_key=source_question_key,
+                revision_id=revision_id,
+                revision_number=activated["revisionNumber"],
+                run_id=run_id,
+            )
+            run = self.audit.finish(run_id, result={
+                "activatedRevisionId": activated["revisionId"],
+                "revisionNumber": activated["revisionNumber"],
+            })
+            return {
+                "run": run,
+                "batch": batch,
+                "questionPayload": payload,
+                "guideCards": guide_cards,
+                "activation": {
+                    "scope": "question", "operation": "question_revision_activate",
+                    "activatedRevisionId": activated["revisionId"],
+                },
+                "activatedRevision": activated,
+            }
+        except Exception as error:
+            self.audit.fail(run_id, error, stage="question")
+            raise HTTPException(status_code=422, detail=f"回滚题目版本失败：{error}") from error
         finally:
             processing.discard(lock_key)
 

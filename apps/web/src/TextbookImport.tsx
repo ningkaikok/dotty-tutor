@@ -31,6 +31,9 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
         <Link to="/studio/metrics" className="metrics-link">
           模型调用指标 <span aria-hidden="true">→</span>
         </Link>
+        <Link to="/studio/dependency-preflight" className="metrics-link">
+          环境依赖自检 <span aria-hidden="true">→</span>
+        </Link>
         <span className="demo-badge">LOCAL DEMO</span>
       </header>
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -10,11 +11,47 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from application.services.textbook_processing import TextbookProcessingService
+from application.services.textbook_processing import (
+    TextbookProcessingService,
+    _systemic_failure_signal,
+)
 from domain.questions.source import MAX_QUESTIONS_PER_BATCH
 from tests.postgres_test_support import postgres_tests_enabled
 
 _POSTGRES_TEST_SKIP_REASON = "需要 DOTTY_TEST_POSTGRES_ADMIN_URL 指向隔离 PostgreSQL admin 库"
+
+
+class SystemicFailureSignalTests(unittest.TestCase):
+    """针对批次熔断分类器的独立单测，不依赖整卷生成的其它状态。"""
+
+    def test_detects_rate_limit_from_status_code(self) -> None:
+        signal = _systemic_failure_signal(HTTPException(status_code=429, detail="太多请求"))
+        self.assertIsNotNone(signal)
+        category, reason = signal
+        self.assertEqual(category, "rate_limit")
+        self.assertIn("429", reason)
+
+    def test_detects_quota_or_auth_from_wrapped_cause(self) -> None:
+        """provider 适配层常把原始异常包成 RuntimeError，只有 __cause__ 带状态码。"""
+        cause = HTTPException(status_code=401, detail="API key 已过期")
+        wrapped = RuntimeError("模型调用失败：认证失败")
+        wrapped.__cause__ = cause
+
+        signal = _systemic_failure_signal(wrapped)
+
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal[0], "quota_or_auth")
+
+    def test_detects_upstream_timeout_from_exception_type(self) -> None:
+        error = subprocess.TimeoutExpired(cmd="codex", timeout=240)
+        signal = _systemic_failure_signal(error)
+        self.assertIsNotNone(signal)
+        self.assertEqual(signal[0], "upstream_timeout")
+
+    def test_ordinary_validation_failure_is_not_systemic(self) -> None:
+        """题号切分失败等业务失败不应被误判为系统性失败。"""
+        signal = _systemic_failure_signal(HTTPException(status_code=422, detail="题号切分失败"))
+        self.assertIsNone(signal)
 
 
 class TextbookProcessingTests(unittest.TestCase):
@@ -122,6 +159,100 @@ class TextbookProcessingTests(unittest.TestCase):
         # batch-001 被跳过（已持久化）、batch-002 成功、batch-003 失败：这三个状态
         # 已经完整证明恰好两个批次真正触发了处理，不需要再断言 mock 调用次数。
         self.assertEqual([item["status"] for item in summary["batches"]], ["skipped", "succeeded", "failed"])
+
+    def test_full_paper_halts_after_consecutive_rate_limit_failures(self) -> None:
+        """连续命中 429 限流达到阈值后应暂停剩余批次，而不是逐题磨到失败。
+
+        前两个批次成功，接下来三个批次连续命中 429（达到阈值 3），第六个
+        批次本应成功——但绝不能被处理到，用来证明熔断确实提前退出了循环，
+        不是只是恰好把所有批次都跑完后失败次数变多。
+        """
+        job = {
+            "uploadId": "rate-limited-upload",
+            "status": "complete",
+            "result": {
+                "batches": [{"id": f"batch-{index:03d}", "status": "queued"} for index in range(1, 7)],
+                "batchQuestionKeys": {},
+                "questionPayloads": [],
+            },
+            "batchQuestionKeys": {},
+            "batchPayloads": {},
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current.update(status=status, progress=progress, message=message)
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+        attempted_batches: list[str] = []
+
+        def process_batch(_upload_id, batch_id, **_kwargs):
+            attempted_batches.append(batch_id)
+            if batch_id in {"batch-001", "batch-002"}:
+                key = f"{batch_id}-q-1"
+                generated = {"question": {"id": key, "sourceQuestionKey": key}}
+                job["batchPayloads"][key] = generated
+                job["batchQuestionKeys"][batch_id] = [key]
+                return {"questionPayloads": [generated]}
+            if batch_id in {"batch-003", "batch-004", "batch-005"}:
+                raise HTTPException(status_code=429, detail="rate_limit: 429 Too Many Requests")
+            raise AssertionError(f"{batch_id} 不应被处理——熔断应该已经提前停止循环")
+
+        with patch.object(service, "process_batch", side_effect=process_batch):
+            result = service.generate_full_paper("rate-limited-upload", max_questions=100)
+
+        summary = result["summary"]
+        # 只尝试到第三次连续 429 命中阈值为止；batch-006 绝不能出现在尝试列表里。
+        self.assertEqual(attempted_batches, ["batch-001", "batch-002", "batch-003", "batch-004", "batch-005"])
+        self.assertTrue(summary["haltedEarly"])
+        self.assertIn("rate_limit", summary["haltReason"])
+        self.assertEqual(summary["succeededBatches"], 2)
+        self.assertEqual(summary["failedBatches"], 3)
+        self.assertEqual(summary["processedBatches"], 5)
+        # 已经成功的两个批次的题目不受影响，仍然按部分成功语义保留在结果里。
+        self.assertEqual(summary["questionCount"], 2)
+        self.assertEqual(
+            [item["status"] for item in summary["batches"]],
+            ["succeeded", "succeeded", "failed", "failed", "failed"],
+        )
+
+    def test_full_paper_does_not_halt_on_non_systemic_failures(self) -> None:
+        """普通的单题失败（比如 422 题号切分失败）应继续逐题记录，不触发熔断。"""
+        job = {
+            "uploadId": "ordinary-failure-upload",
+            "status": "complete",
+            "result": {
+                "batches": [{"id": f"batch-{index:03d}", "status": "queued"} for index in range(1, 4)],
+                "batchQuestionKeys": {},
+                "questionPayloads": [],
+            },
+            "batchQuestionKeys": {},
+            "batchPayloads": {},
+        }
+
+        class Registry:
+            def get(self, _upload_id):
+                return job
+
+            def update(self, current, status, progress, message):
+                current.update(status=status, progress=progress, message=message)
+
+        service = TextbookProcessingService(store=object(), upload_registry=Registry(), ocr_runtime=object())
+
+        def process_batch(_upload_id, batch_id, **_kwargs):
+            raise HTTPException(status_code=422, detail="题号切分失败")
+
+        with patch.object(service, "process_batch", side_effect=process_batch):
+            result = service.generate_full_paper("ordinary-failure-upload", max_questions=100)
+
+        summary = result["summary"]
+        self.assertFalse(summary["haltedEarly"])
+        self.assertIsNone(summary["haltReason"])
+        self.assertEqual(summary["failedBatches"], 3)
+        self.assertEqual(summary["processedBatches"], 3)
 
     def test_full_paper_stops_model_work_at_question_limit(self) -> None:
         """The question cap must stop later model calls, not merely trim the response."""

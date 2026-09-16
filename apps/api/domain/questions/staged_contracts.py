@@ -75,12 +75,15 @@ VERIFICATION_SCHEMA = {
     "properties": {
         "schemaVersion": {"type": "string", "maxLength": 40},
         "status": {"type": "string", "enum": ["verified", "conflict", "needs_review"]},
-        "solverAgreement": {"type": "boolean"},
+        # 故意没有 solverAgreement：判断解答是否与来源答案等价是确定性程序的职责
+        # （见 domain/questions/answer_solver.py），不能让模型自证；这里只留
+        # sourceAnswer 给模型做"如实抄录来源答案原文"这一件事，等价性判断在
+        # lesson_generation._build_verification 里用 answer_solver 重新计算。
         "sourceAnswer": {"type": "string", "maxLength": 160},
         "conflicts": _string_list(12, 240),
         "checks": _string_list(12, 160),
         "confidence": {"type": "number", "minimum": 0, "maximum": 1},
         "needsHumanReview": {"type": "boolean"},
     },
-    "required": ["schemaVersion", "status", "solverAgreement", "sourceAnswer", "conflicts", "checks", "confidence", "needsHumanReview"],
+    "required": ["schemaVersion", "status", "sourceAnswer", "conflicts", "checks", "confidence", "needsHumanReview"],
 }
