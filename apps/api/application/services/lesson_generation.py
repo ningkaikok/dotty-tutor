@@ -18,6 +18,10 @@ from application.services.legacy_question_adapter import project_question_ir
 from application.services.stage_artifact_cache import StageArtifactCache
 from application.services.staged_question_generation import normalize_stage
 from application.services.tutor_engine import TutorEngine
+from domain.questions.answer_solver import (
+    check_answer_agreement,
+    extract_solution_answer_text,
+)
 from domain.questions.contracts import (
     CANVAS_ACTIONS,
     GUIDE_CARDS,
@@ -314,7 +318,10 @@ QuestionIR：
 ---{repair}""".strip()
     if stage == "verification":
         return f"""你是独立答案核验器。对照原题来源和 SolutionIR 检查题干完整性、选项对齐、单位、公式和答案。
-不要改写题目或答案。求解结论与来源答案冲突、来源不完整或无法核验时，必须返回 conflict 或 needs_review。
+不要改写题目或答案。求解结论是否与来源答案等价由确定性程序另行核对，不是你的职责——
+sourceAnswer 只需要如实抄录来源中出现的原始答案文字；来源没有印出答案就返回空字符串，
+不要自己计算、推断或编造。题干不完整、选项对不上、单位/公式有问题、或你看到的来源答案
+与解答明显矛盾时，必须返回 conflict 或 needs_review。
 
 QuestionIR 与 SolutionIR：
 ---
@@ -327,6 +334,45 @@ QuestionIR 与 SolutionIR：
 ---
 {json.dumps(prompt_ir, ensure_ascii=False)}
 ---{repair}""".strip()
+
+
+def _build_verification(raw_verification: dict[str, Any], raw_solution: dict[str, Any]) -> dict[str, Any]:
+    """把核验阶段的模型输出与确定性符号核对结果合并成持久化的 verification 结构。
+
+    ``solverAgreement`` 不再是模型的自我断言，而是 ``answer_solver.check_answer_agreement``
+    的判定结果：
+    - disagree 会把 status 强制改成 conflict 并要求人工复核——这是确定性证据的否决权，
+      模型说"一致"也压不住代码算出来的"不一致"；
+    - agree/undecidable 都不会把模型给出的 needs_review 提升为 verified。"确定性核对
+      没发现冲突"只覆盖了答案等价这一项，核验阶段其余检查（题干完整性、选项对齐、
+      单位、公式）仍然只能靠模型或人工，代码没有证据去替它们背书，因此只做否决、
+      不做提升——这是本仓库"确定性程序把关，模型提议"原则里更保守的那一半。
+    """
+    solver_check = check_answer_agreement(
+        extract_solution_answer_text(raw_solution),
+        raw_verification.get("sourceAnswer"),
+    )
+    status = safe_text(raw_verification.get("status"), "needs_review", 20)
+    conflicts = safe_string_list(raw_verification.get("conflicts"), [], 12)
+    needs_human_review = bool(raw_verification.get("needsHumanReview", True))
+    if solver_check["status"] == "disagree":
+        status = "conflict"
+        needs_human_review = True
+        conflicts = (conflicts + [
+            f"确定性符号核验：解答“{solver_check['candidate']}”与来源答案"
+            f"“{solver_check['reference']}”不一致"
+        ])[:12]
+    return {
+        "status": status,
+        # undecidable（多数几何证明/开放题）一律记为 False，绝不能被当成"核验通过"。
+        "solverAgreement": solver_check["status"] == "agree",
+        "solverCheck": solver_check,
+        "sourceAnswer": safe_text(raw_verification.get("sourceAnswer"), "", 160),
+        "conflicts": conflicts,
+        "checks": safe_string_list(raw_verification.get("checks"), [], 12),
+        "confidence": bounded_confidence(raw_verification.get("confidence")),
+        "needsHumanReview": needs_human_review,
+    }
 
 
 def _merge_stage_runs(stage_runs: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
@@ -536,15 +582,7 @@ def _staged_lesson(
             "sourceBlocks": question_ir.get("sourceBlocks", []),
             "version": "question-ir-v1",
         },
-        "verification": {
-            "status": safe_text(raw_verification.get("status"), "needs_review", 20),
-            "solverAgreement": bool(raw_verification.get("solverAgreement")),
-            "sourceAnswer": safe_text(raw_verification.get("sourceAnswer"), "", 160),
-            "conflicts": safe_string_list(raw_verification.get("conflicts"), [], 12),
-            "checks": safe_string_list(raw_verification.get("checks"), [], 12),
-            "confidence": bounded_confidence(raw_verification.get("confidence")),
-            "needsHumanReview": bool(raw_verification.get("needsHumanReview", True)),
-        },
+        "verification": _build_verification(raw_verification, raw_solution),
     }
     payload = question_payload(question, _normalized_steps(raw_script, question), _merge_stage_runs(stage_runs))
     payload["stageArtifacts"] = stage_artifacts

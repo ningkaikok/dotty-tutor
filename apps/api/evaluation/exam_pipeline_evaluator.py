@@ -65,7 +65,7 @@ def evaluate_staged_pipeline_fixture(fixture: dict[str, Any]) -> dict[str, Any]:
     model_responses = [
         ({"questionNumber": "7", "stem": "7. 求一个数的两倍。", "questionType": "numeric", "options": []}, {"provider": "mock", "model": "golden", "fallback": False}),
         ({"questionType": "numeric", "correctAnswer": "6", "correctAnswers": [], "answerSpec": {"answerType": "numeric", "expected": "6", "accepted": ["6"], "tolerance": 0, "unit": ""}}, {"provider": "mock", "model": "golden", "fallback": False}),
-        ({"status": verification_status, "solverAgreement": verification_status == "verified", "conflicts": [], "checks": [], "confidence": 1, "needsHumanReview": verification_status != "verified"}, {"provider": "mock", "model": "golden", "fallback": False}),
+        ({"status": verification_status, "conflicts": [], "checks": [], "confidence": 1, "needsHumanReview": verification_status != "verified"}, {"provider": "mock", "model": "golden", "fallback": False}),
         ({"lessonSteps": [{"title": "读题", "text": "找条件", "speechText": "找条件"}] * 4, "guideCards": [{"hint": "看条件", "question": "条件是什么？"}] * 3}, {"provider": "mock", "model": "golden", "fallback": False}),
     ]
     original_selection = runtime.selection
