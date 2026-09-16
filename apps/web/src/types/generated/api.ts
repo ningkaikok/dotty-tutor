@@ -996,6 +996,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/system/dependency-preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dependency Preflight
+         * @description 返回"现在这条链路能不能跑"的环境依赖自检报告；只读，不做任何写入。
+         */
+        get: operations["dependency_preflight_api_system_dependency_preflight_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/textbook/import": {
         parameters: {
             query?: never;
@@ -1380,6 +1400,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{upload_id}/questions/{question_source_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit Question
+         * @description 人工编辑题目内容字段；乐观并发冲突返回 409 并带回服务端最新版本。
+         */
+        patch: operations["edit_question_api_uploads__upload_id__questions__question_source_key__patch"];
+        trace?: never;
+    };
     "/api/uploads/{upload_id}/questions/{question_source_key}/regenerate": {
         parameters: {
             query?: never;
@@ -1411,6 +1451,26 @@ export interface paths {
         get: operations["list_question_revisions_api_uploads__upload_id__questions__question_source_key__revisions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/uploads/{upload_id}/questions/{question_source_key}/revisions/{revision_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Activate Question Revision
+         * @description 把题目当前展示版本回滚/指向某个历史修订，不追加新的 revision。
+         */
+        post: operations["activate_question_revision_api_uploads__upload_id__questions__question_source_key__revisions__revision_id__activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1690,6 +1750,33 @@ export interface components {
             /** Learnerid */
             learnerId: string;
         };
+        /**
+         * DependencyCheck
+         * @description 单项依赖检查结果；``_safe_check`` 保证这里永远是一条记录，不是异常。
+         */
+        DependencyCheck: {
+            /** Detail */
+            detail: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Ok */
+            ok: boolean;
+            /** Optional */
+            optional: boolean;
+        };
+        /**
+         * DependencyPreflightReport
+         * @description 整体依赖自检报告；``response_model`` 声明后前端才能拿到真正的类型，
+         *     而不是 OpenAPI 里裸的 ``{[key: string]: unknown}``。
+         */
+        DependencyPreflightReport: {
+            /** Checks */
+            checks: components["schemas"]["DependencyCheck"][];
+            /** Ok */
+            ok: boolean;
+        };
         /** ExerciseAttemptCreate */
         ExerciseAttemptCreate: {
             /**
@@ -1961,6 +2048,71 @@ export interface components {
             status: "draft" | "in_review" | "published" | "archived";
         };
         /**
+         * QuestionEditRequest
+         * @description 人工字段级编辑请求。
+         *
+         *     只允许改题干、选项、标准答案和引导卡文本这类题目内容字段；来源溯源
+         *     （``sourceProvenance``）、模型运行记录（``modelRun``）、答案核验结果
+         *     （``verification``）等审计字段不在这里出现，服务端也永远不会用这份请求覆盖它们。
+         *     ``baseRevisionId`` 是乐观并发的依据：必须等于服务端当前版本，否则拒绝这次编辑。
+         */
+        QuestionEditRequest: {
+            /** Baserevisionid */
+            baseRevisionId?: string | null;
+            /** Correctanswer */
+            correctAnswer?: string | null;
+            /** Correctanswers */
+            correctAnswers?: string[] | null;
+            /** Guidecards */
+            guideCards?: components["schemas"]["QuestionGuideCardEdit"][] | null;
+            /** Options */
+            options?: string[] | null;
+            /** Prompt */
+            prompt?: string | null;
+        };
+        /**
+         * QuestionEditResponse
+         * @description 人工字段级编辑成功后的稳定 HTTP 契约。
+         */
+        QuestionEditResponse: {
+            /** Batch */
+            batch?: {
+                [key: string]: unknown;
+            } | null;
+            /** Edit */
+            edit: {
+                [key: string]: unknown;
+            };
+            /** Guidecards */
+            guideCards?: {
+                [key: string]: unknown;
+            }[];
+            /** Questionpayload */
+            questionPayload?: {
+                [key: string]: unknown;
+            } | null;
+            revision?: components["schemas"]["RevisionSummary"] | null;
+            run: components["schemas"]["RunSummary"];
+        };
+        /**
+         * QuestionGuideCardEdit
+         * @description 人工编辑引导卡时允许改的字段；结构与 GUIDE_CARDS 示例保持一致。
+         */
+        QuestionGuideCardEdit: {
+            /** Canvasaction */
+            canvasAction?: string | null;
+            /** Hint */
+            hint: string;
+            /** Knowledge */
+            knowledge?: string[];
+            /** Level */
+            level?: number | null;
+            /** Question */
+            question: string;
+            /** Stuckat */
+            stuckAt: string;
+        };
+        /**
          * QuestionRegenerationResponse
          * @description 单题修复或重新 OCR 的稳定 HTTP 契约。
          */
@@ -2001,6 +2153,8 @@ export interface components {
          * @description 题目工作台所需的来源、问题和阶段运行快照。
          */
         QuestionReviewQueueResponse: {
+            /** Currentrevisionid */
+            currentRevisionId?: string | null;
             /** Issues */
             issues?: {
                 [key: string]: unknown;
@@ -2022,6 +2176,30 @@ export interface components {
             /** Uploadid */
             uploadId: string;
         };
+        /**
+         * QuestionRevisionActivateResponse
+         * @description 把题目当前展示版本回滚/指向某条历史 revision 后的稳定 HTTP 契约。
+         */
+        QuestionRevisionActivateResponse: {
+            activatedRevision: components["schemas"]["RevisionSummary"];
+            /** Activation */
+            activation: {
+                [key: string]: unknown;
+            };
+            /** Batch */
+            batch?: {
+                [key: string]: unknown;
+            } | null;
+            /** Guidecards */
+            guideCards?: {
+                [key: string]: unknown;
+            }[];
+            /** Questionpayload */
+            questionPayload?: {
+                [key: string]: unknown;
+            } | null;
+            run: components["schemas"]["RunSummary"];
+        };
         /** ReviewQueueResponse */
         ReviewQueueResponse: {
             /** Items */
@@ -2037,13 +2215,19 @@ export interface components {
              * Operation
              * @enum {string}
              */
-            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
+            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun" | "question_manual_edit" | "question_revision_activate";
             /** Previousrevisionid */
             previousRevisionId?: string | null;
             /** Revisionid */
             revisionId: string;
             /** Revisionnumber */
             revisionNumber: number;
+            /**
+             * Revisionsource
+             * @default model_generated
+             * @enum {string}
+             */
+            revisionSource: "model_generated" | "manual_edit";
             /** Runid */
             runId: string;
             /** Sourcequestionkey */
@@ -2067,7 +2251,7 @@ export interface components {
              * Operation
              * @enum {string}
              */
-            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
+            operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun" | "question_manual_edit" | "question_revision_activate";
             /** Result */
             result?: {
                 [key: string]: unknown;
@@ -4316,6 +4500,26 @@ export interface operations {
             };
         };
     };
+    dependency_preflight_api_system_dependency_preflight_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DependencyPreflightReport"];
+                };
+            };
+        };
+    };
     import_textbook_api_textbook_import_post: {
         parameters: {
             query?: never;
@@ -4982,6 +5186,42 @@ export interface operations {
             };
         };
     };
+    edit_question_api_uploads__upload_id__questions__question_source_key__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_source_key: string;
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuestionEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionEditResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     regenerate_question_api_uploads__upload_id__questions__question_source_key__regenerate_post: {
         parameters: {
             query?: {
@@ -5035,6 +5275,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RevisionSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_question_revision_api_uploads__upload_id__questions__question_source_key__revisions__revision_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                question_source_key: string;
+                revision_id: string;
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuestionRevisionActivateResponse"];
                 };
             };
             /** @description Validation Error */
