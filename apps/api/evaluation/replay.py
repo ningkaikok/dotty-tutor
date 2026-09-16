@@ -6,12 +6,12 @@
 
 用法::
 
-    cd backend
-    ../.venv/bin/python -m evaluation.replay            # 写报告到 output/eval-reports/
-    ../.venv/bin/python -m evaluation.replay --check    # 只校验，异常时退出码非零
+    cd apps/api
+    uv run python -m evaluation.replay            # 写报告，退出码恒为 0（探索性运行）
+    uv run python -m evaluation.replay --check     # 写报告，且失败时退出码非零（CI 门禁用）
 
-退出码约定：出现"预期外的失败"或"已知缺陷条目的行为发生变化"时返回 1——后者意味着
-有人动到了特征化条目覆盖的代码路径，必须先更新语料再合并。
+退出码约定（仅 ``--check`` 生效）：出现"预期外的失败"或"已知缺陷条目的行为发生变化"时
+返回 1——后者意味着有人动到了特征化条目覆盖的代码路径，必须先更新语料再合并。
 """
 
 from __future__ import annotations
@@ -312,6 +312,11 @@ def main() -> int:
     )
     print(f"report: {paths['json']}")
     print(f"report: {paths['markdown']}")
+    # `--check` 曾经只出现在 help 文案里：无论传不传，退出码都按下面这行计算，
+    # 与 docstring 承诺的"不传 --check 就只看报告，不校验退出码"不一致。补上真区别：
+    # 默认（探索性运行）总是返回 0，只有显式要求校验时才把失败折算成非零退出码。
+    if not args.check:
+        return 0
     return 1 if (totals["failedUnexpected"] or totals["knownBugSignatureChanged"]) else 0
 
 

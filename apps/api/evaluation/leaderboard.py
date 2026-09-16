@@ -274,7 +274,9 @@ def _parse_model_arg(value: str) -> tuple[str, str]:
 
 def main() -> int:
     import argparse
+    import io
     import json
+    import sys
     from pathlib import Path
 
     parser = argparse.ArgumentParser(description="多模型评测排行榜（评审一致性 / 生成质量对比）。")
@@ -313,8 +315,23 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     path = args.output_dir / f"{report['reportKind']}-{report['runId']}.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # 报告正文一律 UTF-8 写盘，但 stdout 跟随控制台代码页：Windows 默认 cp1252/936
+    # 时打印中文的 statisticalNote 会抛 UnicodeEncodeError，把一次成功的运行变成
+    # 看起来失败的 traceback（报告其实已经落盘）。
+    if isinstance(sys.stdout, io.TextIOWrapper):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print(f"statisticalNote: {report['statisticalNote']}")
     print(f"report: {path}")
+
+    # 某一方 0 条样本评分成功（模型名写错、未 pull、Provider 不可用）时，报告里的极差
+    # 全是 null——数据本身是诚实的，但 CLI 若照常退出 0，一份只有单边数据的报告很容易
+    # 被当成"横评跑完了"。横评的全部意义在于比较，因此这里显式失败。
+    per_arm = report.get("perJudgeMetrics") or report.get("perGeneratorMetrics") or {}
+    dead = sorted(label for label, metrics in per_arm.items() if not metrics.get("successRate"))
+    if dead:
+        print(f"ERROR: 以下参与方没有任何样本评分成功，横评结果不可用：{', '.join(dead)}")
+        return 1
     return 0
 
 
