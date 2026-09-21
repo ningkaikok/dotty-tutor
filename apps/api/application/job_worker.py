@@ -20,6 +20,11 @@ from persistence.job_store import JobStore
 CancellationCheck = Callable[[], bool]
 JobHandler = Callable[[dict[str, Any], CancellationCheck], Any]
 
+# HTTP 状态码到"值得重试"的既有映射，供 handler 把 HTTPException 转换成
+# RetryableJobError/TerminalJobError；批次熔断（textbook_processing.generate_full_paper）
+# 复用同一集合判断"上游超时/限流"信号，避免两处各写一套状态码规则。
+RETRYABLE_HTTP_STATUS_CODES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
 
 class JobCancelled(Exception):
     """handler 在安全点主动退出时使用。"""

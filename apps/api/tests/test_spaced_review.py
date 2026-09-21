@@ -6,6 +6,7 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from answer_evaluator import EVALUATOR_VERSION
 from persistence.mistake_store import MistakeStore
 from persistence.review_store import ReviewStore
 from routers.review_routes import build_review_router
@@ -144,7 +145,7 @@ class SpacedReviewTests(PostgresTestCase):
         self.assertEqual(answered.status_code, 200)
         evidence = answered.json()["evaluationEvidence"]
         self.assertEqual(evidence["strategy"], "numeric-tolerance")
-        self.assertEqual(evidence["evaluatorVersion"], "answer-evaluator-v1")
+        self.assertEqual(evidence["evaluatorVersion"], EVALUATOR_VERSION)
         stored = self.reviews.get(task["taskId"])
         self.assertIsNotNone(stored)
         self.assertEqual(stored["evaluationEvidence"], evidence)

@@ -7,6 +7,12 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+### Added
+
+- 答案核验阶段的 `solverAgreement` 不再由模型自我声称，改由确定性符号判等程序裁决：解答与来源答案判定为不一致时强制题目进入冲突状态并要求人工复核，判不了的开放题（证明、文字作答）明确记为未核验，不会被当成核验通过。
+- 整卷生成连续遇到 API key 过期/配额耗尽、限流或上游超时时会提前暂停剩余批次并给出具体原因，不再把剩下的题逐一磨成失败记录；已经成功的批次不受影响。
+- 新增只读的环境依赖自检接口 `GET /api/system/dependency-preflight`，一次性检查 MinerU、pypdf、Ollama、Codex CLI、Azure Speech、Qwen3-TTS 和 PostgreSQL 是否配置就绪；内容生产端新增对应的自检页 `/studio/dependency-preflight`，入口在 `/studio` 首屏顶栏。
+
 ## [0.31.0] - 2026-09-14
 
 ### Added

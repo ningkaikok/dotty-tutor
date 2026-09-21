@@ -3,7 +3,15 @@ import type { ModelRun, OcrRun, ReviewRun } from "./runtime";
 
 export interface RunSummary {
   runId: string;
-  operation: "question_repair" | "question_reocr" | "batch_regenerate" | "publication_rereview" | "initial_batch" | "stage_rerun";
+  operation:
+    | "question_repair"
+    | "question_reocr"
+    | "batch_regenerate"
+    | "publication_rereview"
+    | "initial_batch"
+    | "stage_rerun"
+    | "question_manual_edit"
+    | "question_revision_activate";
   scope: string;
   targetUploadId?: string | null;
   targetQuestionKey?: string | null;
@@ -23,6 +31,8 @@ export interface QuestionReviewItem {
   provenance: Record<string, unknown>;
   issues: Array<{ code: string; message: string }>;
   stageRuns: Array<{ name: string; provider?: string; model?: string; fallback?: boolean; cacheHit?: boolean; skipped?: boolean }>;
+  /** 题目当前展示版本对应的 revision；人工编辑必须把它当作 baseRevisionId 提交。 */
+  currentRevisionId?: string | null;
 }
 
 export interface RevisionSummary {
@@ -31,6 +41,8 @@ export interface RevisionSummary {
   sourceQuestionKey: string;
   revisionNumber: number;
   operation: RunSummary["operation"];
+  /** 区分这条历史是模型生成/重跑产生的，还是老师手工编辑字段产生的。 */
+  revisionSource?: "model_generated" | "manual_edit";
   previousRevisionId?: string | null;
   runId: string;
   createdAt: number;
@@ -179,6 +191,41 @@ export interface QuestionStageRerunResult {
   stage: string;
   stages: QuestionReviewItem["stageRuns"];
   regeneration: { scope: "stage"; operation: "stage_rerun"; stage: string };
+  run: RunSummary;
+}
+
+/** 人工字段级编辑题目的请求体；只允许改题目内容字段，绑定 baseRevisionId 做乐观并发。 */
+export interface QuestionEditRequest {
+  baseRevisionId?: string | null;
+  prompt?: string;
+  options?: string[];
+  correctAnswer?: string;
+  correctAnswers?: string[];
+  guideCards?: Array<{
+    level?: number | null;
+    stuckAt: string;
+    knowledge: string[];
+    hint: string;
+    question: string;
+    canvasAction?: string | null;
+  }>;
+}
+
+export interface QuestionEditResult {
+  batch?: NonNullable<TextbookImportResult["batches"]>[number] | null;
+  questionPayload?: QuestionPayload | null;
+  guideCards: Array<Record<string, unknown>>;
+  edit: { scope: "question"; operation: "question_manual_edit"; fields: string[] };
+  run: RunSummary;
+  revision?: RevisionSummary | null;
+}
+
+export interface QuestionRevisionActivateResult {
+  batch?: NonNullable<TextbookImportResult["batches"]>[number] | null;
+  questionPayload?: QuestionPayload | null;
+  guideCards: Array<Record<string, unknown>>;
+  activation: { scope: "question"; operation: "question_revision_activate"; activatedRevisionId: string };
+  activatedRevision: RevisionSummary;
   run: RunSummary;
 }
 

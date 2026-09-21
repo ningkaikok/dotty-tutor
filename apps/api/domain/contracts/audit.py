@@ -13,7 +13,11 @@ RunOperation = Literal[
     "publication_rereview",
     "initial_batch",
     "stage_rerun",
+    "question_manual_edit",
+    "question_revision_activate",
 ]
+
+RevisionSource = Literal["model_generated", "manual_edit"]
 
 
 class RunSummary(BaseModel):
@@ -37,6 +41,8 @@ class RevisionSummary(BaseModel):
     sourceQuestionKey: str
     revisionNumber: int
     operation: RunOperation
+    # 审校面板据此区分"模型生成/重跑"和"老师手工编辑"；默认值只覆盖迁移前的历史行。
+    revisionSource: RevisionSource = "model_generated"
     previousRevisionId: str | None = None
     runId: str
     createdAt: float
@@ -72,6 +78,9 @@ class QuestionReviewQueueResponse(BaseModel):
     provenance: dict[str, Any] = Field(default_factory=dict)
     issues: list[dict[str, Any]] = Field(default_factory=list)
     stageRuns: list[dict[str, Any]] = Field(default_factory=list)
+    # 人工编辑必须绑定这个值做乐观并发；回滚后它可能不是历史列表里的最后一条，
+    # 因此前端不能靠"revision 列表最后一项"猜测当前版本，只能读这个字段。
+    currentRevisionId: str | None = None
 
 
 class ReviewQueueResponse(BaseModel):
@@ -86,6 +95,26 @@ class StageRerunResponse(QuestionRegenerationResponse):
 
     stage: str
     stages: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class QuestionEditResponse(AuditedOperationResponse):
+    """人工字段级编辑成功后的稳定 HTTP 契约。"""
+
+    batch: dict[str, Any] | None = None
+    questionPayload: dict[str, Any] | None = None
+    guideCards: list[dict[str, Any]] = Field(default_factory=list)
+    edit: dict[str, Any]
+    revision: RevisionSummary | None = None
+
+
+class QuestionRevisionActivateResponse(AuditedOperationResponse):
+    """把题目当前展示版本回滚/指向某条历史 revision 后的稳定 HTTP 契约。"""
+
+    batch: dict[str, Any] | None = None
+    questionPayload: dict[str, Any] | None = None
+    guideCards: list[dict[str, Any]] = Field(default_factory=list)
+    activation: dict[str, Any]
+    activatedRevision: RevisionSummary
 
 
 class BatchProcessResponse(BaseModel):

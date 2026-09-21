@@ -66,6 +66,16 @@ body::before {
 .question-review-actions { margin-top: 10px; }
 .question-review-actions button { border: 1px solid #c8d7cd; border-radius: 7px; padding: 6px 10px; color: #24523f; background: #fff; cursor: pointer; }
 .question-review-actions button:disabled { cursor: wait; opacity: .6; }
+.question-review-edit { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 12px; border: 1px solid #dce5de; border-radius: 9px; background: #fff; }
+.question-review-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #24372f; }
+.question-review-edit textarea, .question-review-edit input { font: inherit; padding: 6px 8px; border: 1px solid #c8d7cd; border-radius: 6px; }
+.question-review-edit-actions { display: flex; gap: 8px; }
+.question-review-edit-actions button { border: 1px solid #c8d7cd; border-radius: 7px; padding: 6px 10px; color: #24523f; background: #fff; cursor: pointer; }
+.question-review-edit-actions button:disabled { cursor: wait; opacity: .6; }
+.question-review-history { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.question-review-history li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid #e2e8e4; border-radius: 7px; font-size: 12px; color: #4d584f; }
+.question-review-history li.current { border-color: #197b5e; background: #e5f1eb; color: #183f31; }
+.question-review-history li button { border: 1px solid #c8d7cd; border-radius: 6px; padding: 4px 8px; font-size: 12px; color: #24523f; background: #fff; cursor: pointer; }
 .publication-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 .studio-notice-stack { display: grid; gap: 8px; margin: -4px 0 18px; }

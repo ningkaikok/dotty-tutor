@@ -28,6 +28,7 @@ from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from publication_revision import PublicationRevisionService
 from routers.classroom_routes import build_classroom_router
+from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.mistake_routes import build_mistake_router
 from routers.practice_routes import build_practice_router
@@ -44,6 +45,7 @@ from variation_service import VariationService
 
 app = create_app()
 store = get_application_store()
+app.include_router(build_dependency_preflight_router())
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 # 模型调用边界指标的共享存储；生成/陪练两个 Runtime 实例都写入同一张表。

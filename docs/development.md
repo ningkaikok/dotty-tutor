@@ -483,6 +483,26 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 
+必需检查 `backend` 在矩阵通过后还会跑一次 `apps/api/evaluation/replay.py`（确定性金标准语料
+重放，纯函数、不需要数据库），报告作为 `eval-replay-report` artifact 上传；出现预期外失败或
+已知缺陷特征变化时该检查失败，阻止合并。本地等价命令：
+
+```bash
+cd apps/api && uv run python -m evaluation.replay --check
+```
+
+`evaluation.judge`/`judge_cli`/`leaderboard` 需要真实模型调用，不进入 CI，只能按需手动运行。跨模型横评
+按 `provider:model` 传入参与方，例如：
+
+```bash
+cd apps/api && uv run python -m evaluation.leaderboard agreement \
+  --judges ollama:qwen2.5:3b ollama:qwen2.5:7b
+```
+
+其中任何一方 0 条样本评分成功（模型名写错、未 `ollama pull`、Provider 不可用）时，命令会打印失效
+参与方并以非零状态退出：报告里的极差此时全是 `null`，数据本身诚实，但一份只有单边结果的横评不能
+当成"跑完了"。
+
 ### 测试纪律与覆盖率报告
 
 CI 和 pre-commit 都会跑 `scripts/check_test_discipline.py`：后端测试只允许在明确登记的文件里

@@ -12,6 +12,26 @@
 
 归一化函数处理教材常见的答案格式：全角括号/标点、`\\frac{a}{b}` LaTeX 分数、
 `(a)/(b)` 括号分数、百分号和单位后缀（°、% 等）、千分位逗号。
+
+符号等价兜底（engineering-roadmap.md T0"符号等价判题"）：
+上面这套结构化归一化判否后，不代表答案真的错——科学计数法（`5×10⁻²` 与 `0.05`）、
+根式/π 等符号常量、代数式展开（`(x+1)^2` 与 `x^2+2x+1`）这类"等价但形态不同"的
+答案在归一化里判不出来。`_check_single_answer` 在归一化判否之后会再升级一层，
+复用核验阶段已经落地的 `domain.questions.answer_solver.check_answer_agreement`
+（同一套 sympy 兜底，不重复实现一套符号判等）；只有它判定 `agree` 才把结果从
+"错"改判"对"，`disagree`/`undecidable` 都维持归一化给出的判否结果——这一层只
+用来救假阴性，绝不能让符号层比现有规则更严格。sympy 是重量级导入，`answer_solver`
+自己已经把它延迟到真正解析符号表达式时才导入；这里再套一层"只有归一化判否且
+学生确实提交了内容才导入 answer_solver"，避免拖慢每次学生提交都会经过的正常
+判等路径——判等发生在学生每次提交时，多引入一次重量级导入等同于把交互拖慢，
+这正是模块开头"为什么不引入第二次模型调用"背后同一套成本考量的延伸。
+
+"多解集合的顺序与写法"（如"x=1 或 x=2"与"x=2,x=1"）没有在这里另外实现：
+`blank.correctAnswers`/`answerSpec.accepted` 本身就是"接受列表中任意一个候选
+串"的语义（`_check_single_answer` 用 `any(...)` 逐个比较），多值答案的不同顺序/
+写法由内容生成阶段把每种等价书写形式作为列表里的一项分别列出即可覆盖，不需要
+在判题层新增"拆分单个空格里的多个值再按集合比较"的机制——契约里没有这类需求
+就不要凭空加。
 """
 
 from __future__ import annotations
@@ -33,6 +53,12 @@ def normalize_text(value: Any) -> str:
     return text.replace("，", ",").replace("。", "").replace("；", ";")
 
 
+def convert_latex_fraction(text: str) -> str:
+    """把 `\\frac{a}{b}` 转成 `(a)/(b)`；数字解析和 `answer_solver` 的符号等价判等共用这一步，
+    避免同一条 LaTeX 分数规则在两个模块里各写一份、以后改一处漏一处。"""
+    return re.sub(r"\\frac\s*\{\s*([^{}]+)\}\s*\{\s*([^{}]+)\}", r"(\1)/(\2)", text)
+
+
 def parse_number(value: Any) -> float | None:
     """解析教材常见数字答案，包括简单分数；解析失败返回 None 而不是抛错。
 
@@ -41,7 +67,7 @@ def parse_number(value: Any) -> float | None:
     """
     text = str(value or "").strip()
     text = text.replace(",", "").replace("，", "")
-    text = re.sub(r"\\frac\s*\{\s*([^{}]+)\}\s*\{\s*([^{}]+)\}", r"(\1)/(\2)", text)
+    text = convert_latex_fraction(text)
     text = re.sub(r"^\(\s*([-+]?\d+)\s*\)\s*/\s*\(\s*([-+]?\d+)\s*\)$", r"\1/\2", text)
     text = re.sub(r"[a-zA-Z°％%]+$", "", text).strip()
     if not text:
@@ -66,16 +92,37 @@ def number_matches(actual: Any, expected: Any, tolerance: Any = 0) -> bool:
     return abs(actual_number - expected_number) <= allowed
 
 
+def _symbolic_fallback_matches(actual: Any, expected: list[Any]) -> bool:
+    """结构化归一化判否后的符号等价兜底，只用于挽回假阴性（见模块顶部说明）。
+
+    延迟导入 `answer_solver`（它又延迟导入 sympy），调用方必须已经确认结构化
+    归一化判否、且学生确实提交了内容，才会走到这里——避免每次提交都白付一次
+    重量级导入的成本。逐个和 expected 里的候选值比较，任意一个判定 `agree`
+    就足够；`disagree`/`undecidable` 都不改变"判否"的结果。
+    """
+    from domain.questions.answer_solver import check_answer_agreement
+
+    return any(check_answer_agreement(actual, item)["status"] == "agree" for item in expected)
+
+
 def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tolerance: Any) -> bool:
     if answer_type == "numeric":
-        return any(number_matches(actual, item, tolerance) for item in expected)
-    normalized = normalize_text(actual)
-    return bool(normalized) and any(normalized == normalize_text(item) for item in expected)
+        matched = any(number_matches(actual, item, tolerance) for item in expected)
+    else:
+        normalized = normalize_text(actual)
+        matched = bool(normalized) and any(normalized == normalize_text(item) for item in expected)
+    if matched or not str(actual or "").strip():
+        return matched
+    # 归一化判否但学生确实写了东西：升级到符号等价层再判一次，只救假阴性。
+    return _symbolic_fallback_matches(actual, expected)
 
 
 # 判据器版本参与证据溯源：evidence 的字段语义变化时必须递增，
 # 消费方（陪练计划、尝试记录）据此解释历史证据的结构。
-EVALUATOR_VERSION = "answer-evaluator-v1"
+# v2：`_check_single_answer` 归一化判否后新增符号等价兜底（复用
+# `answer_solver.check_answer_agreement`），能挽回科学计数法/根式/代数展开这类
+# 假阴性——判等规则变了，即使 evidence 的字段结构没变也要递增版本号。
+EVALUATOR_VERSION = "answer-evaluator-v2"
 
 
 def _has_submitted_sub_answer(value: Any) -> bool:

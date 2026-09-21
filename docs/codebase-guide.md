@@ -37,9 +37,10 @@ dotty-tutor/
 │   │   │   ├── tutoring_routes.py # 错题陪练线程 API、工具策略审计
 │   │   │   ├── tutor_input_routes.py # 文字/结构化/图片/公式/画布输入 API
 │   │   │   ├── tutor_search_routes.py # Tutor PostgreSQL 全文检索 API
+│   │   │   ├── dependency_preflight_routes.py # GET /api/system/dependency-preflight（环境依赖自检只读端点）
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
-│   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排
+│   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
@@ -49,11 +50,13 @@ dotty-tutor/
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
 │   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
-│   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要
+│   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要（检查内容）
+│   │   ├── dependency_preflight.py # 运行环境依赖自检：MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL（检查环境，与 ocr_preflight 不合并）
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
+│   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的确定性符号等价判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数（含观察、工具、画布）
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
@@ -72,7 +75,7 @@ dotty-tutor/
 │   │       ├── schema_registry.py # 各领域 metadata 注册和重复表名检查
 │   │       ├── migration_support.py # Alembic revision 共用的幂等升级与 readiness 报告
 │   │       ├── migration_cli.py # current/head/preflight/upgrade/verify 统一命令
-│   │       ├── textbook_store.py # 教材导入、题目批次和教材库
+│   │       ├── textbook_store.py # 教材导入、题目批次和教材库；`batch_questions.current_revision_id` 是当前展示版本指针，人工编辑/回滚都靠它做乐观并发和指针移动
 │   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
 │   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
@@ -83,7 +86,7 @@ dotty-tutor/
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
 │   │   └── migrations/           # 唯一正式 schema migration 版本链（含 Tutor 多模态/工具/检索）
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
-│   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因
+│   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因、题目人工编辑与回滚指针
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
 │   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
@@ -97,7 +100,7 @@ dotty-tutor/
 │   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
 │   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
 │   │   │   ├── InteractiveMathCanvas.tsx # 最小点放置数学画布
-│   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告
+│   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告；DependencyPreflightApp 环境依赖自检页
 │   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
 │   │   │   ├── answerAssembly.ts # 多小问及画线等交互答案的统一组装
 │   │   │   ├── richTextParser.ts # 普通文本与显式数学片段的安全分词
@@ -198,6 +201,13 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
 
 `persistence/job_store.py` 只管理任务生命周期、幂等、租约和错误，不管理教材批次；教材领域进度仍由
 `upload_registry.py` 与教材 Store 负责。保持这两层分离可以避免一次任务重试篡改教材当前视图。
+
+`generate_full_paper` 的批次循环带一个熔断：`_systemic_failure_signal`（同文件内）只识别三类"系统性
+失败"——API key 过期/配额耗尽、429 限流、上游超时——连续命中默认 3 次（`DOTTY_SYSTEMIC_FAILURE_HALT_
+THRESHOLD` 可调）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩余批次，不再逐题磨到失败；其他
+失败（OCR 解析、题目质量不达标等）继续按原样逐题记录，不参与计数。判据状态码复用
+`application/job_worker.py` 里的 `RETRYABLE_HTTP_STATUS_CODES`（`textbook_jobs.py` 的 Worker 重试分类
+同样引用这个常量），状态码不可用时才退回错误文案关键词兜底。
 
 题目生成的模型边界分为四次调用：`staged_contracts.py` 定义原题结构抽取、独立求解、答案核验和教学脚本四个严格
 Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。原题题干、题号、选项和图片归属以
@@ -369,7 +379,14 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 1. 在 `domain/questions/contracts.py` 和前端 `types/` 扩展稳定契约。
 2. 在 `domain/questions/pipeline.py` 添加模型输出规范化和质量检查。
 3. 在 `QuestionAnswer.tsx` 或独立题型组件增加输入。
-4. 在 `answer_evaluator.py` 添加确定性判题；无法确定性处理时再调用模型。
+4. 在 `answer_evaluator.py` 添加确定性判题；无法确定性处理时再调用模型。核验阶段的
+   `solverAgreement`（解答是否与来源答案一致）走的是另一条独立的确定性判等——
+   `domain/questions/answer_solver.py`，同一条“确定性程序判对错，模型只提议”的原则，
+   不要又让模型自证。两个模块调用路径不同（学生每次提交 vs 生成时的离线核验），
+   延迟约束也不同，但不是完全独立：`answer_evaluator._check_single_answer` 在结构化
+   归一化判否之后，会复用 `answer_solver.check_answer_agreement` 再做一次符号等价
+   兜底（科学计数法、根式、代数式展开），只用于挽回假阴性，判否结果不会被反悔成
+   假阳性。新增题型如果需要符号层判等，直接复用 `answer_solver`，不要另起一套。
 5. 增加后端单元测试和 Playwright 用户流程。
 
 ### 增加一个模型 Provider
