@@ -17,12 +17,12 @@ RUN apt-get update \
 COPY apps/api/pyproject.toml apps/api/uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY --chown=dotty:dotty apps/api /app/apps/api
-
 RUN groupadd --system dotty \
     && useradd --system --gid dotty --home-dir /app --shell /usr/sbin/nologin dotty \
     && mkdir -p /data/uploads \
     && chown -R dotty:dotty /app /data
+
+COPY --chown=dotty:dotty apps/api /app/apps/api
 
 USER dotty
 

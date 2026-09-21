@@ -42,5 +42,7 @@ services:
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
     staticPublishPath: ./apps/web/dist
     envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
       - key: VITE_API_ORIGIN
         value: https://dotty-tutor-api.onrender.com
