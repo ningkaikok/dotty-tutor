@@ -1,19 +1,27 @@
-"""教材 OCR Provider 的发现、选择与 MinerU 子进程适配。
+"""教材 OCR Provider 的发现、选择与 MinerU 本地/云端适配。
 
 OCR 只负责把页面还原为 Markdown、LaTeX 和图片资源，不负责判断题型或生成答案。
-``auto`` 模式优先 MinerU，找不到命令时由上层回退到 pypdf 文字层。
+``auto`` 模式优先本地 MinerU 或 MinerU Precision API，均不可用时由上层回退到 pypdf 文字层。
 """
 
 from __future__ import annotations
 
+import io
+import json
 import os
 import re
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from pypdf import PdfReader
 
 from infrastructure.runtime import selection_store
 from infrastructure.runtime.contracts import (
@@ -62,25 +70,44 @@ class OcrRuntime:
             None,
         )
 
+    def mineru_api_url(self) -> str:
+        """Return the MinerU cloud API origin without exposing credentials."""
+        return os.getenv("MINERU_API_URL", "https://mineru.net").strip().rstrip("/")
+
+    def mineru_api_key(self) -> str:
+        """Read the cloud token only at request time so it never enters runtime state."""
+        return os.getenv("MINERU_API_KEY", "").strip()
+
+    def mineru_api_available(self) -> bool:
+        return bool(self.mineru_api_key())
+
     def catalog(self) -> dict:
         command = self.mineru_command()
+        api_available = self.mineru_api_available()
+        mineru_available = bool(command or api_available)
         # ``selected`` describes the requested provider; ``effective`` is the
         # provider this process can actually execute.  Keep MinerU as the
         # default preference, but make the Docker/minimal-image fallback
         # explicit instead of pretending the host installation is available.
         effective = self.selection.provider
         if effective == "auto":
-            effective = "mineru" if command else "pypdf"
-        elif effective == "mineru" and not command:
+            effective = "mineru" if mineru_available else "pypdf"
+        elif effective == "mineru" and not mineru_available:
             effective = "pypdf"
         # compose.yaml 同时写入运行模式，/.dockerenv 作为直接运行容器时的兜底。
         # 两者都只用于解释“为什么不可用”，不会把宿主机路径误报成容器内可执行文件。
         in_container = os.getenv("DOTTY_RUNTIME_MODE") == "docker" or Path("/.dockerenv").is_file()
-        unavailable_detail = (
-            "Docker API 未挂载 MinerU；请使用本机后端，或配置 Linux MinerU/独立 OCR 服务"
-            if in_container
-            else "未安装：需要独立 Python 3.12 环境和模型"
-        )
+        if command:
+            mineru_detail = str(command)
+        elif api_available:
+            mineru_detail = f"云端 API：{self.mineru_api_url()}"
+        else:
+            mineru_detail = (
+                "Docker API 未挂载 MinerU；请配置 MINERU_API_URL/MINERU_API_KEY，"
+                "或使用本机后端"
+                if in_container
+                else "未安装：需要本地 Python 3.12 环境和模型，或配置 MinerU 云 API"
+            )
         return {
             "selected": self.selection.provider,
             "effective": effective,
@@ -94,8 +121,8 @@ class OcrRuntime:
                 {
                     "id": "mineru",
                     "label": "MinerU OCR",
-                    "available": bool(command),
-                    "detail": str(command) if command else unavailable_detail,
+                    "available": mineru_available,
+                    "detail": mineru_detail,
                 },
                 {
                     "id": "pypdf",
@@ -107,14 +134,14 @@ class OcrRuntime:
         }
 
     def select(self, provider: OcrProvider) -> dict:
-        if provider == "mineru" and not self.mineru_command():
-            raise ValueError("MinerU 尚未安装")
+        if provider == "mineru" and not (self.mineru_command() or self.mineru_api_available()):
+            raise ValueError("MinerU 尚未安装或配置云 API")
         self.selection.provider = provider
         selection_store.save("ocr", {"provider": provider})
         return self.catalog()
 
     def should_use_mineru(self) -> bool:
-        return self.mineru_command() is not None and self.selection.provider in ("auto", "mineru")
+        return bool(self.mineru_command() or self.mineru_api_available()) and self.selection.provider in ("auto", "mineru")
 
     def config_snapshot(
         self,
@@ -140,6 +167,8 @@ class OcrRuntime:
         目录，不做正文解析，目的是让分批规划尽快返回。
         """
         command = self.mineru_command()
+        if command is None and self.mineru_api_available():
+            return len(PdfReader(str(source_path)).pages)
         interpreter = command.parent / "python" if command else None
         if not interpreter or not interpreter.is_file():
             raise RuntimeError("MinerU Python 环境不可用")
@@ -173,6 +202,7 @@ class OcrRuntime:
         for pattern, target_name in (
             ("*_content_list.json", "source.content_list.json"),
             ("*_middle.json", "source.middle.json"),
+            ("layout.json", "source.middle.json"),
         ):
             candidates = sorted(
                 Path(output_dir).rglob(pattern),
@@ -181,7 +211,179 @@ class OcrRuntime:
             )
             if not candidates:
                 continue
-            shutil.copy2(candidates[0], asset_dir / target_name)
+            destination = asset_dir / target_name
+            if not destination.exists():
+                shutil.copy2(candidates[0], destination)
+
+    @staticmethod
+    def _page_range(start_page: int, end_page: int | None) -> str | None:
+        """Convert the internal zero-based inclusive range to MinerU's page range."""
+        if end_page is None:
+            return None
+        return f"{start_page + 1}-{end_page + 1}"
+
+    def _cloud_json(
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        payload: dict | None = None,
+    ) -> dict:
+        """Call MinerU's JSON API while keeping signed URLs and tokens out of errors."""
+        token = self.mineru_api_key()
+        if not token:
+            raise RuntimeError("未配置 MINERU_API_KEY")
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
+        request = urllib.request.Request(
+            f"{self.mineru_api_url()}{path}",
+            data=body,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+            method=method,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                result = json.load(response)
+        except urllib.error.HTTPError as error:
+            raise RuntimeError(f"MinerU 云 API 请求失败（HTTP {error.code}）") from error
+        except (OSError, ValueError, urllib.error.URLError) as error:
+            raise RuntimeError(f"MinerU 云 API 不可用：{type(error).__name__}") from error
+        if not isinstance(result, dict) or result.get("code") not in (None, 0):
+            message = result.get("msg", "未知错误") if isinstance(result, dict) else "返回格式错误"
+            raise RuntimeError(f"MinerU 云 API 返回错误：{str(message)[:240]}")
+        return result
+
+    @staticmethod
+    def _extract_zip(zip_bytes: bytes, output_dir: Path) -> None:
+        """Extract a remote result archive without allowing path traversal."""
+        root = output_dir.resolve()
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+            for member in archive.infolist():
+                target = (root / member.filename).resolve()
+                if not target.is_relative_to(root):
+                    raise RuntimeError("MinerU 结果压缩包包含非法路径")
+                if member.is_dir():
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(member))
+
+    def _parse_cloud(
+        self,
+        source_path: Path,
+        start_page: int,
+        end_page: int | None,
+        asset_dir: Path | None,
+        asset_url_prefix: str,
+    ) -> tuple[str, dict]:
+        """Upload a local file to MinerU Precision Extract API and poll its result."""
+        page_range = self._page_range(start_page, end_page)
+        file_entry: dict[str, object] = {
+            "name": source_path.name,
+            "data_id": f"dotty-{source_path.stat().st_mtime_ns}",
+            "is_ocr": True,
+        }
+        if page_range:
+            file_entry["page_ranges"] = page_range
+        request_payload: dict[str, object] = {
+            "files": [file_entry],
+            "model_version": os.getenv("MINERU_API_MODEL", "vlm").strip() or "vlm",
+            "enable_formula": True,
+            "enable_table": True,
+            "language": "ch",
+        }
+        created = self._cloud_json("/api/v4/file-urls/batch", method="POST", payload=request_payload)
+        data = created.get("data") or {}
+        upload_urls = data.get("file_urls") if isinstance(data, dict) else None
+        batch_id = data.get("batch_id") if isinstance(data, dict) else None
+        if not isinstance(upload_urls, list) or not upload_urls or not isinstance(batch_id, str):
+            raise RuntimeError("MinerU 云 API 没有返回上传地址")
+
+        file_bytes = source_path.read_bytes()
+        for upload_url in upload_urls:
+            if not isinstance(upload_url, str) or not upload_url.startswith("https://"):
+                raise RuntimeError("MinerU 返回了无效的上传地址")
+            upload_request = urllib.request.Request(
+                upload_url,
+                data=file_bytes,
+                headers={"Content-Type": "application/octet-stream"},
+                method="PUT",
+            )
+            try:
+                with urllib.request.urlopen(upload_request, timeout=120):
+                    pass
+            except (OSError, urllib.error.URLError) as error:
+                raise RuntimeError("上传文件到 MinerU 失败") from error
+
+        deadline = time.monotonic() + float(os.getenv("MINERU_API_TIMEOUT_SECONDS", "900"))
+        interval = max(0.5, float(os.getenv("MINERU_API_POLL_INTERVAL_SECONDS", "3")))
+        result_data: dict | None = None
+        while time.monotonic() < deadline:
+            result = self._cloud_json(f"/api/v4/extract-results/batch/{batch_id}")
+            candidates = (result.get("data") or {}).get("extract_result")
+            item = candidates[0] if isinstance(candidates, list) and candidates else None
+            if isinstance(item, dict):
+                state = item.get("state")
+                if state == "done":
+                    result_data = item
+                    break
+                if state == "failed":
+                    raise RuntimeError(f"MinerU 云端解析失败：{str(item.get('err_msg') or '未知错误')[:240]}")
+            time.sleep(interval)
+        if result_data is None:
+            raise RuntimeError("MinerU 云端解析超时")
+
+        zip_url = result_data.get("full_zip_url")
+        if not isinstance(zip_url, str) or not zip_url.startswith("https://"):
+            raise RuntimeError("MinerU 没有返回解析结果地址")
+        try:
+            with urllib.request.urlopen(urllib.request.Request(zip_url), timeout=120) as response:
+                zip_bytes = response.read()
+        except (OSError, urllib.error.URLError) as error:
+            raise RuntimeError("下载 MinerU 解析结果失败") from error
+
+        with tempfile.TemporaryDirectory(prefix="dotty-mineru-api-") as output_dir:
+            extracted_dir = Path(output_dir)
+            self._extract_zip(zip_bytes, extracted_dir)
+            markdown_files = sorted(
+                extracted_dir.rglob("full.md"),
+                key=lambda path: path.stat().st_size,
+                reverse=True,
+            ) or sorted(extracted_dir.rglob("*.md"), key=lambda path: path.stat().st_size, reverse=True)
+            if not markdown_files:
+                raise RuntimeError("MinerU 结果中没有 Markdown")
+            markdown = markdown_files[0].read_text(encoding="utf-8", errors="replace")
+            image_urls: list[str] = []
+            if asset_dir:
+                asset_dir.mkdir(parents=True, exist_ok=True)
+                copied: set[str] = set()
+                for reference in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", markdown):
+                    source_image = next(
+                        (path for path in extracted_dir.rglob(Path(reference).name) if path.is_file()),
+                        None,
+                    )
+                    if not source_image or source_image.name in copied:
+                        continue
+                    shutil.copy2(source_image, asset_dir / source_image.name)
+                    copied.add(source_image.name)
+                    image_urls.append(f"{asset_url_prefix}/{source_image.name}")
+                (asset_dir / "source.md").write_text(markdown, encoding="utf-8")
+                self._persist_structured_output(str(extracted_dir), asset_dir)
+            run = {
+                "requestedProvider": self.selection.provider,
+                "provider": "mineru",
+                "mode": "precision-api",
+                "fallback": False,
+                "output": "markdown",
+                "startPage": start_page + 1,
+                "endPage": None if end_page is None else end_page + 1,
+                "imageUrls": image_urls,
+            }
+            attach_runtime_config(run, self.config_snapshot(provider="mineru"))
+            return markdown[:40_000], run
 
     def parse(
         self,
@@ -197,8 +399,10 @@ class OcrRuntime:
         必须在退出临时目录前复制；返回 URL 而不是本机路径，防止泄露文件系统结构。
         """
         command = self.mineru_command()
+        if command is None and self.mineru_api_available():
+            return self._parse_cloud(source_path, start_page, end_page, asset_dir, asset_url_prefix)
         if not command:
-            raise RuntimeError("MinerU 尚未安装")
+            raise RuntimeError("MinerU 尚未安装或配置云 API")
         page_args = ["-s", str(start_page)]
         if end_page is not None:
             page_args.extend(["-e", str(end_page)])
