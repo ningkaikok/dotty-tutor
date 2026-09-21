@@ -13,6 +13,16 @@ services:
         sync: false
       - key: DEEPSEEK_API_KEY
         sync: false
+      - key: MINERU_API_KEY
+        sync: false
+      - key: MINERU_API_URL
+        value: https://mineru.net
+      - key: MINERU_API_MODEL
+        value: vlm
+      - key: MINERU_API_TIMEOUT_SECONDS
+        value: "900"
+      - key: MINERU_API_POLL_INTERVAL_SECONDS
+        value: "3"
       - key: DEEPSEEK_BASE_URL
         value: https://api.deepseek.com
       - key: DEEPSEEK_MODELS
