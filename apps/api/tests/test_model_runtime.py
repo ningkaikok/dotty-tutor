@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import unittest
 from unittest.mock import patch
@@ -62,3 +63,50 @@ class CodexCommandTests(unittest.TestCase):
         self.assertEqual(run["usage"], {"promptTokens": 12, "outputTokens": 7})
         self.assertEqual(run["schemaFallback"]["used"], True)
         self.assertGreaterEqual(run["durationMs"], 0)
+
+
+class DeepSeekProviderTests(unittest.TestCase):
+    def test_catalog_exposes_deepseek_only_when_key_is_configured(self) -> None:
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "secret"}, clear=True):
+            providers = ModelRuntime().providers()
+
+        deepseek = next(item for item in providers if item["id"] == "deepseek")
+        self.assertTrue(deepseek["available"])
+        self.assertIn("deepseek-flash", deepseek["models"])
+
+    def test_calls_deepseek_and_normalizes_usage_metadata(self) -> None:
+        response_payload = {
+            "choices": [{
+                "message": {"content": '{"reply":"先移项"}'},
+            }],
+            "usage": {"prompt_tokens": 17, "completion_tokens": 6},
+        }
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+            def read(self, *_: object) -> bytes:
+                import json
+
+                return json.dumps(response_payload).encode("utf-8")
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "secret"}, clear=True), \
+                patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            result, usage = ModelRuntime()._deepseek_json(
+                "deepseek-flash", "请给出一步提示", {"type": "object"}, max_tokens=80
+            )
+
+        self.assertEqual(result, {"reply": "先移项"})
+        self.assertEqual(usage["prompt_tokens"], 17)
+        self.assertEqual(usage["output_tokens"], 6)
+        self.assertEqual(usage["providerAttempts"], 1)
+        self.assertFalse(usage["schemaFallback"]["used"])
+        request = urlopen.call_args.args[0]
+        self.assertIn("api.deepseek.com/chat/completions", request.full_url)
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+        request_payload = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request_payload["thinking"], {"type": "disabled"})

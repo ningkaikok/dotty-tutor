@@ -85,6 +85,12 @@ _MODEL_CAPABILITIES: tuple[ModelCapability, ...] = (
         0, "moderate", "subscription", ("codex", "default"),
     ),
     ModelCapability(
+        "deepseek", "deepseek-flash", "DeepSeek Flash",
+        frozenset({"generation", "review", "tutoring", "vision"}),
+        frozenset({"json-schema", "vision", "math", "long-context"}),
+        0, "fast", "api", ("mock", "static-demo"),
+    ),
+    ModelCapability(
         "mock", "static-demo", "Mock 固定模式",
         frozenset({"generation", "review", "tutoring", "vision"}),
         frozenset({"json-schema"}),

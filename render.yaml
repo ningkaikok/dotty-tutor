@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: dotty-tutor-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: /bin/sh /app/apps/api/render-start.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: DEEPSEEK_MODELS
+        value: deepseek-flash
+      - key: MODEL_PROVIDER
+        value: deepseek
+      - key: MODEL_NAME
+        value: deepseek-flash
+      - key: REVIEW_PROVIDER
+        value: deepseek
+      - key: REVIEW_MODEL
+        value: deepseek-flash
+      - key: DOTTY_DATA_DIR
+        value: /tmp/dotty-tutor-data
+      - key: CORS_ORIGINS
+        value: https://dotty-tutor-web.onrender.com
+      - key: TRUSTED_HOSTS
+        value: dotty-tutor-api.onrender.com
+      - key: TTS_PROVIDER
+        value: auto
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: dotty-tutor-web
+    runtime: static
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
+    staticPublishPath: ./apps/web/dist
+    envVars:
+      - key: VITE_API_ORIGIN
+        value: https://dotty-tutor-api.onrender.com

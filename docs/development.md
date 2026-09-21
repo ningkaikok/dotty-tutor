@@ -354,9 +354,12 @@ backup → preflight → upgrade → verify → deploy/restart
 | `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
-| `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |
+| `MODEL_PROVIDER` | `codex` | `ollama`、`codex`、`deepseek` 或 `mock` |
 | `MODEL_NAME` | `default` | 生成模型名称 |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama 地址 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek OpenAI 兼容 API 地址 |
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek 后端密钥；只能放在服务器 Secret 中 |
+| `DEEPSEEK_MODELS` | `deepseek-flash` | DeepSeek 模型目录 |
 | `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径；本机脚本会优先注入仓库根目录 `.mineru-venv/bin/mineru` |
 | `REVIEW_PROVIDER` | `codex` | 统一文字与图片审校 provider |
 | `REVIEW_MODEL` | `gpt-5.6-sol` | 统一文字与图片审校模型 |

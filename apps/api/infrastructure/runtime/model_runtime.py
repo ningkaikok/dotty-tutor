@@ -1,6 +1,6 @@
 """题目生成模型的统一适配层。
 
-本模块把 Ollama、Codex CLI 和 Mock 暴露为相同的 JSON 生成接口。业务层只关心
+本模块把 Ollama、Codex CLI、DeepSeek 和 Mock 暴露为相同的 JSON 生成接口。业务层只关心
 ``generate_json`` 返回的结构化数据，不需要知道 HTTP、子进程或模型登录细节。
 
 需要特别注意：这里的 ``selection`` 是进程级演示配置，不是用户偏好。生产环境如果需要
@@ -32,8 +32,9 @@ from infrastructure.runtime.contracts import (
 )
 from observability import log_event
 
-Provider = Literal["ollama", "codex", "mock"]
+Provider = Literal["ollama", "codex", "deepseek", "mock"]
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 
 
 def codex_command() -> str:
@@ -116,6 +117,12 @@ class ModelRuntime:
         local_models, ollama_error = self.ollama_models()
         codex_binary = codex_command()
         codex_available = bool(shutil.which(codex_binary) or Path(codex_binary).is_file())
+        deepseek_models = [
+            item.strip()
+            for item in os.getenv("DEEPSEEK_MODELS", "deepseek-flash").split(",")
+            if item.strip()
+        ]
+        deepseek_available = bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
         provider_specs = [
             {
                 "id": "ollama",
@@ -134,6 +141,13 @@ class ModelRuntime:
                     if codex_available else
                     "当前后端找不到 Codex CLI；请使用宿主机后端或配置 CODEX_COMMAND"
                 ),
+            },
+            {
+                "id": "deepseek",
+                "label": "DeepSeek API",
+                "available": deepseek_available,
+                "models": deepseek_models,
+                "detail": "使用后端 DEEPSEEK_API_KEY 调用 DeepSeek API" if deepseek_available else "未配置 DEEPSEEK_API_KEY",
             },
             {
                 "id": "mock",
@@ -277,6 +291,8 @@ class ModelRuntime:
         try:
             if selection.provider == "ollama":
                 result, usage = self._ollama_json(selection.model, prompt, schema, max_tokens)
+            elif selection.provider == "deepseek":
+                result, usage = self._deepseek_json(selection.model, prompt, schema, max_tokens)
             else:
                 result, usage = self._codex_json(selection.model, prompt, schema)
         except Exception as error:
@@ -395,6 +411,8 @@ class ModelRuntime:
         try:
             if provider == "ollama":
                 result, usage = self._ollama_json(model, prompt, schema, max_tokens, images)
+            elif provider == "deepseek":
+                result, usage = self._deepseek_json(model, prompt, schema, max_tokens, images)
             else:
                 result, usage = self._codex_json(model, prompt, schema, images)
         except Exception as error:
@@ -647,6 +665,96 @@ class ModelRuntime:
             self._attach_provider_metadata(
                 error, provider_attempts, schema_fallback, fallback_reason
             )
+            raise
+        return parsed, usage
+
+    def _deepseek_json(
+        self,
+        model: str,
+        prompt: str,
+        schema: dict[str, Any],
+        max_tokens: int,
+        image_paths: list[Path] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Call DeepSeek's OpenAI-compatible REST API with JSON output."""
+        api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+        if not api_key:
+            raise RuntimeError("未配置 DEEPSEEK_API_KEY")
+
+        schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
+        system_text = (
+            "你是严谨的中文中学辅导老师。只输出符合 JSON Schema 的 JSON；"
+            "不输出 Markdown，不编造教材中没有的条件。请严格遵守以下 JSON Schema：\n"
+            + schema_text
+        )
+        user_content: str | list[dict[str, Any]] = prompt
+        for image_path in image_paths or []:
+            suffix = image_path.suffix.lower()
+            mime_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+                ".gif": "image/gif",
+            }.get(suffix, "application/octet-stream")
+            if isinstance(user_content, str):
+                user_content = [{"type": "text", "text": user_content}]
+            user_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{base64.b64encode(image_path.read_bytes()).decode('ascii')}"
+                },
+            })
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_text},
+                {"role": "user", "content": user_content},
+            ],
+            "thinking": {"type": "disabled"},
+            "temperature": 0.2,
+            "max_tokens": max_tokens,
+            "response_format": {"type": "json_object"},
+        }
+        request = urllib.request.Request(
+            f"{DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=240) as response:
+                response_payload = json.load(response)
+        except urllib.error.HTTPError as error:
+            detail = error.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"DeepSeek 请求失败：{detail[:800]}") from error
+        except (OSError, ValueError, urllib.error.URLError) as error:
+            raise RuntimeError(f"无法连接 DeepSeek：{error}") from error
+        if not isinstance(response_payload, dict):
+            raise RuntimeError("DeepSeek 返回值不是 JSON 对象")
+
+        choices = response_payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise RuntimeError("DeepSeek 没有返回候选内容")
+        message = choices[0].get("message", {})
+        response_text = message.get("content", "") if isinstance(message, dict) else ""
+        if not isinstance(response_text, str) or not response_text:
+            raise RuntimeError("DeepSeek 返回内容为空，可能被安全策略拦截")
+        response_usage = response_payload.get("usage", {})
+        usage = {
+            "prompt_tokens": response_usage.get("prompt_tokens"),
+            "output_tokens": response_usage.get("completion_tokens"),
+            "providerAttempts": 1,
+            "schemaFallback": {"used": False, "reason": None},
+        }
+        try:
+            parsed = parse_json_object(response_text)
+        except RuntimeError as error:
+            self._attach_provider_metadata(error, 1, False, None)
             raise
         return parsed, usage
 

@@ -2,6 +2,18 @@
 
 本文提供当前单机 MVP 的部署方法，并说明升级为公网生产架构前必须补齐的能力。
 
+## Render + Supabase 在线 Demo
+
+仓库根目录的 `render.yaml` 提供一个低成本 Demo 部署方案：Render 免费 Web Service
+运行 FastAPI、后台 Worker 和迁移命令，Render 免费 Static Site 托管 React 前端，Supabase
+免费 PostgreSQL 提供 `DATABASE_URL`。Render 的免费服务会休眠，文件目录是临时的，因此
+适合演示而不是生产数据。
+
+在 Render Blueprint 初次创建时填写 `DATABASE_URL` 和 `DEEPSEEK_API_KEY`；数据库连接串应使用
+Supabase 的 PostgreSQL URI，应用会自动规范化为 `postgresql+psycopg://`。不要把这两个值写入
+`render.yaml` 或 Git。若 Render 因名称冲突给服务追加了后缀，需要同步修改 `CORS_ORIGINS`、
+`TRUSTED_HOSTS` 和 `VITE_API_ORIGIN` 三个值。
+
 ## 部署边界
 
 GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL、MinerU 或 Qwen3-TTS。
@@ -73,6 +85,12 @@ TRUSTED_HOSTS=tutor.example.com
 MODEL_PROVIDER=codex
 MODEL_NAME=default
 OLLAMA_BASE_URL=http://127.0.0.1:11434
+# 可选：在线 Demo 使用 DeepSeek；密钥只放在服务器 Secret，不要提交到 Git。
+# MODEL_PROVIDER=deepseek
+# MODEL_NAME=deepseek-flash
+# DEEPSEEK_BASE_URL=https://api.deepseek.com
+# DEEPSEEK_API_KEY=replace-with-secret
+# DEEPSEEK_MODELS=deepseek-flash
 MINERU_COMMAND=/opt/dotty-tutor/.mineru-venv/bin/mineru
 
 REVIEW_PROVIDER=codex
@@ -355,6 +373,9 @@ OLLAMA_BASE_URL=http://host.docker.internal:11434
 TTS_PROVIDER=qwen
 QWEN_TTS_URL=http://host.docker.internal:8020
 ```
+
+如果使用 DeepSeek 在线 API，则不需要在宿主机安装模型，只需把 `MODEL_PROVIDER`、
+`MODEL_NAME` 和 `DEEPSEEK_API_KEY` 写入部署平台的后端 Secret；浏览器前端不应直接持有该密钥。
 
 Compose 已把 `host.docker.internal` 映射到宿主机。Ollama 和 Qwen3-TTS 必须监听 Docker
 可访问的地址，并通过主机防火墙限制访问。基础 API 镜像不包含 MinerU、Qwen 权重或 Codex

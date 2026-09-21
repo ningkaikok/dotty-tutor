@@ -79,6 +79,9 @@ services:
       MODEL_PROVIDER: ${MODEL_PROVIDER:-mock}
       MODEL_NAME: ${MODEL_NAME:-static-demo}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODELS: ${DEEPSEEK_MODELS:-deepseek-flash}
       REVIEW_PROVIDER: ${REVIEW_PROVIDER:-mock}
       REVIEW_MODEL: ${REVIEW_MODEL:-static-demo}
       TTS_PROVIDER: ${TTS_PROVIDER:-auto}
@@ -139,6 +142,9 @@ services:
       MODEL_PROVIDER: ${MODEL_PROVIDER:-mock}
       MODEL_NAME: ${MODEL_NAME:-static-demo}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODELS: ${DEEPSEEK_MODELS:-deepseek-flash}
       REVIEW_PROVIDER: ${REVIEW_PROVIDER:-mock}
       REVIEW_MODEL: ${REVIEW_MODEL:-static-demo}
       TTS_PROVIDER: ${TTS_PROVIDER:-auto}
