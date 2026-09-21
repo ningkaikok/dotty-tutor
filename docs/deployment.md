@@ -14,6 +14,12 @@ Supabase 的 PostgreSQL URI，应用会自动规范化为 `postgresql+psycopg://
 `render.yaml` 或 Git。若 Render 因名称冲突给服务追加了后缀，需要同步修改 `CORS_ORIGINS`、
 `TRUSTED_HOSTS` 和 `VITE_API_ORIGIN` 三个值。
 
+Blueprint 默认启用公网 Demo 保护：单 IP 每分钟最多 120 个请求，模型/教材相关接口每分钟最多
+6 个请求、每天最多 60 个请求，同时最多处理 2 个模型请求，单个请求体不能超过 12 MiB。计数器
+保存在 API 进程内存中，服务重启后会清空；它用于降低滥用和 DeepSeek 费用风险，不等同于用户认证。
+正式公开发布仍应增加登录、边缘限流和用量告警。Render 代理的客户端 IP 由
+`TRUST_PROXY_HEADERS=true` 读取；若改为直连或更换代理，应同步调整该配置。
+
 ## 部署边界
 
 GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL、MinerU 或 Qwen3-TTS。

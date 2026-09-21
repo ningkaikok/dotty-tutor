@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from application.errors import AppError, problem_details
 from observability import log_event, request_id_var
+from public_protection import PublicProtection
 
 # 管理员调试环形缓冲：最近 50 条失败请求的脱敏摘要；进程内存态，重启即清。
 _DEBUG_ERROR_RING: deque[dict[str, str | float]] = deque(maxlen=50)
@@ -28,6 +29,7 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Dotty Tutor", version="0.21.1")
+    public_protection = PublicProtection.from_env()
 
     def current_request_id(request: Request) -> str:
         """Prefer the middleware context, with a safe fallback for direct handlers."""
@@ -169,10 +171,75 @@ def create_app() -> FastAPI:
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
         token = request_id_var.set(request_id)
         started = time.perf_counter()
-        response = None
+        http_response = None
+        model_slot_acquired = False
+
+        def reject(
+            status_code: int,
+            payload: dict[str, object],
+            headers: dict[str, str] | None = None,
+        ) -> JSONResponse:
+            nonlocal http_response
+            http_response = response(
+                request,
+                status_code=status_code,
+                payload=payload,
+                headers=headers,
+            )
+            return http_response
+
         try:
-            response = await call_next(request)
-            return response
+            decision = public_protection.check(request)
+            if not decision.allowed:
+                if decision.reason == "request_too_large":
+                    return reject(
+                        status_code=413,
+                        payload=problem_details(
+                            request_id=request_id,
+                            error_code="REQUEST_TOO_LARGE",
+                            message="请求体超过公网 Demo 的大小限制",
+                            retryable=False,
+                        ),
+                        headers={"X-RateLimit-Limit": str(decision.limit)},
+                    )
+                if decision.reason == "invalid_content_length":
+                    return reject(
+                        status_code=400,
+                        payload=problem_details(
+                            request_id=request_id,
+                            error_code="INVALID_CONTENT_LENGTH",
+                            message="请求体长度无效",
+                            retryable=False,
+                        ),
+                    )
+                return reject(
+                    status_code=429,
+                    payload=problem_details(
+                        request_id=request_id,
+                        error_code="PUBLIC_RATE_LIMITED",
+                        message="公网 Demo 请求过于频繁，请稍后再试",
+                        retryable=True,
+                    ),
+                    headers={
+                        "Retry-After": str(decision.retry_after),
+                        "X-RateLimit-Limit": str(decision.limit),
+                    },
+                )
+            if public_protection.is_expensive_path(request.url.path):
+                model_slot_acquired = await public_protection.acquire_model_slot()
+                if not model_slot_acquired:
+                    return reject(
+                        status_code=429,
+                        payload=problem_details(
+                            request_id=request_id,
+                            error_code="MODEL_CONCURRENCY_LIMITED",
+                            message="当前模型请求较多，请稍后再试",
+                            retryable=True,
+                        ),
+                        headers={"Retry-After": "5"},
+                    )
+            http_response = await call_next(request)
+            return http_response
         except Exception as error:
             # 管理员调试环形缓冲：只存脱敏摘要（类型 + 截断消息），完整堆栈仍只进日志。
             _DEBUG_ERROR_RING.append({
@@ -194,13 +261,13 @@ def create_app() -> FastAPI:
             )
             raise
         finally:
-            if response is not None:
-                response.headers["X-Request-ID"] = request_id
-                response.headers.setdefault("X-Content-Type-Options", "nosniff")
-                response.headers.setdefault("X-Frame-Options", "DENY")
-                response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-                response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self)")
-                status_code = response.status_code
+            if http_response is not None:
+                http_response.headers["X-Request-ID"] = request_id
+                http_response.headers.setdefault("X-Content-Type-Options", "nosniff")
+                http_response.headers.setdefault("X-Frame-Options", "DENY")
+                http_response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+                http_response.headers.setdefault("Permissions-Policy", "camera=(self), microphone=(self)")
+                status_code = http_response.status_code
                 log_event(
                     "http.request",
                     level=30 if status_code >= 400 else 20,
@@ -209,6 +276,8 @@ def create_app() -> FastAPI:
                     status_code=status_code,
                     duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 )
+            if model_slot_acquired:
+                public_protection.release_model_slot()
             request_id_var.reset(token)
 
     return app

@@ -31,6 +31,24 @@ services:
         value: https://dotty-tutor-web.onrender.com
       - key: TRUSTED_HOSTS
         value: dotty-tutor-api.onrender.com
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: PUBLIC_PROTECTION_ENABLED
+        value: "true"
+      - key: PUBLIC_RATE_LIMIT_REQUESTS
+        value: "120"
+      - key: PUBLIC_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: PUBLIC_MODEL_RATE_LIMIT_REQUESTS
+        value: "6"
+      - key: PUBLIC_MODEL_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: PUBLIC_MODEL_DAILY_LIMIT
+        value: "60"
+      - key: PUBLIC_MODEL_CONCURRENCY
+        value: "2"
+      - key: PUBLIC_MAX_REQUEST_BYTES
+        value: "12582912"
       - key: TTS_PROVIDER
         value: auto
       - key: LOG_LEVEL

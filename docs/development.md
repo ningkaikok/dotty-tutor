@@ -354,6 +354,15 @@ backup → preflight → upgrade → verify → deploy/restart
 | `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
+| `TRUST_PROXY_HEADERS` | `false` | 是否信任反向代理提供的客户端 IP 头；Render 部署设为 `true` |
+| `PUBLIC_PROTECTION_ENABLED` | `true` | 是否启用公网 Demo 限流和请求体保护 |
+| `PUBLIC_RATE_LIMIT_REQUESTS` | `120` | 单 IP 在窗口内允许的普通请求数 |
+| `PUBLIC_RATE_LIMIT_WINDOW_SECONDS` | `60` | 普通请求限流窗口 |
+| `PUBLIC_MODEL_RATE_LIMIT_REQUESTS` | `6` | 单 IP 在窗口内允许的模型/教材请求数 |
+| `PUBLIC_MODEL_RATE_LIMIT_WINDOW_SECONDS` | `60` | 模型请求限流窗口 |
+| `PUBLIC_MODEL_DAILY_LIMIT` | `60` | 单 IP 每日模型/教材请求上限 |
+| `PUBLIC_MODEL_CONCURRENCY` | `2` | API 进程同时处理的高成本请求数 |
+| `PUBLIC_MAX_REQUEST_BYTES` | `12582912` | 公网请求体上限，默认 12 MiB |
 | `MODEL_PROVIDER` | `codex` | `ollama`、`codex`、`deepseek` 或 `mock` |
 | `MODEL_NAME` | `default` | 生成模型名称 |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama 地址 |
