@@ -87,6 +87,45 @@ class SymbolicAgreementTests(unittest.TestCase):
         self.assertEqual(result["status"], "disagree")
 
 
+class SolutionSetAgreementTests(unittest.TestCase):
+    """解集只接受明确分隔符，并按集合语义做保守一一匹配。"""
+
+    def test_reordered_or_solution_set_agrees(self) -> None:
+        result = check_answer_agreement("x=1 或 x=2", "x=2 or x=1")
+        self.assertEqual(result["status"], "agree")
+        self.assertEqual(result["method"], "solution-set")
+
+    def test_braces_and_semicolon_solution_set_agree(self) -> None:
+        result = check_answer_agreement("{x=1；x=2}", r"\{x=2;x=1\}")
+        self.assertEqual(result["status"], "agree")
+
+    def test_radical_and_fraction_elements_agree(self) -> None:
+        result = check_answer_agreement("{√2, 1/2}", "{2**0.5, 0.5}")
+        self.assertEqual(result["status"], "agree")
+
+    def test_duplicate_elements_have_set_semantics(self) -> None:
+        result = check_answer_agreement("{x=1, x=1, x=2}", "{x=2,x=1}")
+        self.assertEqual(result["status"], "agree")
+
+    def test_missing_or_extra_solution_disagrees_when_all_pairs_are_known(self) -> None:
+        fewer = check_answer_agreement("{x=1}", "{x=1,x=2}")
+        more = check_answer_agreement("{x=1,x=2,x=3}", "{x=1,x=2}")
+        self.assertEqual(fewer["status"], "disagree")
+        self.assertEqual(more["status"], "disagree")
+
+    def test_different_variables_are_not_silently_matched(self) -> None:
+        result = check_answer_agreement("{x=1,x=2}", "{y=1,y=2}")
+        self.assertEqual(result["status"], "disagree")
+
+    def test_nested_coordinate_and_function_commas_are_not_solution_separators(self) -> None:
+        coordinate = check_answer_agreement("(1,2)", "(1,3)")
+        function = check_answer_agreement("f(1,2)", "f(1,3)")
+        self.assertNotEqual(coordinate["method"], "solution-set")
+        self.assertNotEqual(function["method"], "solution-set")
+        self.assertEqual(coordinate["status"], "undecidable")
+        self.assertEqual(function["status"], "undecidable")
+
+
 class TextFallbackAgreementTests(unittest.TestCase):
     def test_identical_prose_answers_agree_without_math_parsing(self) -> None:
         result = check_answer_agreement("见解析", "见解析")

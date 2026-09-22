@@ -19,19 +19,17 @@
 答案在归一化里判不出来。`_check_single_answer` 在归一化判否之后会再升级一层，
 复用核验阶段已经落地的 `domain.questions.answer_solver.check_answer_agreement`
 （同一套 sympy 兜底，不重复实现一套符号判等）；只有它判定 `agree` 才把结果从
-"错"改判"对"，`disagree`/`undecidable` 都维持归一化给出的判否结果——这一层只
-用来救假阴性，绝不能让符号层比现有规则更严格。sympy 是重量级导入，`answer_solver`
+"错"改判"对"，所有候选都 `disagree` 才确定为错，任一候选 `undecidable` 且没有
+`agree` 时返回 None 交回模型/调用方——这一层只用来救假阴性，绝不能把判不了伪装成
+确定性错误。sympy 是重量级导入，`answer_solver`
 自己已经把它延迟到真正解析符号表达式时才导入；这里再套一层"只有归一化判否且
 学生确实提交了内容才导入 answer_solver"，避免拖慢每次学生提交都会经过的正常
 判等路径——判等发生在学生每次提交时，多引入一次重量级导入等同于把交互拖慢，
 这正是模块开头"为什么不引入第二次模型调用"背后同一套成本考量的延伸。
 
-"多解集合的顺序与写法"（如"x=1 或 x=2"与"x=2,x=1"）没有在这里另外实现：
-`blank.correctAnswers`/`answerSpec.accepted` 本身就是"接受列表中任意一个候选
-串"的语义（`_check_single_answer` 用 `any(...)` 逐个比较），多值答案的不同顺序/
-写法由内容生成阶段把每种等价书写形式作为列表里的一项分别列出即可覆盖，不需要
-在判题层新增"拆分单个空格里的多个值再按集合比较"的机制——契约里没有这类需求
-就不要凭空加。
+"多解集合的顺序与写法"（如"x=1 或 x=2"与"x=2,x=1"）由
+`answer_solver.check_answer_agreement` 在现有 `expression`/`numeric` 答案文本里
+保守解析；它只拆明确的集合分隔符，不拆坐标、区间或函数参数内部逗号，不求解方程。
 """
 
 from __future__ import annotations
@@ -92,7 +90,7 @@ def number_matches(actual: Any, expected: Any, tolerance: Any = 0) -> bool:
     return abs(actual_number - expected_number) <= allowed
 
 
-def _symbolic_fallback_matches(actual: Any, expected: list[Any]) -> bool:
+def _symbolic_fallback_matches(actual: Any, expected: list[Any]) -> bool | None:
     """结构化归一化判否后的符号等价兜底，只用于挽回假阴性（见模块顶部说明）。
 
     延迟导入 `answer_solver`（它又延迟导入 sympy），调用方必须已经确认结构化
@@ -102,10 +100,15 @@ def _symbolic_fallback_matches(actual: Any, expected: list[Any]) -> bool:
     """
     from domain.questions.answer_solver import check_answer_agreement
 
-    return any(check_answer_agreement(actual, item)["status"] == "agree" for item in expected)
+    statuses = [check_answer_agreement(actual, item)["status"] for item in expected]
+    if any(status == "agree" for status in statuses):
+        return True
+    if statuses and all(status == "disagree" for status in statuses):
+        return False
+    return None
 
 
-def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tolerance: Any) -> bool:
+def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tolerance: Any) -> bool | None:
     if answer_type == "numeric":
         matched = any(number_matches(actual, item, tolerance) for item in expected)
     else:
@@ -113,7 +116,8 @@ def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tol
         matched = bool(normalized) and any(normalized == normalize_text(item) for item in expected)
     if matched or not str(actual or "").strip():
         return matched
-    # 归一化判否但学生确实写了东西：升级到符号等价层再判一次，只救假阴性。
+    # 归一化判否但学生确实写了东西：升级到符号等价层。开放文本解析失败
+    # 必须保留 undecidable，不能伪装成 deterministic incorrect。
     return _symbolic_fallback_matches(actual, expected)
 
 
@@ -122,7 +126,7 @@ def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tol
 # v2：`_check_single_answer` 归一化判否后新增符号等价兜底（复用
 # `answer_solver.check_answer_agreement`），能挽回科学计数法/根式/代数展开这类
 # 假阴性——判等规则变了，即使 evidence 的字段结构没变也要递增版本号。
-EVALUATOR_VERSION = "answer-evaluator-v2"
+EVALUATOR_VERSION = "answer-evaluator-v3"
 
 
 def _has_submitted_sub_answer(value: Any) -> bool:
@@ -257,7 +261,7 @@ def evaluate_structured_answer(
         answers = interaction.get("blankAnswers")
         if not isinstance(blanks, list) or not blanks or not isinstance(answers, dict):
             return None
-        results: list[bool] = []
+        results: list[bool | None] = []
         failed_blank_ids: list[str] = []
         for blank in blanks:
             if not isinstance(blank, dict):
@@ -276,6 +280,10 @@ def evaluate_structured_answer(
             if not matched:
                 failed_blank_ids.append(str(blank.get("id", "")))
         if not results:
+            return None
+        # 一个空的开放文本空无法由确定性规则裁决时，整道题交回模型；
+        # 不能把同一提交包装成 deterministic incorrect。
+        if any(result is None for result in results):
             return None
         evidence = {
             "strategy": "fill-blank-parts",
@@ -307,6 +315,8 @@ def evaluate_structured_answer(
             "expectedCount": len(expected),
         }
         correct = _check_single_answer(actual, expected, answer_type, spec.get("tolerance", 0))
+        if correct is None:
+            return None
         if correct:
             return _result("correct", "答案正确。请再说明关键计算或公式依据。", "回看最后一步，确认结果和单位都符合题意。", evidence)
         return _result("incorrect", "这个结果还不正确。请检查运算、符号和单位后再试一次。", "从已知条件开始，逐步检查每一行计算。", evidence)
@@ -322,6 +332,8 @@ def evaluate_structured_answer(
         if not expected_values or not str(actual).strip():
             return None
         correct = _check_single_answer(actual, expected_values, "text", 0)
+        if correct is None:
+            return None
         evidence = {
             "strategy": "short-answer-text-match",
             "submittedRaw": str(actual)[:80],

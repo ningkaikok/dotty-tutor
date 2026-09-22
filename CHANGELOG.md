@@ -13,6 +13,11 @@ Semantic Versioning。
 - 整卷生成连续遇到 API key 过期/配额耗尽、限流或上游超时时会提前暂停剩余批次并给出具体原因，不再把剩下的题逐一磨成失败记录；已经成功的批次不受影响。
 - 新增只读的环境依赖自检接口 `GET /api/system/dependency-preflight`，一次性检查 MinerU、pypdf、Ollama、Codex CLI、Azure Speech、Qwen3-TTS 和 PostgreSQL 是否配置就绪；内容生产端新增对应的自检页 `/studio/dependency-preflight`，入口在 `/studio` 首屏顶栏。
 
+### Fixed
+
+- 修复确定性答案在表达式归一化失败时把开放文本误判为错误的问题；现在支持明确解集的顺序/写法等价，判不了的结果会回退而不写入伪造的 mastery 证据。
+- 修复图片已被 Markdown 线性绑定后 bbox 只能补漏、不能纠正错绑的问题；显式图注优先，高置信 bbox 可纠正，低置信或路径歧义会移除旧绑定、进入审计并阻断整卷质量门禁。纯位置阈值仍待真实坏样本回放校准。
+
 ## [0.31.0] - 2026-09-14
 
 ### Added

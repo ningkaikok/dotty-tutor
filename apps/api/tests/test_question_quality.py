@@ -56,6 +56,31 @@ class QuestionQualityReportTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertTrue(any("题号过少" in item for item in report["blockers"]))
 
+    def test_needs_review_attribution_blocks_full_paper_and_preserves_audit(self) -> None:
+        audit = {
+            "image": "figures/a.png",
+            "status": "needs_review",
+            "previousQuestionNumber": "1",
+            "candidates": [{"number": "1", "score": 0.51}, {"number": "2", "score": 0.49}],
+            "selectedQuestionNumber": None,
+            "attributionSource": "none",
+            "abstainReason": "low-confidence-or-ambiguous-bbox",
+        }
+        report = build_import_quality_report(
+            [{
+                "id": "batch-001",
+                "startPage": 1,
+                "endPage": 1,
+                "source": "<!-- page 1 -->",
+                "blocks": [("1", "1、第一题", [])],
+                "imageAttributionAudit": [audit],
+            }],
+            total_pages=1,
+        )
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["readyForFullPaper"])
+        self.assertEqual(report["imageAttributionAudit"], [audit])
+
 
 if __name__ == "__main__":
     unittest.main()

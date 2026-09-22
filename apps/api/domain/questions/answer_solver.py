@@ -35,7 +35,7 @@ from answer_evaluator import convert_latex_fraction, normalize_text, parse_numbe
 # 判等规则（哪怕只是新增一种符号预处理）变化时必须递增，消费方（核验证据、审校面板）
 # 才能正确解释历史判定的语义。v2：新增"数字夹住的 x/X 视为科学计数法乘号"预处理，
 # 修复 "5x10^-2" 这类 OCR 常见写法被误判 disagree 的问题。
-SOLVER_VERSION = "answer-solver-v2"
+SOLVER_VERSION = "answer-solver-v3"
 
 AgreementStatus = Literal["agree", "disagree", "undecidable"]
 
@@ -57,11 +57,15 @@ _SQRT_BARE = re.compile(r"√\s*([0-9a-zA-Z]+(?:\.[0-9]+)?)")
 # 会用到的 ASCII 字符；出现任何白名单外的字符（中文、单位汉字等）一律当作解析失败，
 # 交回 undecidable，而不是让 sympy 把它们造成假符号。
 _SYMBOLIC_SAFE_CHARS = re.compile(r"^[0-9A-Za-z_+\-*/^().,=<>\s]+$")
+_THOUSANDS_GROUP = re.compile(r"(?<![A-Za-z0-9_])[-+]?\d{1,3}(?:,\d{3})+(?!\d)")
 _PERCENT_SUFFIX = re.compile(r"[%％]\s*$")
 # MinerU/pypdf 把科学计数法里的 "×" OCR 成拉丁字母 "x"/"X" 是这个仓库里非常现实的情形
 # （"5×10⁻²" 变成 "5x10^-2"）。只在数字夹住 "x"/"X" 时才当乘号转换——边界卡在
 # "两侧都紧邻数字"，不含 "x+1" 这类合法变量用法，避免把普通代数式的 x 悄悄吃掉。
 _SCI_NOTATION_X_AS_TIMES = re.compile(r"(?<=[0-9])\s*[xX]\s*(?=[0-9])")
+_ASSIGNMENT_PATTERN = re.compile(
+    r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$"
+)
 
 
 def _expand_superscripts(text: str) -> str:
@@ -85,7 +89,8 @@ def _prepare_for_symbolic_parse(value: Any) -> str:
     text = str(value or "").strip()
     if not text:
         return ""
-    text = text.replace(",", "").replace("，", "")
+    text = _THOUSANDS_GROUP.sub(lambda match: match.group(0).replace(",", ""), text)
+    text = text.replace("，", "")
     text = convert_latex_fraction(text)
     text = text.replace("×", "*").replace("π", "pi").replace("％", "%")
     text = _SCI_NOTATION_X_AS_TIMES.sub("*", text)
@@ -136,6 +141,229 @@ def _parse_numeric_with_percent(text: str) -> float | None:
     return value / 100 if _PERCENT_SUFFIX.search(text.strip()) else value
 
 
+def _split_top_level(value: str) -> tuple[list[str], set[str]]:
+    """Split solution-set separators without touching nested punctuation.
+
+    Commas are deliberately reported separately from ``or``/semicolon.  A comma
+    outside braces is only a solution-set separator when the caller confirms that
+    every part repeats the same variable assignment.  This keeps ``(x, y)``,
+    ``[a, b]`` and ``f(x, y)`` intact while still accepting ``x=1, x=2``.
+    """
+    parts: list[str] = []
+    separators: set[str] = set()
+    start = 0
+    depth = 0
+    index = 0
+    while index < len(value):
+        char = value[index]
+        if char == "\\":
+            # Escaped braces (``\\{...\\}``) are set notation, not a nested
+            # LaTeX group for this small scanner.  Skip the escaped character.
+            index += 2
+            continue
+        if char in "([{":
+            depth += 1
+            index += 1
+            continue
+        if char in ")]}":
+            depth = max(0, depth - 1)
+            index += 1
+            continue
+        if depth == 0:
+            if char in {";", "；"}:
+                parts.append(value[start:index].strip())
+                separators.add("semicolon")
+                start = index + 1
+                index += 1
+                continue
+            if value.startswith("或", index):
+                parts.append(value[start:index].strip())
+                separators.add("or")
+                start = index + 1
+                index += 1
+                continue
+            if value[index:index + 2].casefold() == "or":
+                before = value[index - 1] if index else " "
+                after = value[index + 2] if index + 2 < len(value) else " "
+                if not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_"):
+                    parts.append(value[start:index].strip())
+                    separators.add("or")
+                    start = index + 2
+                    index += 2
+                    continue
+            if char == ",":
+                parts.append(value[start:index].strip())
+                separators.add("comma")
+                start = index + 1
+                index += 1
+                continue
+        index += 1
+    parts.append(value[start:].strip())
+    return parts, separators
+
+
+def _unwrap_solution_set(value: str) -> tuple[str, bool]:
+    """Return the body and whether a full outer pair denotes a set."""
+    text = value.strip()
+    escaped = text.startswith(r"\{") and text.endswith(r"\}")
+    if escaped:
+        return text[2:-2].strip(), True
+    if not (text.startswith("{") and text.endswith("}")):
+        return text, False
+    depth = 0
+    for index, char in enumerate(text):
+        if char == "\\":
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and index != len(text) - 1:
+                return text, False
+            if depth < 0:
+                return text, False
+    return (text[1:-1].strip(), depth == 0)
+
+
+def _parse_solution_set(value: Any) -> tuple[list[str] | None, bool]:
+    """Parse only an explicit, conservative solution-set spelling.
+
+    The boolean distinguishes "not a set" from "set syntax was present but is
+    malformed".  The latter must remain ``undecidable`` rather than falling back
+    to scalar parsing and accidentally treating punctuation as mathematics.
+    """
+    text = str(value or "").strip()
+    body, braced = _unwrap_solution_set(text)
+    parts, separators = _split_top_level(body)
+    if not braced and not separators:
+        return None, False
+    if not braced and separators == {"comma"}:
+        assignments = [_ASSIGNMENT_PATTERN.fullmatch(part) for part in parts]
+        names = {match.group(1).casefold() for match in assignments if match is not None}
+        if len(names) != 1 or len(assignments) != len(parts):
+            return None, False
+    if not parts or any(not part for part in parts):
+        return [], True
+    return parts, True
+
+
+def _assignment_difference(value: str) -> Any | None:
+    match = _ASSIGNMENT_PATTERN.fullmatch(value)
+    if match is None:
+        return None
+    left = _parse_symbolic(match.group(1))
+    right = _parse_symbolic(match.group(2))
+    if left is None or right is None:
+        return None
+    try:
+        return left - right
+    except Exception:
+        return None
+
+
+def _symbolic_equal(first: Any, second: Any) -> bool | None:
+    """Compare already-parsed expressions using the solver's three-state rule."""
+    try:
+        diff = first - second
+        if diff.free_symbols:
+            return diff.equals(0)
+        return abs(complex(diff.evalf(30))) <= _NUMERIC_TOLERANCE
+    except Exception:
+        return None
+
+
+def _check_scalar_agreement(candidate_text: str, reference_text: str) -> tuple[AgreementStatus, str, str]:
+    """Return scalar status without recursively attempting solution-set parsing."""
+    if normalize_text(candidate_text) and normalize_text(candidate_text) == normalize_text(reference_text):
+        return "agree", "text-normalized-match", ""
+
+    candidate_number = _parse_numeric_with_percent(candidate_text)
+    reference_number = _parse_numeric_with_percent(reference_text)
+    if candidate_number is not None and reference_number is not None:
+        agree = abs(candidate_number - reference_number) <= _NUMERIC_TOLERANCE
+        return "agree" if agree else "disagree", "numeric-tolerance", ""
+
+    candidate_assignment = _assignment_difference(candidate_text)
+    reference_assignment = _assignment_difference(reference_text)
+    if candidate_assignment is not None or reference_assignment is not None:
+        if candidate_assignment is None or reference_assignment is None:
+            return "undecidable", "unparseable", "无法解析为可判等的方程式"
+        same_orientation = _symbolic_equal(candidate_assignment, reference_assignment)
+        opposite_orientation = _symbolic_equal(candidate_assignment, -reference_assignment)
+        if same_orientation is True or opposite_orientation is True:
+            return "agree", "symbolic-equivalence", ""
+        if same_orientation is False and opposite_orientation is False:
+            return "disagree", "symbolic-equivalence", ""
+        return "undecidable", "symbolic-undetermined", "方程式符号化简无法确定等价性"
+
+    candidate_expr = _parse_symbolic(candidate_text)
+    reference_expr = _parse_symbolic(reference_text)
+    if candidate_expr is None or reference_expr is None:
+        return "undecidable", "unparseable", "无法解析为可判等的数学表达式，可能是文字/证明类开放答案"
+    decision = _symbolic_equal(candidate_expr, reference_expr)
+    if decision is True:
+        return "agree", "symbolic-equivalence", ""
+    if decision is False:
+        return "disagree", "symbolic-equivalence", ""
+    return "undecidable", "symbolic-undetermined", "符号化简无法确定等价性"
+
+
+def _deduplicate_solution_elements(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    for value in values:
+        if any(_check_scalar_agreement(value, existing)[0] == "agree" for existing in unique):
+            continue
+        unique.append(value)
+    return unique
+
+
+def _solution_sets_agree(candidate: list[str], reference: list[str]) -> tuple[AgreementStatus, str]:
+    """Compare sets with one-to-one matching and conservative unknown handling."""
+    candidate = _deduplicate_solution_elements(candidate)
+    reference = _deduplicate_solution_elements(reference)
+    matrix = [
+        [_check_scalar_agreement(item, expected)[0] for expected in reference]
+        for item in candidate
+    ]
+    if len(candidate) != len(reference):
+        if any(status == "undecidable" for row in matrix for status in row):
+            return "undecidable", "solution-set-undetermined"
+        return "disagree", "solution-set"
+    if not candidate:
+        return "agree", "solution-set"
+
+    has_unknown_matching = False
+    found_agreement = False
+
+    def visit(index: int, used: set[int], saw_unknown: bool, saw_disagree: bool) -> None:
+        nonlocal found_agreement, has_unknown_matching
+        if found_agreement:
+            return
+        if index == len(candidate):
+            if not saw_disagree:
+                if not saw_unknown:
+                    found_agreement = True
+                else:
+                    has_unknown_matching = True
+            return
+        for reference_index, status in enumerate(matrix[index]):
+            if reference_index in used:
+                continue
+            visit(
+                index + 1,
+                used | {reference_index},
+                saw_unknown or status == "undecidable",
+                saw_disagree or status == "disagree",
+            )
+
+    visit(0, set(), False, False)
+    if found_agreement:
+        return "agree", "solution-set"
+    if has_unknown_matching:
+        return "undecidable", "solution-set-undetermined"
+    return "disagree", "solution-set"
+
+
 def _agreement_result(
     status: AgreementStatus,
     method: str,
@@ -174,45 +402,25 @@ def check_answer_agreement(candidate: Any, reference: Any) -> dict[str, Any]:
     if normalize_text(candidate_text) and normalize_text(candidate_text) == normalize_text(reference_text):
         return _agreement_result("agree", "text-normalized-match", candidate_text, reference_text)
 
-    # 第一层：复用既有的确定性数值归一化，覆盖分数/百分号/千分位等常见格式，
-    # 再补一步百分号语义换算（见 `_parse_numeric_with_percent` 的注释）。
-    candidate_number = _parse_numeric_with_percent(candidate_text)
-    reference_number = _parse_numeric_with_percent(reference_text)
-    if candidate_number is not None and reference_number is not None:
-        agree = abs(candidate_number - reference_number) <= _NUMERIC_TOLERANCE
+    # 集合语义只在明确出现花括号、顶层“或/or/分号”，或同一变量重复赋值的
+    # 顶层逗号时启用。普通的坐标、区间和函数参数逗号不会被拆开。
+    candidate_set, candidate_is_set = _parse_solution_set(candidate_text)
+    reference_set, reference_is_set = _parse_solution_set(reference_text)
+    if candidate_is_set or reference_is_set:
+        if not candidate_is_set or not reference_is_set or not candidate_set or not reference_set:
+            return _agreement_result(
+                "undecidable", "solution-set-undetermined", candidate_text, reference_text,
+                reason="解集写法不完整或两侧集合语义不一致，无法安全一一匹配",
+            )
+        status, method = _solution_sets_agree(candidate_set, reference_set)
         return _agreement_result(
-            "agree" if agree else "disagree", "numeric-tolerance", candidate_text, reference_text,
+            status, method, candidate_text, reference_text,
+            reason="解集元素存在无法确定的比较" if status == "undecidable" else "",
         )
 
-    # 第二层：数值归一化判不了（含符号/代数式/根式/科学计数法等），升级到符号等价。
-    candidate_expr = _parse_symbolic(candidate_text)
-    reference_expr = _parse_symbolic(reference_text)
-    if candidate_expr is None or reference_expr is None:
-        return _agreement_result(
-            "undecidable", "unparseable", candidate_text, reference_text,
-            reason="无法解析为可判等的数学表达式，可能是文字/证明类开放答案",
-        )
-    try:
-        diff = (candidate_expr - reference_expr)
-        if diff.free_symbols:
-            # 含未消去的变量：走结构化判等。Expr.equals 语义正好是三态——
-            # True/False/无法判定时返回 None，与 agree/disagree/undecidable 一一对应。
-            decision = diff.equals(0)
-        else:
-            # 纯数值（可能是根式、π 等精确无理数，也可能是十进制近似）：
-            # `equals` 对混入 Float 的表达式过于保守，容易把"数值上相等"误判成
-            # 不相等（如 sqrt(2) 与 2**0.5），因此改用高精度数值求值 + 容差判断，
-            # 容差同样只用于判等价，不影响任何求解逻辑。
-            decision = abs(complex(diff.evalf(30))) <= 1e-9
-    except Exception:
-        decision = None
-    if decision is True:
-        return _agreement_result("agree", "symbolic-equivalence", candidate_text, reference_text)
-    if decision is False:
-        return _agreement_result("disagree", "symbolic-equivalence", candidate_text, reference_text)
+    scalar_status, scalar_method, scalar_reason = _check_scalar_agreement(candidate_text, reference_text)
     return _agreement_result(
-        "undecidable", "symbolic-undetermined", candidate_text, reference_text,
-        reason="符号化简无法确定等价性",
+        scalar_status, scalar_method, candidate_text, reference_text, reason=scalar_reason,
     )
 
 

@@ -382,6 +382,10 @@ class LearningStore(DatabaseStore):
                 session_id=session_id,
                 question_id=question_id,
             )
+            if verified is None:
+                # A deterministic contract exists but the three-state evaluator
+                # abstained. Never persist the client claim as mastery evidence.
+                raise ValueError("确定性判题无法裁决，不能接受客户端自报判定")
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
@@ -419,21 +423,19 @@ class LearningStore(DatabaseStore):
         claimed: str,
         session_id: str,
         question_id: str,
-    ) -> str:
+    ) -> str | None:
         """Re-grade the attempt server-side; never persist a client-declared verdict.
 
         掌握度是老师看板、喂回出题和个性化作业的唯一输入，因此写入端不能相信
         客户端自报的判定。判定权归确定性判题器：诚实客户端拿到的
         ``/api/help`` 判定同样出自它，两者一致时这一步没有可观察影响。
 
-        返回 ``None`` 表示该题没有可确定判定的答案规格（开放题、含 tutor-only
-        小问的题），此时保留客户端值——这些题本来就由模型判定，与
-        ``_question_is_mastery_eligible`` 的 tutor-only 边界一致。
+        返回 None 表示题目带有确定性答案契约但本次作答落在 undecidable。
+        调用方必须阻断写入，不能把客户端伪造的 correct/incorrect 混入掌握度；
+        没有确定性契约的开放题才保留模型/客户端判定。
 
-        已知边界：``true-false`` 目前只在 ``tutor_engine`` 内联判定，
-        ``evaluate_structured_answer`` 不覆盖它，因此这一类仍走客户端值。
-        把它并入判题器会改变陪练回复文案（那段文案会显式说出正确答案），
-        属于单独一次改动，不在本次信任边界修复的范围内。
+        ``true-false`` 也属于确定性契约；若缺少可用的规范答案，判题器返回
+        ``None``，同样不能让客户端声明混入学习证据。
         """
         if not isinstance(question, dict) or not question:
             return claimed
@@ -445,6 +447,14 @@ class LearningStore(DatabaseStore):
             interaction if isinstance(interaction, dict) else None,
         )
         if not result:
+            if LearningStore._has_deterministic_contract(question):
+                log_event(
+                    "learning.attempt.assessment_undecidable",
+                    level=30,
+                    session_id=session_id,
+                    question_id=question_id,
+                )
+                return None
             return claimed
         verified = str(result["assessment"])
         if verified != claimed:
@@ -460,6 +470,28 @@ class LearningStore(DatabaseStore):
                 evaluator_strategy=(result.get("evaluationEvidence") or {}).get("strategy"),
             )
         return verified
+
+    @staticmethod
+    def _has_deterministic_contract(question: dict[str, Any]) -> bool:
+        """Whether a published question claims an objective grading contract."""
+        if not isinstance(question, dict):
+            return False
+        if question.get("questionType") in {
+            "choice", "multi-select", "true-false", "fill-blank", "numeric", "draw-line",
+        }:
+            return True
+        if question.get("questionType") == "short-answer":
+            evaluation = question.get("evaluation")
+            if isinstance(evaluation, dict) and evaluation.get("mode") == "deterministic":
+                return True
+            if question.get("answerSpec") or question.get("blanks") or question.get("correctAnswers"):
+                return True
+        return any(
+            isinstance(part, dict)
+            and isinstance(part.get("evaluation"), dict)
+            and part["evaluation"].get("mode") == "deterministic"
+            for part in (question.get("subQuestions") or [])
+        )
 
     @staticmethod
     def _question_name(lesson: Any) -> str:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -43,14 +44,15 @@ QUESTION_SECTION_PATTERN = re.compile(
 )
 # Keep malformed OCR input linear-time; these spans never need to backtrack.
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*+\]\(([^)]++)\)")
-# 只匹配"图片引用后紧跟第N题图/第N题"这种明确格式，中间只允许空白，不允许跨越其他
-# 内容——这是比文本位置更可靠的归属信号，但格式必须足够窄才不会误伤正常题干。
-IMAGE_CAPTION_PATTERN = re.compile(
-    r"!\[[^\]]*\]\((?P<path>[^)]+)\)\s*第\s*(?P<number>\d{1,3})\s*题(?:图)?"
+# 图注只能紧跟一个已经用占有量词安全解析的 Markdown 图片引用。
+# 不把两段合成一个可回溯正则：OCR 文本是外部输入，恶意或损坏的 ``![``
+# 重复序列不应造成多项式匹配时间。
+IMAGE_CAPTION_SUFFIX_PATTERN = re.compile(
+    r"\s*+第\s*+(?P<number>\d{1,3})\s*+题(?:图)?"
 )
 # 用于从 content_list.json 的 image_caption/chart_caption/table_caption 字段（纯文本，
-# 不含 Markdown 图片语法）里提取题号，格式和 IMAGE_CAPTION_PATTERN 里"第N题图/第N题"
-# 的题号部分一致，只是不需要再匹配前面的 ``![]()``。
+# 不含 Markdown 图片语法）里提取题号，格式和上面图注后缀里的"第N题图/第N题"
+# 一致，只是不需要再匹配前面的 ``![]()``。
 STRUCTURED_CAPTION_NUMBER_PATTERN = re.compile(r"第\s*(?P<number>\d{1,3})\s*题")
 # MinerU 结构化 JSON 文件名，落盘方式见 infrastructure/runtime/ocr_runtime.py 的
 # ``_persist_structured_output``；两个文件都是可选的，不存在时完全回退到纯正则逻辑。
@@ -116,6 +118,14 @@ QUESTION_EVIDENCE_MARKERS = (
     r"不等式",
     r"平均数|中位数|概率",
 )
+
+
+def _iter_markdown_image_captions(source: str) -> Iterator[tuple[str, str]]:
+    """Yield explicit image captions without a backtracking cross-token regex."""
+    for image_match in MARKDOWN_IMAGE_PATTERN.finditer(source):
+        caption_match = IMAGE_CAPTION_SUFFIX_PATTERN.match(source, image_match.end())
+        if caption_match is not None:
+            yield image_match.group(1), caption_match.group("number")
 
 
 def _has_any_marker(text: str, markers: tuple[str, ...]) -> bool:
@@ -449,6 +459,7 @@ def split_question_sources(
         blocks,
         question_area,
         structured_captions=structured_captions,
+        attribution_audit=attribution_audit,
     )
 
 
@@ -474,7 +485,7 @@ def _overlap_ratio(first: tuple[float, float, float, float], second: tuple[float
     return overlap / area
 
 
-def _apply_bbox_image_attribution(
+def _legacy_apply_bbox_image_attribution(
     blocks: list[tuple[str, str, list[str]]],
     asset_dir: Path | None,
     audit: list[dict[str, Any]] | None,
@@ -582,7 +593,7 @@ def _apply_bbox_image_attribution(
     return [(number, block, mutable[index]) for index, (number, block, _images) in enumerate(blocks)]
 
 
-def _apply_caption_image_attribution(
+def _legacy_apply_caption_image_attribution(
     blocks: list[tuple[str, str, list[str]]],
     question_area: str,
     *,
@@ -608,8 +619,8 @@ def _apply_caption_image_attribution(
     暂时没有更好的归位方案。
     """
     captions_by_basename: dict[str, str] = {}
-    for match in IMAGE_CAPTION_PATTERN.finditer(question_area):
-        captions_by_basename[Path(match.group("path")).name] = match.group("number")
+    for path, number in _iter_markdown_image_captions(question_area):
+        captions_by_basename[Path(path).name] = number
     if structured_captions:
         for img_path, number in structured_captions.items():
             # 结构化命中优先生效，可能覆盖同一图片的正则判断；两者不冲突时结果不变。
@@ -642,6 +653,337 @@ def _apply_caption_image_attribution(
             mutable_images[target_index].append(path)
     return [
         (number, block, mutable_images[index])
+        for index, (number, block, _images) in enumerate(blocks)
+    ]
+
+
+def _normalise_attribution_path(value: Any) -> str:
+    """Normalize a relative image reference without collapsing distinct folders."""
+    text = str(value or "").strip().replace("\\", "/")
+    while text.startswith("./"):
+        text = text[2:]
+    return re.sub(r"/{2,}", "/", text)
+
+
+def _resolve_attribution_image(
+    path: str,
+    blocks: list[tuple[str, str, list[str]]],
+) -> tuple[list[tuple[int, str]], bool]:
+    """Resolve by normalized relative path; basename fallback is unique-only."""
+    key = _normalise_attribution_path(path)
+    exact = [
+        (index, image)
+        for index, (_number, _block, images) in enumerate(blocks)
+        for image in images
+        if _normalise_attribution_path(image) == key
+    ]
+    if exact:
+        return exact, False
+    basename = Path(key).name
+    candidates = [
+        (index, image)
+        for index, (_number, _block, images) in enumerate(blocks)
+        for image in images
+        if Path(_normalise_attribution_path(image)).name == basename
+    ]
+    distinct_paths = {_normalise_attribution_path(image) for _index, image in candidates}
+    if len(distinct_paths) > 1:
+        # Keep the previous owners for the audit entry even though the path is
+        # ambiguous and must not be assigned to either owner.
+        return candidates, True
+    return candidates, False
+
+
+def _remove_attribution_image(
+    mutable: list[list[str]],
+    path: str,
+) -> None:
+    key = _normalise_attribution_path(path)
+    for images in mutable:
+        images[:] = [image for image in images if _normalise_attribution_path(image) != key]
+
+
+def _remove_attribution_basename(
+    mutable: list[list[str]],
+    path: str,
+) -> None:
+    """Remove every same-basename reference when the relative path is ambiguous."""
+    basename = Path(_normalise_attribution_path(path)).name
+    for images in mutable:
+        images[:] = [
+            image for image in images
+            if Path(_normalise_attribution_path(image)).name != basename
+        ]
+
+
+def _remove_resolved_attribution_images(
+    mutable: list[list[str]],
+    resolved: list[tuple[int, str]],
+    fallback_path: str,
+) -> None:
+    """Remove the concrete Markdown references found for one structured image."""
+    if resolved:
+        for _index, raw_path in resolved:
+            _remove_attribution_image(mutable, raw_path)
+        return
+    _remove_attribution_image(mutable, fallback_path)
+
+
+def _caption_attribution_maps(
+    blocks: list[tuple[str, str, list[str]]],
+    structured_captions: dict[str, str] | None,
+) -> tuple[dict[str, str], set[str]]:
+    """Collect explicit captions and fail closed when one image declares two owners."""
+    captions: dict[str, str] = {}
+    conflicts: set[str] = set()
+
+    def add(path: Any, number: Any) -> None:
+        key = _normalise_attribution_path(path)
+        target = str(number or "").strip()
+        if not key or not target:
+            return
+        previous = captions.get(key)
+        if previous is not None and previous != target:
+            conflicts.add(key)
+            return
+        captions[key] = target
+
+    for _number, block, _images in blocks:
+        for path, number in _iter_markdown_image_captions(block):
+            add(path, number)
+    for path, number in (structured_captions or {}).items():
+        add(path, number)
+    return captions, conflicts
+
+
+def _attribution_audit_entry(
+    image: str,
+    *,
+    status: str,
+    previous: list[str],
+    selected: str | None,
+    source: str,
+    candidates: list[dict[str, Any]] | None = None,
+    abstain_reason: str | None = None,
+) -> dict[str, Any]:
+    reason = abstain_reason or ""
+    return {
+        "image": image,
+        "status": status,
+        "previousQuestionNumber": previous[0] if len(previous) == 1 else (previous or None),
+        "candidates": candidates or [],
+        "selectedQuestionNumber": selected,
+        "attributionSource": source,
+        "abstainReason": abstain_reason,
+        # Keep the legacy field for existing audit consumers.
+        "reason": reason,
+    }
+
+
+def _apply_bbox_image_attribution(
+    blocks: list[tuple[str, str, list[str]]],
+    asset_dir: Path | None,
+    audit: list[dict[str, Any]] | None,
+) -> list[tuple[str, str, list[str]]]:
+    """Reconcile every uncaptioned structured image against independent question bboxes.
+
+    Linear Markdown ownership is only a fallback. Once structured layout data exists,
+    a low-confidence or conflicting bbox removes the old owner and records an explicit
+    review blocker instead of preserving a known bad binding.
+    """
+    content_list = _load_structured_content_list(asset_dir)
+    if not content_list:
+        return blocks
+    structured_captions = _structured_caption_attributions(asset_dir)
+    explicit_captions, caption_conflicts = _caption_attribution_maps(blocks, structured_captions)
+    text_items = [item for item in content_list if isinstance(item, dict) and item.get("type") == "text"]
+    image_items = [item for item in content_list if isinstance(item, dict) and item.get("type") in {"image", "chart"}]
+    index_by_number = {number: index for index, (number, _block, _images) in enumerate(blocks)}
+    starts_by_number: dict[str, list[dict[str, Any]]] = {}
+    for item in text_items:
+        text = str(item.get("text") or "")
+        match = QUESTION_START_PATTERN.match(text)
+        all_matches = list(QUESTION_START_PATTERN.finditer(text))
+        if match is None or len(all_matches) != 1:
+            continue
+        number = match.group("number")
+        item_bbox = _bbox(item.get("bbox"))
+        page = item.get("page_idx")
+        if number not in index_by_number or item_bbox is None or not isinstance(page, int):
+            continue
+        starts_by_number.setdefault(number, []).append({
+            "number": number,
+            "page": page,
+            "bbox": item_bbox,
+        })
+    starts = [items[0] for items in starts_by_number.values() if len(items) == 1]
+    ordered_starts = sorted(starts, key=lambda item: (item["page"], item["bbox"][1], item["bbox"][0]))
+    mutable = [list(images) for _number, _block, images in blocks]
+    seen_paths: set[str] = set()
+    for image in image_items:
+        path = image.get("img_path")
+        image_bbox = _bbox(image.get("bbox"))
+        page = image.get("page_idx")
+        if not isinstance(path, str) or not path:
+            continue
+        path_key = _normalise_attribution_path(path)
+        resolved, basename_conflict = _resolve_attribution_image(path, blocks)
+        previous = sorted({blocks[index][0] for index, _raw in resolved})
+        if path_key in caption_conflicts:
+            _remove_resolved_attribution_images(mutable, resolved, path)
+            if audit is not None:
+                audit.append(_attribution_audit_entry(
+                    path, status="needs_review", previous=previous, selected=None,
+                    source="caption", abstain_reason="conflicting-explicit-caption",
+                ))
+            continue
+        # Caption evidence wins over bbox evidence. The caption pass below performs
+        # the actual move, so it can also handle a target question declared later.
+        caption_keys_for_basename = {
+            key for key in explicit_captions
+            if Path(key).name == Path(path_key).name
+        }
+        caption_matches_path = path_key in explicit_captions or (
+            len(caption_keys_for_basename) == 1 and not basename_conflict
+        )
+        if caption_matches_path:
+            continue
+        if path_key in seen_paths:
+            _remove_resolved_attribution_images(mutable, resolved, path)
+            if audit is not None:
+                audit.append(_attribution_audit_entry(
+                    path, status="needs_review", previous=previous, selected=None,
+                    source="none", abstain_reason="duplicate-image-record",
+                ))
+            continue
+        seen_paths.add(path_key)
+        if basename_conflict:
+            _remove_attribution_basename(mutable, path)
+            if audit is not None:
+                audit.append(_attribution_audit_entry(
+                    path, status="needs_review", previous=previous, selected=None,
+                    source="none", abstain_reason="ambiguous-relative-image-path",
+                ))
+            continue
+        candidates: list[dict[str, Any]] = []
+        if image_bbox is not None and isinstance(page, int):
+            image_center = ((image_bbox[0] + image_bbox[2]) / 2, (image_bbox[1] + image_bbox[3]) / 2)
+            page_starts = [item for item in ordered_starts if item["page"] == page]
+            for start in page_starts:
+                start_bbox = start["bbox"]
+                start_center_x = (start_bbox[0] + start_bbox[2]) / 2
+                start_width = start_bbox[2] - start_bbox[0]
+                same_column = [
+                    other for other in page_starts
+                    if other["bbox"][1] > start_bbox[1]
+                    and abs((other["bbox"][0] + other["bbox"][2]) / 2 - start_center_x)
+                    <= max(start_width, other["bbox"][2] - other["bbox"][0]) * 1.5
+                ]
+                next_start = min(same_column, key=lambda item: item["bbox"][1], default=None)
+                if image_center[1] < start_bbox[1] or (next_start and image_center[1] >= next_start["bbox"][1]):
+                    continue
+                column_overlap = _overlap_ratio(image_bbox, start_bbox)
+                in_column = start_bbox[0] - 40 <= image_center[0] <= start_bbox[2] + 40
+                if not in_column and column_overlap == 0:
+                    continue
+                vertical_span = (next_start["bbox"][1] - start_bbox[1]) if next_start else 1000.0
+                position = (image_center[1] - start_bbox[1]) / max(vertical_span, 1.0)
+                vertical_score = 1.0 if next_start is None else 0.75 + 0.25 * max(0.0, 1.0 - abs(position - 0.5) * 2)
+                score = 0.65 * vertical_score + 0.35 * max(column_overlap, 0.5 if in_column else 0.0)
+                candidates.append({
+                    "number": start["number"],
+                    "score": round(score, 3),
+                    "page": page,
+                    "imageBbox": list(image_bbox),
+                    "questionBbox": list(start_bbox),
+                })
+        candidates.sort(key=lambda item: item["score"], reverse=True)
+        best = candidates[0] if candidates else None
+        second_score = candidates[1]["score"] if len(candidates) > 1 else 0.0
+        confident = bool(best and best["score"] >= 0.72 and best["score"] - second_score >= 0.12)
+        if confident and best is not None:
+            target = index_by_number.get(best["number"])
+            if target is not None:
+                _remove_resolved_attribution_images(mutable, resolved, path)
+                retained_path = resolved[0][1] if resolved else path
+                if retained_path not in mutable[target]:
+                    mutable[target].append(retained_path)
+        else:
+            _remove_resolved_attribution_images(mutable, resolved, path)
+        if audit is not None:
+            audit.append(_attribution_audit_entry(
+                path,
+                status="assigned" if confident else "needs_review",
+                previous=previous,
+                selected=best["number"] if confident and best is not None else None,
+                source="bbox" if confident else "none",
+                candidates=candidates,
+                abstain_reason=None if confident else (
+                    "missing-independent-question-bbox" if not candidates else
+                    "low-confidence-or-ambiguous-bbox"
+                ),
+            ))
+    return [(number, block, mutable[index]) for index, (number, block, _images) in enumerate(blocks)]
+
+
+def _apply_caption_image_attribution(
+    blocks: list[tuple[str, str, list[str]]],
+    question_area: str,
+    *,
+    structured_captions: dict[str, str] | None = None,
+    attribution_audit: list[dict[str, Any]] | None = None,
+) -> list[tuple[str, str, list[str]]]:
+    """Apply explicit captions as the highest-confidence attribution source."""
+    del question_area  # Captions are read from the already bounded question blocks.
+    captions, conflicts = _caption_attribution_maps(blocks, structured_captions)
+    if not captions and not conflicts:
+        return blocks
+    mutable = [list(images) for _number, _block, images in blocks]
+    block_index_by_number: dict[str, int] = {}
+    for index, (number, _block, _images) in enumerate(blocks):
+        block_index_by_number.setdefault(number, index)
+    for path_key in sorted(set(captions) | conflicts):
+        resolved, basename_conflict = _resolve_attribution_image(path_key, blocks)
+        previous = sorted({blocks[index][0] for index, _raw in resolved})
+        if path_key in conflicts or basename_conflict:
+            if basename_conflict:
+                _remove_attribution_basename(mutable, path_key)
+            else:
+                _remove_resolved_attribution_images(mutable, resolved, path_key)
+            already_reviewed = any(
+                _normalise_attribution_path(item.get("image")) == path_key
+                and item.get("status") == "needs_review"
+                for item in (attribution_audit or [])
+            )
+            if attribution_audit is not None and not already_reviewed:
+                attribution_audit.append(_attribution_audit_entry(
+                    path_key, status="needs_review", previous=previous, selected=None,
+                    source="caption", abstain_reason="conflicting-explicit-caption" if path_key in conflicts else "ambiguous-relative-image-path",
+                ))
+            continue
+        if not resolved:
+            continue
+        target_number = captions[path_key]
+        target_index = block_index_by_number.get(target_number)
+        if target_index is None:
+            _remove_resolved_attribution_images(mutable, resolved, path_key)
+            if attribution_audit is not None:
+                attribution_audit.append(_attribution_audit_entry(
+                    path_key, status="needs_review", previous=previous, selected=None,
+                    source="caption", abstain_reason="caption-target-question-missing",
+                ))
+            continue
+        raw_path = resolved[0][1]
+        _remove_attribution_image(mutable, raw_path)
+        if raw_path not in mutable[target_index]:
+            mutable[target_index].append(raw_path)
+        if attribution_audit is not None:
+            attribution_audit.append(_attribution_audit_entry(
+                raw_path, status="assigned", previous=previous, selected=target_number,
+                source="caption",
+            ))
+    return [
+        (number, block, mutable[index])
         for index, (number, block, _images) in enumerate(blocks)
     ]
 
