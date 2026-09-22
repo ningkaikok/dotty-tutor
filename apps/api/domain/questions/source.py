@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -43,14 +44,15 @@ QUESTION_SECTION_PATTERN = re.compile(
 )
 # Keep malformed OCR input linear-time; these spans never need to backtrack.
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*+\]\(([^)]++)\)")
-# 只匹配"图片引用后紧跟第N题图/第N题"这种明确格式，中间只允许空白，不允许跨越其他
-# 内容——这是比文本位置更可靠的归属信号，但格式必须足够窄才不会误伤正常题干。
-IMAGE_CAPTION_PATTERN = re.compile(
-    r"!\[[^\]]*\]\((?P<path>[^)]+)\)\s*第\s*(?P<number>\d{1,3})\s*题(?:图)?"
+# 图注只能紧跟一个已经用占有量词安全解析的 Markdown 图片引用。
+# 不把两段合成一个可回溯正则：OCR 文本是外部输入，恶意或损坏的 ``![``
+# 重复序列不应造成多项式匹配时间。
+IMAGE_CAPTION_SUFFIX_PATTERN = re.compile(
+    r"\s*+第\s*+(?P<number>\d{1,3})\s*+题(?:图)?"
 )
 # 用于从 content_list.json 的 image_caption/chart_caption/table_caption 字段（纯文本，
-# 不含 Markdown 图片语法）里提取题号，格式和 IMAGE_CAPTION_PATTERN 里"第N题图/第N题"
-# 的题号部分一致，只是不需要再匹配前面的 ``![]()``。
+# 不含 Markdown 图片语法）里提取题号，格式和上面图注后缀里的"第N题图/第N题"
+# 一致，只是不需要再匹配前面的 ``![]()``。
 STRUCTURED_CAPTION_NUMBER_PATTERN = re.compile(r"第\s*(?P<number>\d{1,3})\s*题")
 # MinerU 结构化 JSON 文件名，落盘方式见 infrastructure/runtime/ocr_runtime.py 的
 # ``_persist_structured_output``；两个文件都是可选的，不存在时完全回退到纯正则逻辑。
@@ -116,6 +118,14 @@ QUESTION_EVIDENCE_MARKERS = (
     r"不等式",
     r"平均数|中位数|概率",
 )
+
+
+def _iter_markdown_image_captions(source: str) -> Iterator[tuple[str, str]]:
+    """Yield explicit image captions without a backtracking cross-token regex."""
+    for image_match in MARKDOWN_IMAGE_PATTERN.finditer(source):
+        caption_match = IMAGE_CAPTION_SUFFIX_PATTERN.match(source, image_match.end())
+        if caption_match is not None:
+            yield image_match.group(1), caption_match.group("number")
 
 
 def _has_any_marker(text: str, markers: tuple[str, ...]) -> bool:
@@ -609,8 +619,8 @@ def _legacy_apply_caption_image_attribution(
     暂时没有更好的归位方案。
     """
     captions_by_basename: dict[str, str] = {}
-    for match in IMAGE_CAPTION_PATTERN.finditer(question_area):
-        captions_by_basename[Path(match.group("path")).name] = match.group("number")
+    for path, number in _iter_markdown_image_captions(question_area):
+        captions_by_basename[Path(path).name] = number
     if structured_captions:
         for img_path, number in structured_captions.items():
             # 结构化命中优先生效，可能覆盖同一图片的正则判断；两者不冲突时结果不变。
@@ -739,8 +749,8 @@ def _caption_attribution_maps(
         captions[key] = target
 
     for _number, block, _images in blocks:
-        for match in IMAGE_CAPTION_PATTERN.finditer(block):
-            add(match.group("path"), match.group("number"))
+        for path, number in _iter_markdown_image_captions(block):
+            add(path, number)
     for path, number in (structured_captions or {}).items():
         add(path, number)
     return captions, conflicts

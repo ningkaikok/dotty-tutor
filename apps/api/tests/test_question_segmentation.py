@@ -355,6 +355,20 @@ class CaptionBasedImageAttributionTests(unittest.TestCase):
             ["images/b90c7684d2d22c333b87981d53745f28d4c5dbd8f899553bc67979e72ad9d5dc.jpg"],
         )
 
+    def test_malformed_markdown_prefix_does_not_block_caption_attribution(self) -> None:
+        source = (
+            "1. 第一题。\n"
+            + "![" * 5_000
+            + "\n![](images/q2.png) 第2题图\n\n2. 第二题。\n"
+        )
+
+        blocks = split_question_sources(source)
+
+        self.assertEqual(
+            {number: images for number, _block, images in blocks},
+            {"1": [], "2": ["images/q2.png"]},
+        )
+
 
 # 真实 MinerU content_list.json 片段（同一本教材 4ce09635dafb42ada0343477f6424441，
 # 用本机 .mineru-venv 对 source.pdf 第 1-5 页实际解析后摘取，未编造）。只保留
