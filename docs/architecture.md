@@ -182,7 +182,7 @@ flowchart TB
 | OCR 路由与缓存 | `apps/api/ocr_pipeline.py` | 页面信号、Provider 选择、内容寻址缓存键和原子缓存文件 |
 | OCR 来源质量 | `apps/api/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
 | 课程生成 | `apps/api/application/services/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
-| OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
+| OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown；显式图注优先、独立题号 bbox 高置信绑定、否则线性回退；歧义图片 fail closed 并审计 |
 | 导入质量报告 | `apps/api/domain/questions/quality.py` | 在整本生成前汇总题数、题号序列、未识别页和图片归属冲突，决定是否允许继续 |
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
@@ -504,8 +504,10 @@ revision，只移动"当前展示版本"这个指针，历史证据链条完整�
 页码、OCR 块 ID、图片 ID、置信度和诊断。
 
 `verification.solverAgreement` 是确定性程序算出来的，不是模型自我断言的布尔值：`answer_solver.py` 把
-求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做符号等价判等
-（数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。三态而不是
+求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做标量或显式解集的
+符号等价判等（文本/数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。
+解集只拆花括号、顶层“或/or/分号”以及同一变量重复赋值的逗号；坐标、区间和函数参数内部逗号不拆，元素按
+集合语义去重并一一匹配。三态而不是
 两态的原因是核验阶段面对的多数是几何证明、开放题——CAS 判不了是常态，必须能区分"判不了"和"判定冲突"。
 `disagree` 会把 `status` 强制改成 `conflict` 并要求人工复核（确定性证据的否决权）；`agree`/`undecidable`
 都不会把模型给出的 `needs_review` 提升为 `verified`，因为核验阶段其余检查（题干完整性、选项对齐、单位）
@@ -585,9 +587,13 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。
-- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox`，且 Markdown、结构化图注都没有
-  明确归属时，`source.py` 才使用同页垂直区间和栏位证据尝试绑定图片。置信度不足或候选接近时保持未绑定，
-  在 `imageAttributionAudit` 中记录候选、分数和 `needs_review`，整卷质量报告会阻断继续生成，避免把相邻题目的图静默贴错。
+- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox` 时，归属优先级为显式结构化/文本
+  图注、独立题号 bbox、线性 Markdown fallback。bbox 会检查所有没有显式图注的结构化图片，即使图片已经被线性
+  分配；高置信唯一候选会纠正旧绑定，候选接近、相对路径/同 basename 歧义、缺少独立题号 bbox 或 bbox 无效时移除
+  旧绑定并保持未归属。`imageAttributionAudit` 向后兼容保留旧字段，同时记录 `previousQuestionNumber`、候选/分数、
+  `selectedQuestionNumber`、`attributionSource` 和 `abstainReason`；任何 `needs_review` 都让整卷质量报告阻断继续生成。
+  合并 text block 无法提供独立题号坐标时不使用整块 bbox 猜测。当前实现的 `.72` 最低分和 `.12` 候选间隔仍待真实
+  纯位置坏样本回放校准；仓库没有已确认的纯位置真实坏样本，因此不宣称已根治该类语料。
 
 ### 多小问答案边界
 
@@ -613,7 +619,8 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 8. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
 9. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
-判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
+判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；符号判题返回 undecidable 时不包装成
+deterministic incorrect，服务端拒绝用客户端自报结果写入确定性题目的学习证据；只有确定判定后才更新知识点掌握度，
 并把 `incorrect` / `partial` 作答幂等写入个人错题本。前端在学习证据卡显示当前知识点分数与累计作答，
 答错时给出错题本入口；离线记录补传后走相同自动归档逻辑。详细契约见
 [可编程课程与学习闭环](programmable-learning.md)。

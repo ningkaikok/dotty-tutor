@@ -134,6 +134,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
             )
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         log_event(
             "learning.attempt.recorded",
             session_id=session_id,
@@ -174,6 +176,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 )
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
             result["autoMistake"] = auto_record_mistake(session_id, attempt, recorded_at=received_at)
             synced.append(result)
         log_event(

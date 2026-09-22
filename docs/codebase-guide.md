@@ -56,7 +56,7 @@ dotty-tutor/
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
-│   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的确定性符号等价判等（sympy 兜底，只判等价不解题）
+│   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数（含观察、工具、画布）
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
@@ -185,7 +185,7 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
-  → domain/questions/source.py（按题号提出候选边界、图注/坐标归属和审计；
+  → domain/questions/source.py（按题号提出候选边界；显式图注优先，独立题号 bbox 高置信纠正线性图片归属，歧义 fail closed 并审计；
      切分失败且 `looks_like_multi_question_document()` 判定为多题文档时，由调用方报 422，
      不走"整页当作一道题"的兜底）
   → domain/questions/exam_ir.py + ir.py（把候选提升为 ExamIR/QuestionIR，保留页码、块 ID、图片 ID、置信度）
@@ -384,9 +384,10 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
    `domain/questions/answer_solver.py`，同一条“确定性程序判对错，模型只提议”的原则，
    不要又让模型自证。两个模块调用路径不同（学生每次提交 vs 生成时的离线核验），
    延迟约束也不同，但不是完全独立：`answer_evaluator._check_single_answer` 在结构化
-   归一化判否之后，会复用 `answer_solver.check_answer_agreement` 再做一次符号等价
-   兜底（科学计数法、根式、代数式展开），只用于挽回假阴性，判否结果不会被反悔成
-   假阳性。新增题型如果需要符号层判等，直接复用 `answer_solver`，不要另起一套。
+   归一化判否之后，会复用 `answer_solver.check_answer_agreement` 再做一次标量/显式解集
+   符号等价兜底（科学计数法、根式、代数式展开和集合顺序），只用于挽回假阴性；所有候选
+   确定冲突才判错，存在 undecidable 就回退，不会把判不了包装成 deterministic incorrect。
+   新增题型如果需要符号层判等，直接复用 `answer_solver`，不要另起一套。
 5. 增加后端单元测试和 Playwright 用户流程。
 
 ### 增加一个模型 Provider

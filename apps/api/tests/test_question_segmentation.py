@@ -611,6 +611,106 @@ class BboxImageAttributionTests(unittest.TestCase):
             "1": ["images/captioned.png"], "2": ["images/uncaptioned.png"],
         })
 
+    def test_bbox_corrects_a_known_linear_misbinding(self) -> None:
+        source = "1. 第一题。\n![](images/q2.png)\n\n2. 第二题。"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/q2.png", "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": [], "2": ["images/q2.png"],
+        })
+        self.assertEqual(audit[0]["previousQuestionNumber"], "1")
+        self.assertEqual(audit[0]["selectedQuestionNumber"], "2")
+        self.assertEqual(audit[0]["attributionSource"], "bbox")
+
+    def test_bbox_corrects_unique_basename_when_structured_path_differs(self) -> None:
+        source = "1. 第一题。\n![](/api/uploads/batch/assets/q2.png)\n\n2. 第二题。"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/q2.png", "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": [], "2": ["/api/uploads/batch/assets/q2.png"],
+        })
+        self.assertEqual(audit[0]["previousQuestionNumber"], "1")
+        self.assertEqual(audit[0]["selectedQuestionNumber"], "2")
+
+    def test_close_bbox_candidates_remove_linear_binding_and_require_review(self) -> None:
+        source = "1. 左栏题目。\n![](images/ambiguous.png)\n\n2. 右栏题目。"
+        content_list = [
+            {"type": "text", "text": "1. 左栏题目。", "bbox": [40, 100, 220, 130], "page_idx": 0},
+            {"type": "text", "text": "2. 右栏题目。", "bbox": [260, 100, 440, 130], "page_idx": 0},
+            {"type": "image", "img_path": "images/ambiguous.png", "bbox": [190, 180, 290, 240], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {"1": [], "2": []})
+        self.assertEqual(audit[0]["status"], "needs_review")
+        self.assertIsNone(audit[0]["selectedQuestionNumber"])
+        self.assertTrue(audit[0]["candidates"])
+
+    def test_caption_wins_when_bbox_points_to_a_different_question(self) -> None:
+        source = "1. 第一题。\n\n2. 第二题。\n![](images/captioned.png)"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/captioned.png", "image_caption": ["第1题图"], "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {
+            "1": ["images/captioned.png"], "2": [],
+        })
+        self.assertEqual(audit[0]["attributionSource"], "caption")
+
+    def test_same_basename_in_distinct_folders_fails_closed(self) -> None:
+        source = "1. 第一题。\n![](figures/a.png)\n\n2. 第二题。\n![](answers/a.png)"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。", "bbox": [50, 100, 300, 140], "page_idx": 0},
+            {"type": "text", "text": "2. 第二题。", "bbox": [50, 500, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/a.png", "bbox": [90, 620, 260, 780], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {"1": [], "2": []})
+        self.assertEqual(audit[0]["abstainReason"], "ambiguous-relative-image-path")
+
+    def test_merged_text_block_without_independent_question_bbox_abstains(self) -> None:
+        source = "1. 第一题。\n![](images/q1.png)\n\n2. 第二题。"
+        content_list = [
+            {"type": "text", "text": "1. 第一题。\n2. 第二题。", "bbox": [50, 100, 300, 540], "page_idx": 0},
+            {"type": "image", "img_path": "images/q1.png", "bbox": [90, 250, 260, 420], "page_idx": 0},
+        ]
+        audit: list[dict] = []
+        with TemporaryDirectory() as directory:
+            asset_dir = Path(directory)
+            self._write_content_list(asset_dir, content_list)
+            blocks = split_question_sources(source, asset_dir=asset_dir, attribution_audit=audit)
+        self.assertEqual({number: images for number, _block, images in blocks}, {"1": [], "2": []})
+        self.assertEqual(audit[0]["abstainReason"], "missing-independent-question-bbox")
+
 # 真实 MinerU content_list.json / middle.json 片段（同一本教材
 # 4ce09635dafb42ada0343477f6424441，第 1-5 页，本机 .mineru-venv 实际解析后摘取，
 # 未编造）。只保留第 5-10 题这一个被 MinerU 自己的段落识别合并成一块的真实样本：

@@ -30,6 +30,14 @@ OPEN_QUESTION = {
     "prompt": "说明为什么两个邻补角相等时该角为直角。",
 }
 
+DETERMINISTIC_TEXT_QUESTION = {
+    "id": "question-deterministic-text",
+    "knowledgePoint": "证明题",
+    "questionType": "fill-blank",
+    "prompt": "填写结论。",
+    "blanks": [{"id": "b1", "answerType": "text", "correctAnswers": ["见解析"]}],
+}
+
 
 def _lesson(lesson_id: str, question: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -150,6 +158,33 @@ class AttemptAssessmentVerificationTests(PostgresTestCase):
                 created_at=2.0,
             )
             self.assertEqual(self._stored_assessment(store, "attempt-open"), "correct")
+
+    def test_undecidable_deterministic_answer_cannot_persist_client_claim(self) -> None:
+        """开放文本无法裁决时，客户端伪造的 correct/incorrect 都不能污染掌握度。"""
+        with TemporaryDirectory() as directory:
+            store = self._published_store(directory, [DETERMINISTIC_TEXT_QUESTION])
+            with self.assertRaises(ValueError):
+                store.record_exercise_attempt(
+                    attempt_id="attempt-undecidable",
+                    session_id="session-1",
+                    question_id="question-deterministic-text",
+                    response={"text": "证明过程如上", "interactionResult": {"blankAnswers": {"b1": "证明过程如上"}}},
+                    assessment="incorrect",
+                    hint_level=0,
+                    duration_ms=100,
+                    created_at=2.0,
+                )
+            from sqlalchemy import select
+
+            from persistence.schema import exercise_attempts
+
+            with store.engine.connect() as connection:
+                row = connection.execute(
+                    select(exercise_attempts.c.attempt_id).where(
+                        exercise_attempts.c.attempt_id == "attempt-undecidable"
+                    )
+                ).first()
+            self.assertIsNone(row)
 
     def test_offline_sync_batch_is_verified_per_attempt(self) -> None:
         """离线补传批次同样逐条复核，不能因为走 /sync 就绕开判定权。"""

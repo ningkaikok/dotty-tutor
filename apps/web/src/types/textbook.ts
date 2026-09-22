@@ -117,6 +117,19 @@ export interface FullPaperSummary {
   blockedByQualityReport?: boolean;
 }
 
+export interface ImageAttributionAudit {
+  image: string;
+  status: "assigned" | "needs_review" | string;
+  /** 兼容旧审计：一个图片可能曾被线性绑定到一个或多个题块。 */
+  previousQuestionNumber?: string | string[] | null;
+  candidates?: Array<Record<string, unknown>>;
+  selectedQuestionNumber?: string | null;
+  attributionSource?: "caption" | "bbox" | "none" | string;
+  abstainReason?: string | null;
+  /** 旧版本消费者仍读取 reason。 */
+  reason?: string;
+}
+
 export interface ImportQualityReport {
   scope?: "preview" | "full-paper";
   status: "ready" | "warning" | "blocked";
@@ -129,6 +142,7 @@ export interface ImportQualityReport {
   missingQuestionNumbers: number[];
   unidentifiedPages: number[];
   imageAttributionConflicts: Array<{ image: string; questionNumbers: string[] }>;
+  imageAttributionAudit?: ImageAttributionAudit[];
   warnings: string[];
   blockers: string[];
   checkedBatchCount: number;
