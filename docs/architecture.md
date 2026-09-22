@@ -695,12 +695,12 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 `DOTTY_TEST_POSTGRES_ADMIN_URL` 创建的一次性数据库。不要让多个 worktree 共享同一个可写开发库；迁移发布顺序为
 `backup → preflight → upgrade → verify → deploy/restart`。
 
-生产版本边界和改造优先级见[路线图](roadmap.md)。
+生产版本边界见[项目方向](VISION.md)，技术改造优先级见[技术路线图](engineering-roadmap.md)。
 错题域的数据模型、智能体状态机和代码复用边界见
 [AI 错题陪练产品规划](mistake-coach-plan.md)。
 
 当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
-统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
+统一记录在 [项目方向](VISION.md) 与 [engineering-roadmap](engineering-roadmap.md)，
 不再维护外部架构图，避免与代码脱节。
 ### 班级个性化作业 MVP
 

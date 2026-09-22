@@ -1,8 +1,11 @@
 # Dotty Tutor 技术路线图
 
 > 本文只回答“怎样可靠地实现产品路线”。它是技术任务的唯一优先级入口，详细运行治理见
-> [`runtime-governance-plan.md`](runtime-governance-plan.md)，产品目标见
-> [`product-roadmap.md`](product-roadmap.md)。
+> [`runtime-governance-plan.md`](runtime-governance-plan.md)，产品方向见
+> [`VISION.md`](VISION.md)（2026-09-15 起替代已归档的 `product-roadmap.md`，见
+> [`archive/product-roadmap-teacher-era.md`](archive/product-roadmap-teacher-era.md)）。
+> 本文中涉及教师、班级、作业指派的条目（如 T1 第 9 条）记录的是已完成、已冻结的历史实现，
+> 不再新增功能，保留原状不回滚。
 
 ## 技术优先级规则
 
@@ -363,8 +366,9 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 9. [x] **教师复核与推翻埋点**（2026-08-30）：对作业看板中的 AI 判定追加保存“老师是否复核”“是否推翻”“推翻后的正确答案”，
    并支持知识点掌握度覆盖；dashboard 返回按作业聚合的复核率、推翻率，原始作答和 mastery-v2 投影不被改写。
    两个用途，缺一不可：
-   - **产品判据**：复核率与推翻率决定这个产品是正价值还是负价值（口径与目标区间见
-     [`pilot-plan.md`](pilot-plan.md)），比任何功能计数都重要。
+   - **产品判据（已归档）**：复核率与推翻率曾是判断该产品是否值得做成学校方向的核心判据
+     （口径与目标区间见已归档的 [`archive/pilot-plan.md`](archive/pilot-plan.md)）；该判据服务于
+     已改变的学校方向决策，个人自部署方向下不再是执行判据，仅作历史记录。
    - **评测数据来源**：老师的每一次推翻都是一条带正确标注的真实坏样本，可以按既有 Badcase
      登记簿流程直接入集——这是目前唯一不需要人工采集就能持续扩充金标准集的通道。
    实现约束沿用第 8 条：教师判定作为**追加**的更高优先级证据写入，不覆盖也不删除原始作答、
