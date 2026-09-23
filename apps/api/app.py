@@ -5,6 +5,7 @@
 """
 
 import os
+from pathlib import Path
 
 from application import create_app
 from application.job_registry import merge_registries
@@ -14,6 +15,7 @@ from application.services.lesson_generation import generate_lesson, question_pay
 from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.stateful_tutor import StatefulTutor
 from application.services.tutor_input_service import TutorInputService
+from application.services.tutor_model_evaluation import TutorModelEvaluationService
 from application.services.tutor_search_service import TutorSearchService
 from domain.questions.pipeline import build_question_content_blocks
 from domain.questions.student_view import student_mistake_item
@@ -56,11 +58,20 @@ app.include_router(build_dependency_preflight_router())
 metrics_store = MetricsStore(engine=store.engine)
 generation_runtime.metrics_store = metrics_store
 tutor_runtime = ModelRuntime(env_prefix="TUTOR_", metrics_store=metrics_store)
+tutor_model_evaluation = TutorModelEvaluationService(
+    runtime=tutor_runtime,
+    candidates_path=Path(__file__).resolve().parent
+    / "evaluation"
+    / "benchmark"
+    / "review_queue"
+    / "candidates.jsonl",
+)
 app.include_router(build_runtime_router(
     store=store,
     question_payload=question_payload,
     tutor_runtime=tutor_runtime,
     metrics_store=metrics_store,
+    tutor_model_evaluation=tutor_model_evaluation,
 ))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)

@@ -27,8 +27,10 @@ import {
 import {
   loadModels,
   loadTutorModels,
+  loadTutorModelEvaluation,
   loadOcrProviders,
   loadReviewModels,
+  startTutorModelEvaluation,
   selectModel,
   selectTutorModel,
   selectOcrProvider,
@@ -44,6 +46,8 @@ import type {
   ReviewModelCatalog,
   TextbookImportResult,
   BackgroundJob,
+  TutorModelEvaluation,
+  TutorModelRef,
 } from "../../../types/index";
 import {
   IMAGE_MAX_SIZE,
@@ -133,6 +137,10 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     ocr: false,
   });
   const runtimeRequests = useRef(new Map<keyof RuntimeLoadingState, AbortController>());
+  const tutorEvaluationRequest = useRef<AbortController | null>(null);
+  const [tutorEvaluation, setTutorEvaluation] = useState<TutorModelEvaluation | null>(null);
+  const [tutorEvaluationLoading, setTutorEvaluationLoading] = useState(false);
+  const [tutorEvaluationError, setTutorEvaluationError] = useState("");
   const [globalError, setGlobalError] = useState("");
   const [library, setLibrary] = useState<LibraryItem[]>([]);
   const [libraryLoadingId, setLibraryLoadingId] = useState("");
@@ -149,6 +157,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     });
     runtimeRequests.current.forEach((controller) => controller.abort());
     runtimeRequests.current.clear();
+    tutorEvaluationRequest.current?.abort();
   }, []);
 
   useEffect(() => {
@@ -385,6 +394,50 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     setTutorModels,
     "辅导模型切换失败",
   );
+  const evaluateTutorModel = async (provider: ModelProvider, model: string) => {
+    if (!tutorModels || provider === "mock" || tutorModels.selected.provider === "mock") {
+      setTutorEvaluationError("当前无法评测所选陪练模型");
+      return;
+    }
+    const baseline: TutorModelRef = {
+      provider: tutorModels.selected.provider,
+      model: tutorModels.selected.model,
+    };
+    const candidate: TutorModelRef = { provider, model };
+    if (baseline.provider === candidate.provider && baseline.model === candidate.model) {
+      setTutorEvaluationError("请选择与当前模型不同的候选模型");
+      return;
+    }
+
+    tutorEvaluationRequest.current?.abort();
+    const controller = new AbortController();
+    tutorEvaluationRequest.current = controller;
+    setTutorEvaluation(null);
+    setTutorEvaluationError("");
+    setTutorEvaluationLoading(true);
+    try {
+      let run = await startTutorModelEvaluation(baseline, candidate, controller.signal);
+      setTutorEvaluation(run);
+      while (run.status === "queued" || run.status === "running") {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        if (controller.signal.aborted) return;
+        run = await loadTutorModelEvaluation(run.runId, controller.signal);
+        setTutorEvaluation(run);
+      }
+      if (run.status === "failed") {
+        setTutorEvaluationError(run.error || "陪练模型评测失败");
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setTutorEvaluationError(error instanceof Error ? error.message : "陪练模型评测失败");
+      }
+    } finally {
+      if (tutorEvaluationRequest.current === controller) {
+        tutorEvaluationRequest.current = null;
+        setTutorEvaluationLoading(false);
+      }
+    }
+  };
   const selectOcr = (provider: OcrProvider) => runRuntimeSelection(
     "ocr",
     (signal) => selectOcrProvider(provider, signal),
@@ -444,6 +497,9 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     sourceText,
     models,
     tutorModels,
+    tutorEvaluation,
+    tutorEvaluationLoading,
+    tutorEvaluationError,
     reviewModels,
     ocrProviders,
     runtimeLoading,
@@ -463,6 +519,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     retryProcessing,
     selectGenerationModel,
     selectTutor,
+    evaluateTutorModel,
     selectReviewer,
     selectOcr,
     openLibraryItem,

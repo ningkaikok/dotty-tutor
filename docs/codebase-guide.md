@@ -46,6 +46,7 @@ dotty-tutor/
 │   │   │   ├── lecture_checklist.py # 作业范围讲评清单的确定性聚合
 │   │   │   ├── learner_context.py # 有限生命周期画像的 shadow context 组装
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
+│   │   │   ├── tutor_model_evaluation.py # 内容工作台切换陪练模型前的合成草案配对评测
 │   │   │   ├── tutor_input_service.py # 输入证据与低置信度确认门禁
 │   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
@@ -450,6 +451,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `apps/api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
 | 教师如何生成并指派个性化作业 | `TeacherClassroomApp.tsx` → `useAssignmentPlanning.ts` → `apps/api/routers/classroom_routes.py` → `application/services/assignment_planning.py` → `persistence/assignment_planning_store.py` | 脱敏班级证据、确定性回退、教师审阅、确认式幂等指派 |
 | 错题如何多轮陪练 | `useMistakeTutor.ts` → `apps/api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
+| 内容工作台如何评测后切换陪练模型 | `RuntimeSettings.tsx` → `useTextbookImport.ts` → `POST /api/tutor-model-evaluations` → `application/services/tutor_model_evaluation.py` → `GET /api/tutor-model-evaluations/{run_id}`；确认应用后调用 `POST /api/tutor-models/select` | 当前/候选模型显式配对调用，不影响学生当前模型；50 条合成草案只供预览，学生请求不传模型偏好 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长
 文件开始通读整个仓库。
