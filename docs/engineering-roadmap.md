@@ -392,7 +392,8 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 - [x] 按任务能力筛选模型：服务端筛选函数已就绪，`providers()` 返回能力和健康信息，调用路径按角色
   过滤候选，并保持已开始运行的 `RunSnapshot` 不变。
 - [ ] 学生端只暴露产品允许的陪练选项的界面裁剪，以及模型切换前后的固定评测集比较仍待完成；后者依赖评测集
-  的模型维度和不少于 50 道人工金标准语料，语料补齐后再解锁。
+  的模型维度和不少于 50 道人工金标准语料，人工审校完成前继续保持门控。`evaluation/benchmark/review_queue/`
+  已整理 50 条覆盖六个维度的合成候选草案，不能计入正式数量。
 
 ### 模型调用边界指标
 
@@ -433,7 +434,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 - **复习策略**：`mastery_policy.py`/`review_scheduler.py` 已提供按目标类型选择间隔和 gate 的纯函数。typed policy 只接受教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion`；定量 gate 同时检查准确率与最低证据数，定性 gate 检查受约束 rubric、置信度和 evidenceRefs，缺少可靠证据时保持 `needs_review`；通过可推进、达到末端可 `test_out`、失败可从 retry interval 重新开始。历史缺少策略元数据的任务继续走 `unknown:legacy` 的 legacy 1/3/7 天，不宣称已完成多轮重新掌握教学法。
 - **学习者画像 shadow**：`learner_profile.py`/`learner_context.py` 只聚合已有 mastery、已确认错因、提示依赖和最近练习。每条事实带 evidenceRef、observedAt、expiresAt、profileVersion 与 publication scope；过期/冲突/敏感或聊天输入会排除并记录原因。feature flag 关闭或 shadow 模式下不注入生产 Tutor，不改 mastery 或排期。
-- **评测基础设施**：`evaluation/benchmark` 已提供人工金标准 JSONL 契约、缺 reviewer/同人复核/重复 ID/覆盖不足门禁、配对 bootstrap 95% CI、二元配对差异和失败臂完整性校验；只有独立双审计的 `sourceKind=human` case 计入 50 条，synthetic/public/fixture 不计入。当前只有少量测试 fixture，50+ 人工金标准仍未完成，因此没有真实跨模型统计结论。
+- **评测基础设施**：`evaluation/benchmark` 已提供人工金标准 JSONL 契约、缺 reviewer/同人复核/重复 ID/覆盖不足门禁、配对 bootstrap 95% CI、二元配对差异和失败臂完整性校验；只有独立双审计的 `sourceKind=human` case 计入 50 条，synthetic/public/fixture 不计入。另有 50 条合成候选草案供人工审题和修订 rubric；正式人工集仍未完成，因此没有真实跨模型统计结论。
 - **工具安全与演示**：工具安全样本覆盖 evidenceRef 归属、跳阶段、掌握度/发布越权、未知工具、重放、未确认观察和读取他人内容，执行仍为 shadow，目标是 unauthorized execution=0。`seed_demo_bundle.py` 使用完全合成固定数据、幂等且不删除其他数据；`--verify` 只读验证讲评清单、错因 unknown 和教师推翻。
 - **学生体验收口**：错题导入支持 `import-jobs` 后台任务的取消/重试，移动布局、画布键盘操作、归档 Escape/焦点循环、离线队列隔离和用户术语统一已补齐。弱网队列不是 PWA，也没有真实移动端或真实师生效果结论。
 

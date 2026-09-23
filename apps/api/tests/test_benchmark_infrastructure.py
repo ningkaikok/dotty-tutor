@@ -5,8 +5,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
+from xml.etree import ElementTree
 
 from evaluation.benchmark.contract import DEFAULT_TASK_DIMENSIONS, validate_records
+from evaluation.benchmark.drafts import validate_drafts
 from evaluation.benchmark.statistics import (
     paired_binary_difference,
     paired_bootstrap_ci,
@@ -38,6 +41,42 @@ def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str
 
 
 class BenchmarkContractTests(unittest.TestCase):
+    def test_review_queue_has_50_candidates_but_no_claimed_human_approvals(self) -> None:
+        review_queue = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue" / "candidates.jsonl"
+        records = [json.loads(line) for line in review_queue.read_text(encoding="utf-8").splitlines() if line.strip()]
+        result = validate_drafts(records)
+        self.assertTrue(result.ok, result.problems)
+        self.assertEqual(result.candidate_count, 50)
+        self.assertEqual(sum(result.dimensions.values()), 50)
+        self.assertEqual(validate_records(records).counted_cases, 0)
+        for record in records:
+            image_asset = record["input"].get("imageAsset")
+            if image_asset:
+                asset_path = review_queue.parent / image_asset
+                self.assertTrue(asset_path.is_file(), image_asset)
+                ElementTree.parse(asset_path)
+
+    def test_review_queue_rejects_claimed_approvals_and_bad_review_state(self) -> None:
+        row = {
+            "caseId": "draft-1",
+            "taskDimension": "error_localization",
+            "input": {"prompt": "合成题"},
+            "expected": {"diagnosis": "待复核"},
+            "rubric": {"factual": "待复核"},
+            "sourceKind": "synthetic",
+            "reviewStatus": "approved",
+            "counted": True,
+            "license": "internal draft",
+            "redaction": "synthetic",
+            "strata": {"subject": "math", "gradeBand": "middle", "difficulty": "easy"},
+            "annotatorId": "invented-person",
+        }
+        result = validate_drafts([row], minimum_candidates=1, minimum_per_dimension=0)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("reviewStatus" in problem for problem in result.problems))
+        self.assertTrue(any("counted=false" in problem for problem in result.problems))
+        self.assertTrue(any("annotatorId" in problem for problem in result.problems))
+
     def test_malformed_json_types_fail_closed_without_traceback(self) -> None:
         malformed = _record("case-51", "error_localization")
         malformed["sourceKind"] = ["human"]

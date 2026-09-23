@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title">
+  <title id="title">平行线被截线所截，内错角分别标为六十五度和 x</title>
+  <rect width="480" height="300" fill="#fff"/><path d="M45 85H435M45 220H435" stroke="#34483e" stroke-width="3"/>
+  <path d="M110 275L365 25" stroke="#28795d" stroke-width="3"/>
+  <path d="M60 75l12 10-12 10M60 210l12 10-12 10" fill="none" stroke="#34483e" stroke-width="2"/>
+  <path d="M267 85A35 35 0 0 1 292 109M180 220A35 35 0 0 0 155 195" fill="none" stroke="#d86b43" stroke-width="3"/>
+  <text x="292" y="126" font-family="sans-serif" font-size="19" fill="#263b31">65°</text><text x="130" y="190" font-family="sans-serif" font-size="20" fill="#263b31">x</text>
+</svg>

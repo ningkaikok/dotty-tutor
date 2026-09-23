@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 200" role="img" aria-labelledby="title">
+  <title id="title">长方形平均分成六份，其中四份着色</title>
+  <rect width="480" height="200" fill="#fff"/>
+  <g stroke="#34483e" stroke-width="3">
+    <rect x="60" y="70" width="60" height="70" fill="#6fb79a"/><rect x="120" y="70" width="60" height="70" fill="#6fb79a"/>
+    <rect x="180" y="70" width="60" height="70" fill="#6fb79a"/><rect x="240" y="70" width="60" height="70" fill="#6fb79a"/>
+    <rect x="300" y="70" width="60" height="70" fill="#fff"/><rect x="360" y="70" width="60" height="70" fill="#fff"/>
+  </g>
+</svg>
