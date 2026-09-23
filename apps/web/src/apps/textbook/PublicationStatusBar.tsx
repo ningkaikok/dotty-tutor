@@ -70,7 +70,7 @@ export function PublicationStatusBar({
             disabled={fullPaperRunning || fullPaperJobStatus === "succeeded"}
             onClick={onGenerateWholePaper}
           >
-            {fullPaperJobStatus === "succeeded" ? "整套试卷已生成" : fullPaperJobStatus === "failed" ? "重试生成整套试卷" : "生成整套试卷"}
+            {fullPaperJobStatus === "succeeded" ? "整套练习已生成" : fullPaperJobStatus === "failed" ? "重试生成整套练习" : "生成整套练习"}
           </button>
         )}
         {fullPaperRunning && (
@@ -80,7 +80,7 @@ export function PublicationStatusBar({
         )}
         {!publication && (
           <button className="ghost compact" disabled={publicationBusy || fullPaperRunning} onClick={onSubmitForReview}>
-            {publicationBusy ? "提交中…" : "提交试卷审核"}
+            {publicationBusy ? "提交中…" : "提交练习审核"}
           </button>
         )}
         {publication?.status === "in_review" && (
@@ -89,7 +89,7 @@ export function PublicationStatusBar({
               {publicationBusy || loadingQuestion ? "生成新版中…" : "整套重新审核"}
             </button>
             <button className="lesson-button" disabled={publicationBusy} onClick={onPublish}>
-              {publicationBusy ? "发布中…" : `发布试卷 v${publication.version || 1}`}
+              {publicationBusy ? "发布中…" : `发布练习 v${publication.version || 1}`}
             </button>
           </>
         )}

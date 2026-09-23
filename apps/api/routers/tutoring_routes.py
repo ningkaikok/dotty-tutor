@@ -40,6 +40,39 @@ def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> b
     return False
 
 
+def _evidence_registry(
+    *, thread: dict[str, Any], mistake: dict[str, Any], input_item: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Build only references the server can prove belong to this learner.
+
+    Tutor proposals are model output, so a non-empty string is not evidence.
+    The registry deliberately contains stable IDs from persisted records only;
+    unknown references remain denied even while execution is shadow-only.
+    """
+    owner = thread.get("learnerId")
+    registry: dict[str, dict[str, Any]] = {}
+    mistake_id = mistake.get("mistakeId")
+    if isinstance(mistake_id, str) and mistake_id:
+        record = {"learnerId": owner, "kind": "mistake"}
+        registry[mistake_id] = record
+        registry[f"mistake:{mistake_id}"] = record
+    if not input_item:
+        return registry
+    input_id = input_item.get("inputId") or input_item.get("input_id")
+    if isinstance(input_id, str) and input_id:
+        record = {"learnerId": owner, "kind": "tutor-input"}
+        registry[input_id] = record
+        registry[f"input:{input_id}"] = record
+    for artifact in input_item.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        artifact_id = artifact.get("artifactId") or artifact.get("artifact_id")
+        if isinstance(artifact_id, str) and artifact_id:
+            registry[artifact_id] = {"learnerId": owner, "kind": "artifact"}
+            registry[f"artifact:{artifact_id}"] = registry[artifact_id]
+    return registry
+
+
 def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any) -> APIRouter:
     """Build the tutoring HTTP adapter from replaceable domain dependencies.
 
@@ -115,12 +148,19 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         )
         proposals = result["reply"].toolProposals
         policy_decisions: list[dict[str, Any]] = []
+        evidence_registry = _evidence_registry(
+            thread=thread,
+            mistake=mistake,
+            input_item=input_item if request.inputId else None,
+        )
         for proposal in proposals:
             decision = validate_tool_proposal(
                 proposal,
                 stage=thread["stage"],
                 input_item=input_item if request.inputId else None,
                 action=result["action"],
+                evidence_registry=evidence_registry,
+                evidence_owner=thread["learnerId"],
             )
             policy_decisions.append(decision.model_dump())
             key_source = json.dumps(

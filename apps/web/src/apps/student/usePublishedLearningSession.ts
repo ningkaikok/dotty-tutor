@@ -7,75 +7,68 @@ import {
   syncExerciseAttempts,
 } from "../../api/learning";
 import type { ExerciseAttemptInput, ExerciseAttemptRecord, MasteryState, MistakeItem } from "../../types/index";
-import { currentLearnerId } from "../../api/identity";
-
-const PENDING_KEY = "dotty-learning-pending-attempts";
-
-interface PendingAttempt {
-  sessionId: string;
-  attempt: ExerciseAttemptInput;
-}
+import { useLearnerId } from "../../api/identity";
+import {
+  enqueuePendingAttempt,
+  OfflineAttemptQueueStorageError,
+  readPendingAttempts,
+  removePendingAttempts,
+  type OfflineAttemptScope,
+} from "./offlineAttemptQueue";
+import {
+  isLearningSessionForScope,
+  learningSessionStorageKey,
+  type LearningSessionScope,
+} from "./learningSessionStorage";
 
 export interface AttemptQueueResult {
   status: "saved" | "queued";
   autoMistake?: MistakeItem | null;
 }
 
-function readPending(): PendingAttempt[] {
+async function openOrRecoverSession(publicationId: string, assignmentId: string | undefined, learnerId: string) {
+  const scope: LearningSessionScope = { learnerId, publicationId, assignmentId };
+  const sessionKey = learningSessionStorageKey(scope);
+  let existingSessionId = "";
+  let replacedSessionId = "";
   try {
-    const value = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
-    return Array.isArray(value) ? value as PendingAttempt[] : [];
+    existingSessionId = localStorage.getItem(sessionKey) || "";
   } catch {
-    // 本地队列损坏不能阻止试卷打开；服务端幂等键仍会防止后续重复计分。
-    return [];
+    // A session can still be used for online submissions when browser storage
+    // is blocked; the offline queue will report the storage problem explicitly.
   }
-}
-
-function writePending(items: PendingAttempt[]) {
-  localStorage.setItem(PENDING_KEY, JSON.stringify(items));
-}
-
-async function openOrRecoverSession(publicationId: string, assignmentId?: string) {
-  const sessionKey = `dotty-learning-session:${assignmentId || publicationId}`;
-  const existingSessionId = localStorage.getItem(sessionKey);
   if (existingSessionId) {
     try {
-      return { session: await loadLearningSession(existingSessionId), replacedSessionId: "" };
+      const session = await loadLearningSession(existingSessionId);
+      if (isLearningSessionForScope(session, scope)) {
+        return { session, replacedSessionId: "" };
+      }
+      // A pointer can be stale or tampered with. Never let a mismatched
+      // learner/publication/assignment inherit another student's attempts.
+      try { localStorage.removeItem(sessionKey); } catch { /* ignore blocked storage */ }
+      existingSessionId = "";
     } catch {
       // localStorage 可能比重建后的数据库活得更久。删除失效指针，并把未发送作答绑定到新会话。
-      localStorage.removeItem(sessionKey);
+      try { localStorage.removeItem(sessionKey); } catch { /* queue reports storage failures when needed */ }
+      replacedSessionId = existingSessionId;
     }
   }
-  const session = await createLearningSession({ learnerId: currentLearnerId(), publicationId, assignmentId });
-  localStorage.setItem(sessionKey, session.sessionId);
-  return { session, replacedSessionId: existingSessionId ?? "" };
+  const session = await createLearningSession({ learnerId, publicationId, assignmentId });
+  try { localStorage.setItem(sessionKey, session.sessionId); } catch { /* online session remains usable */ }
+  return { session, replacedSessionId };
 }
 
-async function flushPending(activeSessionId: string, replacedSessionId = ""): Promise<number> {
-  const pending = readPending();
+async function flushPending(scope: OfflineAttemptScope, replacedSessionId = ""): Promise<number> {
+  const pending = readPendingAttempts(scope, { replacedSessionId });
   if (!pending.length) return 0;
-  const normalized = pending.map((item) => ({
-    ...item,
-    sessionId: !item.sessionId || item.sessionId === replacedSessionId ? activeSessionId : item.sessionId,
-  }));
-  const groups = [...new Set(normalized.map((item) => item.sessionId))];
-  const results = await Promise.allSettled(groups.map((sessionId) =>
-    syncExerciseAttempts(
-      sessionId,
-      normalized.filter((item) => item.sessionId === sessionId).map((item) => item.attempt),
-    ),
-  ));
-  const delivered = new Set<string>();
-  results.forEach((result, index) => {
-    if (result.status !== "fulfilled") return;
-    normalized
-      .filter((item) => item.sessionId === groups[index])
-      .forEach((item) => delivered.add(item.attempt.attemptId));
-  });
-  if (delivered.size) {
-    writePending(readPending().filter((item) => !delivered.has(item.attempt.attemptId)));
+  try {
+    await syncExerciseAttempts(scope.sessionId, pending.map((item) => item.attempt));
+  } catch {
+    // Keep the queue intact; online/visibility events will retry it later.
+    return 0;
   }
-  return delivered.size;
+  removePendingAttempts(scope, pending.map((item) => item.attempt.attemptId));
+  return pending.length;
 }
 
 /**
@@ -85,6 +78,7 @@ async function flushPending(activeSessionId: string, replacedSessionId = ""): Pr
  * 本地队列可重复发送，但服务端只累计一次掌握度。
  */
 export function usePublishedLearningSession(publicationId: string | undefined, assignmentId?: string) {
+  const learnerId = useLearnerId();
   const sessionRequestRef = useRef<{ sessionKey: string; promise: ReturnType<typeof openOrRecoverSession> } | null>(null);
   const [sessionId, setSessionId] = useState("");
   const [syncMessage, setSyncMessage] = useState("正在连接学习记录…");
@@ -93,6 +87,8 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
   // 只有首次读取会话（或明确进入离线回退）后才可以用 attempts 决定起始题目。
   // 否则空数组会短暂把已完成试卷误判为未开始。
   const [sessionReady, setSessionReady] = useState(false);
+  const replacedSessionIdRef = useRef("");
+  const flushInFlightRef = useRef<Promise<number> | null>(null);
 
   const mergeMastery = useCallback((next: MasteryState) => {
     setMastery((current) => [
@@ -109,18 +105,24 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
     setAttempts([]);
     setSessionReady(false);
     setSyncMessage("正在连接学习记录…");
-    const sessionKey = `${publicationId}:${assignmentId || "practice"}`;
+    const sessionKey = `${learnerId}:${publicationId}:${assignmentId || "practice"}`;
     const existingRequest = sessionRequestRef.current?.sessionKey === sessionKey
       ? sessionRequestRef.current.promise
       : null;
-    const sessionRequest = existingRequest ?? openOrRecoverSession(publicationId, assignmentId);
+    const sessionRequest = existingRequest ?? openOrRecoverSession(publicationId, assignmentId, learnerId);
     if (!existingRequest) sessionRequestRef.current = { sessionKey, promise: sessionRequest };
     void sessionRequest.then(async ({ session, replacedSessionId }) => {
       if (cancelled) return;
       setSessionId(session.sessionId);
+      replacedSessionIdRef.current = replacedSessionId;
       setAttempts(session.attempts ?? []);
       setSessionReady(true);
-      const delivered = await flushPending(session.sessionId, replacedSessionId);
+      const scope: OfflineAttemptScope = {
+        learnerId,
+        publicationId,
+        sessionId: session.sessionId,
+      };
+      const delivered = await flushPending(scope, replacedSessionId);
       if (!cancelled) setSyncMessage(delivered ? "离线学习记录已补传" : "学习记录已同步");
       // 补传可能包含上一次离线作答；重新读取一次会话，确保题目状态与服务端一致。
       if (delivered) {
@@ -129,17 +131,82 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
         }).catch(() => undefined);
       }
       // 掌握度是作答日志的派生投影；先补传离线记录再加载，避免页面分数落后于答案历史。
-      void loadLearningMastery(currentLearnerId()).then((items) => {
+      void loadLearningMastery(learnerId).then((items) => {
         if (!cancelled) setMastery(items);
       }).catch(() => undefined);
-    }).catch(() => {
+    }).catch((requestError) => {
       if (!cancelled) {
         setSessionReady(true);
-        setSyncMessage("学习记录暂未连接，答案会在本机排队");
+        setSyncMessage(requestError instanceof OfflineAttemptQueueStorageError
+          ? requestError.message
+          : "学习记录暂未连接，答案会在本机排队");
       }
     });
     return () => { cancelled = true; };
-  }, [assignmentId, publicationId]);
+  }, [assignmentId, learnerId, publicationId]);
+
+  useEffect(() => {
+    if (!publicationId || !sessionReady) return;
+    let cancelled = false;
+    const flush = () => {
+      if (flushInFlightRef.current) return;
+      let flushedSessionId = sessionId;
+      const request = (async () => {
+        let activeSessionId = sessionId;
+        if (!activeSessionId) {
+          // If the first session request failed while offline, retry it when
+          // the browser becomes usable again instead of waiting for a reload.
+          const recovered = await openOrRecoverSession(publicationId, assignmentId, learnerId);
+          if (cancelled) return 0;
+          activeSessionId = recovered.session.sessionId;
+          replacedSessionIdRef.current = recovered.replacedSessionId;
+          setSessionId(activeSessionId);
+          setAttempts(recovered.session.attempts ?? []);
+        }
+        flushedSessionId = activeSessionId;
+        const scope: OfflineAttemptScope = {
+          learnerId,
+          publicationId,
+          sessionId: activeSessionId,
+        };
+        return flushPending(scope, replacedSessionIdRef.current);
+      })()
+        .then((delivered) => {
+          if (!cancelled && delivered) {
+            setSyncMessage("离线学习记录已补传");
+            // The local snapshot already contains the answer, but the server
+            // response is the source of truth for mastery and normalized
+            // attempt records after a background retry.
+            void loadLearningSession(flushedSessionId).then((latest) => {
+              if (!cancelled) setAttempts(latest.attempts ?? []);
+            }).catch(() => undefined);
+              void loadLearningMastery(learnerId).then((items) => {
+              if (!cancelled) setMastery(items);
+            }).catch(() => undefined);
+          }
+          return delivered;
+        })
+        .catch((requestError) => {
+          if (!cancelled && requestError instanceof OfflineAttemptQueueStorageError) {
+            setSyncMessage(requestError.message);
+          }
+          return 0;
+        })
+        .finally(() => { flushInFlightRef.current = null; });
+      flushInFlightRef.current = request;
+    };
+    const handleOnline = () => flush();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") flush();
+    };
+    window.addEventListener("online", handleOnline);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", handleOnline);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [assignmentId, learnerId, publicationId, sessionId, sessionReady]);
 
   const queueAttempt = useCallback(async (attempt: ExerciseAttemptInput): Promise<AttemptQueueResult> => {
     // 先更新本地快照，再等待网络。这样切题或刷新前，学生刚提交的答案不会因为
@@ -149,8 +216,15 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
       attempt,
     ]);
     if (!sessionId) {
-      const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
-      writePending([...pending, { sessionId: "", attempt }]);
+      try {
+        enqueuePendingAttempt({ learnerId, publicationId: publicationId ?? "", sessionId: "" }, attempt);
+      } catch (requestError) {
+        if (requestError instanceof OfflineAttemptQueueStorageError) {
+          setSyncMessage(requestError.message);
+          throw requestError;
+        }
+        throw requestError;
+      }
       setSyncMessage("学习会话尚未连接，答案已暂存");
       return { status: "queued" };
     }
@@ -160,12 +234,19 @@ export function usePublishedLearningSession(publicationId: string | undefined, a
       setSyncMessage("学习记录已同步");
       return { status: "saved", autoMistake: result.autoMistake };
     } catch {
-      const pending = readPending().filter((item) => item.attempt.attemptId !== attempt.attemptId);
-      writePending([...pending, { sessionId, attempt }]);
+      try {
+        enqueuePendingAttempt({ learnerId, publicationId: publicationId ?? "", sessionId }, attempt);
+      } catch (requestError) {
+        if (requestError instanceof OfflineAttemptQueueStorageError) {
+          setSyncMessage(requestError.message);
+          throw requestError;
+        }
+        throw requestError;
+      }
       setSyncMessage("网络暂时不可用，记录已排队，稍后自动补传");
       return { status: "queued" };
     }
-  }, [mergeMastery, sessionId]);
+  }, [learnerId, mergeMastery, publicationId, sessionId]);
 
   return { queueAttempt, syncMessage, mastery, attempts, sessionReady };
 }

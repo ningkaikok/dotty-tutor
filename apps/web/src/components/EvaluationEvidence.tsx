@@ -135,7 +135,7 @@ function renderEvidence(evidence: EvaluationEvidenceData, question?: Question) {
               <li key={part.subQuestionId}>
                 <span>{subQuestionLabel(part.subQuestionId)}</span>
                 <strong>
-                  {part.status === "correct" ? "正确" : part.status === "incorrect" ? "需要修正" : part.status === "tutor" ? "待陪练反馈" : part.status === "incomplete" ? "未完成" : "暂未判定"}
+                  {part.status === "correct" ? "正确" : part.status === "incorrect" ? "需要修正" : part.status === "tutor" ? "待辅导反馈" : part.status === "incomplete" ? "未完成" : "暂未判定"}
                 </strong>
               </li>
             ))}

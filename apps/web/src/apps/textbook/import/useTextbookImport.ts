@@ -153,7 +153,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
 
   useEffect(() => {
     loadModels().then(setModels).catch(() => setGlobalError("模型列表加载失败"));
-    loadTutorModels().then(setTutorModels).catch(() => setGlobalError("陪练模型列表加载失败"));
+    loadTutorModels().then(setTutorModels).catch(() => setGlobalError("辅导模型列表加载失败"));
     loadOcrProviders().then(setOcrProviders).catch(() => setGlobalError("OCR 列表加载失败"));
     loadReviewModels().then(setReviewModels).catch(() => setGlobalError("审核模型列表加载失败"));
     loadLibrary().then(setLibrary).catch(() => setGlobalError("教材库加载失败"));
@@ -383,7 +383,7 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
     "tutor",
     (signal) => selectTutorModel(provider, model, signal),
     setTutorModels,
-    "陪练模型切换失败",
+    "辅导模型切换失败",
   );
   const selectOcr = (provider: OcrProvider) => runRuntimeSelection(
     "ocr",

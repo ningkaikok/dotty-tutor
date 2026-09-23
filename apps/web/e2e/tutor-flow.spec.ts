@@ -476,6 +476,49 @@ async function mockMistakeApi(page: Page, startConfirmed = false, startVerify = 
     items = [pendingItem];
     await route.fulfill({ json: pendingItem });
   });
+  await page.route("**/api/mistakes/import-jobs", async (route) => {
+    items = [pendingItem];
+    await route.fulfill({
+      status: 202,
+      json: {
+        jobId: "mistake-import-job-pw-1",
+        captureId: "capture-pw-1",
+        jobType: "mistake.image.import",
+        status: "queued",
+        progress: 0,
+        message: "已排队等待识别",
+        attemptCount: 0,
+        maxAttempts: 3,
+        cancelRequested: false,
+        lastError: null,
+        result: null,
+        createdAt: 1,
+        updatedAt: 1,
+        startedAt: null,
+        completedAt: null,
+      },
+    });
+  });
+  await page.route("**/api/jobs/mistake-import-job-pw-1", async (route) => {
+    await route.fulfill({
+      json: {
+        jobId: "mistake-import-job-pw-1",
+        jobType: "mistake.image.import",
+        status: "succeeded",
+        progress: 100,
+        message: "识别完成",
+        attemptCount: 1,
+        maxAttempts: 3,
+        cancelRequested: false,
+        lastError: null,
+        result: pendingItem,
+        createdAt: 1,
+        updatedAt: 2,
+        startedAt: 1,
+        completedAt: 2,
+      },
+    });
+  });
   await page.route("**/api/mistakes/mistake-pw-1", async (route) => {
     if (route.request().method() === "PATCH") {
       const confirmation = route.request().postDataJSON() as Record<string, unknown>;
@@ -927,6 +970,45 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("button", { name: "重新提交答案" })).toBeVisible();
   });
 
+  test("学生窄屏画线题可用键盘完成且页面不横向溢出", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await mockApi(page);
+    const publication = {
+      publicationId: "paper-mobile-draw-line",
+      title: "移动端画线练习",
+      status: "published",
+      lessonIds: [drawLineQuestion.question.id],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [{
+        lessonId: drawLineQuestion.question.id,
+        title: drawLineQuestion.question.knowledgePoint,
+        version: 1,
+        status: "published",
+        questionPayload: drawLineQuestion,
+        guideCards: [],
+      }],
+    };
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.route("**/api/publications/paper-mobile-draw-line", async (route) => await route.fulfill({ json: publication }));
+    await page.route("**/api/learning/sessions/pw-session", async (route) => await route.fulfill({
+      json: { sessionId: "pw-session", learnerId: "local-demo", publicationId: publication.publicationId, startedAt: 1, attempts: [] },
+    }));
+    await page.goto("/learn");
+    await page.getByRole("button", { name: /移动端画线练习/ }).click();
+    await expect(page.getByRole("heading", { name: "对应点连线" })).toBeVisible();
+
+    const first = page.getByRole("button", { name: "端点 A" });
+    const second = page.getByRole("button", { name: "端点 B" });
+    await first.focus();
+    await page.keyboard.press("Enter");
+    await second.focus();
+    await page.keyboard.press("Space");
+    await expect(page.getByText("已画 1 条线")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+  });
+
   test("正确提交后进入下一道未完成题，最后显示完成态且作答阶段不请求 TTS", async ({ page }) => {
     await mockApi(page);
     const answerAttempts: Record<string, unknown>[] = [];
@@ -986,12 +1068,12 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
     await page.getByRole("button", { name: /A/ }).click();
     await page.getByRole("button", { name: "提交答案" }).click();
-    await expect(page.getByRole("heading", { name: "这套试卷已经完成" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
     expect(ttsRequests).toBe(0);
 
     // 刷新完成态仍由最新 attempts 推导，不会把学生带回第一题。
     await page.reload();
-    await expect(page.getByRole("heading", { name: "这套试卷已经完成" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
@@ -1009,7 +1091,7 @@ test.describe("产品入口", () => {
     await page.getByLabel("裁去上方").fill("5");
     await page.getByLabel(/你当时写的答案/).fill("x = 1");
     await page.getByLabel(/题目文字/).fill("解方程 x + 1 = 3");
-    await page.getByRole("button", { name: "识别并进入确认" }).click();
+    await page.getByRole("button", { name: "加入识别队列" }).click();
 
     await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/confirm$/);
     await expect(page.getByRole("heading", { name: "确认题目" })).toBeVisible();
@@ -1030,7 +1112,7 @@ test.describe("产品入口", () => {
     await mockMistakeApi(page, true);
     await page.goto("/mistakes");
 
-    await page.getByRole("button", { name: "开始陪练" }).click();
+    await page.getByRole("button", { name: "开始辅导" }).click();
     await expect(page).toHaveURL(/\/mistakes\/mistake-pw-1\/tutor$/);
     await expect(page.getByText("理解错因")).toBeVisible();
     await page.getByLabel("继续回答或描述你的想法").fill("我算出 x = 1");
@@ -1069,12 +1151,12 @@ test.describe("产品入口", () => {
     await page.getByRole("button", { name: /\(A\).*x = 3/ }).click();
     await page.getByRole("button", { name: "重新提交" }).click();
     await expect(page.getByText("回答正确", { exact: true })).toBeVisible();
-    await expect(page.getByText("已完成掌握验证")).toBeVisible();
+    await expect(page.getByText("已通过掌握门槛")).toBeVisible();
     await expect(page.getByRole("button", { name: "生成下一道" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "← 返回我的错题本" }).click();
-    await page.getByRole("button", { name: /进阶本 1/ }).click();
-    await expect(page.getByText("已掌握", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /已掌握 1/ }).click();
+    await expect(page.getByRole("region", { name: "错题列表" }).getByText("已掌握", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();
 
     // 复习入口已收敛到持久导航，错题本 hero 不再重复一个同目的地按钮。

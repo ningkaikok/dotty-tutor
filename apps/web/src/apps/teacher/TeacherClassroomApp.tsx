@@ -8,6 +8,8 @@ import "./teacher.css";
 import { AssignmentComposer } from "./AssignmentComposer";
 import { AssignmentPlanReview } from "./AssignmentPlanReview";
 import { useAssignmentPlanning } from "./useAssignmentPlanning";
+import { LectureChecklistPanel } from "./LectureChecklistPanel";
+import { PRODUCT_TERMS } from "../../productTerms";
 
 /** 同一时刻只允许一个写操作在飞；用动作名而不是布尔量，避免三个表单互相禁用。 */
 type PendingAction = "" | "class" | "member" | "assignment" | "review";
@@ -226,7 +228,7 @@ export function TeacherClassroomApp() {
         <button className="route-back-button" onClick={() => navigate("/")}>← 返回入口</button>
         <div className="brand-mark">D</div>
         <div><strong>Dotty</strong><span>教师工作台</span></div>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="teacher-hero">
@@ -281,7 +283,7 @@ export function TeacherClassroomApp() {
                 <ol className="teacher-onboarding-steps">
                   <li><strong>创建班级</strong><span>在左侧填写班级名称。</span></li>
                   <li><strong>添加学生</strong><span>把学生的标识加入班级名单。</span></li>
-                  <li><strong>布置作业</strong><span>选一套已发布试卷指派给全班，随后这里会显示完成情况和知识点掌握分布。</span></li>
+                  <li><strong>布置作业</strong><span>选一套已发布练习指派给全班，随后这里会显示完成情况和知识点掌握分布。</span></li>
                 </ol>
               </section>
             </section>
@@ -526,6 +528,13 @@ export function TeacherClassroomApp() {
                     })}
                   </div>
                 </section>
+              )}
+
+              {dashboard && (
+                <LectureChecklistPanel
+                  classId={selectedClassId}
+                  assignmentId={dashboard.assignment.assignmentId}
+                />
               )}
 
               {!dashboard && dashboardError && (

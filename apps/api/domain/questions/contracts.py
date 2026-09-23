@@ -431,7 +431,7 @@ class QuestionGuideCardEdit(BaseModel):
 class QuestionEditRequest(BaseModel):
     """人工字段级编辑请求。
 
-    只允许改题干、选项、标准答案和引导卡文本这类题目内容字段；来源溯源
+    只允许改题干、选项、标准答案、教学目标门槛和引导卡文本这类题目内容字段；来源溯源
     （``sourceProvenance``）、模型运行记录（``modelRun``）、答案核验结果
     （``verification``）等审计字段不在这里出现，服务端也永远不会用这份请求覆盖它们。
     ``baseRevisionId`` 是乐观并发的依据：必须等于服务端当前版本，否则拒绝这次编辑。
@@ -444,6 +444,11 @@ class QuestionEditRequest(BaseModel):
     options: list[str] | None = Field(default=None, max_length=6)
     correctAnswer: str | None = Field(default=None, max_length=120)
     correctAnswers: list[str] | None = Field(default=None, max_length=6)
+    # 这些字段只有人工编辑契约可以写入。模型生成结果不包含它们；缺省值在
+    # mastery policy 层保持 unknown:legacy，不允许模型猜测后直接成为权威分类。
+    objectiveType: Literal["memory", "procedural", "conceptual", "design", "unknown"] | None = None
+    gateMode: Literal["quantitative", "qualitative", "legacy"] | None = None
+    policyVersion: str | None = Field(default=None, max_length=64)
     guideCards: list[QuestionGuideCardEdit] | None = Field(default=None, max_length=3)
 
 

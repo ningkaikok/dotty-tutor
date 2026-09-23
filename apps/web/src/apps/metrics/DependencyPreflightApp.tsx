@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { loadDependencyPreflight, type DependencyPreflightReport } from "../../api/dependencyPreflight";
+import { PRODUCT_TERMS } from "../../productTerms";
 import "./metrics.css";
 
 /**
@@ -39,7 +40,7 @@ export function DependencyPreflightApp() {
           <strong>Dotty</strong>
           <span>环境依赖自检</span>
         </div>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="panel metrics-panel" aria-label="环境依赖自检报告">

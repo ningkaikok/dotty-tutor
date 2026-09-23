@@ -276,6 +276,34 @@ class LearningStore(DatabaseStore):
                         "quarantinedCount": len(blockers),
                         "quarantinedLessonIds": [item["lessonId"] for item in blockers],
                     }
+                # Materialize the teacher-selected policy on the published
+                # knowledge-point projection. Missing metadata remains NULL
+                # and therefore resolves to unknown:legacy; this is never
+                # inferred from model output or the question wording.
+                for lesson in lessons_by_id.values():
+                    if lesson["lesson_id"] not in ready_lesson_ids:
+                        continue
+                    payload = decode_json(lesson["question_json"]) or {}
+                    question = payload.get("question") if isinstance(payload, dict) else {}
+                    question = question if isinstance(question, dict) else {}
+                    name = self._question_name(lesson)
+                    point_id = knowledge_point_id(publication_id, name)
+                    self._upsert(
+                        connection,
+                        knowledge_points,
+                        {
+                            "knowledge_point_id": point_id,
+                            "publication_id": publication_id,
+                            "name": name,
+                            "normalized_name": normalize_knowledge_point_name(name),
+                            "objective_type": question.get("objectiveType"),
+                            "gate_mode": question.get("gateMode"),
+                            "policy_version": question.get("policyVersion"),
+                            "created_at": time.time(),
+                        },
+                        ["knowledge_point_id"],
+                        ["name", "normalized_name", "objective_type", "gate_mode", "policy_version"],
+                    )
                 connection.execute(
                     lesson_documents.update()
                     .where(lesson_documents.c.lesson_id.in_(lesson_ids))
@@ -385,7 +413,7 @@ class LearningStore(DatabaseStore):
             if verified is None:
                 # A deterministic contract exists but the three-state evaluator
                 # abstained. Never persist the client claim as mastery evidence.
-                raise ValueError("确定性判题无法裁决，不能接受客户端自报判定")
+                raise ValueError("确定性判题无法裁决，当前结果为 needs_review，不能接受客户端自报判定")
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
@@ -446,6 +474,20 @@ class LearningStore(DatabaseStore):
             student_input if isinstance(student_input, str) else "",
             interaction if isinstance(interaction, dict) else None,
         )
+        if str(question.get("gateMode") or question.get("gate_mode") or "").strip().lower() == "qualitative":
+            # A qualitative policy may only enter production learning evidence
+            # through a constrained evaluator result. The deterministic answer
+            # checker does not produce rubric/confidence/evidence references,
+            # so this path intentionally remains needs_review/fail-closed.
+            evidence = result.get("evaluationEvidence") if isinstance(result, dict) else None
+            if not LearningStore._has_qualitative_evidence(evidence):
+                log_event(
+                    "learning.attempt.qualitative_needs_review",
+                    level=30,
+                    session_id=session_id,
+                    question_id=question_id,
+                )
+                return None
         if not result:
             if LearningStore._has_deterministic_contract(question):
                 log_event(
@@ -470,6 +512,21 @@ class LearningStore(DatabaseStore):
                 evaluator_strategy=(result.get("evaluationEvidence") or {}).get("strategy"),
             )
         return verified
+
+    @staticmethod
+    def _has_qualitative_evidence(value: Any) -> bool:
+        """Require the production evaluator's bounded qualitative contract."""
+        if not isinstance(value, dict) or not isinstance(value.get("rubricPassed"), bool):
+            return False
+        confidence = value.get("confidence")
+        refs = value.get("evidenceRefs")
+        return (
+            isinstance(confidence, (int, float))
+            and 0 <= float(confidence) <= 1
+            and isinstance(refs, list)
+            and bool(refs)
+            and all(isinstance(ref, str) and ref.strip() for ref in refs)
+        )
 
     @staticmethod
     def _has_deterministic_contract(question: dict[str, Any]) -> bool:
@@ -534,6 +591,7 @@ class LearningStore(DatabaseStore):
             )
             if lesson is None:
                 raise LookupError("题目不属于当前已发布互动试卷")
+            question = (decode_json(lesson["question_json"]) or {}).get("question") or {}
             name = self._question_name(lesson)
             normalized = normalize_knowledge_point_name(name)
             point_id = knowledge_point_id(session["publication_id"], normalized)
@@ -545,12 +603,14 @@ class LearningStore(DatabaseStore):
                     "publication_id": session["publication_id"],
                     "name": name,
                     "normalized_name": normalized,
+                    "objective_type": question.get("objectiveType") or question.get("objective_type"),
+                    "gate_mode": question.get("gateMode") or question.get("gate_mode"),
+                    "policy_version": question.get("policyVersion") or question.get("policy_version"),
                     "created_at": time.time(),
                 },
                 ["knowledge_point_id"],
-                ["name", "normalized_name"],
+                ["name", "normalized_name", "objective_type", "gate_mode", "policy_version"],
             )
-            question = (decode_json(lesson["question_json"]) or {}).get("question") or {}
             return {"knowledgePointId": point_id, "name": name, "question": question}
 
         raise LookupError("题目不属于当前已发布互动试卷")

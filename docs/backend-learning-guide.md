@@ -198,10 +198,10 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 
 - `VariationStore` 保存唯一掌握验证题；答错更新同一条证据，答对后推导一次性掌握结果。
 - `MistakeStore` 只执行 `unmastered → mastered` 业务状态转换。
-- `ReviewStore` 幂等创建第 1、3、7 天任务，并保存每项复习题和最终作答。
+- `ReviewStore` 按 versioned policy 幂等创建带 `scheduleVersion`、`sequenceNo`、`profile` 和 `supersededAt` 的任务，并保存每项复习题和最终作答；缺少策略元数据的旧任务才走 `unknown:legacy` 的 legacy 1/3/7 天兼容行为。
 
 这种拆分避免用聊天消息判断掌握，也避免为了凑连续次数而生成第二道题或保存重复状态。
-`ReviewStore.schedule()` 依靠 `(mistake_id, interval_days)` 唯一约束保证重试安全；Route 负责依次编排
+`ReviewStore.schedule()` 依靠 versioned `(mistake_id, schedule_version, sequence_no)` 幂等键和 superseded 标记保证重试安全；Route 负责依次编排
 “判题—迁移—排期”，模型仍然不能直接修改掌握状态。
 
 ## 7. 测试应该保护什么

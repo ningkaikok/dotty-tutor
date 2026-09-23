@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { loadLearningCostReport, type LearningCostReport } from "../../api/metrics";
+import { PRODUCT_TERMS } from "../../productTerms";
 import { formatRate, formatTokens, toRowViews, toSummaryView, type MetricRowView } from "./metricsView";
 import "./metrics.css";
 
@@ -39,8 +40,8 @@ export function ModelMetricsApp() {
   const stages = learning ? [
     ["错题导入", learning.mistakes.imported, null],
     ["人工确认", learning.mistakes.confirmed, learning.mistakes.confirmationRate],
-    ["开始陪练", learning.tutoring.threadsStarted, null],
-    ["变式验证", learning.verification.answeredVariations, learning.verification.passRate],
+    [`开始${PRODUCT_TERMS.tutoring}`, learning.tutoring.threadsStarted, null],
+    [PRODUCT_TERMS.masteryVerification, learning.verification.answeredVariations, learning.verification.passRate],
     ["复习完成", learning.review.completedTasks, learning.review.completionRate],
   ] as const : [];
 
@@ -53,7 +54,7 @@ export function ModelMetricsApp() {
           <strong>Dotty</strong>
           <span>学习效果与模型成本</span>
         </div>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="panel metrics-panel" aria-label="学习效果与模型成本报告">

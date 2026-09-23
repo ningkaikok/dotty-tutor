@@ -85,7 +85,7 @@ export function MistakeCoachApp() {
         {returnsToStudentHome
           ? <StudentNav />
           : <button className="route-back-button" onClick={returnToLibrary}>← 返回我的错题本</button>}
-        <div className="mistake-brand"><span>D</span><strong>Dotty 错题陪练</strong></div>
+        <div className="mistake-brand"><span>D</span><strong>Dotty 错题辅导</strong></div>
       </header>
 
       {screen.name === "library" && (

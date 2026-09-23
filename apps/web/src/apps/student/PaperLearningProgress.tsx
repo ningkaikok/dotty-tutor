@@ -23,7 +23,7 @@ export function PaperLearningProgress({
   const evidenceCount = Math.max(current?.evidenceCount ?? 0, correctCount);
 
   return (
-    <section className="paper-learning-progress panel" aria-label="互动试卷学习进度">
+    <section className="paper-learning-progress panel" aria-label="练习学习进度">
       <div>
         <span className="eyebrow">本题掌握度</span>
         <small>已答对 {correctCount} 道，共 {evidenceCount} 道</small>

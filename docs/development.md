@@ -65,6 +65,17 @@ scripts/check-node-version.sh
 如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
 `docker compose up --build --detach` 并打开 `http://localhost:8080`。
 
+### 可重复的教师演示数据
+
+在当前 PostgreSQL schema 已完成迁移、API 依赖可导入的环境中，从仓库根目录运行唯一播种命令：
+
+```bash
+uv run --project apps/api python scripts/seed_demo_bundle.py
+uv run --project apps/api python scripts/seed_demo_bundle.py --verify
+```
+
+脚本读取 `examples/demo-pack/manifest.json`，创建完全合成且固定 ID 的练习、三名演示学生、作业、不同作答、错因、复习任务和教师推翻；重复运行幂等，默认不会删除或改写 manifest 之外的数据。它不调用 OCR、模型或网络，也不包含教材原文/真实学生隐私。`--verify` 只读检查发布状态、三名学生的作答、讲评清单、`unknown` 错因和教师推翻证据；空库或 schema 未升级时应先按迁移指南处理。旧的 `scripts/seed_classroom_demo.py` 保持兼容，但不提供这份完整 bundle。
+
 本机 Codex、MinerU 和 Qwen3-TTS 的状态可以分别检查：
 
 ```bash

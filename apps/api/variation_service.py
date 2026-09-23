@@ -88,6 +88,10 @@ class VariationService:
         question["variationTarget"] = reason
         question["variationAttributionSource"] = attribution_source
         question["variationLevel"] = level
+        question["variationSequence"] = sequence
+        for key in ("objectiveType", "gateMode", "policyVersion"):
+            if original.get(key) is not None:
+                question[key] = original[key]
         # generate_lesson() 只在走 OCR 识别路径时才会拿到调用方拼装的 contentBlocks
         # （见 mistake_recognition.py）；变式题没有源图片，这里直接用同一套构建函数，
         # 否则学生端渲染会因为 contentBlocks 缺失而崩溃。

@@ -159,6 +159,7 @@ class TextbookProcessingService:
                 item,
                 source_upload_id=upload_id,
                 guide_cards=cards,
+                allow_policy_metadata=revision_source == "manual_edit",
             ))
         if run_id:
             # 课程文档先按不可变 lessonId 保存；随后 revision 与当前题目视图在同一事务提交，
@@ -1393,7 +1394,10 @@ class TextbookProcessingService:
         finally:
             processing.discard(lock_key)
 
-    _EDITABLE_QUESTION_FIELDS = ("prompt", "options", "correctAnswer", "correctAnswers")
+    _EDITABLE_QUESTION_FIELDS = (
+        "prompt", "options", "correctAnswer", "correctAnswers",
+        "objectiveType", "gateMode", "policyVersion",
+    )
 
     def edit_question(
         self,
@@ -1440,6 +1444,34 @@ class TextbookProcessingService:
         unknown_fields = sorted(set(question_patch) - set(self._EDITABLE_QUESTION_FIELDS))
         if unknown_fields:
             raise HTTPException(status_code=422, detail=f"不支持编辑这些字段：{', '.join(unknown_fields)}")
+        policy_fields = {field: question_patch.get(field) for field in ("objectiveType", "gateMode", "policyVersion")}
+        supplied_policy_fields = [field for field, value in policy_fields.items() if value is not None]
+        if supplied_policy_fields and len(supplied_policy_fields) != 3:
+            raise HTTPException(
+                status_code=422,
+                detail="objectiveType、gateMode、policyVersion 必须由老师同时明确选择",
+            )
+        if supplied_policy_fields:
+            from domain.learning.mastery_policy import (
+                GATE_MODES,
+                OBJECTIVE_TYPES,
+                resolve_policy,
+            )
+
+            objective = str(policy_fields["objectiveType"]).strip().lower()
+            mode = str(policy_fields["gateMode"]).strip().lower()
+            if objective not in OBJECTIVE_TYPES or mode not in GATE_MODES:
+                raise HTTPException(status_code=422, detail="无效的学习目标或 gate 模式")
+            try:
+                policy = resolve_policy(objective, mode, policy_fields["policyVersion"])
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            if objective == "unknown" and mode != "legacy":
+                raise HTTPException(status_code=422, detail="unknown 目标只能使用 legacy gate")
+            if objective != "unknown" and mode == "legacy":
+                raise HTTPException(status_code=422, detail="已明确目标不能退回 legacy gate")
+            if policy_fields["policyVersion"] != policy.policy_version:
+                raise HTTPException(status_code=422, detail="policyVersion 与目标策略不匹配")
 
         processing = job.setdefault("processingBatches", set())
         lock_key = f"question:{source_question_key}"
@@ -1613,6 +1645,7 @@ class TextbookProcessingService:
             # 课程仍会展示回滚之前的内容。这里刻意直接写 lesson，不追加新 revision。
             self.store.save_lesson(lesson_document_from_payload(
                 payload, source_upload_id=upload_id, guide_cards=guide_cards,
+                allow_policy_metadata=True,
             ))
             result["questionPayload"] = payload
             ordered_keys = [

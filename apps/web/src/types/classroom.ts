@@ -135,6 +135,42 @@ export interface ClassDashboard {
   metricDefinition: string;
 }
 
+export interface LectureChecklistStudent {
+  learnerId: string;
+  displayName: string;
+  assessment: string;
+  originalAssessment: string;
+  reviewStatus: string;
+  correctedAssessment: string | null;
+  attributionSource: "ai" | "self" | "unknown";
+  mistakeEvidenceRef: string | null;
+  errorReason: "concept" | "reading" | "calculation" | "missing_step" | "unknown" | "careless";
+  evidenceRefs: string[];
+}
+
+export interface LectureChecklistMistake {
+  questionId: string;
+  questionOrder: number;
+  title: string;
+  prompt: string;
+  involvedStudentCount: number;
+  attemptedStudentCount: number;
+  errorRate: number;
+  students: LectureChecklistStudent[];
+  errorReasons: Array<{ reason: LectureChecklistStudent["errorReason"]; count: number; rate: number }>;
+  evidenceRefs: string[];
+}
+
+export interface LectureChecklist {
+  classId: string;
+  assignmentId: string;
+  limit: number;
+  commonMistakes: LectureChecklistMistake[];
+  items: LectureChecklistMistake[];
+  errorReasonDistribution: Array<{ reason: LectureChecklistStudent["errorReason"]; count: number }>;
+  evidenceRefs: string[];
+}
+
 /** 花名册条目。同一学生可能出现在多个班里，因此按 (learnerId, classId) 逐条返回。 */
 export interface RosterEntry {
   learnerId: string;

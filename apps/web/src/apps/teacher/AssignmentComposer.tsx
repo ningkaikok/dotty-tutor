@@ -16,7 +16,7 @@ export function AssignmentComposer(props: Props) {
   return (
     <div className="teacher-form assignment-form">
       <label>
-        已发布试卷
+        已发布练习
         <select value={props.publicationId} onChange={(event) => props.onPublicationChange(event.target.value)}>
           <option value="">请选择</option>
           {props.publications.map((item) => <option key={item.publicationId} value={item.publicationId}>{item.title}</option>)}
@@ -24,7 +24,7 @@ export function AssignmentComposer(props: Props) {
       </label>
       <label>
         作业名称
-        <input value={props.title} onChange={(event) => props.onTitleChange(event.target.value)} placeholder="默认使用试卷名称" />
+        <input value={props.title} onChange={(event) => props.onTitleChange(event.target.value)} placeholder="默认使用练习名称" />
       </label>
       <label>
         截止日期

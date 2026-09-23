@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router";
+import { PRODUCT_TERMS } from "../../productTerms";
 import { StudentNav } from "./StudentNav";
 import { useStudentTodayQueue } from "./useStudentTodayQueue";
 import "./student.css";
@@ -46,7 +47,7 @@ export function StudentLearningApp() {
     rows.push({
       key: "confirm",
       title: "确认新录入的错题",
-      description: "先确认识别结果，这些错题才能进入陪练订正。",
+      description: "先确认识别结果，这些错题才能进入辅导订正。",
       badge: `${pendingConfirmCount} 道`,
       actionLabel: "去确认",
       onAction: () => navigate("/mistakes"),
@@ -99,7 +100,7 @@ export function StudentLearningApp() {
           <strong>Dotty</strong>
           <span>学生学习空间</span>
         </div>
-        <span className="demo-badge">STUDENT DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <StudentNav />

@@ -38,6 +38,7 @@ class DatabaseMigrationTests(PostgresTestCase):
                     column.type,
                     primary_key=column.primary_key,
                     nullable=column.nullable,
+                    server_default=column.server_default,
                 )
                 for column in source_table.columns
                 if column.name not in omitted_columns
@@ -253,6 +254,15 @@ class DatabaseMigrationTests(PostgresTestCase):
                 if column["name"] == "evaluation_evidence_json"
             )
             self.assertFalse(review_column["nullable"])
+            review_columns = {
+                column["name"]: column
+                for column in inspect(connection).get_columns("review_tasks")
+            }
+            self.assertFalse(review_columns["schedule_version"]["nullable"])
+            self.assertFalse(review_columns["sequence_no"]["nullable"])
+            self.assertFalse(review_columns["profile"]["nullable"])
+            self.assertIn("legacy-1-3-7-v1", review_columns["schedule_version"]["default"] or "")
+            self.assertIn("unknown:legacy", review_columns["profile"]["default"] or "")
             self.assertIn("mistake_attributions", inspect(connection).get_table_names())
             self.assertIn("variation_attempts", inspect(connection).get_table_names())
             self.assertIn(

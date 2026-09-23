@@ -157,7 +157,7 @@ export function PublishedPaperApp() {
       .then(setPublication)
       .catch((requestError) => {
         if (!controller.signal.aborted) {
-          setError(requestError instanceof Error ? requestError.message : "试卷加载失败");
+          setError(requestError instanceof Error ? requestError.message : "练习加载失败");
         }
       });
     return () => controller.abort();
@@ -341,10 +341,10 @@ export function PublishedPaperApp() {
     setError("");
   };
 
-  if (error && !publication) return <main className="center-state"><strong>无法打开互动试卷</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回今日</button></main>;
+  if (error && !publication) return <main className="center-state"><strong>无法打开练习</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回今日</button></main>;
   // 会话恢复完成前不开放输入。否则学生可能已经在第 1 题作答，随后历史 attempts
   // 才把页面定位到另一道未完成题，造成草稿看似丢失。
-  if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开互动试卷…</span></main>;
+  if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开练习…</span></main>;
 
   return (
     <main className="app-shell">

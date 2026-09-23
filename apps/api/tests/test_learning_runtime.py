@@ -38,6 +38,23 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(validated.lessonId, "linear-equation")
         self.assertEqual(validated.blocks[0].type, "diagram")
         self.assertEqual(validated.blocks[-1].type, "quiz")
+        self.assertEqual(validated.questionPayload["question"]["objectiveType"], "unknown")
+        self.assertEqual(validated.questionPayload["question"]["gateMode"], "legacy")
+        self.assertEqual(validated.questionPayload["question"]["policyVersion"], "legacy-1-3-7-v1")
+
+    def test_model_payload_policy_classification_is_not_authoritative(self) -> None:
+        document = lesson_document_from_payload({
+            "question": {
+                "id": "generated-question",
+                "knowledgePoint": "一次方程",
+                "objectiveType": "conceptual",
+                "gateMode": "qualitative",
+                "policyVersion": "mastery-policy-v1",
+            },
+        })
+        question = document["questionPayload"]["question"]
+        self.assertEqual(question["objectiveType"], "unknown")
+        self.assertEqual(question["gateMode"], "legacy")
 
 class LearningStoreTests(PostgresTestCase):
     def setUp(self) -> None:

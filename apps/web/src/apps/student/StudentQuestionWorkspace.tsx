@@ -159,7 +159,7 @@ export function StudentQuestionWorkspace({
             <ol className="sub-question-results" aria-label="小问判定结果">
               {reply.guideContext.evaluationSummary.parts.map((part) => {
                 const label = question.subQuestions?.find((item) => item.id === part.subQuestionId)?.label ?? part.subQuestionId;
-                const status = part.status === "correct" ? "正确" : part.status === "incorrect" ? "需要修正" : part.status === "tutor" ? "待陪练反馈" : "未完成";
+                const status = part.status === "correct" ? "正确" : part.status === "incorrect" ? "需要修正" : part.status === "tutor" ? "待辅导反馈" : "未完成";
                 return <li key={part.subQuestionId} className={`sub-question-result ${part.status}`}><span>{label}</span><strong>{status}</strong></li>;
               })}
             </ol>

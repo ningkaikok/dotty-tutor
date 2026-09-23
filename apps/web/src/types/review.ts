@@ -10,9 +10,9 @@ export interface ReviewTask {
   taskId: string;
   mistakeId: string;
   learnerId: string;
-  intervalDays: 1 | 3 | 7;
+  intervalDays: number;
   dueAt: number;
-  status: "scheduled" | "ready" | "completed" | "cancelled";
+  status: "scheduled" | "ready" | "completed" | "cancelled" | "superseded";
   questionPayload?: QuestionPayload;
   response: StructuredAnswerInput | Record<string, never>;
   assessment?: "correct" | "partial" | "incorrect";
@@ -22,6 +22,27 @@ export interface ReviewTask {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
+  scheduleVersion?: string;
+  sequenceNo?: number;
+  profile?: string;
+  objectiveType?: "memory" | "procedural" | "conceptual" | "design" | "unknown";
+  gateMode?: "quantitative" | "qualitative" | "legacy";
+  policyVersion?: string;
+  triggerEvidenceRef?: string | null;
+  supersededAt?: number | null;
+  policy?: {
+    objectiveType: string;
+    gateMode: string;
+    policyVersion: string;
+    profile: string;
+  };
+  gate?: {
+    mode: string;
+    passed?: boolean;
+    nextAction?: "stay" | "advance" | "test_out" | "needs_review";
+    [key: string]: unknown;
+  };
+  nextAction?: "stay" | "advance" | "test_out" | "needs_review";
   mistake?: {
     chapter: string;
     knowledgePoint: string;

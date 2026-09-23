@@ -52,6 +52,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/classes/{classId}/assignment-plans/{planId}/personalized` | 根据仍有效且有班级个性化证据的草稿，一次生成 1–5 道新题并返回可确认的最终 plan；模型回退、坏答案或质量门禁失败均失败关闭 |
 | `POST` | `/api/classes/{classId}/assignments` | 确认计划后指派已发布互动试卷；必须携带 `planId`、`publicationId`、`sourceFingerprint` 和 `confirmWarnings`，同一计划重复确认幂等 |
 | `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
+| `GET` | `/api/classes/{classId}/assignments/{assignmentId}/lecture-checklist?limit=5` | 只读返回该作业的共性错题、错因分布、涉及学生和 `evidenceRefs`；`limit` 为 1–50，按涉及人数、错误率、原题序排序，最新作答去重，教师最新 `overturned` 覆盖展示，缺失错因保留为 `unknown`，并返回 `attributionSource` 与对应的 `mistakeEvidenceRef` |
 | `POST` | `/api/classes/{classId}/assignments/{assignmentId}/reviews` | 追加教师复核、推翻判定或知识点掌握度覆盖；原始作答和 AI 判题不被改写 |
 | `GET` | `/api/assignments?learnerId=local-demo` | 返回学生所属班级的作业及服务端派生进度 |
 
@@ -180,7 +181,8 @@ mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确�
 不会返回完整 Prompt、密钥或学生数据。运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
 
 人工字段级编辑（PATCH）只接受题目内容字段（`prompt`、`options`、`correctAnswer`、`correctAnswers`、
-`guideCards`），绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单
+`guideCards`）以及教师明确选择的 `objectiveType`、`gateMode`、`policyVersion`；三项 policy 字段必须同时提供，
+否则仍保持 `unknown:legacy`，模型生成 payload 不能自动启用 typed policy。绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单
 过滤，未列出字段直接 `422`。请求必须带 `baseRevisionId`（从 `review-queue` 响应的 `currentRevisionId`
 读取，或上一次编辑/回滚返回的 `revision.revisionId`）；服务端当前版本一旦与之不一致（说明期间有人也改过
 这道题），返回 `409` 并在 `detail` 里带回服务端当前的 `currentRevisionId` 和完整 `questionPayload`，不做
@@ -291,12 +293,15 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
+| `POST` | `/api/mistakes/import-jobs` | 持久化图片并以 `202` 创建错题 OCR/结构化后台任务；按 `captureId` 幂等，返回 job 状态、进度、重试次数和取消标记 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
 | `GET` | `/api/mistakes/{mistakeId}` | 读取学生安全的题目快照、原答案和两路归因；服务端保留的运行信息不下发 |
 | `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
+
+`import-jobs` 返回的 `jobId` 使用通用后台任务接口：`GET /api/jobs/{jobId}` 查询，`POST /api/jobs/{jobId}/cancel` 请求取消，`POST /api/jobs/{jobId}/retry` 对失败任务增加一次有限重试预算。运行中的取消在 Worker 安全点收敛，并以租约和终态检查防止取消与完成竞态下旧 Worker 覆盖状态；不承诺回滚已完成的 OCR/模型副作用。前端会显示 `cancelRequested`、`lastError` 和 `attemptCount`。
 
 互动试卷自动记录的错题先进入 `pending_confirmation`，不会根据一次错答自动填写 `errorReason`；学生确认错误原因后才进入
 `unmastered` 并允许开始陪练。纸质错题沿用相同确认契约。错题响应中的 `errorReason` 是学生自评归因；
@@ -367,7 +372,7 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/mistakes/{mistakeId}/variations` | 按生成顺序读取该错题的验证题和作答结果 |
-| `GET` | `/api/mistakes/{mistakeId}/evidence` | 读取单道错题的错误原因、变式策略、每次验证作答证据和 1/3/7 天复习任务 |
+| `GET` | `/api/mistakes/{mistakeId}/evidence` | 读取单道错题的错误原因、变式策略、每次验证作答证据和 versioned review schedule（旧任务可能是 `unknown:legacy`） |
 | `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `practice`/`verify` 后生成或复用该错题唯一的验证题 |
 | `POST` | `/api/variations/{variationId}/answer` | 提交结构化答案并完成确定性判题；答错可对同一道题重新提交 |
 
@@ -385,15 +390,19 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 1/3/7 天复习任务和服务器时间 |
+| `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 versioned review schedule 和服务器时间；缺少策略元数据的旧任务标记为 `unknown:legacy` |
 | `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
 | `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案，响应返回并持久化确定性判题结果及客观判题证据 |
 | `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率、变式验证正确率、复习完成率、同知识点再错率和知识点聚合 |
 | `GET` | `/api/funnel?learnerId=local-demo` | 学习效果漏斗快照：导入→确认→陪练→验证→复习各阶段计数与比率（分母为零时比率为 null） |
 
-错题首次变为 `mastered` 时，以第二次正确作答时间为基准，幂等创建三个任务。相同错题和间隔有唯一
-约束，网络重试不会重复排期。任务状态依次为 `scheduled → ready → completed`；已完成任务不能重复
-提交。当前 MVP 允许提前开始未来任务，方便个人演示和主动复习。
+复习任务响应还会返回 `objectiveType`、`gateMode`、`policyVersion`、`profile`、`policy`、`gate` 和 `nextAction`。`quantitative` gate 同时要求准确率与最少证据数，`qualitative` gate 要求受约束 rubric 通过、置信度达到门槛且存在 evidenceRefs；没有可靠 evaluator 或缺少这些证据时保持 `needs_review`。只有教师明确编辑契约中的三项 typed metadata 才能启用策略；缺少策略元数据的历史任务使用 `unknown:legacy` 与 legacy 1/3/7 天兼容行为。`nextAction` 可能为 `stay`、`advance`、`test_out` 或 `needs_review`，不接受客户端直接提交掌握结论。
+
+掌握验证通过后，服务端按题目/知识点中的 typed policy 创建 versioned schedule，任务带有
+`scheduleVersion`、`policyVersion`、`profile`、`sequenceNo`、`triggerEvidenceRef`，并记录被替代任务的
+`supersededAt`。相同 `(mistakeId, scheduleVersion, sequenceNo)` 幂等，网络重试不会重复排期；这不承诺固定三任务。
+缺少策略元数据的旧任务使用 `unknown:legacy` 与 legacy 1/3/7 天兼容行为。任务状态依次为
+`scheduled → ready → completed`；已完成任务不能重复提交，定性 gate 未取得可靠证据时保持 `needs_review`。
 
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
