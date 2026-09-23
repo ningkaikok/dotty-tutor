@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title">
+  <title id="title">直线经过 A 点零二和 B 点二零</title>
+  <rect width="480" height="300" fill="#fff"/><path d="M65 145H425M245 270V30" stroke="#34483e" stroke-width="2"/>
+  <g stroke="#bdc8c0" stroke-width="1"><path d="M125 35V265M185 35V265M305 35V265M365 35V265M75 85H415M75 205H415"/></g>
+  <path d="M245 25L365 145" fill="none" stroke="#28795d" stroke-width="4"/>
+  <circle cx="245" cy="25" r="6" fill="#d86b43"/><circle cx="365" cy="145" r="6" fill="#d86b43"/>
+  <g font-family="sans-serif" font-size="16" fill="#263b31"><text x="253" y="78">A(0,2)</text><text x="370" y="138">B(2,0)</text></g>
+  <g font-family="sans-serif" font-size="13" fill="#52615a"><text x="240" y="290">x</text><text x="255" y="38">y</text></g>
+</svg>

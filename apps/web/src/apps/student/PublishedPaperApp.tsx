@@ -55,7 +55,7 @@ export function PublishedPaperApp() {
   // 答对后不立即切题：这道题的“回答正确”反馈要能被学生看到，切题延后到反馈
   // 显示满 1.2 秒之后。非 null 时既驱动自动推进的定时器，也让工作台展示
   // “继续下一题”按钮，允许学生跳过等待手动推进。
-  const [pendingAdvanceIndex, setPendingAdvanceIndex] = useState<number | null>(null);
+  const [pendingAdvance, setPendingAdvance] = useState<number | "completion" | null>(null);
   // 未提交的选择也属于学生当前作答上下文。按题目 ID 保存，允许学生先浏览后提交，
   // 再返回时不会因为切题 effect 而丢掉刚才填写的内容。
   const [drafts, setDrafts] = useState<Record<string, StudentQuestionDraft>>({});
@@ -183,7 +183,7 @@ export function PublishedPaperApp() {
     setLoading(false);
     // 切题（无论是自动推进还是手动跳题）都清掉待推进标记，避免旧的定时器
     // 在新题上再次触发一次多余的 changeQuestion。
-    setPendingAdvanceIndex(null);
+    setPendingAdvance(null);
     restoreAttempt(latestAttempt, latestAttempt ? undefined : drafts[currentQuestionId]);
   // 题目切换时恢复该题最后一次提交的结构化答案；模型回复不从历史猜测，避免把旧题
   // 的讲解误显示到新题上。attempts 变化单独由下面的 effect 处理。
@@ -254,6 +254,13 @@ export function PublishedPaperApp() {
       // 生成一段音频，多个题目快速切换时还会堆积 /api/tts 请求。
       if (mode === "help") speak(response.reply.replace(/\n/g, " "));
       if (mode === "answer" && response.guideContext.assessment) {
+        const assessment = response.guideContext.assessment;
+        const nextIndex = assessment === "correct"
+          ? paperProgress.nextIncompleteIndex(questionIndex, questionId)
+          : null;
+        // attempt 持久化可能会立刻让整套练习进入 completed；先保留当前反馈，
+        // 再排队保存，避免完成页抢先卸载题目工作台。
+        if (assessment === "correct" && nextIndex === null) setPendingAdvance("completion");
         const attemptResult = await queueAttempt({
           attemptId: crypto.randomUUID(),
           questionId,
@@ -264,12 +271,10 @@ export function PublishedPaperApp() {
           createdAt: Date.now() / 1000,
         });
         if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
-        if (response.guideContext.assessment === "correct") {
+        if (assessment === "correct") {
           // 先完成本地快照/离线排队，再推进；nextIncompleteIndex 用刚提交的题目
           // 作为“已完成”覆盖值，避免 React 尚未完成下一轮渲染时又回到当前题。
-          // 不在此处立即切题：交给下面的定时器 effect，让“回答正确”反馈先可见。
-          const nextIndex = paperProgress.nextIncompleteIndex(questionIndex, questionId);
-          if (nextIndex !== null) setPendingAdvanceIndex(nextIndex);
+          if (nextIndex !== null) setPendingAdvance(nextIndex);
         } else {
           setShowExplanation(true);
           setMistakeNotice(attemptResult.status === "saved" && attemptResult.autoMistake
@@ -289,21 +294,22 @@ export function PublishedPaperApp() {
     // 先取消网络和播放，再提交索引变更；不用等 React effect 执行，切题动作本身就是取消边界。
     interactionRequestId.current += 1;
     stopSpeech();
+    setPendingAdvance(null);
     setQuestionIndex(nextIndex);
   };
 
   useEffect(() => {
-    if (pendingAdvanceIndex === null) return;
+    if (pendingAdvance === null) return;
     // 答对是学习闭环里最该被看见的时刻：延迟 1.2 秒再切题，让“回答正确”的反馈
     // 有机会被学生读到，而不是在同一帧就被切题 effect 的 setReply(null) 清空。
     const timer = window.setTimeout(() => {
-      changeQuestion(pendingAdvanceIndex);
-      setPendingAdvanceIndex(null);
+      if (pendingAdvance !== "completion") changeQuestion(pendingAdvance);
+      setPendingAdvance(null);
     }, 1200);
     // 组件卸载或提前切题（例如学生点了“继续下一题”）都必须清理，否则定时器
     // 会在稍后对一道无关的题目重复触发 changeQuestion。
     return () => window.clearTimeout(timer);
-  }, [pendingAdvanceIndex]);
+  }, [pendingAdvance]);
 
   useEffect(() => {
     // 只在 showExplanation 由 false 变为 true 的那一次滚动；讲解区在页面最
@@ -364,7 +370,7 @@ export function PublishedPaperApp() {
         knowledgePointId={publication.lessons[questionIndex].knowledgePointId}
         mastery={mastery}
       />
-      {paperProgress.completed && !reviewCompleted ? (
+      {paperProgress.completed && !reviewCompleted && pendingAdvance !== "completion" ? (
         <StudentPaperCompleted
           questionCount={publication.lessons.length}
           onBack={() => navigate("/learn")}
@@ -389,11 +395,12 @@ export function PublishedPaperApp() {
         mistakeNotice={mistakeNotice}
         hasSubmitted={Boolean(latestAttempt)}
         lastAssessment={latestAttempt?.assessment}
-        autoAdvancing={pendingAdvanceIndex !== null}
+        autoAdvancing={pendingAdvance !== null}
+        finishingPaper={pendingAdvance === "completion"}
         onAdvanceNow={() => {
-          if (pendingAdvanceIndex !== null) {
-            changeQuestion(pendingAdvanceIndex);
-            setPendingAdvanceIndex(null);
+          if (pendingAdvance !== null) {
+            if (pendingAdvance !== "completion") changeQuestion(pendingAdvance);
+            setPendingAdvance(null);
           }
         }}
         onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 220" role="img" aria-labelledby="title">
+  <title id="title">数轴上 P 位于负二，Q 位于一</title>
+  <rect width="480" height="220" fill="#fff"/>
+  <path d="M45 110H435m-12-8 12 8-12 8" fill="none" stroke="#263b31" stroke-width="3"/>
+  <g stroke="#263b31" stroke-width="2" font-family="sans-serif" font-size="16" text-anchor="middle">
+    <path d="M75 99v22M130 99v22M185 99v22M240 95v30M295 99v22M350 99v22M405 99v22"/>
+    <text x="75" y="148" stroke="none">-3</text><text x="130" y="148" stroke="none">-2</text><text x="185" y="148" stroke="none">-1</text>
+    <text x="240" y="148" stroke="none">0</text><text x="295" y="148" stroke="none">1</text><text x="350" y="148" stroke="none">2</text><text x="405" y="148" stroke="none">3</text>
+  </g>
+  <circle cx="130" cy="110" r="7" fill="#d86b43"/><text x="130" y="80" text-anchor="middle" font-family="sans-serif" font-size="18">P</text>
+  <circle cx="295" cy="110" r="7" fill="#28795d"/><text x="295" y="80" text-anchor="middle" font-family="sans-serif" font-size="18">Q</text>
+</svg>

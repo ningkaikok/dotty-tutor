@@ -38,6 +38,8 @@ uv run python -m evaluation.tutor.runner --check
 
 本批新增的 `apps/api/evaluation/benchmark/` 只定义人工金标准 JSONL 契约和离线统计工具：记录 caseId、任务维度、脱敏输入/期望、rubric、sourceKind、许可与脱敏说明、annotator/reviewer、approvedAt 及分层字段；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 才计入 50 条，synthetic/public/fixture 即使显式标记也不计入。校验器会拒绝少于 50 条、缺 reviewer、标注人与复核人相同、重复 caseId 或覆盖不足的正式集，因而本报告仍不能给出跨模型排名。
 
+目前已整理 50 条合成审校候选，覆盖六类任务并附 8 张自制 SVG 图例，位于 `apps/api/evaluation/benchmark/review_queue/`。它们仍标记为 `pending_human_review` 且 `counted=false`，**不属于人工金标准，也不能作为模型排名样本**；需要领域人员逐条确认输入、答案和 rubric，并另行提供符合正式契约的人工作品及独立复核记录。
+
 配对统计提供 bootstrap 95% CI、二元配对差异/精确符号统计和失败臂完整性门禁；门禁要求每个 arm 覆盖相同 caseId，失败结果必须保留并带错误原因。`prefix_cache_probe.py` 仅验证离线 warm/cold/control 结果契约，能力状态为 `unknown`、`unsupported`、`implicit` 或 `explicit`；只有 warm 阶段相对 cold/control 缓存基线出现新增的有效 `cacheHitTokens`，或有可追溯的官方能力证据时才可判支持。cold/control 与 warm 相同的隐藏系统前缀命中不能证明应用前缀复用，explicit 还必须有官方 source；否则结论只能是 `inconclusive`/`unsupported`，时延差异不构成缓存证明。
 
 ### 2026-09-23 Prefix Cache Provider 验证
@@ -509,7 +511,7 @@ n=1 扩到 n=6，并给 `judgeMetrics.scoreDiscrimination` 加了 `byFlawFamily`
 ### 未通过或尚未完成
 
 - 当前样例讲解本身仍存在逻辑错误，不能直接发布给学生。
-- 尚未建立不少于 50 道题的人工金标准数据集。
+- 尚未建立不少于 50 道题的人工金标准数据集；当前 50 条候选均为未审校的合成草案，不计数。
 - 尚未完成不同生成模型、审校模型和视觉模型的统计性横向评测。
 - 当前工具已能记录审核运行耗时、Provider 请求次数和可用 token，但尚未完成跨模型的统计性横评。
 

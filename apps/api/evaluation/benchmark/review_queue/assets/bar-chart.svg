@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title">
+  <title id="title">柱状图 A 为四，B 为七，C 为五</title>
+  <rect width="480" height="300" fill="#fff"/><path d="M75 240H425M75 240V40" stroke="#34483e" stroke-width="3"/>
+  <g stroke="#9aa89f" stroke-width="1"><path d="M75 215H425M75 190H425M75 165H425M75 140H425M75 115H425M75 90H425M75 65H425M75 40H425"/></g>
+  <g fill="#6fb79a"><rect x="125" y="140" width="58" height="100"/><rect x="230" y="65" width="58" height="175"/><rect x="335" y="115" width="58" height="125"/></g>
+  <g font-family="sans-serif" font-size="17" text-anchor="middle" fill="#263b31"><text x="154" y="265">A</text><text x="259" y="265">B</text><text x="364" y="265">C</text></g>
+  <g font-family="sans-serif" font-size="13" text-anchor="end" fill="#52615a"><text x="65" y="245">0</text><text x="65" y="220">1</text><text x="65" y="195">2</text><text x="65" y="170">3</text><text x="65" y="145">4</text><text x="65" y="120">5</text><text x="65" y="95">6</text><text x="65" y="70">7</text><text x="65" y="45">8</text></g>
+  <text x="259" y="27" text-anchor="middle" font-family="sans-serif" font-size="14" fill="#52615a">纵轴刻度每格 1</text>
+</svg>
