@@ -1076,6 +1076,66 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
   });
 
+  test("最后一题答对后先显示正确反馈，再进入完成页", async ({ page }) => {
+    await mockApi(page);
+    const answerAttempts: Record<string, unknown>[] = [];
+    const publication = {
+      publicationId: "paper-final-feedback",
+      title: "最后一题反馈测试",
+      status: "published",
+      lessonIds: [choiceQuestion.question.id],
+      lessonCount: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      lessons: [{
+        lessonId: choiceQuestion.question.id,
+        title: choiceQuestion.question.knowledgePoint,
+        version: 1,
+        status: "published",
+        questionPayload: choiceQuestion,
+        guideCards: [],
+      }],
+    };
+    const session = () => ({
+      sessionId: "final-feedback-session",
+      learnerId: "local-demo",
+      publicationId: publication.publicationId,
+      startedAt: 1,
+      attempts: answerAttempts,
+    });
+    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
+    await page.route("**/api/publications/paper-final-feedback", async (route) => await route.fulfill({ json: publication }));
+    await page.route("**/api/learning/sessions", async (route) => await route.fulfill({ json: session() }));
+    await page.route("**/api/learning/sessions/final-feedback-session", async (route) => await route.fulfill({ json: session() }));
+    await page.route("**/api/learning/sessions/final-feedback-session/attempts", async (route) => {
+      answerAttempts.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ json: {
+        attemptId: "final-feedback-attempt",
+        mastery: { learnerId: "local-demo", knowledgePoint: "数轴上的大小比较", score: 1, attemptCount: 1, correctCount: 1, lastPracticedAt: 1 },
+        autoMistake: null,
+      } });
+    });
+    await page.route("**/api/help", async (route) => await route.fulfill({ json: {
+      reply: "回答正确，你已经完成这套练习。",
+      guideContext: { assessment: "correct", assessmentAuthority: "deterministic" },
+      nextHintLevel: 0,
+      canvasAction: "none",
+      source: "answer-check",
+      modelRun,
+    } }));
+
+    await page.goto("/learn");
+    await page.getByRole("button", { name: /最后一题反馈测试/ }).click();
+    await page.getByRole("button", { name: /\(B\)/ }).click();
+    await page.getByRole("button", { name: "提交答案" }).click();
+
+    const completionHeading = page.getByRole("heading", { name: "这套练习已经完成" });
+    await expect(page.locator(".student-feedback.correct")).toContainText("回答正确，你已经完成这套练习。");
+    await expect(completionHeading).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "查看完成结果 →" })).toBeVisible();
+    await expect(completionHeading).toBeVisible();
+  });
+
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {
     await mockMistakeApi(page);
     await page.goto("/mistakes");
@@ -1245,6 +1305,9 @@ test.describe("教材辅导核心交互", () => {
     await page.getByRole("button", { name: "进入动态教材 →" }).click();
 
     await expect(page.getByRole("heading", { name: "数轴上的大小比较" })).toBeVisible();
+    await expect(page.locator(".question-position")).toContainText("第 1 / 3 题");
+    await expect(page.locator(".question-position")).toContainText("教材原题 1");
+    await expect(page.locator(".question-source-meta")).not.toContainText("教材原题");
     await expect(page.locator(".geometry-canvas-text .math-inline")).toHaveCount(1);
     // 讲解区会同时显示正文和 TTS 文本副本，两者都必须经过 MathText。
     await expect(page.locator(".explanation-card .math-inline")).toHaveCount(2);

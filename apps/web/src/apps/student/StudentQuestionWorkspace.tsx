@@ -21,6 +21,8 @@ interface StudentQuestionWorkspaceProps {
   lastAssessment?: ExerciseAttemptInput["assessment"];
   /** 答对后到自动切题之间的等待窗口；为真时禁止重复提交，并露出手动推进按钮。 */
   autoAdvancing: boolean;
+  /** 最后一题答对后显示完成页之前的短暂停留。 */
+  finishingPaper: boolean;
   onAdvanceNow: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -58,6 +60,7 @@ export function StudentQuestionWorkspace({
   hasSubmitted,
   lastAssessment,
   autoAdvancing,
+  finishingPaper,
   onAdvanceNow,
   onPrevious,
   onNext,
@@ -171,7 +174,9 @@ export function StudentQuestionWorkspace({
 
       {autoAdvancing && (
         <div className="student-auto-advance">
-          <button className="student-submit-button" onClick={onAdvanceNow}>继续下一题 →</button>
+          <button className="student-submit-button" onClick={onAdvanceNow}>
+            {finishingPaper ? "查看完成结果 →" : "继续下一题 →"}
+          </button>
         </div>
       )}
 
