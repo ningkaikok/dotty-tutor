@@ -1,15 +1,20 @@
-import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types/index";
+import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog, TutorModelEvaluation } from "../../../types/index";
 import type { RuntimeLoadingState, UploadPhase } from "./useTextbookImport";
+import { TutorModelEvaluationPanel } from "./TutorModelEvaluationPanel";
 import { PRODUCT_TERMS } from "../../../productTerms";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
   tutorModels: ModelCatalog | null;
+  tutorEvaluation: TutorModelEvaluation | null;
+  tutorEvaluationLoading: boolean;
+  tutorEvaluationError: string;
   reviewModels: ReviewModelCatalog | null;
   ocrProviders: OcrCatalog | null;
   loading: RuntimeLoadingState;
   phase: UploadPhase;
   onSelectModel: (provider: ModelProvider, model: string) => void;
+  onEvaluateTutorModel: (provider: Exclude<ModelProvider, "mock">, model: string) => void;
   onSelectTutorModel: (provider: ModelProvider, model: string) => void;
   onSelectReviewModel: (provider: ModelProvider, model: string) => void;
   onSelectOcr: (provider: OcrProvider) => void;
@@ -19,11 +24,15 @@ interface RuntimeSettingsProps {
 export function RuntimeSettings({
   models,
   tutorModels,
+  tutorEvaluation,
+  tutorEvaluationLoading,
+  tutorEvaluationError,
   reviewModels,
   ocrProviders,
   loading,
   phase,
   onSelectModel,
+  onEvaluateTutorModel,
   onSelectTutorModel,
   onSelectReviewModel,
   onSelectOcr,
@@ -72,32 +81,16 @@ export function RuntimeSettings({
           </span>
         )}
 
-        <div className="tutor-label">
-          <strong>选择错题辅导模型</strong>
-          <small>独立于题目生成和审核；学生每轮对话会使用这里的模型。</small>
-        </div>
-        <select
-          className="tutor-select"
-          value={tutorModels ? `${tutorModels.selected.provider}::${tutorModels.selected.model}` : ""}
-          disabled={!tutorModels || uploadBusy || loading.tutor}
-          title={disabledHint}
-          onChange={(event) => {
-            const [provider, model] = event.target.value.split("::") as [ModelProvider, string];
-            onSelectTutorModel(provider, model);
-          }}
-        >
-          {!tutorModels && <option>正在读取辅导模型…</option>}
-          {tutorModels?.providers.flatMap((provider) => provider.models.map((model) => (
-            <option key={`tutor::${provider.id}::${model}`} value={`${provider.id}::${model}`} disabled={!provider.available}>
-              {provider.label} · {model}
-            </option>
-          )))}
-        </select>
-        {tutorModels && (
-          <span className={`runtime-status tutor-status ${tutorModels.selected.provider}`}>
-            <i /> 当前辅导：{tutorModels.selected.provider} · {tutorModels.selected.model}
-          </span>
-        )}
+        <TutorModelEvaluationPanel
+          models={tutorModels}
+          evaluation={tutorEvaluation}
+          evaluationLoading={tutorEvaluationLoading}
+          evaluationError={tutorEvaluationError}
+          disabled={uploadBusy}
+          selectionLoading={loading.tutor}
+          onEvaluate={onEvaluateTutorModel}
+          onApply={onSelectTutorModel}
+        />
 
         <div className="review-label">
           <strong>选择审核模型</strong>

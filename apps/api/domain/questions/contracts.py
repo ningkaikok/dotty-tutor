@@ -403,6 +403,16 @@ class ModelSelectionRequest(BaseModel):
     model: str = Field(min_length=1, max_length=100)
 
 
+class TutorModelRef(BaseModel):
+    provider: Literal["ollama", "codex"]
+    model: str = Field(min_length=1, max_length=120)
+
+
+class TutorModelEvaluationRequest(BaseModel):
+    baseline: TutorModelRef
+    candidate: TutorModelRef
+
+
 class OcrSelectionRequest(BaseModel):
     provider: OcrProvider
 

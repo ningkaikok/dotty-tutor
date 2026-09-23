@@ -19,8 +19,9 @@ from domain.questions.contracts import (
     ModelSelectionRequest,
     OcrSelectionRequest,
     TtsRequest,
+    TutorModelEvaluationRequest,
 )
-from infrastructure.runtime.model_runtime import runtime
+from infrastructure.runtime.model_runtime import ModelSelection, runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 from observability import log_event
@@ -32,6 +33,7 @@ def build_runtime_router(
     question_payload: Callable[[], dict[str, Any]],
     tutor_runtime: Any,
     metrics_store: Any = None,
+    tutor_model_evaluation: Any = None,
 ) -> APIRouter:
     router = APIRouter()
     qwen_tts_url = os.getenv("QWEN_TTS_URL", "http://127.0.0.1:8020")
@@ -221,8 +223,34 @@ def build_runtime_router(
 
     @router.get("/api/tutor-models")
     def get_tutor_models() -> dict[str, Any]:
-        """Return the independent model catalog used only by mistake tutoring."""
+        """Return the independent model catalog used by student tutoring."""
         return tutor_runtime.catalog()
+
+    @router.post("/api/tutor-model-evaluations", status_code=202)
+    def start_tutor_model_evaluation(
+        request: TutorModelEvaluationRequest,
+    ) -> dict[str, Any]:
+        """Compare the current and candidate tutor models on the fixed draft set."""
+        if tutor_model_evaluation is None:
+            raise HTTPException(status_code=503, detail="模型对照服务暂不可用")
+        try:
+            baseline = ModelSelection(request.baseline.provider, request.baseline.model)
+            candidate = ModelSelection(request.candidate.provider, request.candidate.model)
+            return tutor_model_evaluation.start(baseline=baseline, candidate=candidate)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        except RuntimeError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @router.get("/api/tutor-model-evaluations/{run_id}")
+    def get_tutor_model_evaluation(run_id: str) -> dict[str, Any]:
+        """Poll one process-local paired draft evaluation."""
+        if tutor_model_evaluation is None:
+            raise HTTPException(status_code=503, detail="模型对照服务暂不可用")
+        result = tutor_model_evaluation.get(run_id)
+        if result is None:
+            raise HTTPException(status_code=404, detail="模型对照记录不存在或服务已重启")
+        return result
 
     @router.post("/api/tutor-models/select")
     def select_tutor_model(request: ModelSelectionRequest) -> dict[str, Any]:

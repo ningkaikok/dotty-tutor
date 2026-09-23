@@ -1107,6 +1107,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tutor-model-evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Tutor Model Evaluation
+         * @description Compare the current and candidate tutor models on the fixed draft set.
+         */
+        post: operations["start_tutor_model_evaluation_api_tutor_model_evaluations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tutor-model-evaluations/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Tutor Model Evaluation
+         * @description Poll one process-local paired draft evaluation.
+         */
+        get: operations["get_tutor_model_evaluation_api_tutor_model_evaluations__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tutor-models": {
         parameters: {
             query?: never;
@@ -1116,7 +1156,7 @@ export interface paths {
         };
         /**
          * Get Tutor Models
-         * @description Return the independent model catalog used only by mistake tutoring.
+         * @description Return the independent model catalog used by student tutoring.
          */
         get: operations["get_tutor_models_api_tutor_models_get"];
         put?: never;
@@ -2555,6 +2595,21 @@ export interface components {
              * @enum {string}
              */
             mode: "answer" | "help";
+        };
+        /** TutorModelEvaluationRequest */
+        TutorModelEvaluationRequest: {
+            baseline: components["schemas"]["TutorModelRef"];
+            candidate: components["schemas"]["TutorModelRef"];
+        };
+        /** TutorModelRef */
+        TutorModelRef: {
+            /** Model */
+            model: string;
+            /**
+             * Provider
+             * @enum {string}
+             */
+            provider: "ollama" | "codex";
         };
         /**
          * TutorObservationDecision
@@ -4742,6 +4797,74 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    start_tutor_model_evaluation_api_tutor_model_evaluations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TutorModelEvaluationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tutor_model_evaluation_api_tutor_model_evaluations__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

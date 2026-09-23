@@ -1,4 +1,4 @@
-import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../types/runtime";
+import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog, TutorModelEvaluation, TutorModelRef } from "../types/runtime";
 import { GeneratedSuccess, parse } from "./client";
 
 type ModelsResponse = ModelCatalog & GeneratedSuccess<"get_models_api_models_get">;
@@ -36,6 +36,23 @@ export async function selectTutorModel(provider: ModelProvider, model: string, s
     body: JSON.stringify({ provider, model }),
     signal,
   }));
+}
+
+export async function startTutorModelEvaluation(
+  baseline: TutorModelRef,
+  candidate: TutorModelRef,
+  signal?: AbortSignal,
+): Promise<TutorModelEvaluation> {
+  return parse<TutorModelEvaluation>(await fetch("/api/tutor-model-evaluations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseline, candidate }),
+    signal,
+  }));
+}
+
+export async function loadTutorModelEvaluation(runId: string, signal?: AbortSignal): Promise<TutorModelEvaluation> {
+  return parse<TutorModelEvaluation>(await fetch(`/api/tutor-model-evaluations/${encodeURIComponent(runId)}`, { signal }));
 }
 
 export async function loadReviewModels(): Promise<ReviewModelCatalog> {

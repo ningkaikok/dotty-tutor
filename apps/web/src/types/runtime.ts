@@ -24,7 +24,87 @@ export interface ModelCatalog {
     available: boolean;
     models: string[];
     detail: string;
+    modelDetails?: ModelCapabilityDetails[];
   }>;
+}
+
+export interface ModelCapabilityDetails {
+  name: string;
+  displayName: string;
+  roles: string[];
+  capabilities: string[];
+  contextWindow: number;
+  latencyTier: string;
+  costTier: string;
+  fallback: string | null;
+  health: { healthy: boolean; consecutiveFailures: number; lastFailureReason: string | null; lastFailureAt: string | null };
+}
+
+export interface TutorModelRef {
+  provider: Exclude<ModelProvider, "mock">;
+  model: string;
+}
+
+export interface TutorModelEvaluationArmSummary {
+  cases: number;
+  successfulCalls: number;
+  failedCalls: number;
+  schemaSuccessRate: number;
+  strictReferenceCases: number;
+  strictReferenceCaseRate: number;
+  exactReferenceFields: number;
+  referenceFields: number;
+  exactReferenceFieldRate: number;
+  latencyMs: { p50: number | null; p95: number | null };
+  tokenUsage: {
+    knownPromptCalls: number;
+    promptTokens: number | null;
+    knownOutputCalls: number;
+    outputTokens: number | null;
+  };
+  dimensions: Record<string, { cases: number; successfulCalls: number; strictReferenceCases: number }>;
+}
+
+export interface TutorModelEvaluationResult {
+  caseId: string;
+  taskDimension: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  rubric: Record<string, unknown>;
+  baseline: TutorModelEvaluationCall;
+  candidate: TutorModelEvaluationCall;
+}
+
+export interface TutorModelEvaluationCall {
+  status: "success" | "failed";
+  output: Record<string, unknown> | null;
+  durationMs: number | null;
+  promptTokens: number | null;
+  outputTokens: number | null;
+  schemaFallback: boolean | null;
+  errorType?: string;
+  referenceFields: Record<string, boolean>;
+}
+
+export interface TutorModelEvaluation {
+  runId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  createdAt: string;
+  dataset: string;
+  datasetHash: string;
+  totalCases: number;
+  completedCases: number;
+  baseline: TutorModelRef;
+  candidate: TutorModelRef;
+  summary: {
+    baseline: TutorModelEvaluationArmSummary;
+    candidate: TutorModelEvaluationArmSummary;
+    pairedStrictReferenceDifference: Record<string, number>;
+  } | null;
+  statisticalNote: string;
+  errorType?: string;
+  error?: string;
+  results?: TutorModelEvaluationResult[];
 }
 
 /** 文字和题图审核共用同一个裁判模型，保证审核结论来自同一上下文。 */

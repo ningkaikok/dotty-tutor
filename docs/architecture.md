@@ -160,7 +160,7 @@ flowchart TB
 | TutorInput 交互 | `apps/web/src/apps/mistake/components/TutorInputComposer.tsx`、`TutorObservationReview.tsx`、`useTutorInput.ts` | 统一文字、结构化答案、题图/步骤图、公式候选和画布输入；低置信度观察确认 |
 | 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
-| 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
+| 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换及陪练模型配对评测轮询 |
 | 教材导入组件 | `apps/web/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |
 | 课程播放器 | `apps/web/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `apps/web/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
@@ -196,8 +196,9 @@ flowchart TB
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
 | 题目流水线 | `apps/api/domain/questions/pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
-| 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、TTS 和学习效果/模型成本联合报告 |
-| 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
+| 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
+| 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 用 50 条合成草案显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
+| 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用；支持评测任务显式指定模型且不改写进程默认选择 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |

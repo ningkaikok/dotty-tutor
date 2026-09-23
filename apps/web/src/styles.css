@@ -177,15 +177,40 @@ body::before {
 /* Each runtime setting owns a label/status row pair. Without explicit placement,
    the second select is auto-placed on top of the generation select and appears
    to be missing even though it is present in the DOM. */
-.model-switcher .tutor-label { grid-column: 1; grid-row: 3 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .tutor-select { grid-column: 2; grid-row: 3; }
-.model-switcher .tutor-status { grid-column: 2; grid-row: 4; }
-.model-switcher .review-label { grid-column: 1; grid-row: 5 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .review-select { grid-column: 2; grid-row: 5; }
-.model-switcher .review-status { grid-column: 2; grid-row: 6; }
-.model-switcher .ocr-label { grid-column: 1; grid-row: 7 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .ocr-select { grid-column: 2; grid-row: 7; }
-.model-switcher .ocr-status { grid-column: 2; grid-row: 8; }
+.model-switcher .tutor-label { grid-column: 1 / -1; grid-row: 3; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .tutor-current-model { grid-column: 1; grid-row: 4; color: #52645a; font-size: 12px; }
+.model-switcher .tutor-select { grid-column: 2; grid-row: 4; }
+.model-switcher .tutor-evaluation-actions { grid-column: 2; grid-row: 5; display: flex; flex-wrap: wrap; gap: 8px; }
+.tutor-evaluation-button { min-height: 38px; padding: 8px 12px; border: 1px solid #b9c8bd; border-radius: 9px; color: #234b38; background: #f2f8f4; cursor: pointer; font-weight: 700; }
+.tutor-evaluation-button:disabled { cursor: not-allowed; opacity: .55; }
+.tutor-evaluation-button.primary { border-color: #20543d; color: #fff; background: #20543d; }
+.tutor-evaluation-note, .tutor-evaluation-progress, .tutor-evaluation-error, .tutor-evaluation-report { grid-column: 1 / -1; }
+.tutor-evaluation-note, .tutor-evaluation-report-note { margin: 0; color: #68766e; font-size: 12px; line-height: 1.55; }
+.tutor-evaluation-progress { margin: 0; color: #375c47; font-size: 13px; }
+.tutor-evaluation-error { margin: 0; color: #a0312b; font-size: 13px; }
+.tutor-evaluation-stale { margin: 8px 0; color: #875b16; font-size: 12px; }
+.model-switcher .tutor-evaluation-note { grid-row: 6; }
+.model-switcher .tutor-evaluation-progress { grid-row: 7; }
+.model-switcher .tutor-evaluation-error { grid-row: 8; }
+.tutor-evaluation-report { padding: 14px 0 4px; border-top: 1px solid #e0e3de; }
+.tutor-evaluation-report h3 { margin: 0 0 5px; font-size: 16px; }
+.tutor-evaluation-report h4 { margin: 14px 0 6px; font-size: 13px; }
+.tutor-evaluation-table-wrap { overflow-x: auto; margin: 10px 0; }
+.tutor-evaluation-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tutor-evaluation-report th, .tutor-evaluation-report td { padding: 8px; border: 1px solid #e0e6e1; text-align: left; vertical-align: top; }
+.tutor-evaluation-cases { margin-top: 12px; border-top: 1px solid #e2e8e3; }
+.tutor-evaluation-cases > summary { padding: 10px 0; color: #365345; cursor: pointer; font-size: 13px; font-weight: 700; }
+.tutor-evaluation-cases article { padding: 12px 0; border-top: 1px solid #edf0ed; }
+.tutor-evaluation-cases h4 { margin: 0 0 8px; font-size: 13px; }
+.tutor-evaluation-cases p { margin: 8px 0 4px; font-size: 12px; }
+.tutor-evaluation-cases pre { max-height: 180px; overflow: auto; margin: 0; padding: 9px; border-radius: 7px; background: #f4f6f4; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-switcher .tutor-evaluation-report { grid-row: 9; }
+.model-switcher .review-label { grid-column: 1; grid-row: 10 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .review-select { grid-column: 2; grid-row: 10; }
+.model-switcher .review-status { grid-column: 2; grid-row: 11; }
+.model-switcher .ocr-label { grid-column: 1; grid-row: 12 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .ocr-select { grid-column: 2; grid-row: 12; }
+.model-switcher .ocr-status { grid-column: 2; grid-row: 13; }
 .ocr-status.mineru i { background: #6759d9; }
 .ocr-status.pypdf i, .ocr-status.none i { background: #b48248; }
 .library-panel { margin-bottom: 18px; padding: 20px 24px; border-radius: 20px; }
@@ -465,6 +490,9 @@ footer b { color: #b1aea5; }
   .model-switcher { grid-template-columns: 1fr; }
   .model-switcher > div:first-child, .model-switcher > select:not(.tutor-select):not(.review-select):not(.ocr-select), .runtime-status,
   .model-switcher .tutor-label, .model-switcher .tutor-select,
+  .model-switcher .tutor-current-model, .model-switcher .tutor-evaluation-actions,
+  .model-switcher .tutor-evaluation-note, .model-switcher .tutor-evaluation-progress,
+  .model-switcher .tutor-evaluation-error, .model-switcher .tutor-evaluation-report,
   .model-switcher .review-label, .model-switcher .review-select,
   .model-switcher .ocr-label, .model-switcher .ocr-select, .model-switcher .ocr-status { grid-column: 1; grid-row: auto; }
   .import-intro { margin: 36px 0; }
