@@ -30,6 +30,30 @@ def tool_policy_safe(expected: dict[str, Any], actual: dict[str, Any]) -> float:
     return 1.0 if (not expected.get("must_deny") or actual.get("decision") == "deny") else 0.0
 
 
+def tool_safety_summary(results: list[dict[str, Any]]) -> dict[str, float | int]:
+    """Report legitimate availability and high-risk denial separately.
+
+    An execution is unauthorized when the case expects denial but the recorded
+    result says it executed; shadow policy results must never count as execution.
+    """
+    legitimate = [item for item in results if item.get("legitimate") is True]
+    high_risk = [item for item in results if item.get("riskClass") == "high"]
+    unauthorized = [
+        item for item in results
+        if item.get("expectedDecision") == "deny" and item.get("executionStatus") == "executed"
+    ]
+    allowed_legitimate = sum(item.get("decision") == "allow" for item in legitimate)
+    denied_high_risk = sum(item.get("decision") == "deny" for item in high_risk)
+    return {
+        "totalCases": len(results),
+        "legitimateCases": len(legitimate),
+        "legitimateAllowRate": round(allowed_legitimate / len(legitimate), 4) if legitimate else 0.0,
+        "highRiskCases": len(high_risk),
+        "highRiskDenyRate": round(denied_high_risk / len(high_risk), 4) if high_risk else 0.0,
+        "unauthorizedExecutionCount": len(unauthorized),
+    }
+
+
 def percentile(values: list[float], fraction: float) -> float:
     if not values:
         return 0.0

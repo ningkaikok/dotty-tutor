@@ -42,8 +42,9 @@ export function useVariationPractice(
   };
 
   const generate = async () => {
-    // 一道验证题贯穿整个验证阶段；已有题目只从后端恢复，不再生成下一道。
-    if (submitting || active) return;
+    // A correct answer that has not passed the domain gate needs another
+    // evidence-bearing exercise; a mastered item remains terminal.
+    if (submitting || active?.mastery?.mastered) return;
     setSubmitting(true);
     setError("");
     try {

@@ -34,6 +34,20 @@ uv run python -m evaluation.tutor.runner --check
 > 复用同一个 `REVIEW_PROVIDER` / `REVIEW_MODEL`，当前实现与实时流水线以
 > [`系统架构与调用流程`](architecture.md) 为准。
 
+### 2026-09 基础设施增量（不等同于模型效果结论）
+
+本批新增的 `apps/api/evaluation/benchmark/` 只定义人工金标准 JSONL 契约和离线统计工具：记录 caseId、任务维度、脱敏输入/期望、rubric、sourceKind、许可与脱敏说明、annotator/reviewer、approvedAt 及分层字段；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 才计入 50 条，synthetic/public/fixture 即使显式标记也不计入。校验器会拒绝少于 50 条、缺 reviewer、标注人与复核人相同、重复 caseId 或覆盖不足的正式集，因而本报告仍不能给出跨模型排名。
+
+配对统计提供 bootstrap 95% CI、二元配对差异/精确符号统计和失败臂完整性门禁；门禁要求每个 arm 覆盖相同 caseId，失败结果必须保留并带错误原因。`prefix_cache_probe.py` 仅验证离线 warm/cold/control 结果契约，能力状态为 `unknown`、`unsupported`、`implicit` 或 `explicit`；只有 warm 阶段相对 cold/control 缓存基线出现新增的有效 `cacheHitTokens`，或有可追溯的官方能力证据时才可判支持。cold/control 与 warm 相同的隐藏系统前缀命中不能证明应用前缀复用，explicit 还必须有官方 source；否则结论只能是 `inconclusive`/`unsupported`，时延差异不构成缓存证明。
+
+### 2026-09-23 Prefix Cache Provider 验证
+
+- 官方能力：OpenAI 的 [Prompt caching 文档](https://developers.openai.com/api/docs/guides/prompt-caching) 明确说明 GPT-5.6 及以后模型支持缓存，并应以 usage 中的 cached tokens 衡量真实复用。
+- 当前 Provider 实测：使用 `gpt-5.6-luna` 对完全合成、超过最小长度的稳定前缀连续调用两次，两个请求均为 `input_tokens=29020`、`cached_input_tokens=8960`；同长度但不同内容的 control 为 `input_tokens=28020`、`cached_input_tokens=8960`。
+- 结论：Codex CLI 路径已经证明会报告缓存 token，且上游模型官方支持 Prompt Cache；但三组请求的 8960 token 命中是相同基线，尚不能证明本项目追加的应用前缀被复用。因此 Provider 能力记为“官方支持”，本项目应用前缀命中仍为 `inconclusive`，不能据此宣称已获得延迟或成本收益。
+
+工具安全评测与学习者画像仍属实验：工具执行保持 shadow，画像只聚合有 scope、证据和生命周期的确定性事实，过期/冲突/敏感输入排除，不直接注入 Tutor、修改 mastery 或排期。上述工程能力不代表真实师生学习效果；50+ 人工金标准与真实跨模型统计仍未完成，Provider 虽已确认具备缓存能力，但应用前缀复用仍未得到增量命中证据。
+
 ## 2. 测试目标
 
 本轮测试验证以下能力：
@@ -97,7 +111,7 @@ PDF 分块上传
 cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 ```
 
-结果：**29/29 通过**，PostgreSQL 迁移后独立环境回归执行通过。
+结果：**29/29 通过**（该历史记录为已有离线/夹具回归）；真实 PostgreSQL upgrade 独立环境回归仍需补跑，不能据此宣称 Postgres 升级已完成。
 
 | 测试域 | 用例数 | 结果 | 主要覆盖内容 |
 |---|---:|---|---|

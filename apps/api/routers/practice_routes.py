@@ -9,8 +9,10 @@ from fastapi import APIRouter, HTTPException
 from answer_evaluator import evaluate_structured_answer
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.practice import VariationAnswerRequest
+from domain.learning.mastery_policy import decide_next_action, resolve_policy
 from domain.questions.student_view import student_review_task, student_variation_item
 from observability import log_event
+from routers.review_routes import review_policy_view
 from routers.tutoring_routes import has_meaningful_answer
 
 
@@ -21,6 +23,75 @@ def _public_variation(variation: dict[str, Any]) -> dict[str, Any]:
     因此这里剥掉答案不会影响任何渲染或作答流程。
     """
     return student_variation_item(variation)
+
+
+def _variation_policy(item: dict[str, Any]):
+    question = (item.get("questionPayload") or {}).get("question") or {}
+    try:
+        return resolve_policy(
+            question.get("objectiveType") or question.get("objective_type"),
+            question.get("gateMode") or question.get("gate_mode"),
+            question.get("policyVersion") or question.get("policy_version"),
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=f"变式题策略无效：{error}") from error
+
+
+def _mastery_view(variation_store: Any, item: dict[str, Any]) -> dict[str, Any]:
+    """Project immutable variation evidence through the versioned domain gate."""
+    policy = _variation_policy(item)
+    variations = variation_store.list_for_mistake(item["mistakeId"])
+    attempts = [
+        attempt
+        for variation in variations
+        for attempt in variation_store.list_attempts(variation["variationId"])
+    ]
+    eligible = [
+        attempt for attempt in attempts
+        if attempt.get("assessment") in {"correct", "incorrect"}
+        and (attempt.get("evaluationEvidence") or {}).get("masteryEligible", True) is not False
+    ]
+    correct = sum(attempt.get("assessment") == "correct" for attempt in eligible)
+    evidence_count = len(eligible)
+    accuracy = correct / evidence_count if evidence_count else 0.0
+    latest = eligible[-1] if eligible else {}
+    evidence = latest.get("evaluationEvidence") or {}
+    refs = evidence.get("evidenceRefs") if isinstance(evidence.get("evidenceRefs"), list) else []
+    decision = decide_next_action(
+        policy,
+        accuracy=accuracy,
+        evidence_count=evidence_count,
+        rubric_passed=evidence.get("rubricPassed"),
+        confidence=evidence.get("confidence"),
+        evidence_refs=refs,
+        assessment=latest.get("assessment"),
+        sequence_no=int(item.get("sequence") or 0),
+    )
+    legacy = variation_store.mastery_summary(item["mistakeId"])
+    return {
+        **legacy,
+        "requiredCorrect": 1 if policy.gate_mode == "legacy" else policy.quantitative_min_evidence,
+        "answeredCount": evidence_count,
+        "accuracy": accuracy,
+        "evidenceCount": evidence_count,
+        "mastered": decision["nextAction"] in {"advance", "test_out"},
+        "policy": {
+            "objectiveType": policy.objective_type,
+            "gateMode": policy.gate_mode,
+            "policyVersion": policy.policy_version,
+            "profile": policy.profile,
+        },
+        "gate": decision["gate"],
+        "nextAction": decision["nextAction"],
+    }
+
+
+def _with_mastery(item: dict[str, Any], mastery: dict[str, Any]) -> dict[str, Any]:
+    item["mastery"] = mastery
+    item["policy"] = mastery["policy"]
+    item["gate"] = mastery["gate"]
+    item["nextAction"] = mastery["nextAction"]
+    return item
 
 
 def build_practice_router(
@@ -48,7 +119,10 @@ def build_practice_router(
             raise HTTPException(status_code=403, detail="不能访问其他学生的错题")
         return {
             "items": [
-                _public_variation(variation)
+                _public_variation(_with_mastery(
+                    variation,
+                    _mastery_view(variation_store, variation),
+                ))
                 for variation in variation_store.list_for_mistake(mistake_id)
             ]
         }
@@ -85,7 +159,7 @@ def build_practice_router(
             "status": mistake["status"],
             "masteryTransition": "unmastered → mastered" if mistake["status"] == "mastered" else "unmastered",
             "variations": variations,
-            "reviewTasks": [student_review_task(review) for review in reviews],
+            "reviewTasks": [student_review_task(review_policy_view(review, reviews)) for review in reviews],
         }
 
     @router.post("/api/mistakes/{mistake_id}/variations")
@@ -103,19 +177,28 @@ def build_practice_router(
         if not thread or thread["stage"] not in {"practice", "verify"}:
             raise HTTPException(status_code=409, detail="请先完成原题纠错，再开始变式练习")
 
-        # 验证阶段只需要一道题。前端刷新、重复点击或阶段从 practice
-        # 推进到 verify 时都复用这条记录，避免再次触发昂贵的模型生成。
+        # 已答错的题仍允许在原题上修正；答对但领域 gate 未通过时生成下一道
+        # sequence，保留此前题目和 attempt 历史，不把第一道题永久复用。
         existing = variation_store.list_for_mistake(mistake_id)
         if existing:
-            log_event(
-                "variation.reused",
-                mistake_id=mistake_id,
-                variation_id=existing[-1]["variationId"],
-                reason="single-validation-question",
-            )
-            return _public_variation(existing[-1])
-
-        sequence = 1
+            latest = existing[-1]
+            if latest["status"] == "ready" or latest["assessment"] == "incorrect":
+                log_event(
+                    "variation.reused",
+                    mistake_id=mistake_id,
+                    variation_id=latest["variationId"],
+                    reason="awaiting-answer-or-correction",
+                )
+                return _public_variation(_with_mastery(
+                    latest,
+                    _mastery_view(variation_store, latest),
+                ))
+            mastery = _mastery_view(variation_store, latest)
+            if mastery["mastered"]:
+                raise HTTPException(status_code=409, detail="这道错题已经完成掌握验证")
+            sequence = int(latest.get("sequence") or len(existing)) + 1
+        else:
+            sequence = 1
         try:
             generated = variation_service.generate(mistake, sequence)
         except ValueError as error:
@@ -136,7 +219,7 @@ def build_practice_router(
             strategy=item["strategy"],
             variation_level=item["level"],
         )
-        return _public_variation(item)
+        return _public_variation(_with_mastery(item, _mastery_view(variation_store, item)))
 
     @router.post("/api/variations/{variation_id}/answer")
     def answer_variation(
@@ -153,7 +236,7 @@ def build_practice_router(
             if existing_attempt and existing_attempt["variationId"] == variation_id:
                 item["attemptId"] = existing_attempt["attemptId"]
                 item["evaluationEvidence"] = existing_attempt["evaluationEvidence"]
-                item["mastery"] = variation_store.mastery_summary(item["mistakeId"])
+                _with_mastery(item, _mastery_view(variation_store, item))
                 item["reviewTasks"] = review_store.list_for_mistake(item["mistakeId"])
                 return _public_variation(item)
             raise HTTPException(status_code=409, detail="这道验证题已经答对")
@@ -183,20 +266,24 @@ def build_practice_router(
         )
         if not saved:
             raise HTTPException(status_code=409, detail="这道验证题已经答对")
-        mastery = variation_store.mastery_summary(item["mistakeId"])
+        mastery = _mastery_view(variation_store, saved)
         thread_stage = None
         thread = tutoring_store.find_for_mistake(item["mistakeId"], item["learnerId"])
-        # 变式答对是一个确定性教学事件：practice 完成，进入 verify。
-        # 掌握度只需要这一道验证题答对，不再额外生成第二道题。
-        if result["assessment"] == "correct" and thread and thread["stage"] == "practice":
+        # 只有领域 gate 通过才推进 Tutor 阶段；模型/判题器的 correct 不能绕过 gate。
+        if (
+            result["assessment"] == "correct"
+            and mastery["nextAction"] in {"advance", "test_out"}
+            and thread
+            and thread["stage"] == "practice"
+        ):
             thread = tutoring_store.advance_stage(
                 thread["threadId"],
                 "verify",
-                summary="首道变式题答对，进入掌握验证",
+                summary="变式题通过领域门槛，进入掌握验证",
             )
         if thread:
             thread_stage = thread["stage"]
-        if mastery["mastered"]:
+        if mastery["nextAction"] in {"advance", "test_out"}:
             promoted = mistake_store.mark_mastered(item["mistakeId"])
             if not promoted:
                 raise HTTPException(status_code=409, detail="错题状态已变化，请刷新后重试")
@@ -209,9 +296,19 @@ def build_practice_router(
                 mistake_id=promoted["mistakeId"],
                 learner_id=promoted["learnerId"],
                 base_time=saved["answeredAt"],
+                objective_type=(item.get("questionPayload", {}).get("question", {}).get("objectiveType")
+                                if isinstance(item.get("questionPayload"), dict) else None),
+                gate_mode=(item.get("questionPayload", {}).get("question", {}).get("gateMode")
+                           if isinstance(item.get("questionPayload"), dict) else None),
+                policy_version=(item.get("questionPayload", {}).get("question", {}).get("policyVersion")
+                                if isinstance(item.get("questionPayload"), dict) else None),
+                trigger_evidence_ref=(result.get("evaluationEvidence") or {}).get("evidenceRef"),
             )
-        saved["mastery"] = mastery
+        _with_mastery(saved, mastery)
         saved["tutorStage"] = thread_stage
+        saved["policy"] = mastery["policy"]
+        saved["gate"] = mastery["gate"]
+        saved["nextAction"] = mastery["nextAction"]
         log_event(
             "variation.answered",
             mistake_id=item["mistakeId"],

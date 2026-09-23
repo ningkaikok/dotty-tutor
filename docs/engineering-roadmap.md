@@ -421,8 +421,21 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 - [x] 将系统规则、工具定义、题目上下文、Schema 组成稳定前缀；学生输入和最近消息组成动态后缀。
 - [x] 先记录稳定/动态提示字符数、耗时、调用次数和回退率，再判断 Prefix Cache 是否有实际收益；当前
   `model_call_metrics` 已记录 `stable_prompt_chars` / `dynamic_prompt_chars` 并提供覆盖率聚合。
-- [ ] 主动验证各 Provider 的 Prefix Cache 能力；不支持的 Provider 记录实验结论并保持安全回退，
+- [x] 已验证当前 Codex/OpenAI Provider 的 Prefix Cache 能力：官方文档确认 GPT-5.6+ 支持，Luna CLI usage 也返回 `cached_input_tokens`；应用前缀是否获得增量命中仍单独保持 inconclusive，其他 Provider 继续按同一 probe 验证，
   缓存键必须包含模型、Prompt、Schema、题目版本和知识点版本。
+
+> 2026-09 状态：已新增 `evaluation/prefix_cache_probe.py` 的离线 `warm/cold/control` fixture 契约和
+> `unknown/unsupported/implicit/explicit` 分类。只有 warm 阶段有效 `cacheHitTokens`（不超过
+> `promptTokens`）且高于 cold/control 缓存基线，或 explicit 状态有官方 source，才可判定应用前缀复用；
+> 三阶段相同的 hidden baseline 不能单独判支持。当前 Provider 能力已验证，但没有应用前缀增量命中，因此不能宣称 Prefix Cache 已为本项目带来收益或已经显式启用。
+
+## 2026-09 集成批次：已落地基础设施与边界
+
+- **复习策略**：`mastery_policy.py`/`review_scheduler.py` 已提供按目标类型选择间隔和 gate 的纯函数。typed policy 只接受教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion`；定量 gate 同时检查准确率与最低证据数，定性 gate 检查受约束 rubric、置信度和 evidenceRefs，缺少可靠证据时保持 `needs_review`；通过可推进、达到末端可 `test_out`、失败可从 retry interval 重新开始。历史缺少策略元数据的任务继续走 `unknown:legacy` 的 legacy 1/3/7 天，不宣称已完成多轮重新掌握教学法。
+- **学习者画像 shadow**：`learner_profile.py`/`learner_context.py` 只聚合已有 mastery、已确认错因、提示依赖和最近练习。每条事实带 evidenceRef、observedAt、expiresAt、profileVersion 与 publication scope；过期/冲突/敏感或聊天输入会排除并记录原因。feature flag 关闭或 shadow 模式下不注入生产 Tutor，不改 mastery 或排期。
+- **评测基础设施**：`evaluation/benchmark` 已提供人工金标准 JSONL 契约、缺 reviewer/同人复核/重复 ID/覆盖不足门禁、配对 bootstrap 95% CI、二元配对差异和失败臂完整性校验；只有独立双审计的 `sourceKind=human` case 计入 50 条，synthetic/public/fixture 不计入。当前只有少量测试 fixture，50+ 人工金标准仍未完成，因此没有真实跨模型统计结论。
+- **工具安全与演示**：工具安全样本覆盖 evidenceRef 归属、跳阶段、掌握度/发布越权、未知工具、重放、未确认观察和读取他人内容，执行仍为 shadow，目标是 unauthorized execution=0。`seed_demo_bundle.py` 使用完全合成固定数据、幂等且不删除其他数据；`--verify` 只读验证讲评清单、错因 unknown 和教师推翻。
+- **学生体验收口**：错题导入支持 `import-jobs` 后台任务的取消/重试，移动布局、画布键盘操作、归档 Escape/焦点循环、离线队列隔离和用户术语统一已补齐。弱网队列不是 PWA，也没有真实移动端或真实师生效果结论。
 
 - [x] **批次熔断与系统性失败识别**：`generate_full_paper` 的批次循环里新增
   `_systemic_failure_signal`，只识别三类"在你去修配置之前什么都做不出来"的系统性失败——API key

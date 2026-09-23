@@ -7,6 +7,8 @@
 import os
 
 from application import create_app
+from application.job_registry import merge_registries
+from application.mistake_jobs import build_mistake_registry
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.personalized_assignment import PersonalizedAssignmentService
@@ -14,6 +16,7 @@ from application.services.stateful_tutor import StatefulTutor
 from application.services.tutor_input_service import TutorInputService
 from application.services.tutor_search_service import TutorSearchService
 from domain.questions.pipeline import build_question_content_blocks
+from domain.questions.student_view import student_mistake_item
 from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
 from infrastructure.runtime.tutor_observation_adapter import TutorObservationAdapter
@@ -35,7 +38,8 @@ from routers.practice_routes import build_practice_router
 from routers.publication_routes import build_publication_router
 from routers.review_routes import build_review_router
 from routers.runtime_routes import build_runtime_router
-from routers.textbook_routes import processing_service
+from routers.textbook_routes import job_store as background_job_store
+from routers.textbook_routes import processing_service, textbook_job_registry
 from routers.textbook_routes import router as textbook_router
 from routers.tutor_input_routes import build_tutor_input_router
 from routers.tutor_search_routes import build_tutor_search_router
@@ -109,7 +113,18 @@ app.include_router(build_mistake_router(
     store=mistake_store,
     recognize=mistake_recognizer,
     archive_cleanup=tutoring_store.delete_for_mistake,
+    job_store=background_job_store,
 ))
+
+# The API and Worker share one registry composition. Keeping the domain handlers
+# separate preserves the existing textbook registry while allowing the worker
+# process to execute queued mistake imports too.
+mistake_job_registry = build_mistake_registry(
+    store=mistake_store,
+    recognize=mistake_recognizer,
+    project_result=student_mistake_item,
+)
+job_registry = merge_registries(textbook_job_registry, mistake_job_registry)
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,

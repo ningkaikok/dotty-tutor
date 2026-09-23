@@ -295,7 +295,11 @@ class JobStore(DatabaseStore):
             connection.execute(
                 update(background_jobs)
                 .where(background_jobs.c.job_id == job_id, background_jobs.c.status == "running")
-                .values(cancel_requested=True, updated_at=timestamp)
+                .values(
+                    cancel_requested=True,
+                    updated_at=timestamp,
+                    message="已请求取消，将在安全点停止",
+                )
             )
         return self.get_job(job_id)
 

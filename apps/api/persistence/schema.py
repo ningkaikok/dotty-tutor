@@ -179,6 +179,11 @@ knowledge_points = Table(
     Column("publication_id", String(128), ForeignKey("lesson_publications.publication_id", ondelete="CASCADE"), nullable=False),
     Column("name", String(160), nullable=False),
     Column("normalized_name", String(160), nullable=False),
+    # Optional policy metadata: NULL keeps historical unknown points on the
+    # legacy gate and is intentionally not backfilled to a guessed objective.
+    Column("objective_type", String(32), nullable=True),
+    Column("gate_mode", String(32), nullable=True),
+    Column("policy_version", String(64), nullable=True),
     Column("created_at", Float, nullable=False),
 )
 

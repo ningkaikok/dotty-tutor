@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -63,6 +64,8 @@ def validate_tool_proposal(
     stage: str,
     input_item: dict[str, Any] | None,
     action: dict[str, Any],
+    evidence_registry: Mapping[str, Any] | None = None,
+    evidence_owner: str | None = None,
 ) -> ToolPolicyDecision:
     """根据已确认事实决定是否允许提案进入下一执行层。
 
@@ -80,6 +83,15 @@ def validate_tool_proposal(
     refs = [ref.strip() for ref in parsed.evidenceRefs if ref.strip()]
     if not refs:
         return ToolPolicyDecision(name=parsed.name, decision="deny", reason="工具提案必须引用已存在的证据")
+    if evidence_registry is not None:
+        for ref in refs:
+            if ref not in evidence_registry:
+                return ToolPolicyDecision(name=parsed.name, decision="deny", reason="工具提案引用了不存在的证据")
+            if evidence_owner is not None:
+                evidence = evidence_registry[ref]
+                owner = evidence.get("learnerId") if isinstance(evidence, Mapping) else evidence
+                if owner != evidence_owner:
+                    return ToolPolicyDecision(name=parsed.name, decision="deny", reason="工具提案引用了其他学习者的证据")
 
     confirmed_input = bool(input_item and input_item.get("status") == "confirmed")
     has_observable_answer = bool(

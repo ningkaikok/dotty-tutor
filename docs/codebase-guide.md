@@ -43,6 +43,8 @@ dotty-tutor/
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
+│   │   │   ├── lecture_checklist.py # 作业范围讲评清单的确定性聚合
+│   │   │   ├── learner_context.py # 有限生命周期画像的 shadow context 组装
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
 │   │   │   ├── tutor_input_service.py # 输入证据与低置信度确认门禁
 │   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
@@ -58,7 +60,10 @@ dotty-tutor/
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
+│   │   │   │   ├── mastery_policy.py # 按目标类型选择掌握 gate 与复习策略
+│   │   │   │   └── review_scheduler.py # 动态间隔与失败回退的纯调度函数
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数（含观察、工具、画布）
+│   │   │   │   └── learner_profile.py # 带证据、过期时间和 publication scope 的 shadow 画像
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
 │   │   ├── mistake_recognition.py # 复用教材流水线的错题识别适配
 │   │   ├── variation_service.py # 错题变式验证题生成、归因采信和题型门禁
@@ -70,6 +75,8 @@ dotty-tutor/
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
+│   │   │   ├── benchmark/      # 人工金标准 JSONL 契约、校验和配对统计
+│   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
 │   │       ├── schema_registry.py # 各领域 metadata 注册和重复表名检查
@@ -97,10 +104,13 @@ dotty-tutor/
 │   │   │   ├── apps/home/      # 角色入口选择
 │   │   │   ├── apps/student/   # 学生学习空间，不包含生产配置
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
+│   │   │   │   ├── LectureChecklistPanel.tsx # 共性错题、错因分布和涉及学生
+│   │   │   │   └── useLectureChecklist.ts # assignment-scoped 讲评清单请求
 │   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
 │   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
 │   │   │   ├── InteractiveMathCanvas.tsx # 最小点放置数学画布
 │   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告；DependencyPreflightApp 环境依赖自检页
+│   │   │   ├── productTerms.ts # 用户可见术语集中表，不重命名 API/type
 │   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
 │   │   │   ├── answerAssembly.ts # 多小问及画线等交互答案的统一组装
 │   │   │   ├── richTextParser.ts # 普通文本与显式数学片段的安全分词
@@ -115,6 +125,8 @@ dotty-tutor/
 ├── scripts/migrate_teacher_review_events.py # deprecated：兼容旧调用
 ├── scripts/migrate_variation_attribution.py # deprecated：兼容旧调用
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
+├── scripts/seed_demo_bundle.py # 固定 ID 的合成三人课堂 bundle，支持 --verify
+├── examples/demo-pack/manifest.json # demo bundle 的隐私声明和固定数据契约
 ├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # PostgreSQL、一次性迁移/卷初始化与应用服务编排
@@ -123,6 +135,14 @@ dotty-tutor/
 前端 API 和类型按领域分别位于 `apps/web/src/api/` 与 `apps/web/src/types/` 目录。后端规范代码必须进入
 `apps/api/routers`、`apps/api/application/services`、`apps/api/domain`、`apps/api/infrastructure` 或
 `apps/api/persistence`；跨领域组合只在明确的应用入口完成。
+
+### 2026-09 学习闭环新增边界
+
+- `LectureChecklistService` 读取单次 assignment 的成员、发布题目、最新作答、教师复核和错题归因，按涉及学生数、错误率、原题序排序；它是只读投影，不改变 mastery 或原始证据。
+- `mastery_policy.py` 与 `review_scheduler.py` 是纯函数：只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy；记忆/程序目标使用定量门槛，概念/设计目标使用受约束 rubric、置信度和证据引用的定性门槛；缺少策略元数据的历史记录保持 `unknown:legacy` 的 legacy 1/3/7 天行为，定性证据不足时为 `needs_review`。
+- `learner_profile.py` 和 `learner_context.py` 只做 shadow 实验。画像事实必须带 publication scope、evidenceRef、observedAt、expiresAt 和 profileVersion；过期、冲突、跨 publication 或敏感/聊天字段会排除并记录原因。
+- `evaluation/benchmark` 的人工金标准 JSONL 校验和配对统计只服务离线实验；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条，synthetic/public/fixture 不计入，当前仍没有 50+ 条人工金标准，也没有真实跨模型结论。`prefix_cache_probe.py` 只消费 fixture；只有 warm 阶段高于 cold/control 缓存基线的增量命中，或带官方 source 的 explicit 证据，才能判支持。GPT-5.6/Luna 的官方能力和 CLI cached token 字段已确认，但本轮三阶段均为 8960 的 hidden baseline，应用前缀复用仍为 inconclusive。
+- `scripts/seed_demo_bundle.py` 与 `examples/demo-pack/manifest.json` 提供固定 ID、完全合成、幂等且不删除其他数据的教师演示数据；`--verify` 只读检查，不依赖 OCR、模型或网络。
 
 ### P0～P3 后端分层边界
 
@@ -399,7 +419,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 扩展错题复习任务
 
-阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，复习作答的
+阶段四已经提供 `review_tasks`、复习 API、进度页和 versioned schedule；任务带 `scheduleVersion`、`sequenceNo`、`profile`、`supersededAt`，验证作答由 `variation_attempts` 追加保存，复习作答的
 确定性判题证据由 `review_tasks.evaluation_evidence_json` 持久化，Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。

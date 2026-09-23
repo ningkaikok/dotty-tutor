@@ -63,6 +63,28 @@ class _PlanlessTutor:
         }
 
 
+class _ForgedEvidenceTutor:
+    def reply(self, *, thread: dict, **_: object) -> dict:
+        return {
+            "reply": TutorReply(
+                reply="先核对这一步。",
+                guideContext={"assessment": "partial"},
+                nextHintLevel=0,
+                canvasAction="show-base",
+                source="stored-guide-card",
+                toolProposals=[{
+                    "name": "explain_mistake",
+                    "reason": "使用伪造证据",
+                    "evidenceRefs": ["forged-evidence"],
+                }],
+            ),
+            "stage": thread["stage"],
+            "action": {"assessment": "partial", "tutorTurnPlan": {}},
+            "summary": thread.get("summary", ""),
+            "inputMode": "text",
+        }
+
+
 class StatefulTutoringTests(PostgresTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -402,6 +424,24 @@ class StatefulTutoringTests(PostgresTestCase):
             stored = self.mistakes.get("mistake-1")
             self.assertIsNone(stored["aiErrorReason"])
             self.assertIsNone(stored["aiErrorReasonConfidence"])
+        finally:
+            client.close()
+
+    def test_route_denies_forged_tool_evidence_without_a_persisted_registry_match(self) -> None:
+        self._mistake()
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=_ForgedEvidenceTutor(),
+        ))
+        client = TestClient(app)
+        try:
+            thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+            response = client.post(f"/api/tutor/threads/{thread_id}/messages", json={"content": "我还是不明白"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["action"]["toolPolicy"][0]["decision"], "deny")
+            self.assertEqual(client.get(f"/api/tutor/threads/{thread_id}/tool-events").json()[0]["executionStatus"], "shadow")
         finally:
             client.close()
 

@@ -9,6 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from application.services.assignment_planning import AssignmentPlanningService
+from application.services.lecture_checklist import LectureChecklistService
 from application.services.personalized_assignment import PersonalizedAssignmentError
 from domain.constants import DEMO_LEARNER_ID
 from domain.contracts.classroom import (
@@ -22,12 +23,13 @@ from domain.contracts.classroom import (
 from persistence.assignment_planning_store import AssignmentPlanningStore
 
 
-def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningService | None = None, personalized_service: Any | None = None) -> APIRouter:
+def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningService | None = None, personalized_service: Any | None = None, lecture_checklist_service: LectureChecklistService | None = None) -> APIRouter:
     router = APIRouter(prefix="/api")
     planner = planning_service or AssignmentPlanningService(
         store=store,
         planning_store=AssignmentPlanningStore(engine=store.engine),
     )
+    checklist = lecture_checklist_service or LectureChecklistService(store=store)
 
     @router.get("/classes")
     def list_classes() -> dict[str, Any]:
@@ -136,6 +138,15 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
     def class_dashboard(class_id: str, assignmentId: str | None = None) -> dict[str, Any]:
         try:
             return store.class_dashboard(class_id, assignment_id=assignmentId)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+    @router.get("/classes/{class_id}/assignments/{assignment_id}/lecture-checklist")
+    def lecture_checklist(class_id: str, assignment_id: str, limit: int = 5) -> dict[str, Any]:
+        if not 1 <= limit <= 50:
+            raise HTTPException(status_code=422, detail="limit 必须在 1 到 50 之间")
+        try:
+            return checklist.get_checklist(class_id=class_id, assignment_id=assignment_id, limit=limit)
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
 

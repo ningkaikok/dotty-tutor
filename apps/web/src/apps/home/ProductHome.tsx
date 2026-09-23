@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
+import { PRODUCT_TERMS } from "../../productTerms";
 
 const HOME_ENTRY_KEY = "dotty-home-entry";
 type HomeEntry = "student" | "studio" | "teacher";
@@ -52,12 +53,12 @@ export function ProductHome() {
           <strong>Dotty Tutor</strong>
           <span>个人 AI 学习工具</span>
         </div>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="product-home-hero">
         <h1>选择你的使用入口</h1>
-        <p>学生直接完成已发布试卷、订正错题和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
+        <p>学生直接完成已发布练习、订正错题和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
       </section>
 
       <section className="product-entry-grid" aria-label="产品入口">
@@ -68,11 +69,11 @@ export function ProductHome() {
             {lastEntry === "student" && <span className="entry-last-badge">上次从这里进入</span>}
           </div>
           <h2>学生学习空间</h2>
-          <p>直接进入已发布互动试卷、个人错题本和复习任务，不需要上传整本教材或配置模型。</p>
+          <p>直接进入已发布练习、个人错题本和复习任务，不需要上传整本教材或配置模型。</p>
           <ul>
-            <li>已审核互动试卷与分步讲解</li>
+            <li>已审核练习与分步讲解</li>
             <li>拍照录入与人工确认错题</li>
-            <li>AI 错题陪练与掌握验证</li>
+            <li>AI 错题辅导与掌握验证</li>
           </ul>
           <button onClick={enterStudent}>进入学生学习空间</button>
         </article>
@@ -95,7 +96,7 @@ export function ProductHome() {
         <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>
           <div className="entry-card-heading"><span className="entry-index">03</span><span className="entry-status">教师入口</span>{lastEntry === "teacher" && <span className="entry-last-badge">上次从这里进入</span>}</div>
           <h2>班级学习进展</h2>
-          <p>创建班级、布置已发布试卷，并按学生和知识点查看完成与掌握情况。</p>
+          <p>创建班级、布置已发布练习，并按学生和知识点查看完成与掌握情况。</p>
           <ul><li>班级成员与作业管理</li><li>学生作业完成进度</li><li>知识点掌握分布看板</li></ul>
           <button onClick={enterTeacher}>进入教师工作台</button>
         </article>

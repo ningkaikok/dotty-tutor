@@ -16,7 +16,7 @@ interface VariationPracticeProps {
   onStageChange?: (stage: TutorStage) => void;
 }
 
-/** 变式练习承载 practice/verify 两个后端阶段，学生只需完成一道验证题。 */
+/** 巩固练习承载 practice/verify 两个后端阶段，学生只需完成一道验证题。 */
 export function VariationPractice({ mistakeId, autoStart = false, onStageChange }: VariationPracticeProps) {
   const state = useVariationPractice(mistakeId, autoStart, onStageChange);
 
@@ -26,10 +26,10 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
       <section className="variation-practice">
         <span className="eyebrow">掌握验证</span>
         <h3>先做一道掌握验证题</h3>
-        <p>系统会根据错误原因生成一道新题。答错可以修改后重新提交，答对一次即可完成掌握验证。</p>
+        <p>系统会根据错误原因生成巩固练习，并按掌握策略累计独立证据；达到领域门槛后才会进入下一阶段。</p>
         {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
         <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
-          {state.submitting ? "正在生成…" : "开始变式练习"}
+          {state.submitting ? "正在生成…" : "开始巩固练习"}
         </button>
       </section>
     );
@@ -38,6 +38,8 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
   const question = state.active.questionPayload.question;
   const answered = state.active.status === "answered";
   const retryable = answered && state.active.assessment !== "correct";
+  const nextAction = state.active.nextAction ?? state.active.mastery?.nextAction ?? "stay";
+  const mastered = state.active.mastery?.mastered || nextAction === "advance" || nextAction === "test_out";
   const locked = answered && !retryable;
   return (
     <section className="variation-practice">
@@ -46,7 +48,7 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
           <span className="eyebrow">掌握验证 · 单题</span>
           <h3>{LEVEL_LABELS[state.active.level]}</h3>
         </div>
-        <span className="variation-count">答对 1 次即可完成</span>
+        <span className="variation-count">第 {state.active.sequence} 道巩固练习</span>
       </header>
       <div className={locked ? "variation-question answered" : retryable ? "variation-question retryable" : "variation-question"}>
         <QuestionAnswer
@@ -71,8 +73,10 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
           <p><RichText text={state.active.feedback} /></p>
           {state.active.mastery && (
             <div className="variation-mastery-note">
-              <strong>{state.active.mastery.mastered ? "已完成掌握验证" : "修改答案后重新提交即可完成"}</strong>
-              {state.active.mastery.mastered && <p>这道题已从错题本进入进阶本，后续会按计划安排复习。</p>}
+              <strong>{mastered ? "已通过掌握门槛" : nextAction === "needs_review" ? "还需要补充可判定证据" : "还需要继续巩固练习"}</strong>
+              {mastered
+                ? <p>这道题已从错题本进入已掌握，后续会按计划安排复习。</p>
+                : <p>当前结果不会直接改变掌握状态，请完成下一道巩固练习。</p>}
             </div>
           )}
         </div>
@@ -83,6 +87,10 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
         {!locked ? (
           <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.submit()}>
             {state.submitting ? "正在判定…" : retryable ? "重新提交" : "提交验证答案"}
+          </button>
+        ) : !mastered ? (
+          <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
+            {state.submitting ? "正在生成…" : "开始下一道巩固练习"}
           </button>
         ) : null}
       </div>

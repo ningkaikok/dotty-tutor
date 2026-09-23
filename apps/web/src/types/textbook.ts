@@ -215,6 +215,9 @@ export interface QuestionEditRequest {
   options?: string[];
   correctAnswer?: string;
   correctAnswers?: string[];
+  objectiveType?: "memory" | "procedural" | "conceptual" | "design" | "unknown";
+  gateMode?: "quantitative" | "qualitative" | "legacy";
+  policyVersion?: string;
   guideCards?: Array<{
     level?: number | null;
     stuckAt: string;

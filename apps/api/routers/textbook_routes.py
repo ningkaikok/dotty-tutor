@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
 from application.errors import AppError
+from application.mistake_jobs import cleanup_queued_mistake_capture
 from application.services.lesson_generation import (
     generate_lesson,
     generate_model_reply,
@@ -300,6 +301,8 @@ def cancel_background_job(job_id: str) -> dict[str, Any]:
     job = job_store.request_cancel(job_id)
     if not job:
         raise AppError("后台任务不存在", status_code=404, error_code="JOB_NOT_FOUND")
+    if job["status"] == "cancelled":
+        cleanup_queued_mistake_capture(job, data_root=job_store.root)
     return _job_response(job)
 
 

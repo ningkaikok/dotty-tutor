@@ -7,11 +7,21 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.32.0] - 2026-09-23
+
 ### Added
 
 - 答案核验阶段的 `solverAgreement` 不再由模型自我声称，改由确定性符号判等程序裁决：解答与来源答案判定为不一致时强制题目进入冲突状态并要求人工复核，判不了的开放题（证明、文字作答）明确记为未核验，不会被当成核验通过。
 - 整卷生成连续遇到 API key 过期/配额耗尽、限流或上游超时时会提前暂停剩余批次并给出具体原因，不再把剩下的题逐一磨成失败记录；已经成功的批次不受影响。
 - 新增只读的环境依赖自检接口 `GET /api/system/dependency-preflight`，一次性检查 MinerU、pypdf、Ollama、Codex CLI、Azure Speech、Qwen3-TTS 和 PostgreSQL 是否配置就绪；内容生产端新增对应的自检页 `/studio/dependency-preflight`，入口在 `/studio` 首屏顶栏。
+- 新增教师讲评清单 `GET /api/classes/{classId}/assignments/{assignmentId}/lecture-checklist?limit=5`：`limit` 约束为 1–50，按最新作答聚合共性错题、错因分布、涉及学生和 evidenceRefs，保留 unknown 错因，并返回 `attributionSource`/`mistakeEvidenceRef`，展示层应用教师最新 overturned 结果。
+- 新增按目标类型选择的复习 policy/gate 元数据、定量/定性双门槛、按掌握度推进与失败回退；只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy，缺少元数据的历史任务继续使用 `unknown:legacy` 兼容策略。定性判题缺少受约束 rubric、置信度或 evidenceRefs 时保持 `needs_review`。
+- 新增错题后台导入 `POST /api/mistakes/import-jobs`，支持幂等、进度查询、协作式取消和有限重试；取消请求在安全点收敛并受租约/状态保护，避免旧 Worker 覆盖终态；新增固定 ID、完全合成、幂等的 `scripts/seed_demo_bundle.py` 与 `--verify`。
+- 新增金标准 JSONL 契约校验、配对统计和离线 Prefix Cache probe；正式 50 条计数只接受独立标注人与复核人的 `sourceKind=human` case，新增 shadow 学习者画像与工具安全评测基础设施。官方资料与 Luna usage 已确认 Provider 具备缓存能力，但应用前缀尚未观察到高于 hidden baseline 的新增命中；上述实验也不代表 50+ 人工金标准或跨模型统计已经完成。
+
+### Changed
+
+- 学生端第一轮移动/键盘体验已收口：窄屏布局、非原生画布键盘等价操作、归档确认焦点管理、弱网作答队列隔离和用户可见术语统一；弱网队列不等于 PWA。
 
 ### Fixed
 
@@ -526,7 +536,10 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.31.0...v0.32.0
+[0.31.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.30.0...v0.31.0
+[0.30.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.29.0...v0.30.0
 [0.26.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.23.0...v0.24.0

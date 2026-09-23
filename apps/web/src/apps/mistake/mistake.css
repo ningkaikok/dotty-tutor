@@ -50,7 +50,15 @@
 .mistake-list-content > small { color: #758078; }
 .mistake-list-actions { display: grid; gap: 8px; }
 .mistake-list-actions button, .mistake-change-photo { padding: 9px 12px; border: 1px solid #bdcbc3; border-radius: 10px; color: #245c47; background: #eff6f2; font-size: 12px; font-weight: 700; }
+.mistake-list-actions button, .mistake-change-photo, .mistake-primary-action { min-height: 44px; }
 .mistake-list-actions button.danger { color: #a04b41; border-color: #e3c8c3; background: #faece9; }
+.mistake-dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(24, 39, 32, .42); }
+.mistake-dialog { width: min(440px, 100%); padding: 24px; border: 1px solid #d6dfd8; border-radius: 18px; background: #fffef9; box-shadow: 0 22px 70px rgba(21, 38, 30, .25); }
+.mistake-dialog h2 { margin: 0; color: #203a2e; font-size: 20px; }
+.mistake-dialog p { margin: 12px 0 20px; color: #58675e; line-height: 1.6; }
+.mistake-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; }
+.mistake-dialog-actions button { padding: 9px 14px; border: 1px solid #bdcbc3; border-radius: 10px; color: #245c47; background: #eff6f2; font-weight: 700; }
+.mistake-dialog-actions button.danger { color: #a04b41; border-color: #e3c8c3; background: #faece9; }
 .mistake-section-heading { max-width: 760px; margin: clamp(65px, 10vh, 110px) 0 30px; }
 .mistake-capture-page { max-width: 900px; margin: 0 auto; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -70,7 +78,7 @@
 .crop-controls strong, .crop-controls small { display: block; }
 .crop-controls small { margin-top: 6px; color: #738078; line-height: 1.5; }
 .crop-controls label span { display: block; margin-bottom: 5px; color: #405149; font-size: 12px; }
-.crop-controls input { width: 100%; accent-color: #1b9a72; }
+.crop-controls input { width: 100%; min-height: 44px; accent-color: #1b9a72; }
 .mistake-change-photo { margin: 10px 0 0; }
 .mistake-capture-details { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; }
 .mistake-capture-details label > span, .mistake-confirm-form label > span { display: block; margin-bottom: 8px; color: #354a40; font-size: 13px; font-weight: 750; }
@@ -148,13 +156,14 @@
 .interactive-math-canvas { margin: 0 20px; padding: 12px; border: 1px solid #d8e0dc; border-radius: 13px; background: #fbfdfc; }
 .interactive-math-canvas p { margin: 0 0 8px; color: #63736b; font-size: .86rem; }
 .interactive-math-canvas svg { display: block; width: 100%; max-height: 300px; border-radius: 9px; cursor: crosshair; touch-action: none; }
+.interactive-math-canvas svg:focus-visible { outline: 3px solid #1b9a72; outline-offset: 4px; }
 .math-canvas-paper { fill: #fff; stroke: #cfdad4; }
 .math-canvas-grid { stroke: #e7eeea; stroke-width: .35; }
 .math-canvas-axis { stroke: #9aaba2; stroke-width: .7; }
 .math-canvas-student-point { fill: #d86b43; stroke: #fff; stroke-width: 1.2; }
 .math-canvas-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: #43544c; font-size: .88rem; }
 .math-canvas-controls span { margin-right: auto; }
-.math-canvas-controls .ghost { padding: 4px 8px; border: 1px solid #cbd5cf; border-radius: 7px; background: #fff; cursor: pointer; }
+.math-canvas-controls .ghost { min-width: 44px; min-height: 44px; padding: 4px 8px; border: 1px solid #cbd5cf; border-radius: 7px; background: #fff; cursor: pointer; }
 .tutor-observation-review { margin: 12px 20px 0; padding: 14px; border: 1px solid #e5c98a; border-radius: 14px; background: #fffaf0; color: #654f24; }
 .tutor-observation-review p { margin: 7px 0; font-size: 12px; line-height: 1.5; }
 .tutor-observation-review label { display: block; font-size: 12px; font-weight: 700; }
@@ -222,6 +231,9 @@
 .progress-evidence-note { margin-top: 18px; padding: 17px; border: 1px solid #dce4de; border-radius: 16px; background: rgba(255,255,252,.94); color: #58655e; }
 .progress-evidence-note h2 { margin: 0 0 8px; color: #203c30; font-size: 17px; }
 .progress-evidence-note p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; }
+.mistake-import-job { display: grid; gap: 6px; margin-top: 12px; padding: 12px 14px; border: 1px solid #dce8e0; border-radius: 12px; background: #f8fbf8; color: #53665b; }
+.mistake-import-job strong { color: #27755d; }
+.mistake-import-job button { justify-self: start; border: 0; padding: 0; color: #27755d; background: transparent; cursor: pointer; font-weight: 700; }
 
 @media (max-width: 820px) {
   .mistake-cropper, .mistake-confirm-grid, .tutor-layout, .progress-grid { grid-template-columns: 1fr; }
@@ -235,9 +247,11 @@
 
 @media (max-width: 520px) {
   .mistake-shell { width: calc(100% - 24px); margin-top: 16px; }
+  .mistake-header { grid-template-columns: 1fr auto; gap: 8px; }
+  .mistake-header > .student-nav { grid-column: 1 / -1; width: 100%; flex-wrap: wrap; }
   .mistake-brand strong { display: none; }
   .mistake-header > .student-nav { gap: 2px; }
-  .mistake-header > .student-nav .student-nav-link { padding: 6px 8px; font-size: 12px; }
+  .mistake-header > .student-nav .student-nav-link { flex: 1 1 0; justify-content: center; min-width: 0; padding: 6px 8px; font-size: 12px; }
   .mistake-library-hero { align-items: stretch; flex-direction: column; margin-top: 62px; }
   .mistake-hero-actions { align-items: stretch; flex-direction: column-reverse; }
   .progress-summary { grid-template-columns: repeat(2, 1fr); }
@@ -254,6 +268,9 @@
   .tutor-layout { margin-top: 62px; }
   .tutor-stage-list { grid-template-columns: repeat(3, 1fr); }
   .tutor-message { max-width: 94%; }
+  .mistake-book-tabs button, .mistake-hero-actions > button:first-child, .tutor-actions button,
+  .tutor-photo-action button, .mistake-dialog-actions button, .mistake-import-job button { min-height: 44px; }
+  .error-reason-fieldset label { min-height: 44px; }
 }
 
 /* 陪练首轮自评：容器只负责间距，选项本身复用下方的 .error-reason-fieldset。 */

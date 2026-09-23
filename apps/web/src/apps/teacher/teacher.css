@@ -100,6 +100,22 @@
 .dashboard-assignment-picker select { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid #cbd3cd; border-radius: 9px; color: #20352c; background: #f7f7f2; font-size: 13px; font-weight: 500; }
 
 .teacher-retry { margin-left: 10px; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; color: inherit; background: transparent; font-size: 12px; font-weight: 700; }
+.lecture-checklist { overflow: hidden; }
+.lecture-checklist-list { display: grid; gap: 10px; }
+.lecture-checklist-item { padding: 14px; border: 1px solid #e1e6e0; border-radius: 13px; background: #fbfcf9; }
+.lecture-checklist-item-heading { display: flex; justify-content: space-between; gap: 12px; }
+.lecture-checklist-item-heading strong, .lecture-checklist-item-heading small { display: block; }
+.lecture-checklist-item-heading strong { color: #20352c; }
+.lecture-checklist-item-heading small, .lecture-checklist-item-heading > span { color: #748078; font-size: 11px; }
+.lecture-checklist-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.lecture-checklist-reasons span { padding: 4px 7px; border-radius: 999px; color: #596a60; background: #edf3ed; font-size: 11px; }
+.lecture-checklist-students { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.lecture-checklist-students li { display: flex; gap: 8px; align-items: baseline; color: #42574b; font-size: 12px; }
+.lecture-checklist-students small, .lecture-checklist-students em { color: #7a877e; font-size: 11px; font-style: normal; }
+.lecture-checklist-evidence { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.lecture-checklist-evidence-ref { display: inline-flex; align-items: center; gap: 3px; }
+.lecture-checklist-evidence-ref code { color: #53685a; font-size: 10px; }
+.lecture-checklist-evidence-ref button { min-height: 28px; padding: 2px 6px; border: 1px solid #cbd8cd; border-radius: 5px; color: #31553e; background: #f3f8f3; font-size: 10px; cursor: pointer; }
 
 @media (max-width: 900px) { .teacher-layout { grid-template-columns: 1fr; } .teacher-sidebar { position: static; } .assignment-form { grid-template-columns: 1fr 1fr; } .assignment-form button { grid-column: 2; } }
 @media (max-width: 620px) { .teacher-shell { width: min(100% - 24px, 1180px); } .member-form, .assignment-form { grid-template-columns: 1fr; } .assignment-form button { grid-column: auto; } .dashboard-summary-grid { grid-template-columns: repeat(2, 1fr); } .knowledge-point-grid dl { grid-template-columns: repeat(2, 1fr); } }

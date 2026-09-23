@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/classes/{class_id}/assignments/{assignment_id}/lecture-checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Lecture Checklist */
+        get: operations["lecture_checklist_api_classes__class_id__assignments__assignment_id__lecture_checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes/{class_id}/assignments/{assignment_id}/reviews": {
         parameters: {
             query?: never;
@@ -671,6 +688,26 @@ export interface paths {
         put?: never;
         /** Import Mistake */
         post: operations["import_mistake_api_mistakes_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mistakes/import-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue Mistake Import
+         * @description Persist the capture and enqueue OCR/model work on the shared Worker.
+         */
+        post: operations["queue_mistake_import_api_mistakes_import_jobs_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1728,6 +1765,28 @@ export interface components {
              */
             sourceText: string;
         };
+        /** Body_queue_mistake_import_api_mistakes_import_jobs_post */
+        Body_queue_mistake_import_api_mistakes_import_jobs_post: {
+            /** Captureid */
+            captureId: string;
+            /** File */
+            file: string;
+            /**
+             * Learnerid
+             * @default local-demo
+             */
+            learnerId: string;
+            /**
+             * Originalanswer
+             * @default
+             */
+            originalAnswer: string;
+            /**
+             * Sourcetext
+             * @default
+             */
+            sourceText: string;
+        };
         /** ClassCreate */
         ClassCreate: {
             /**
@@ -2051,7 +2110,7 @@ export interface components {
          * QuestionEditRequest
          * @description 人工字段级编辑请求。
          *
-         *     只允许改题干、选项、标准答案和引导卡文本这类题目内容字段；来源溯源
+         *     只允许改题干、选项、标准答案、教学目标门槛和引导卡文本这类题目内容字段；来源溯源
          *     （``sourceProvenance``）、模型运行记录（``modelRun``）、答案核验结果
          *     （``verification``）等审计字段不在这里出现，服务端也永远不会用这份请求覆盖它们。
          *     ``baseRevisionId`` 是乐观并发的依据：必须等于服务端当前版本，否则拒绝这次编辑。
@@ -2063,10 +2122,16 @@ export interface components {
             correctAnswer?: string | null;
             /** Correctanswers */
             correctAnswers?: string[] | null;
+            /** Gatemode */
+            gateMode?: ("quantitative" | "qualitative" | "legacy") | null;
             /** Guidecards */
             guideCards?: components["schemas"]["QuestionGuideCardEdit"][] | null;
+            /** Objectivetype */
+            objectiveType?: ("memory" | "procedural" | "conceptual" | "design" | "unknown") | null;
             /** Options */
             options?: string[] | null;
+            /** Policyversion */
+            policyVersion?: string | null;
             /** Prompt */
             prompt?: string | null;
         };
@@ -2798,6 +2863,42 @@ export interface operations {
                 "application/json": components["schemas"]["AssignmentCreate"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    lecture_checklist_api_classes__class_id__assignments__assignment_id__lecture_checklist_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                assignment_id: string;
+                class_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -3884,6 +3985,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    queue_mistake_import_api_mistakes_import_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_queue_mistake_import_api_mistakes_import_jobs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };

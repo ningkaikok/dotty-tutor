@@ -5,6 +5,7 @@ import type {
   ClassDashboard,
   ClassDetail,
   ClassSummary,
+  LectureChecklist,
   RosterEntry,
   StudentAssignment,
 } from "../types/classroom";
@@ -93,6 +94,13 @@ export async function loadStudentAssignments(learnerId: string): Promise<Student
 export async function loadClassDashboard(classId: string, assignmentId?: string): Promise<ClassDashboard> {
   const query = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
   return parse<ClassDashboard>(await fetch(`/api/classes/${encodeURIComponent(classId)}/dashboard${query}`, { cache: "no-store" }));
+}
+
+export async function loadLectureChecklist(classId: string, assignmentId: string, limit = 5): Promise<LectureChecklist> {
+  return parse<LectureChecklist>(await fetch(
+    `/api/classes/${encodeURIComponent(classId)}/assignments/${encodeURIComponent(assignmentId)}/lecture-checklist?limit=${limit}`,
+    { cache: "no-store" },
+  ));
 }
 
 export async function recordTeacherReview(

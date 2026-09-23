@@ -1,4 +1,5 @@
 import type { MistakeConfirmation, MistakeItem } from "../types/mistake";
+import type { BackgroundJob } from "../types/textbook";
 import { parse } from "./client";
 import { currentLearnerId } from "./identity";
 
@@ -12,6 +13,40 @@ export async function importMistake(
   body.append("originalAnswer", input.originalAnswer ?? "");
   body.append("learnerId", input.learnerId ?? currentLearnerId());
   return parse<MistakeItem>(await fetch("/api/mistakes/import", { method: "POST", body }));
+}
+
+export async function queueMistakeImport(
+  file: File,
+  captureId: string,
+  input: { sourceText?: string; originalAnswer?: string; learnerId?: string } = {},
+): Promise<BackgroundJob<MistakeItem> & { captureId: string }> {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("captureId", captureId);
+  body.append("sourceText", input.sourceText ?? "");
+  body.append("originalAnswer", input.originalAnswer ?? "");
+  body.append("learnerId", input.learnerId ?? currentLearnerId());
+  return parse<BackgroundJob<MistakeItem> & { captureId: string }>(
+    await fetch("/api/mistakes/import-jobs", { method: "POST", body }),
+  );
+}
+
+export async function loadMistakeImportJob(jobId: string): Promise<BackgroundJob<MistakeItem>> {
+  return parse<BackgroundJob<MistakeItem>>(
+    await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }),
+  );
+}
+
+export async function cancelMistakeImportJob(jobId: string): Promise<BackgroundJob<MistakeItem>> {
+  return parse<BackgroundJob<MistakeItem>>(
+    await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }),
+  );
+}
+
+export async function retryMistakeImportJob(jobId: string): Promise<BackgroundJob<MistakeItem>> {
+  return parse<BackgroundJob<MistakeItem>>(
+    await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" }),
+  );
 }
 
 export async function loadMistakes(learnerId: string = currentLearnerId()): Promise<MistakeItem[]> {

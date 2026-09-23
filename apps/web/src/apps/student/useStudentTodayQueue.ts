@@ -6,11 +6,12 @@ import { loadMistakes } from "../../api/mistakes";
 import { loadLearningProgress } from "../../api/reviews";
 import type { PublicationSummary } from "../../types/index";
 import type { StudentAssignment } from "../../types/classroom";
+import { learningSessionStorageKey } from "./learningSessionStorage";
 
 export interface TodayQueuePaper extends PublicationSummary {
   /**
    * 本机是否曾为这套卷子开过学习会话。判据是
-   * `usePublishedLearningSession.ts` 写入的 `dotty-learning-session:{publicationId}`
+   * `usePublishedLearningSession.ts` 写入的 learner-scoped localStorage key
    * localStorage 键——这是本机信号，换设备或清缓存都会不准，因为服务端目前
    * 没有“列出某学生所有会话”的接口，无法据此做出权威判断。
    */
@@ -33,9 +34,9 @@ export interface StudentTodayQueue {
   allFailed: boolean;
 }
 
-function hasStartedSession(publicationId: string): boolean {
+function hasStartedSession(learnerId: string, publicationId: string): boolean {
   try {
-    return localStorage.getItem(`dotty-learning-session:${publicationId}`) !== null;
+    return localStorage.getItem(learningSessionStorageKey({ learnerId, publicationId })) !== null;
   } catch {
     // 隐私模式或站点数据被禁用时 localStorage 访问会直接抛异常；把它当作
     // “未开始”处理即可，不能让今日队列因此白屏。
@@ -82,11 +83,11 @@ export function useStudentTodayQueue(): StudentTodayQueue {
     const publicationsRequest = loadPublishedPublications(controller.signal)
       .then((items) => {
         if (cancelled) return;
-        setPapers(items.map((item) => ({ ...item, started: hasStartedSession(item.publicationId) })));
+        setPapers(items.map((item) => ({ ...item, started: hasStartedSession(learnerId, item.publicationId) })));
       })
       .catch((requestError) => {
         if (controller.signal.aborted) return;
-        errors.push(requestError instanceof Error ? requestError.message : "试卷目录加载失败");
+        errors.push(requestError instanceof Error ? requestError.message : "练习目录加载失败");
       });
 
     const mistakesRequest = loadMistakes()

@@ -1,5 +1,6 @@
 import type { ModelCatalog, ModelProvider, OcrCatalog, OcrProvider, ReviewModelCatalog } from "../../../types/index";
 import type { RuntimeLoadingState, UploadPhase } from "./useTextbookImport";
+import { PRODUCT_TERMS } from "../../../productTerms";
 
 interface RuntimeSettingsProps {
   models: ModelCatalog | null;
@@ -31,7 +32,7 @@ export function RuntimeSettings({
   const disabledHint = uploadBusy ? "教材正在上传或识别，完成后可切换运行时" : undefined;
 
   const summary = models && tutorModels && reviewModels && ocrProviders
-    ? `运行时 · 生成 ${models.selected.provider}/${models.selected.model} · 陪练 ${tutorModels.selected.provider}/${tutorModels.selected.model} · 审核 ${reviewModels.selected.provider}/${reviewModels.selected.model} · 解析 ${ocrProviders.effective}`
+    ? `运行时 · 生成 ${models.selected.provider}/${models.selected.model} · ${PRODUCT_TERMS.tutoring} ${tutorModels.selected.provider}/${tutorModels.selected.model} · 审核 ${reviewModels.selected.provider}/${reviewModels.selected.model} · 解析 ${ocrProviders.effective}`
     : "正在读取运行时配置…";
 
   return (
@@ -72,7 +73,7 @@ export function RuntimeSettings({
         )}
 
         <div className="tutor-label">
-          <strong>选择错题陪练模型</strong>
+          <strong>选择错题辅导模型</strong>
           <small>独立于题目生成和审核；学生每轮对话会使用这里的模型。</small>
         </div>
         <select
@@ -85,7 +86,7 @@ export function RuntimeSettings({
             onSelectTutorModel(provider, model);
           }}
         >
-          {!tutorModels && <option>正在读取陪练模型…</option>}
+          {!tutorModels && <option>正在读取辅导模型…</option>}
           {tutorModels?.providers.flatMap((provider) => provider.models.map((model) => (
             <option key={`tutor::${provider.id}::${model}`} value={`${provider.id}::${model}`} disabled={!provider.available}>
               {provider.label} · {model}
@@ -94,7 +95,7 @@ export function RuntimeSettings({
         </select>
         {tutorModels && (
           <span className={`runtime-status tutor-status ${tutorModels.selected.provider}`}>
-            <i /> 当前陪练：{tutorModels.selected.provider} · {tutorModels.selected.model}
+            <i /> 当前辅导：{tutorModels.selected.provider} · {tutorModels.selected.model}
           </span>
         )}
 

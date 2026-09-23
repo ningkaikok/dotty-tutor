@@ -22,7 +22,7 @@ interface MistakeTutorProps {
 
 const STAGES: Array<{ id: "understanding" | "practice" | "verify"; label: string }> = [
   { id: "understanding", label: "理解错因" },
-  { id: "practice", label: "变式练习" },
+  { id: "practice", label: "巩固练习" },
   { id: "verify", label: "掌握验证" },
 ];
 
@@ -66,7 +66,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
   }, [state.thread?.messageCount]);
 
   if (state.loading) return <div className="mistake-empty">正在恢复这道题的辅导上下文…</div>;
-  if (!state.thread) return <p className="mistake-error" role="alert">{state.error || "无法创建辅导线程"}</p>;
+  if (!state.thread) return <p className="mistake-error" role="alert">{state.error || "无法创建辅导记录"}</p>;
 
   const thread = state.thread;
   const question = item.questionPayload.question;
@@ -226,7 +226,7 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
                 disabled={!selectedReason || savingReason}
                 onClick={() => selectedReason && void submitSelfAssessment(selectedReason)}
               >
-                {savingReason ? "正在保存…" : "确定，开始陪练"}
+                {savingReason ? "正在保存…" : "确定，开始辅导"}
               </button>
               <button disabled={savingReason} onClick={skipSelfAssessment}>我说不好，直接开始</button>
             </div>

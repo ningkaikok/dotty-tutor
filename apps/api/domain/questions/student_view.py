@@ -57,11 +57,13 @@ _VARIATION_KEEP = frozenset({
     "variationId", "mistakeId", "learnerId", "strategy", "attributionSource", "level",
     "sequence", "questionPayload", "status", "assessment", "response", "feedback",
     "createdAt", "answeredAt", "attemptId", "evaluationEvidence", "tutorStage", "mastery",
+    "policy", "gate", "nextAction",
 })
 _REVIEW_KEEP = frozenset({
     "taskId", "mistakeId", "learnerId", "intervalDays", "dueAt", "status", "questionPayload",
     "response", "evaluationEvidence", "assessment", "feedback", "createdAt", "startedAt",
-    "completedAt", "mistake",
+    "completedAt", "mistake", "scheduleVersion", "sequenceNo", "profile", "objectiveType",
+    "gateMode", "policyVersion", "triggerEvidenceRef", "supersededAt", "policy", "gate", "nextAction",
 })
 _REVIEW_MISTAKE_KEEP = frozenset({"chapter", "knowledgePoint", "prompt"})
 _THREAD_KEEP = frozenset({
@@ -221,7 +223,7 @@ def student_tutor_action(item: Any) -> dict[str, Any]:
     """Keep the explainable action while removing its internal model run."""
     projected = _pick(item, frozenset({
         "type", "previousStage", "nextStage", "assessment", "prompt", "tutorTurnPlan",
-        "deduplication",
+        "deduplication", "toolPolicy",
     }))
     for key in ("tutorTurnPlan", "deduplication"):
         if key in projected:

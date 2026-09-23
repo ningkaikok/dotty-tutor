@@ -147,6 +147,7 @@ flowchart TB
 | 产品路由 | `apps/web/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习、教师和内容生产三个角色入口 |
 | 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，按需生成全班共享的新试卷，确认后指派并查看看板 |
+| 讲评清单 | `LectureChecklistPanel.tsx`、`useLectureChecklist.ts`、`lecture_checklist.py` | assignment 级只读聚合共性错题、错因分布、学生和 evidenceRefs；限制 1–50，附 `attributionSource`/`mistakeEvidenceRef`；不生成教案或修改学习状态 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
@@ -220,7 +221,10 @@ flowchart TB
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |
-| 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
+| 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 按 versioned policy 幂等排期，保存 `scheduleVersion`/`sequenceNo`/`profile`/`supersededAt`、复习题和作答证据并聚合进度 |
+| 复习策略 | `apps/api/domain/learning/mastery_policy.py`、`review_scheduler.py` | 按目标类型使用定量/定性双门槛、按表现推进或回退；旧 metadata 缺失时兼容 legacy 策略 |
+| Shadow 画像 | `apps/api/domain/tutoring/learner_profile.py`、`apps/api/application/services/learner_context.py` | 仅聚合确定性 mastery、已确认错因、提示依赖和最近练习；事实有 scope/证据/生命周期，默认不注入 Tutor |
+| AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
 
 ## 错题录入与确认
 
@@ -245,7 +249,9 @@ flowchart TB
 该来源记录在 `errorStrategy.source`，便于回放审计。前端在学生完成或跳过自评后，才把线程中最后一条可信 AI 归因与学生自评并列展示；
 两者都没有时不渲染对照区块。每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
 答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
-掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
+掌握转换成功后，`ReviewStore.schedule` 按题目/知识点的 versioned policy 以该次作答时间为锚点幂等创建带
+`scheduleVersion`、`sequenceNo`、`profile` 和 `triggerEvidenceRef` 的任务；重排时以 `supersededAt` 标记旧任务，
+不假定固定三任务。缺少策略元数据时使用 `unknown:legacy` 的 legacy 1/3/7 天兼容行为。复习任务保存自己的题目
 快照、答案和确定性判题证据，不参与首次掌握连续计数；复习作答的响应和后续读取都会带上 `evaluationEvidence`；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
 `/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
@@ -358,7 +364,7 @@ erDiagram
     记录、不计入熔断。
 
 取消采用协作式边界：排队任务直接收敛为 `cancelled`，运行任务设置 `cancel_requested`，应用服务在合并、OCR
-和题目循环的安全点终止。Worker 必须持有有效租约才可提交成功或失败，避免进程暂停后由旧执行者覆盖新结果。
+和题目循环的安全点终止。Worker 必须持有有效租约且任务未进入终态才可提交成功或失败，避免取消与完成竞态下由旧执行者覆盖新结果；已完成的 OCR/模型副作用不回滚。
 
 ## 运行治理的当前边界与目标
 
@@ -698,6 +704,16 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 生产版本边界和改造优先级见[路线图](roadmap.md)。
 错题域的数据模型、智能体状态机和代码复用边界见
 [AI 错题陪练产品规划](mistake-coach-plan.md)。
+
+### 讲评清单、复习策略与实验边界（2026-09）
+
+讲评清单从 `classroom_routes.py` 的独立 GET 端点进入 `LectureChecklistService`。服务只读取该班级、该作业的发布题目、成员、学习会话、作答、错题归因和教师复核事件：每个学生/题目保留最新作答，教师最新 `overturned` 事件只改变清单中的有效判定，不覆盖原始证据；缺少可用错因统一保留为 `unknown`。`limit` 约束为 1–50，输出按涉及学生数、错误率、原题顺序排序，并带 `evidenceRefs`、`attributionSource` 和对应的 `mistakeEvidenceRef`。前端 `LectureChecklistPanel` 只展示结果，不生成课堂时间表。
+
+复习策略由无副作用的 `mastery_policy`/`review_scheduler` 计算。只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy；记忆和程序目标要求定量准确率与最少证据，概念和设计目标要求受约束 rubric 通过、置信度和非空证据引用。缺少可靠定性 evaluator 或 evidence 时保持 `needs_review`；答对可进入更长间隔，答错从重试间隔重新开始，`test_out` 表示达到策略末端。历史知识点缺少策略元数据时保持 `unknown:legacy` 的 legacy 1/3/7 天行为，不能把实验策略追溯写入旧证据。
+
+错题后台导入使用同一 `background_jobs`/Worker：`/api/mistakes/import-jobs` 快速返回 job，前端通过通用 jobs 查询、取消和有限重试；取消是协作式安全点，不保证中断已经完成的 OCR/模型调用。学生端作答离线队列按 learner/publication/session 隔离，无法验证归属的旧记录进入 quarantine，不猜测迁移。移动端布局、画布键盘等价操作、归档对话框 Escape/焦点循环和术语表属于前端体验层，不改变后端判题语义。
+
+评测与画像均保持实验边界：人工金标准校验器只把 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条门槛，并拒绝少于 50 条、缺 reviewer、标注/复核同人、重复 ID 或覆盖不足；synthetic/public/fixture 不计入，仓库只提供少量明确的测试 fixture。Prefix probe 只读取离线 warm/cold/control fixture；只有 warm 阶段高于 cold/control 缓存基线的增量 `cacheHitTokens`，或 explicit 状态有官方 source，才能判支持。三阶段相同的 hidden baseline 不能证明应用前缀复用，缺增量证据时为 `unknown`/`inconclusive`。学习者画像是 feature-flag/shadow context，事实过期、冲突、跨 publication 或包含聊天/敏感字段时排除，不直接改变 mastery 或排期；工具执行仍是 shadow。
 
 当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
 统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
