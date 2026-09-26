@@ -455,8 +455,10 @@ optional}` 失败记录而不是向上抛出；整体 `ok` 只看非 optional �
   Judge 报告固定记录语料版本、样本哈希、审核模型/Prompt 版本、每样本成功率/耗时/逻辑调用数/Provider
   实际尝试数/token/Schema 降级，以及聚合 `judgeMetrics`。`evaluation.compare` 对确定性报告做结构回归，
   对 Judge 报告只比较配置一致时的共同成功样本配对评分；评分变化不自动阻断。测试不依赖真实模型调用。
-- **轻量 Model Gateway**：在现有 Runtime 上统一请求与结果字段，显式记录实际 Provider、Model、回退和
-  错误，而不是新增独立服务。
+- **轻量 Model Gateway（已完成）**：现有 Runtime 在每次结构化调用前构造内容无关的 `ModelRequest`
+  （任务、请求 Provider/Model、超时、回退许可和 Schema 摘要），并用 `ModelResult` 统一实际
+  Provider/Model、耗时、错误和 usage；随后适配为兼容的 `modelRun`。Prompt 与模型 output 不进入这两个
+  持久化元数据块，也没有新增独立服务或隐式跨 Provider 回退。
 
 完整阶段、验收标准和何时升级 Redis、OpenTelemetry、LangGraph 或 MCP，见
 [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。

@@ -155,7 +155,7 @@ Provider/Model/Prompt 版本；比较器只有在这些比较条件一致时才�
 已知缺陷特征变化时该 job 非零退出，让必需检查 `backend` 变红、阻止合并。Judge/Leaderboard
 仍然只能按需手动运行，不进入这条链路。
 
-## G5：轻量 Model Gateway 契约
+## G5：轻量 Model Gateway 契约（已落地）
 
 当运行快照和事件稳定后，再把当前 Runtime 收敛为两个数据契约：
 
@@ -169,6 +169,12 @@ ModelResult
 
 Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显式允许，并在结果、日志和界面中展示；审核任务
 不能在无提示的情况下回退到明显能力不足的模型。
+
+当前 `infrastructure/runtime/contracts.py` 已提供内容无关的 `ModelRequest` / `ModelResult` 值对象；
+`ModelRuntime.generate_json` 与 `generate_json_as` 在调用边界统一构造二者，再适配为兼容的 `modelRun`。
+运行记录同时保留 requested 与 actual Provider/Model、`allowFallback`、Schema 摘要、耗时、错误和 usage，
+但不复制 Prompt 或模型 output。现阶段没有自动跨 Provider 回退：所有模型请求默认 `allowFallback=false`；
+Tutor、审核和业务层已有的确定性降级仍由各自策略显式执行并单独标记，不能伪装成 Gateway 成功。
 
 ## 暂不引入的能力
 
@@ -185,6 +191,6 @@ Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显
 
 ## 后续范围
 
-G1～G4 第一版已经落地，不再按旧分支名重复排期。G5、陪练全链路事件和整套重新审核后台化仍是后续项，
+G1～G5 第一版已经落地，不再按旧分支名重复排期。陪练全链路事件和整套重新审核后台化仍是后续项，
 是否推进由 [工程路线图](engineering-roadmap.md) 的当前批次需求决定。
 修改专题设计时同步架构和 API 描述，并保留取消、租约、幂等、失败预算与不可变证据的回归。

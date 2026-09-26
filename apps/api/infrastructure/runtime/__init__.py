@@ -1,6 +1,8 @@
 """External capability adapters: LLM, OCR, review and TTS."""
 
 from infrastructure.runtime.contracts import (
+    ModelRequest,
+    ModelResult,
     RuntimeConfigSnapshot,
     RuntimeExecutionError,
 )
@@ -11,6 +13,8 @@ from infrastructure.runtime.review_runtime import ReviewRuntime, runtime_reviewe
 
 __all__ = [
     "ModelRuntime",
+    "ModelRequest",
+    "ModelResult",
     "Provider",
     "runtime",
     "OcrProvider",

@@ -100,7 +100,7 @@ dotty-tutor/
 │   │   │                       # 管理契约：domain/prompts/contracts.py
 │   │   │                       # 管理路由：routers/prompt_routes.py
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
-│   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
+│   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider；contracts.py 统一 ModelRequest/ModelResult
 │   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
@@ -215,6 +215,10 @@ flowchart LR
 整个 Web 应用。
 
 ### 本机与 Docker 的 Runtime 边界
+
+模型生成、审核和 Tutor 共用 `infrastructure/runtime/contracts.py` 的 `ModelRequest` / `ModelResult`：
+前者冻结任务、请求模型、超时、回退许可和 Schema 摘要，后者记录实际模型、耗时、错误和 usage。
+两个契约都不持有 Prompt；兼容层生成的 `modelRun` 也只嵌入不含 output 的结果元数据。
 
 运行时下拉框展示的是后端进程的能力，不是浏览器本身的能力。开发脚本会优先探测仓库根目录
 `.mineru-venv/bin/mineru`；因此本机后端（`8010`）能选择 MinerU 时，浏览器应使用

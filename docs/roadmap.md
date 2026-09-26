@@ -36,7 +36,7 @@
 
 ## 专题设计入口
 
-- [运行快照、事件和后台任务](runtime-governance-plan.md)：已实现边界及 G5 规划。
+- [运行快照、事件和后台任务](runtime-governance-plan.md)：已实现边界及 G5 契约。
 - [原题级试卷处理链路](exam-pipeline-refactor-plan.md)：分阶段 IR、缓存和质量门禁。
 - [可编程课程与学习闭环](programmable-learning.md)：内容块、播放器和学习状态边界。
 - [错题陪练设计](mistake-coach-plan.md)：单题状态机与用户闭环。
