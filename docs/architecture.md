@@ -314,18 +314,21 @@ sequenceDiagram
   participant API as Tutoring Router
   participant Check as Deterministic Evaluator
   participant Tutor as StatefulTutor
+  participant Audit as RunSnapshot
   participant DB as PostgreSQL
 
   UI->>API: 创建或恢复 mistake thread
   API->>DB: 读取阶段、摘要和有限消息
   UI->>API: 提交文字或结构化答案
   API->>Tutor: 当前线程 + 错题快照 + 最近消息
+  API->>Audit: 冻结 Tutor 配置并记录 runId
   Tutor->>Check: 复用 TutorEngine 确定性判题
   Check-->>Tutor: correct / partial / incorrect
   Tutor->>Tutor: 生成解释并计算下一阶段
   Tutor-->>API: 归一化 misconception（含门禁结果）
   API->>DB: 仅持久化通过门禁的 AI 归因
   Tutor->>DB: 同一事务保存学生和助手消息
+  API->>Audit: 收敛 succeeded/failed 与无内容摘要
   DB-->>UI: 新阶段、回复和结构化 action
 ```
 
@@ -750,7 +753,10 @@ POST /api/tts
   历史列通过确定性主键只回填一次；`MistakeStore.confirm` 与 `update_ai_error_reason` 在同一事务内同时更新
   旧列和新表，读取旧 API 仍保持不变。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
-- `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
+- `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录；内部 action 的 `runId`
+  关联每轮 `tutor_turn` 运行快照，学生投影不返回该字段。
+- `run_snapshots` 对陪练只保存版本化 Tutor 配置、阶段转换、判定、模型身份、工具决策计数和失败类型，
+  不保存学生输入、模型回复或 Provider 原始错误。
 - `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。
