@@ -8,14 +8,16 @@ import unittest
 from pathlib import Path
 from xml.etree import ElementTree
 
+from application.services.tutor_model_evaluation import TutorModelEvaluationService
 from evaluation.benchmark.contract import DEFAULT_TASK_DIMENSIONS, validate_records
-from evaluation.benchmark.drafts import validate_drafts
+from evaluation.benchmark.drafts import validate_drafts, validate_reviewed_synthetic
 from evaluation.benchmark.statistics import (
     paired_binary_difference,
     paired_bootstrap_ci,
     validate_arm_completeness,
 )
 from evaluation.prefix_cache_probe import probe_prefix_cache
+from infrastructure.runtime.model_runtime import ModelRuntime
 
 
 def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str = "reviewer") -> dict:
@@ -41,6 +43,29 @@ def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str
 
 
 class BenchmarkContractTests(unittest.TestCase):
+    def test_user_previews_text_cases_without_unseen_images(self) -> None:
+        """Given 50 reviewed cases, when previewing, then only 42 text cases run."""
+        dataset = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue" / "reviewed_synthetic.jsonl"
+        service = TutorModelEvaluationService(runtime=ModelRuntime(env_prefix="TUTOR_"), candidates_path=dataset)
+        cases, dataset_hash = service._load_cases()
+        self.assertEqual(len(cases), 42)
+        self.assertEqual(len(dataset_hash), 64)
+        self.assertFalse(any(case["taskDimension"] == "image_understanding" for case in cases))
+
+    def test_owner_confirmed_synthetic_set_is_usable_without_claiming_human_gold(self) -> None:
+        root = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue"
+        rows = [json.loads(line) for line in (root / "reviewed_synthetic.jsonl").read_text(encoding="utf-8").splitlines()]
+        validation = validate_reviewed_synthetic(rows, asset_root=root)
+        self.assertTrue(validation.ok, validation.problems)
+        self.assertEqual(validation.candidate_count, 50)
+        self.assertEqual(sum(row["evaluationEligible"] for row in rows), 42)
+        self.assertEqual(validate_records(rows).counted_cases, 0)
+
+        changed_asset = [dict(row) for row in rows]
+        image_row = next(row for row in changed_asset if row["taskDimension"] == "image_understanding")
+        image_row["imageAssetSha256"] = "wrong"
+        self.assertTrue(any("imageAssetSha256" in problem for problem in validate_reviewed_synthetic(changed_asset, asset_root=root).problems))
+
     def test_review_queue_has_50_candidates_but_no_claimed_human_approvals(self) -> None:
         review_queue = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue" / "candidates.jsonl"
         records = [json.loads(line) for line in review_queue.read_text(encoding="utf-8").splitlines() if line.strip()]

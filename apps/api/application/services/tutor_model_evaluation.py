@@ -1,6 +1,6 @@
 """Run a read-only, paired preview before an operator changes the tutor model.
 
-The reviewed queue is synthetic and stays outside the formal gold-set count.
+The owner-confirmed cohort is synthetic and stays outside the human gold-set count.
 This service reports mechanical schema/reference matches and runtime facts only;
 it does not turn string equality into a semantic quality verdict.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from evaluation.benchmark.contract import load_jsonl
-from evaluation.benchmark.drafts import validate_drafts
+from evaluation.benchmark.drafts import validate_reviewed_synthetic
 from evaluation.benchmark.statistics import paired_binary_difference
 from infrastructure.runtime.capabilities import eligible_for_role
 from infrastructure.runtime.model_runtime import ModelRuntime, ModelSelection
@@ -172,10 +172,10 @@ class TutorModelEvaluationService:
     def _load_cases(self) -> tuple[list[dict[str, Any]], str]:
         content = self.candidates_path.read_bytes()
         rows = load_jsonl(self.candidates_path)
-        validation = validate_drafts(rows)
+        validation = validate_reviewed_synthetic(rows, asset_root=self.candidates_path.parent)
         if not validation.ok:
-            raise ValueError("草案评测集校验失败：" + "; ".join(validation.problems[:4]))
-        return rows, hashlib.sha256(content).hexdigest()
+            raise ValueError("已审核合成评测集校验失败：" + "; ".join(validation.problems[:4]))
+        return [row for row in rows if row["evaluationEligible"]], hashlib.sha256(content).hexdigest()
 
     def start(self, *, baseline: ModelSelection, candidate: ModelSelection) -> dict[str, Any]:
         if (baseline.provider, baseline.model) == (candidate.provider, candidate.model):
@@ -218,7 +218,7 @@ class TutorModelEvaluationService:
                 "runId": run_id,
                 "status": "queued",
                 "createdAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "dataset": "synthetic-review-queue",
+                "dataset": "owner-confirmed-synthetic",
                 "datasetHash": dataset_hash,
                 "totalCases": len(cases),
                 "completedCases": 0,
@@ -228,7 +228,8 @@ class TutorModelEvaluationService:
                 "results": [],
                 "summary": None,
                 "statisticalNote": (
-                    "50 条均为合成草案；指标是结构/精确参考匹配预览，不是语义评分或正式金标准排名。"
+                    "使用 42 条已确认的合成文本案例；8 条图像案例因当前评测未传入图像而排除。"
+                    "指标是结构/精确参考匹配预览，不是语义评分或人工金标准排名。"
                 ),
             }
             self._jobs[run_id] = job

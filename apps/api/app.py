@@ -64,7 +64,7 @@ tutor_model_evaluation = TutorModelEvaluationService(
     / "evaluation"
     / "benchmark"
     / "review_queue"
-    / "candidates.jsonl",
+    / "reviewed_synthetic.jsonl",
 )
 app.include_router(build_runtime_router(
     store=store,

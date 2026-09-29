@@ -32,7 +32,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
 | `GET` | `/api/tutor-models` | 返回错题陪练独立使用的模型目录 |
 | `POST` | `/api/tutor-models/select` | 切换后续陪练轮次使用的模型，不影响生成/审核/OCR 选择 |
-| `POST` | `/api/tutor-model-evaluations` | 内容工作台发起当前陪练模型与候选模型的 50 条合成草案配对评测；返回进程内任务 ID，不会自动切换模型 |
+| `POST` | `/api/tutor-model-evaluations` | 内容工作台从 50 条已确认合成案例中选 42 条文本案例，发起当前陪练模型与候选模型的配对评测；8 条图像案例待实际传图后纳入。返回进程内任务 ID，不会自动切换模型 |
 | `GET` | `/api/tutor-model-evaluations/{run_id}` | 轮询配对评测进度；完成后返回总体统计、任务维度汇总和逐题输出，服务进程重启后记录会丢失 |
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
