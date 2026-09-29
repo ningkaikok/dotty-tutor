@@ -7,6 +7,7 @@ check review coverage without accepting generated examples as human evidence.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,7 @@ from evaluation.benchmark.contract import (
 )
 
 PENDING_REVIEW = "pending_human_review"
+OWNER_CONFIRMED_SYNTHETIC = "owner_confirmed_synthetic"
 REVIEW_METADATA = ("annotatorId", "reviewerId", "approvedAt")
 
 
@@ -123,12 +125,58 @@ def validate_drafts(
     return DraftValidation(tuple(problems), len(rows), dimensions, strata_coverage)
 
 
+def validate_reviewed_synthetic(
+    records: Iterable[Any], *, asset_root: Path
+) -> DraftValidation:
+    """Validate an owner-confirmed synthetic cohort without counting it as human gold."""
+    rows = list(records)
+    normalized = [
+        {**row, "reviewStatus": PENDING_REVIEW} if isinstance(row, Mapping) else row
+        for row in rows
+    ]
+    base = validate_drafts(normalized)
+    problems = list(base.problems)
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, Mapping):
+            continue
+        case_id = row.get("caseId")
+        prefix = f"record {index} {case_id!r}"
+        if row.get("reviewStatus") != OWNER_CONFIRMED_SYNTHETIC:
+            problems.append(f"{prefix}: reviewStatus must be {OWNER_CONFIRMED_SYNTHETIC}")
+        if not isinstance(row.get("reviewBasis"), str) or not row["reviewBasis"].strip():
+            problems.append(f"{prefix}: reviewBasis is required")
+        eligible = row.get("evaluationEligible")
+        if not isinstance(eligible, bool):
+            problems.append(f"{prefix}: evaluationEligible must be boolean")
+        if row.get("taskDimension") == "image_understanding":
+            if eligible is not False:
+                problems.append(f"{prefix}: image cases require a verified image evaluation path")
+            asset_name = row.get("input", {}).get("imageAsset") if isinstance(row.get("input"), Mapping) else None
+            if not isinstance(asset_name, str):
+                problems.append(f"{prefix}: imageAsset is required")
+                continue
+            asset = (asset_root / asset_name).resolve()
+            if not asset.is_relative_to(asset_root.resolve()) or not asset.is_file():
+                problems.append(f"{prefix}: imageAsset must be a local file")
+                continue
+            if row.get("imageAssetSha256") != hashlib.sha256(asset.read_bytes()).hexdigest():
+                problems.append(f"{prefix}: imageAssetSha256 does not match")
+        elif eligible is not True:
+            problems.append(f"{prefix}: text case must be evaluationEligible=true")
+    return DraftValidation(tuple(problems), base.candidate_count, base.dimensions, base.strata)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate synthetic benchmark candidates awaiting human review.")
     parser.add_argument("path", type=Path)
+    parser.add_argument("--reviewed", action="store_true", help="validate an owner-confirmed synthetic cohort")
     args = parser.parse_args()
     try:
-        result = validate_drafts(load_jsonl(args.path))
+        rows = load_jsonl(args.path)
+        result = (
+            validate_reviewed_synthetic(rows, asset_root=args.path.parent)
+            if args.reviewed else validate_drafts(rows)
+        )
     except (OSError, ValueError) as error:
         print(json.dumps({"ok": False, "problems": [str(error)]}, ensure_ascii=False))
         return 2

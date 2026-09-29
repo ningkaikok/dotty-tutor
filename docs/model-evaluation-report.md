@@ -38,7 +38,20 @@ uv run python -m evaluation.tutor.runner --check
 
 本批新增的 `apps/api/evaluation/benchmark/` 只定义人工金标准 JSONL 契约和离线统计工具：记录 caseId、任务维度、脱敏输入/期望、rubric、sourceKind、许可与脱敏说明、annotator/reviewer、approvedAt 及分层字段；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 才计入 50 条，synthetic/public/fixture 即使显式标记也不计入。校验器会拒绝少于 50 条、缺 reviewer、标注人与复核人相同、重复 caseId 或覆盖不足的正式集，因而本报告仍不能给出跨模型排名。
 
-目前已整理 50 条合成审校候选，覆盖六类任务并附 8 张自制 SVG 图例，位于 `apps/api/evaluation/benchmark/review_queue/`。它们仍标记为 `pending_human_review` 且 `counted=false`，**不属于人工金标准，也不能作为模型排名样本**；需要领域人员逐条确认输入、答案和 rubric，并另行提供符合正式契约的人工作品及独立复核记录。
+目前保留 50 条原始合成候选，并形成用户确认的 `reviewed_synthetic.jsonl`；修订依据见 `review_queue/REVIEW_DECISION.md`。新版本仍为 `sourceKind=synthetic`、`counted=false`，**不属于 50 条人工金标准，也不能作为模型排名样本**。现有模型对照使用其中 42 条文本案例；8 条图像案例已有 SVG 素材，但评测调用尚未把图片送给模型。人工金标准仍需符合正式契约的人工作品及另一名真人的独立复核记录。
+
+### 2026-09-29 本地探索性配对运行
+
+在本机 Ollama 上，使用相同的 42 条文本案例配对比较 `qwen2.5:3b` 与 `qwen2.5:7b`，共 84 次调用，全部返回结构化结果。逐题输入、输出、错误与耗时保存在本机忽略目录 `output/eval-reports/reviewed-ollama-3b-vs-7b.json`；语料 SHA-256、模型名与运行时间也记录在该文件中。8 条图像案例因未向模型实际传图而排除；42 条中另有 8 条系统路由/成本任务，不应并入学生陪练质量结论。
+
+| 指标 | qwen2.5:3b | qwen2.5:7b |
+|---|---:|---:|
+| 结构化调用成功 | 42/42 | 42/42 |
+| 严格整题参考文本相同 | 0/42 | 0/42 |
+| 精确参考字段相同 | 10/100 | 16/100 |
+| 本机延迟 P50 / P95 | 3.40 / 5.19 秒 | 7.75 / 12.57 秒 |
+
+整题精确匹配的配对差为 0，符号检验 `p=1.0`。参考文本允许多种正确措辞，因而 0/42 **不是答题正确率**；本次没有人工逐题语义评分，也不能据此认定 7B 教学质量优于 3B。延迟只代表本次本机 Ollama 环境。
 
 配对统计提供 bootstrap 95% CI、二元配对差异/精确符号统计和失败臂完整性门禁；门禁要求每个 arm 覆盖相同 caseId，失败结果必须保留并带错误原因。`prefix_cache_probe.py` 仅验证离线 warm/cold/control 结果契约，能力状态为 `unknown`、`unsupported`、`implicit` 或 `explicit`；只有 warm 阶段相对 cold/control 缓存基线出现新增的有效 `cacheHitTokens`，或有可追溯的官方能力证据时才可判支持。cold/control 与 warm 相同的隐藏系统前缀命中不能证明应用前缀复用，explicit 还必须有官方 source；否则结论只能是 `inconclusive`/`unsupported`，时延差异不构成缓存证明。
 
@@ -511,7 +524,7 @@ n=1 扩到 n=6，并给 `judgeMetrics.scoreDiscrimination` 加了 `byFlawFamily`
 ### 未通过或尚未完成
 
 - 当前样例讲解本身仍存在逻辑错误，不能直接发布给学生。
-- 尚未建立不少于 50 道题的人工金标准数据集；当前 50 条候选均为未审校的合成草案，不计数。
+- 尚未建立不少于 50 道题的人工金标准数据集；50 条合成候选已有用户确认的修订版本，但仍不计入人工金标准。
 - 尚未完成不同生成模型、审校模型和视觉模型的统计性横向评测。
 - 当前工具已能记录审核运行耗时、Provider 请求次数和可用 token，但尚未完成跨模型的统计性横评。
 

@@ -391,7 +391,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
   已挂接 generate_json / generate_json_as 两条路径（覆盖生成、审核文字+视觉+修复、陪练）。
 - [x] 按任务能力筛选模型：服务端筛选函数已就绪，`providers()` 返回能力和健康信息，调用路径按角色
   过滤候选，并保持已开始运行的 `RunSnapshot` 不变。
-- [x] 内容工作台加入陪练模型切换前的 50 条合成草案配对预览：内容操作者可查看结构输出、逐维度精确匹配、延迟、Token 和逐题结果，完成评测后才可应用候选模型。学生继续使用服务端当前模型，不提供学生端模型选择；合成草案不计入正式人工金标准。
+- [x] 内容工作台加入陪练模型切换前的配对预览：50 条已确认的合成案例中，42 条文本案例参与模型调用，8 条图像案例待实际传图后纳入。内容操作者可查看结构输出、逐维度精确匹配、延迟、Token 和逐题结果，完成评测后才可应用候选模型。学生继续使用服务端当前模型，不提供学生端模型选择；合成案例不计入正式人工金标准。
 - [ ] 正式跨模型效果结论仍需至少 50 道独立复核的人工金标准语料；合成草案上的精确匹配只用于人工预览，不能替代语义评价或作为模型排名依据。
 
 ### 模型调用边界指标
@@ -433,7 +433,7 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 
 - **复习策略**：`mastery_policy.py`/`review_scheduler.py` 已提供按目标类型选择间隔和 gate 的纯函数。typed policy 只接受教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion`；定量 gate 同时检查准确率与最低证据数，定性 gate 检查受约束 rubric、置信度和 evidenceRefs，缺少可靠证据时保持 `needs_review`；通过可推进、达到末端可 `test_out`、失败可从 retry interval 重新开始。历史缺少策略元数据的任务继续走 `unknown:legacy` 的 legacy 1/3/7 天，不宣称已完成多轮重新掌握教学法。
 - **学习者画像 shadow**：`learner_profile.py`/`learner_context.py` 只聚合已有 mastery、已确认错因、提示依赖和最近练习。每条事实带 evidenceRef、observedAt、expiresAt、profileVersion 与 publication scope；过期/冲突/敏感或聊天输入会排除并记录原因。feature flag 关闭或 shadow 模式下不注入生产 Tutor，不改 mastery 或排期。
-- **评测基础设施**：`evaluation/benchmark` 已提供人工金标准 JSONL 契约、缺 reviewer/同人复核/重复 ID/覆盖不足门禁、配对 bootstrap 95% CI、二元配对差异和失败臂完整性校验；只有独立双审计的 `sourceKind=human` case 计入 50 条，synthetic/public/fixture 不计入。另有 50 条合成候选草案供人工审题和修订 rubric；正式人工集仍未完成，因此没有真实跨模型统计结论。
+- **评测基础设施**：`evaluation/benchmark` 已提供人工金标准 JSONL 契约、缺 reviewer/同人复核/重复 ID/覆盖不足门禁、配对 bootstrap 95% CI、二元配对差异和失败臂完整性校验；只有独立双审计的 `sourceKind=human` case 计入 50 条，synthetic/public/fixture 不计入。50 条合成候选已有用户确认的修订版本，其中 42 条文本案例完成本地探索性配对运行；正式人工集和语义评分仍未完成，因此没有可靠的模型质量排名。
 - **工具安全与演示**：工具安全样本覆盖 evidenceRef 归属、跳阶段、掌握度/发布越权、未知工具、重放、未确认观察和读取他人内容，执行仍为 shadow，目标是 unauthorized execution=0。`seed_demo_bundle.py` 使用完全合成固定数据、幂等且不删除其他数据；`--verify` 只读验证讲评清单、错因 unknown 和教师推翻。
 - **学生体验收口**：错题导入支持 `import-jobs` 后台任务的取消/重试，移动布局、画布键盘操作、归档 Escape/焦点循环、离线队列隔离和用户术语统一已补齐。弱网队列不是 PWA，也没有真实移动端或真实师生效果结论。
 

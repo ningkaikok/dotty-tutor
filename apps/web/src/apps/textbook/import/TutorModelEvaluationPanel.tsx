@@ -102,7 +102,7 @@ export function TutorModelEvaluationPanel({
         )}
       </div>
       <p className="tutor-evaluation-note">
-        评测使用 50 条合成草案，每轮比较会产生约 100 次模型调用，可能耗时并消耗云端额度。草案不计入正式人工金标准；精确匹配只是参考指标，不能替代人工语义判断。报告暂存在 API 进程内，服务重启后会清空。
+        评测使用 42 条已确认的合成文本案例，每轮比较会产生约 84 次模型调用，可能耗时并消耗云端额度。8 条图片案例暂未传图评测。这些案例不计入正式人工金标准；精确匹配只是参考指标，不能替代人工语义判断。报告暂存在 API 进程内，服务重启后会清空。
       </p>
       {evaluationLoading && evaluation && (
         <p className="tutor-evaluation-progress" role="status" aria-live="polite">

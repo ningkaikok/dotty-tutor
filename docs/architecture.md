@@ -197,7 +197,7 @@ flowchart TB
 | 题目流水线 | `apps/api/domain/questions/pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
-| 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 用 50 条合成草案显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
+| 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 从 50 条用户确认的合成案例中选 42 条文本案例，显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；8 条图像案例待实际传图后再纳入，调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
 | 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用；支持评测任务显式指定模型且不改写进程默认选择 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
