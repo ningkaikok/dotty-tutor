@@ -53,6 +53,8 @@ uv run python -m evaluation.tutor.runner --check
 
 整题精确匹配的配对差为 0，符号检验 `p=1.0`。参考文本允许多种正确措辞，因而 0/42 **不是答题正确率**；本次没有人工逐题语义评分，也不能据此认定 7B 教学质量优于 3B。延迟只代表本次本机 Ollama 环境。
 
+已为这 42 对输出生成匿名人工审核包，操作说明见 `apps/api/evaluation/benchmark/BLIND_REVIEW.md`。审核页面把每题的模型输出随机标为 A/B，模型映射密钥单独保存；审核者须逐题填写通过判定、偏好与理由。**目前尚未收到真人评分，因而没有语义配对结论。**
+
 配对统计提供 bootstrap 95% CI、二元配对差异/精确符号统计和失败臂完整性门禁；门禁要求每个 arm 覆盖相同 caseId，失败结果必须保留并带错误原因。`prefix_cache_probe.py` 仅验证离线 warm/cold/control 结果契约，能力状态为 `unknown`、`unsupported`、`implicit` 或 `explicit`；只有 warm 阶段相对 cold/control 缓存基线出现新增的有效 `cacheHitTokens`，或有可追溯的官方能力证据时才可判支持。cold/control 与 warm 相同的隐藏系统前缀命中不能证明应用前缀复用，explicit 还必须有官方 source；否则结论只能是 `inconclusive`/`unsupported`，时延差异不构成缓存证明。
 
 ### 2026-09-23 Prefix Cache Provider 验证

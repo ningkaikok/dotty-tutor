@@ -225,7 +225,7 @@ flowchart TB
 | 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 按 versioned policy 幂等排期，保存 `scheduleVersion`/`sequenceNo`/`profile`/`supersededAt`、复习题和作答证据并聚合进度 |
 | 复习策略 | `apps/api/domain/learning/mastery_policy.py`、`review_scheduler.py` | 按目标类型使用定量/定性双门槛、按表现推进或回退；旧 metadata 缺失时兼容 legacy 策略 |
 | Shadow 画像 | `apps/api/domain/tutoring/learner_profile.py`、`apps/api/application/services/learner_context.py` | 仅聚合确定性 mastery、已确认错因、提示依赖和最近练习；事实有 scope/证据/生命周期，默认不注入 Tutor |
-| AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
+| AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、合成案例匿名人工审核包、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
 
 ## 错题录入与确认
 

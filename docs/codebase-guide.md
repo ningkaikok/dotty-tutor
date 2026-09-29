@@ -76,7 +76,7 @@ dotty-tutor/
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
-│   │   │   ├── benchmark/      # 人工金标准 JSONL 契约、校验和配对统计
+│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
 │   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
