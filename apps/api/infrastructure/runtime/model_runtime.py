@@ -18,6 +18,8 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -89,12 +91,33 @@ class ModelRuntime:
         model_name = f"{env_prefix}MODEL_NAME" if env_prefix else "MODEL_NAME"
         self.runtime_name = "tutoring" if env_prefix else "generation"
         stored = selection_store.load(self.runtime_name)
-        self.selection = ModelSelection(
+        self._selection = ModelSelection(
             provider=(stored or {}).get("provider") or os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
             model=(stored or {}).get("model") or os.getenv(model_name, "default"),
         )
+        self._selection_override: ContextVar[ModelSelection | None] = ContextVar(
+            f"{self.runtime_name}_selection_override", default=None,
+        )
         # 调用边界指标（roadmap T2）：只追加写入；存储缺失时为 no-op。
         self.metrics_store = metrics_store
+
+    @property
+    def selection(self) -> ModelSelection:
+        """Return this call context's pinned selection or the process default."""
+        return self._selection_override.get() or self._selection
+
+    @selection.setter
+    def selection(self, value: ModelSelection) -> None:
+        self._selection = value
+
+    @contextmanager
+    def use_selection(self, provider: str, model: str):
+        """Pin an immutable provider/model for one queued task without mutating global state."""
+        token = self._selection_override.set(ModelSelection(provider, model))  # type: ignore[arg-type]
+        try:
+            yield
+        finally:
+            self._selection_override.reset(token)
 
     def ollama_models(self) -> tuple[list[str], str | None]:
         try:
@@ -261,15 +284,22 @@ class ModelRuntime:
         prompt: str | PromptParts,
         schema: dict[str, Any],
         max_tokens: int = 1200,
+        *,
+        selection: ModelSelection | None = None,
+        task: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        """用当前生成模型返回满足 Schema 的对象及可追踪运行记录。
+        """用当前或显式指定的模型返回满足 Schema 的对象及可追踪运行记录。
 
         传入 ``PromptParts`` 时额外记录稳定段/动态段的字符数，用于判断 Prefix Cache
-        是否值得做；传入普通字符串时两个字段记 None（不适用），行为不变。
+        是否值得做；显式 ``selection`` 只对当前调用生效，不修改进程级默认选择。
+        ``task`` 覆盖调用任务标签，用于区分陪练评测与普通生成。
         """
         stable_chars, dynamic_chars = _prompt_split_chars(prompt)
         prompt = prompt.text if isinstance(prompt, PromptParts) else prompt
-        selection = ModelSelection(self.selection.provider, self.selection.model)
+        # Paired model previews use an explicit selection without changing the
+        # process-wide tutoring default used by student requests.
+        selection = selection or ModelSelection(self.selection.provider, self.selection.model)
+        task_name = task or self.runtime_name
         if selection.provider == "mock":
             raise RuntimeError("Mock 模式不调用模型")
         snapshot = self.config_snapshot(
@@ -277,7 +307,7 @@ class ModelRuntime:
             selection.model,
             schema=schema,
             prompt=prompt,
-            runtime_name="generation",
+            runtime_name=self.runtime_name,
         )
         started = time.perf_counter()
         prompt_chars = len(prompt)
@@ -316,7 +346,7 @@ class ModelRuntime:
                 selection.provider, selection.model, str(execution_error)
             )
             self._record_metric(
-                task="generation",
+                task=task_name,
                 provider=selection.provider,
                 model=selection.model,
                 started=started,
@@ -342,7 +372,7 @@ class ModelRuntime:
             raise execution_error from error
         HEALTH_BOOK.mark_success(selection.provider, selection.model)
         self._record_metric(
-            task="generation",
+            task=task_name,
             provider=selection.provider,
             model=selection.model,
             started=started,

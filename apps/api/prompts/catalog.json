@@ -1,0 +1,69 @@
+{
+  "generation.extraction": {
+    "version": "question-extraction-v1",
+    "file": "generation.extraction.txt",
+    "variables": [
+      "source_block_ids",
+      "visual_asset_ids",
+      "source",
+      "repair"
+    ]
+  },
+  "generation.solution": {
+    "version": "math-solver-v1",
+    "file": "generation.solution.txt",
+    "variables": [
+      "question_ir",
+      "repair"
+    ]
+  },
+  "generation.verification": {
+    "version": "answer-verifier-v1",
+    "file": "generation.verification.txt",
+    "variables": [
+      "question_ir",
+      "repair"
+    ]
+  },
+  "generation.tutor-script": {
+    "version": "tutor-script-v1",
+    "file": "generation.tutor-script.txt",
+    "variables": [
+      "question_ir",
+      "repair"
+    ]
+  },
+  "tutor.stable": {
+    "version": "tutor-stable-v1",
+    "file": "tutor.stable.txt",
+    "variables": [
+      "question",
+      "givens",
+      "lesson_steps"
+    ]
+  },
+  "tutor.dynamic": {
+    "version": "tutor-dynamic-v1",
+    "file": "tutor.dynamic.txt",
+    "variables": [
+      "hint_level",
+      "guide_card",
+      "student_input",
+      "interaction_result",
+      "formula_recognitions",
+      "canvas_state",
+      "conversation_context",
+      "mode",
+      "conflict_instruction"
+    ]
+  },
+  "evaluation.judge": {
+    "version": "judge-rubric-v1",
+    "file": "evaluation.judge.txt",
+    "variables": [
+      "rubric",
+      "question_context",
+      "explanation"
+    ]
+  }
+}

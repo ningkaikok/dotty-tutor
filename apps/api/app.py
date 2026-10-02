@@ -5,37 +5,48 @@
 """
 
 import os
+from pathlib import Path
 
 from application import create_app
+from application.job_registry import merge_registries
+from application.mistake_jobs import build_mistake_registry
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.stateful_tutor import StatefulTutor
 from application.services.tutor_input_service import TutorInputService
+from application.services.tutor_model_evaluation import TutorModelEvaluationService
 from application.services.tutor_search_service import TutorSearchService
 from domain.questions.pipeline import build_question_content_blocks
+from domain.questions.student_view import student_mistake_item
 from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
 from infrastructure.runtime.tutor_observation_adapter import TutorObservationAdapter
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
+from persistence.auth_store import AuthSessionStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
+from persistence.prompt_store import PromptStore
 from persistence.review_store import ReviewStore
 from persistence.search_store import TutorSearchStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from prompts import configure_prompt_source
 from publication_revision import PublicationRevisionService
+from routers.auth_routes import build_auth_router
 from routers.classroom_routes import build_classroom_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.mistake_routes import build_mistake_router
 from routers.practice_routes import build_practice_router
+from routers.prompt_routes import build_prompt_router
 from routers.publication_routes import build_publication_router
 from routers.review_routes import build_review_router
 from routers.runtime_routes import build_runtime_router
-from routers.textbook_routes import processing_service
+from routers.textbook_routes import job_store as background_job_store
+from routers.textbook_routes import processing_service, textbook_job_registry
 from routers.textbook_routes import router as textbook_router
 from routers.tutor_input_routes import build_tutor_input_router
 from routers.tutor_search_routes import build_tutor_search_router
@@ -45,18 +56,35 @@ from variation_service import VariationService
 
 app = create_app()
 store = get_application_store()
+auth_session_store = AuthSessionStore(engine=store.engine)
+app.state.auth_session_store = auth_session_store
+app.state.background_job_store = background_job_store
+app.include_router(build_auth_router(session_store=auth_session_store))
 app.include_router(build_dependency_preflight_router())
+prompt_store = PromptStore(engine=store.engine)
+app.include_router(build_prompt_router(store=prompt_store))
+if os.getenv("DOTTY_CONTENT_EDITOR_TOKEN") or os.getenv("DOTTY_CONTENT_PUBLISHER_TOKEN"):
+    configure_prompt_source(prompt_store.active_templates)
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 # 模型调用边界指标的共享存储；生成/陪练两个 Runtime 实例都写入同一张表。
 metrics_store = MetricsStore(engine=store.engine)
 generation_runtime.metrics_store = metrics_store
 tutor_runtime = ModelRuntime(env_prefix="TUTOR_", metrics_store=metrics_store)
+tutor_model_evaluation = TutorModelEvaluationService(
+    runtime=tutor_runtime,
+    candidates_path=Path(__file__).resolve().parent
+    / "evaluation"
+    / "benchmark"
+    / "review_queue"
+    / "reviewed_synthetic.jsonl",
+)
 app.include_router(build_runtime_router(
     store=store,
     question_payload=question_payload,
     tutor_runtime=tutor_runtime,
     metrics_store=metrics_store,
+    tutor_model_evaluation=tutor_model_evaluation,
 ))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
 mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
@@ -109,7 +137,18 @@ app.include_router(build_mistake_router(
     store=mistake_store,
     recognize=mistake_recognizer,
     archive_cleanup=tutoring_store.delete_for_mistake,
+    job_store=background_job_store,
 ))
+
+# The API and Worker share one registry composition. Keeping the domain handlers
+# separate preserves the existing textbook registry while allowing the worker
+# process to execute queued mistake imports too.
+mistake_job_registry = build_mistake_registry(
+    store=mistake_store,
+    recognize=mistake_recognizer,
+    project_result=student_mistake_item,
+)
+job_registry = merge_registries(textbook_job_registry, mistake_job_registry)
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,

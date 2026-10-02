@@ -1,23 +1,23 @@
 [project]
-# 依赖的唯一事实来源；requirements.txt 是给 Docker/pip 路径的范围声明导出，
-# uv.lock 是 CI 与本地可选的精确锁定（`uv sync --frozen`）。
+# 后端包版本与依赖的唯一事实来源；API 文档读取 project.version，
+# uv.lock 用于 Docker、CI 与本地的精确锁定（`uv sync --frozen`）。
 name = "dotty-tutor-backend"
-version = "0.31.0"
+version = "0.33.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0,<2",
     "fastapi>=0.141.1,<1",
-    "httpx2>=2.10.0,<3",
-    "pypdf>=6.18.1,<7",
+    "httpx2>=2.13.0,<3",
+    "pypdf>=6.19.0,<7",
     "python-multipart>=0.0.32,<1",
     "psycopg[binary]>=3.3.5,<4",
-    "SQLAlchemy>=2.0.52,<3",
+    "SQLAlchemy>=2.0.54,<3",
     "sympy>=1.13.3,<2",
-    "uvicorn[standard]>=0.52.4,<1",
+    "uvicorn[standard]>=0.53.0,<1",
 ]
 
 [dependency-groups]
-dev = ["ruff==0.16.7", "pyright==1.1.414", "coverage==7.16.0"]
+dev = ["ruff==0.16.8", "pyright==1.1.414", "coverage==7.16.1"]
 
 [tool.uv]
 # 只用系统/已装 Python，避免 CI 或本机意外下载解释器。

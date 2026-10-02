@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { addClassMember, createAssignment, createClass, createPersonalizedAssignment, loadClass, loadClassDashboard, loadClasses, recordTeacherReview } from "../../api/classroom";
 import { loadPublishedPublications } from "../../api/publications";
@@ -8,6 +8,8 @@ import "./teacher.css";
 import { AssignmentComposer } from "./AssignmentComposer";
 import { AssignmentPlanReview } from "./AssignmentPlanReview";
 import { useAssignmentPlanning } from "./useAssignmentPlanning";
+import { LectureChecklistPanel } from "./LectureChecklistPanel";
+import { PRODUCT_TERMS } from "../../productTerms";
 
 /** 同一时刻只允许一个写操作在飞；用动作名而不是布尔量，避免三个表单互相禁用。 */
 type PendingAction = "" | "class" | "member" | "assignment" | "review";
@@ -53,6 +55,8 @@ export function TeacherClassroomApp() {
   const [reviewPendingKey, setReviewPendingKey] = useState("");
   const [personalizing, setPersonalizing] = useState(false);
   const [overrideScores, setOverrideScores] = useState<Record<string, string>>({});
+  const dashboardRequest = useRef(0);
+  const classRequest = useRef(0);
   const planning = useAssignmentPlanning(selectedClassId);
   const clearPlanning = planning.clear;
 
@@ -76,15 +80,19 @@ export function TeacherClassroomApp() {
     if (!selectedClassId && items[0]) setSelectedClassId(items[0].classId);
   };
 
-  const refreshDashboard = async (classId: string, assignmentId: string) => {
+  const refreshDashboard = useCallback(async (classId: string, assignmentId: string) => {
+    const requestId = ++dashboardRequest.current;
     setDashboardError("");
     try {
-      setDashboard(await loadClassDashboard(classId, assignmentId || undefined));
+      const result = await loadClassDashboard(classId, assignmentId || undefined);
+      if (requestId !== dashboardRequest.current || classId !== selectedClassId) return;
+      setDashboard(result);
     } catch (requestError) {
+      if (requestId !== dashboardRequest.current || classId !== selectedClassId) return;
       setDashboard(null);
       setDashboardError(requestError instanceof Error ? requestError.message : "掌握度看板加载失败");
     }
-  };
+  }, [selectedClassId]);
 
   useEffect(() => {
     Promise.all([loadClasses(), loadPublishedPublications()])
@@ -100,21 +108,37 @@ export function TeacherClassroomApp() {
 
   useEffect(() => {
     if (!selectedClassId) return;
+    const requestId = ++classRequest.current;
+    dashboardRequest.current += 1;
     setDashboard(null);
     setDashboardError("");
+    setClassDetail(null);
     setSelectedAssignmentId("");
     clearPlanning();
     loadClass(selectedClassId)
       .then((detail) => {
+        if (requestId !== classRequest.current || detail.classId !== selectedClassId) return;
         setClassDetail(detail);
         return detail.assignments.length ? refreshDashboard(selectedClassId, "") : undefined;
       })
-      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : "班级数据加载失败"));
-  }, [clearPlanning, selectedClassId]);
+      .catch((requestError) => {
+        if (requestId !== classRequest.current) return;
+        setError(requestError instanceof Error ? requestError.message : "班级数据加载失败");
+      });
+  }, [clearPlanning, refreshDashboard, selectedClassId]);
 
   const selectAssignment = (assignmentId: string) => {
     setSelectedAssignmentId(assignmentId);
     void refreshDashboard(selectedClassId, assignmentId);
+  };
+
+  const selectClass = (classId: string) => {
+    if (classId === selectedClassId) return;
+    // Invalidate in the user action itself so an old response cannot land between
+    // the selection event and the next effect flush.
+    classRequest.current += 1;
+    dashboardRequest.current += 1;
+    setSelectedClassId(classId);
   };
 
   const saveClass = async () => {
@@ -125,7 +149,7 @@ export function TeacherClassroomApp() {
       const created = await createClass({ name: className.trim() });
       setClassName("");
       await refreshClasses();
-      setSelectedClassId(created.classId);
+      selectClass(created.classId);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "创建班级失败");
     } finally {
@@ -226,7 +250,7 @@ export function TeacherClassroomApp() {
         <button className="route-back-button" onClick={() => navigate("/")}>← 返回入口</button>
         <div className="brand-mark">D</div>
         <div><strong>Dotty</strong><span>教师工作台</span></div>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="teacher-hero">
@@ -250,7 +274,7 @@ export function TeacherClassroomApp() {
                 <button
                   key={item.classId}
                   className={item.classId === selectedClassId ? "selected" : ""}
-                  onClick={() => setSelectedClassId(item.classId)}
+                  onClick={() => selectClass(item.classId)}
                 >
                   <strong>{item.name}</strong>
                   <small>{item.gradeBand} · {item.memberCount} 位学生</small>
@@ -281,7 +305,7 @@ export function TeacherClassroomApp() {
                 <ol className="teacher-onboarding-steps">
                   <li><strong>创建班级</strong><span>在左侧填写班级名称。</span></li>
                   <li><strong>添加学生</strong><span>把学生的标识加入班级名单。</span></li>
-                  <li><strong>布置作业</strong><span>选一套已发布试卷指派给全班，随后这里会显示完成情况和知识点掌握分布。</span></li>
+                  <li><strong>布置作业</strong><span>选一套已发布练习指派给全班，随后这里会显示完成情况和知识点掌握分布。</span></li>
                 </ol>
               </section>
             </section>
@@ -526,6 +550,13 @@ export function TeacherClassroomApp() {
                     })}
                   </div>
                 </section>
+              )}
+
+              {dashboard && (
+                <LectureChecklistPanel
+                  classId={selectedClassId}
+                  assignmentId={dashboard.assignment.assignmentId}
+                />
               )}
 
               {!dashboard && dashboardError && (

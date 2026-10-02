@@ -198,10 +198,10 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 
 - `VariationStore` 保存唯一掌握验证题；答错更新同一条证据，答对后推导一次性掌握结果。
 - `MistakeStore` 只执行 `unmastered → mastered` 业务状态转换。
-- `ReviewStore` 幂等创建第 1、3、7 天任务，并保存每项复习题和最终作答。
+- `ReviewStore` 按 versioned policy 幂等创建带 `scheduleVersion`、`sequenceNo`、`profile` 和 `supersededAt` 的任务，并保存每项复习题和最终作答；缺少策略元数据的旧任务才走 `unknown:legacy` 的 legacy 1/3/7 天兼容行为。
 
 这种拆分避免用聊天消息判断掌握，也避免为了凑连续次数而生成第二道题或保存重复状态。
-`ReviewStore.schedule()` 依靠 `(mistake_id, interval_days)` 唯一约束保证重试安全；Route 负责依次编排
+`ReviewStore.schedule()` 依靠 versioned `(mistake_id, schedule_version, sequence_no)` 幂等键和 superseded 标记保证重试安全；Route 负责依次编排
 “判题—迁移—排期”，模型仍然不能直接修改掌握状态。
 
 ## 7. 测试应该保护什么
@@ -212,20 +212,10 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 2. Store/Route 测试：通过 `PostgresTestCase` 使用隔离 PostgreSQL 和 FastAPI TestClient；纯逻辑边界不连接数据库。
 3. Playwright E2E：保护学生能看到并操作的主路径。
 
-常用命令：
-
-```bash
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
-  cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-
-cd apps/web
-npm ci
-npm run build
-npm run test:e2e
-```
-
-重构时先保持行为测试不变。如果依赖边界移动，例如 Route 把工作委托给 Service，Mock 应改为 patch 新的实际
-调用位置；不要为了让测试通过而把业务重新导回 Route。
+完整验证命令见 [AGENTS.md](../AGENTS.md#验证与交付)，环境和测试夹具见
+[开发指南](development.md#测试) 与 [后端测试说明](../apps/api/tests/README.md)。
+重构保护可观察结果、持久化数据和状态转换；不要通过断言内部调用次数绑定实现。
+Mock 仅用于模型/OCR/TTS 等真正外部边界，并按测试纪律登记；Store 使用隔离 PostgreSQL。
 
 ## 8. 本项目的注释约定
 

@@ -38,7 +38,7 @@ export function DrawLineCanvas({ interaction, connections, onChange, readOnly = 
   return (
     <div className="draw-line-workspace">
       <p className="draw-line-instruction">{interaction.instruction || "先点击一个端点，再点击另一个端点完成连线。"}</p>
-      <svg className="draw-line-canvas" viewBox="0 0 100 100" role="img" aria-label="交互画线区域">
+      <svg className="draw-line-canvas" viewBox="0 0 100 100" role="group" aria-label="交互画线区域">
         <rect x="0" y="0" width="100" height="100" rx="4" className="draw-line-paper" />
         {connections.map(([first, second]) => {
           const from = pointById.get(first);
@@ -51,7 +51,16 @@ export function DrawLineCanvas({ interaction, connections, onChange, readOnly = 
             key={point.id}
             className={`draw-line-point ${start === point.id ? "active" : ""}`}
             data-testid={`draw-point-${point.id}`}
+            role="button"
+            tabIndex={readOnly ? -1 : 0}
+            aria-label={`端点 ${point.label}`}
+            aria-pressed={start === point.id}
             onClick={readOnly ? undefined : () => connect(point.id)}
+            onKeyDown={(event) => {
+              if (readOnly || (event.key !== "Enter" && event.key !== " ")) return;
+              event.preventDefault();
+              connect(point.id);
+            }}
           >
             <circle cx={point.x * 100} cy={point.y * 100} r="4.4" />
             <text x={point.x * 100 + 5} y={point.y * 100 - 5}>{point.label}</text>

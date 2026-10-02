@@ -71,6 +71,6 @@ services:
     staticPublishPath: ./apps/web/dist
     envVars:
       - key: NODE_VERSION
-        value: 22.12.0
+        value: 22.22.2
       - key: VITE_API_ORIGIN
         value: https://dotty-tutor-api.onrender.com

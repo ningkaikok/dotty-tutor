@@ -39,7 +39,6 @@ class LearningStore(DatabaseStore):
     def save_lesson(self, document: dict[str, Any]) -> dict[str, Any]:
         self._ensure_initialized()
         now = time.time()
-        existing = self.load_lesson(document["lessonId"])
         values = {
             "lesson_id": document["lessonId"],
             "source_upload_id": document.get("sourceUploadId"),
@@ -50,10 +49,40 @@ class LearningStore(DatabaseStore):
             "blocks_json": document.get("blocks", []),
             "question_json": document.get("questionPayload", {}),
             "guide_cards_json": document.get("guideCards", []),
-            "created_at": existing.get("createdAt", now) if existing else now,
+            "created_at": now,
             "updated_at": now,
         }
         with self.engine.begin() as connection:
+            existing = connection.execute(
+                select(lesson_documents)
+                .where(lesson_documents.c.lesson_id == document["lessonId"])
+                .with_for_update()
+            ).mappings().first()
+            if existing:
+                references = connection.execute(
+                    select(lesson_publications.c.status, lesson_publications.c.lesson_ids_json)
+                    .where(lesson_publications.c.status != "draft")
+                ).mappings().all()
+                referenced_by_history = any(
+                    document["lessonId"] in decode_json(item["lesson_ids_json"])
+                    for item in references
+                )
+                immutable = existing["status"] in {"published", "archived"} or referenced_by_history
+                if immutable:
+                    current_content = {
+                        "source_upload_id": existing["source_upload_id"],
+                        "title": existing["title"],
+                        "version": existing["version"],
+                        "knowledge_points_json": decode_json(existing["knowledge_points_json"]),
+                        "blocks_json": decode_json(existing["blocks_json"]),
+                        "question_json": decode_json(existing["question_json"]),
+                        "guide_cards_json": decode_json(existing["guide_cards_json"]),
+                    }
+                    requested_content = {key: values[key] for key in current_content}
+                    if current_content != requested_content:
+                        raise ValueError("已发布或历史版本引用的课程不可覆盖；请创建新的修订")
+                    return self._lesson_from_row(existing)
+                values["created_at"] = existing["created_at"]
             self._upsert(
                 connection,
                 lesson_documents,
@@ -148,7 +177,7 @@ class LearningStore(DatabaseStore):
             rows = connection.execute(
                 select(lesson_documents.c.lesson_id).where(
                     lesson_documents.c.lesson_id.in_(lesson_ids)
-                )
+                ).with_for_update()
             ).scalars().all()
             missing = sorted(set(lesson_ids) - set(rows))
             if missing:
@@ -231,7 +260,7 @@ class LearningStore(DatabaseStore):
             publication = connection.execute(
                 select(lesson_publications).where(
                     lesson_publications.c.publication_id == publication_id
-                )
+                ).with_for_update()
             ).mappings().first()
             if not publication:
                 return None
@@ -246,7 +275,7 @@ class LearningStore(DatabaseStore):
                 raise ValueError(f"发布状态不能从 {current_status} 直接变为 {status}")
             lesson_ids = decode_json(publication["lesson_ids_json"])
             lessons = connection.execute(
-                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids))
+                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids)).with_for_update()
             ).mappings().all()
             if status == "published":
                 lessons_by_id = {lesson["lesson_id"]: lesson for lesson in lessons}
@@ -276,6 +305,34 @@ class LearningStore(DatabaseStore):
                         "quarantinedCount": len(blockers),
                         "quarantinedLessonIds": [item["lessonId"] for item in blockers],
                     }
+                # Materialize the teacher-selected policy on the published
+                # knowledge-point projection. Missing metadata remains NULL
+                # and therefore resolves to unknown:legacy; this is never
+                # inferred from model output or the question wording.
+                for lesson in lessons_by_id.values():
+                    if lesson["lesson_id"] not in ready_lesson_ids:
+                        continue
+                    payload = decode_json(lesson["question_json"]) or {}
+                    question = payload.get("question") if isinstance(payload, dict) else {}
+                    question = question if isinstance(question, dict) else {}
+                    name = self._question_name(lesson)
+                    point_id = knowledge_point_id(publication_id, name)
+                    self._upsert(
+                        connection,
+                        knowledge_points,
+                        {
+                            "knowledge_point_id": point_id,
+                            "publication_id": publication_id,
+                            "name": name,
+                            "normalized_name": normalize_knowledge_point_name(name),
+                            "objective_type": question.get("objectiveType"),
+                            "gate_mode": question.get("gateMode"),
+                            "policy_version": question.get("policyVersion"),
+                            "created_at": time.time(),
+                        },
+                        ["knowledge_point_id"],
+                        ["name", "normalized_name", "objective_type", "gate_mode", "policy_version"],
+                    )
                 connection.execute(
                     lesson_documents.update()
                     .where(lesson_documents.c.lesson_id.in_(lesson_ids))
@@ -382,6 +439,10 @@ class LearningStore(DatabaseStore):
                 session_id=session_id,
                 question_id=question_id,
             )
+            if verified is None:
+                # A deterministic contract exists but the three-state evaluator
+                # abstained. Never persist the client claim as mastery evidence.
+                raise ValueError("确定性判题无法裁决，当前结果为 needs_review，不能接受客户端自报判定")
             connection.execute(exercise_attempts.insert().values(
                 attempt_id=attempt_id,
                 session_id=session_id,
@@ -419,21 +480,19 @@ class LearningStore(DatabaseStore):
         claimed: str,
         session_id: str,
         question_id: str,
-    ) -> str:
+    ) -> str | None:
         """Re-grade the attempt server-side; never persist a client-declared verdict.
 
         掌握度是老师看板、喂回出题和个性化作业的唯一输入，因此写入端不能相信
         客户端自报的判定。判定权归确定性判题器：诚实客户端拿到的
         ``/api/help`` 判定同样出自它，两者一致时这一步没有可观察影响。
 
-        返回 ``None`` 表示该题没有可确定判定的答案规格（开放题、含 tutor-only
-        小问的题），此时保留客户端值——这些题本来就由模型判定，与
-        ``_question_is_mastery_eligible`` 的 tutor-only 边界一致。
+        返回 None 表示题目带有确定性答案契约但本次作答落在 undecidable。
+        调用方必须阻断写入，不能把客户端伪造的 correct/incorrect 混入掌握度；
+        没有确定性契约的开放题才保留模型/客户端判定。
 
-        已知边界：``true-false`` 目前只在 ``tutor_engine`` 内联判定，
-        ``evaluate_structured_answer`` 不覆盖它，因此这一类仍走客户端值。
-        把它并入判题器会改变陪练回复文案（那段文案会显式说出正确答案），
-        属于单独一次改动，不在本次信任边界修复的范围内。
+        ``true-false`` 也属于确定性契约；若缺少可用的规范答案，判题器返回
+        ``None``，同样不能让客户端声明混入学习证据。
         """
         if not isinstance(question, dict) or not question:
             return claimed
@@ -444,7 +503,29 @@ class LearningStore(DatabaseStore):
             student_input if isinstance(student_input, str) else "",
             interaction if isinstance(interaction, dict) else None,
         )
+        if str(question.get("gateMode") or question.get("gate_mode") or "").strip().lower() == "qualitative":
+            # A qualitative policy may only enter production learning evidence
+            # through a constrained evaluator result. The deterministic answer
+            # checker does not produce rubric/confidence/evidence references,
+            # so this path intentionally remains needs_review/fail-closed.
+            evidence = result.get("evaluationEvidence") if isinstance(result, dict) else None
+            if not LearningStore._has_qualitative_evidence(evidence):
+                log_event(
+                    "learning.attempt.qualitative_needs_review",
+                    level=30,
+                    session_id=session_id,
+                    question_id=question_id,
+                )
+                return None
         if not result:
+            if LearningStore._has_deterministic_contract(question):
+                log_event(
+                    "learning.attempt.assessment_undecidable",
+                    level=30,
+                    session_id=session_id,
+                    question_id=question_id,
+                )
+                return None
             return claimed
         verified = str(result["assessment"])
         if verified != claimed:
@@ -460,6 +541,43 @@ class LearningStore(DatabaseStore):
                 evaluator_strategy=(result.get("evaluationEvidence") or {}).get("strategy"),
             )
         return verified
+
+    @staticmethod
+    def _has_qualitative_evidence(value: Any) -> bool:
+        """Require the production evaluator's bounded qualitative contract."""
+        if not isinstance(value, dict) or not isinstance(value.get("rubricPassed"), bool):
+            return False
+        confidence = value.get("confidence")
+        refs = value.get("evidenceRefs")
+        return (
+            isinstance(confidence, (int, float))
+            and 0 <= float(confidence) <= 1
+            and isinstance(refs, list)
+            and bool(refs)
+            and all(isinstance(ref, str) and ref.strip() for ref in refs)
+        )
+
+    @staticmethod
+    def _has_deterministic_contract(question: dict[str, Any]) -> bool:
+        """Whether a published question claims an objective grading contract."""
+        if not isinstance(question, dict):
+            return False
+        if question.get("questionType") in {
+            "choice", "multi-select", "true-false", "fill-blank", "numeric", "draw-line",
+        }:
+            return True
+        if question.get("questionType") == "short-answer":
+            evaluation = question.get("evaluation")
+            if isinstance(evaluation, dict) and evaluation.get("mode") == "deterministic":
+                return True
+            if question.get("answerSpec") or question.get("blanks") or question.get("correctAnswers"):
+                return True
+        return any(
+            isinstance(part, dict)
+            and isinstance(part.get("evaluation"), dict)
+            and part["evaluation"].get("mode") == "deterministic"
+            for part in (question.get("subQuestions") or [])
+        )
 
     @staticmethod
     def _question_name(lesson: Any) -> str:
@@ -502,6 +620,7 @@ class LearningStore(DatabaseStore):
             )
             if lesson is None:
                 raise LookupError("题目不属于当前已发布互动试卷")
+            question = (decode_json(lesson["question_json"]) or {}).get("question") or {}
             name = self._question_name(lesson)
             normalized = normalize_knowledge_point_name(name)
             point_id = knowledge_point_id(session["publication_id"], normalized)
@@ -513,12 +632,14 @@ class LearningStore(DatabaseStore):
                     "publication_id": session["publication_id"],
                     "name": name,
                     "normalized_name": normalized,
+                    "objective_type": question.get("objectiveType") or question.get("objective_type"),
+                    "gate_mode": question.get("gateMode") or question.get("gate_mode"),
+                    "policy_version": question.get("policyVersion") or question.get("policy_version"),
                     "created_at": time.time(),
                 },
                 ["knowledge_point_id"],
-                ["name", "normalized_name"],
+                ["name", "normalized_name", "objective_type", "gate_mode", "policy_version"],
             )
-            question = (decode_json(lesson["question_json"]) or {}).get("question") or {}
             return {"knowledgePointId": point_id, "name": name, "question": question}
 
         raise LookupError("题目不属于当前已发布互动试卷")

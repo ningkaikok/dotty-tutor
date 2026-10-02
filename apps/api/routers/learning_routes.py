@@ -6,8 +6,9 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
+from auth_context import learner_for_request, require_owner
 from domain.contracts.lesson import (
     ExerciseAttemptCreate,
     LearningSessionCreate,
@@ -76,7 +77,10 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
 
     @router.post("/lessons")
     def save_lesson(document: LessonDocument) -> dict[str, Any]:
-        saved = store.save_lesson(document.model_dump())
+        try:
+            saved = store.save_lesson(document.model_dump())
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         log_event("lesson.saved", lesson_id=document.lessonId, version=document.version, status=document.status)
         return saved
 
@@ -88,7 +92,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
         return lesson
 
     @router.post("/learning/sessions")
-    def create_learning_session(request: LearningSessionCreate) -> dict[str, Any]:
+    def create_learning_session(http_request: Request, request: LearningSessionCreate) -> dict[str, Any]:
+        learner_id = learner_for_request(http_request, request.learnerId)
         publication = store.load_publication(request.publicationId)
         if not publication or publication["status"] != "published":
             # 只有通过发布质量门禁的内容才能创建真实学习记录；任意草稿 ID 不得污染掌握度数据。
@@ -97,7 +102,7 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
             try:
                 assignment = store.add_assignment_session(
                     assignment_id=request.assignmentId,
-                    learner_id=request.learnerId,
+                    learner_id=learner_id,
                 )
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
@@ -105,7 +110,7 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 raise HTTPException(status_code=409, detail="作业与互动试卷不匹配")
         session = store.create_learning_session(
             session_id=uuid.uuid4().hex,
-            learner_id=request.learnerId,
+            learner_id=learner_id,
             publication_id=request.publicationId,
             assignment_id=request.assignmentId,
             started_at=time.time(),
@@ -118,7 +123,11 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
         return session
 
     @router.post("/learning/sessions/{session_id}/attempts")
-    def record_exercise_attempt(session_id: str, request: ExerciseAttemptCreate) -> dict[str, Any]:
+    def record_exercise_attempt(http_request: Request, session_id: str, request: ExerciseAttemptCreate) -> dict[str, Any]:
+        session = store.get_learning_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="学习会话不存在")
+        require_owner(http_request, session["learnerId"])
         received_at = time.time()
         try:
             result = store.record_exercise_attempt(
@@ -134,6 +143,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
             )
         except LookupError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         log_event(
             "learning.attempt.recorded",
             session_id=session_id,
@@ -145,19 +156,25 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
         return result
 
     @router.get("/learning/mastery/{learner_id}")
-    def list_mastery(learner_id: str) -> dict[str, Any]:
+    def list_mastery(http_request: Request, learner_id: str) -> dict[str, Any]:
+        learner_id = learner_for_request(http_request, learner_id)
         return {"learnerId": learner_id, "items": store.list_mastery(learner_id)}
 
     @router.get("/learning/sessions/{session_id}")
-    def get_learning_session(session_id: str) -> dict[str, Any]:
+    def get_learning_session(request: Request, session_id: str) -> dict[str, Any]:
         session = store.get_learning_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="学习会话不存在")
+        require_owner(request, session["learnerId"])
         return session
 
     @router.post("/learning/sessions/{session_id}/sync")
-    def sync_learning_attempts(session_id: str, request: LearningSyncCreate) -> dict[str, Any]:
+    def sync_learning_attempts(http_request: Request, session_id: str, request: LearningSyncCreate) -> dict[str, Any]:
         """接收有上限的离线作答批次，并依靠 attemptId 安全幂等重试。"""
+        session = store.get_learning_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="学习会话不存在")
+        require_owner(http_request, session["learnerId"])
         synced: list[dict[str, Any]] = []
         for attempt in request.attempts:
             received_at = time.time()
@@ -174,6 +191,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 )
             except LookupError as error:
                 raise HTTPException(status_code=404, detail=str(error)) from error
+            except ValueError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
             result["autoMistake"] = auto_record_mistake(session_id, attempt, recorded_at=received_at)
             synced.append(result)
         log_event(

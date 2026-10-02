@@ -22,16 +22,20 @@ from domain.questions.source import (
     MAX_FULL_PAPER_QUESTIONS_PER_BATCH,
     MAX_QUESTIONS_PER_BATCH,
 )
+from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
 
 
 def build_textbook_registry(processing_service: Any) -> TaskRegistry:
     registry = TaskRegistry()
 
-    def _run(call: Callable[[], Any], cancellation_check: Callable[[], bool]) -> Any:
+    def _run(
+        call: Callable[[], Any], cancellation_check: Callable[[], bool], payload: dict[str, Any],
+    ) -> Any:
         if cancellation_check():
             raise JobCancelled()
         try:
-            result = call()
+            with use_job_runtime_snapshot(payload):
+                result = call()
         except HTTPException as error:
             details = {"statusCode": error.status_code}
             if error.status_code in RETRYABLE_HTTP_STATUS_CODES:
@@ -53,6 +57,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
                 ),
             ),
             cancellation_check,
+            payload,
         )
         if not payload.get("generateFullPaper", False):
             return result
@@ -61,6 +66,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
                 payload["uploadId"], cancellation_check=cancellation_check,
             ),
             cancellation_check,
+            payload,
         )
         if isinstance(result, dict) and isinstance(full_paper, dict):
             return {
@@ -86,6 +92,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
                 cancellation_check=cancellation_check,
             ),
             cancellation_check,
+            payload,
         )
 
     @registry.decorator("textbook.paper.generate")
@@ -97,6 +104,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
                 cancellation_check=cancellation_check,
             ),
             cancellation_check,
+            payload,
         )
 
     return registry

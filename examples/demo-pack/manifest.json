@@ -1,0 +1,132 @@
+{
+  "manifestVersion": 1,
+  "packId": "demo-pack-v1",
+  "sourceKind": "synthetic-fixture",
+  "privacy": {
+    "containsReal教材": false,
+    "containsStudentData": false,
+    "description": "All names, prompts, answers and evidence are deterministic synthetic fixtures."
+  },
+  "publication": {
+    "publicationId": "demo-pack-publication",
+    "title": "合成课堂练习 · 分数与方程",
+    "lessonIds": [
+      "demo-pack-lesson-1",
+      "demo-pack-lesson-2",
+      "demo-pack-lesson-3"
+    ]
+  },
+  "class": {
+    "classId": "demo-pack-class",
+    "name": "合成演示班",
+    "subject": "数学",
+    "gradeBand": "初中",
+    "learners": [
+      {
+        "learnerId": "demo-pack-learner-a",
+        "displayName": "演示学生A",
+        "sessionId": "demo-pack-session-a"
+      },
+      {
+        "learnerId": "demo-pack-learner-b",
+        "displayName": "演示学生B",
+        "sessionId": "demo-pack-session-b"
+      },
+      {
+        "learnerId": "demo-pack-learner-c",
+        "displayName": "演示学生C",
+        "sessionId": "demo-pack-session-c"
+      }
+    ]
+  },
+  "assignment": {
+    "assignmentId": "demo-pack-assignment",
+    "title": "合成课堂练习 · 讲评数据",
+    "questionIds": [
+      "demo-pack-question-1",
+      "demo-pack-question-2",
+      "demo-pack-question-3"
+    ]
+  },
+  "attempts": [
+    {
+      "attemptId": "demo-pack-attempt-a-q1",
+      "learnerId": "demo-pack-learner-a",
+      "questionId": "demo-pack-question-1",
+      "assessment": "incorrect",
+      "errorReason": "concept"
+    },
+    {
+      "attemptId": "demo-pack-attempt-a-q2",
+      "learnerId": "demo-pack-learner-a",
+      "questionId": "demo-pack-question-2",
+      "assessment": "correct"
+    },
+    {
+      "attemptId": "demo-pack-attempt-a-q3",
+      "learnerId": "demo-pack-learner-a",
+      "questionId": "demo-pack-question-3",
+      "assessment": "incorrect",
+      "errorReason": "calculation"
+    },
+    {
+      "attemptId": "demo-pack-attempt-b-q1",
+      "learnerId": "demo-pack-learner-b",
+      "questionId": "demo-pack-question-1",
+      "assessment": "incorrect",
+      "errorReason": "concept"
+    },
+    {
+      "attemptId": "demo-pack-attempt-b-q2",
+      "learnerId": "demo-pack-learner-b",
+      "questionId": "demo-pack-question-2",
+      "assessment": "partial",
+      "errorReason": "missing_step"
+    },
+    {
+      "attemptId": "demo-pack-attempt-b-q3",
+      "learnerId": "demo-pack-learner-b",
+      "questionId": "demo-pack-question-3",
+      "assessment": "correct"
+    },
+    {
+      "attemptId": "demo-pack-attempt-c-q1",
+      "learnerId": "demo-pack-learner-c",
+      "questionId": "demo-pack-question-1",
+      "assessment": "correct"
+    },
+    {
+      "attemptId": "demo-pack-attempt-c-q2",
+      "learnerId": "demo-pack-learner-c",
+      "questionId": "demo-pack-question-2",
+      "assessment": "incorrect",
+      "errorReason": "reading"
+    },
+    {
+      "attemptId": "demo-pack-attempt-c-q3",
+      "learnerId": "demo-pack-learner-c",
+      "questionId": "demo-pack-question-3",
+      "assessment": "partial",
+      "errorReason": "unknown"
+    }
+  ],
+  "mistakeIds": [
+    "paper-5061fd8a48a388358ebb322ae9f0362c",
+    "paper-98e4c6b7d9cf84718b2d384d778906a0",
+    "paper-a42c881aa5511aac4b75ed3322461547",
+    "paper-7c97892130fca0dddd103542f195bded",
+    "paper-4c162ed82f41420dfe0a2ac146929e19",
+    "paper-548dbbcf716931c409b5490bbec7eb04"
+  ],
+  "review": {
+    "intervalDays": [1, 3],
+    "baseTime": 1720000000.0
+  },
+  "teacherReview": {
+    "eventId": "demo-pack-review-overturn-b-q1",
+    "learnerId": "demo-pack-learner-b",
+    "questionId": "demo-pack-question-1",
+    "action": "overturned",
+    "correctedAssessment": "correct"
+  }
+}

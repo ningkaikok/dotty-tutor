@@ -5,6 +5,7 @@ import { TextbookLibrary } from "./apps/textbook/import/TextbookLibrary";
 import { UploadPanel } from "./apps/textbook/import/UploadPanel";
 import { useTextbookImport } from "./apps/textbook/import/useTextbookImport";
 import type { TextbookImportResult } from "./types/index";
+import { PRODUCT_TERMS } from "./productTerms";
 
 interface TextbookImportProps {
   onContinue: (result: TextbookImportResult) => void;
@@ -27,6 +28,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
           <strong>Dotty</strong>
           <span>内容生产工作台</span>
         </div>
+        <Link to="/studio/prompts" className="metrics-link">教学策略 · 提示词管理 →</Link>
         {/* 只读指标面板入口；学生端不可见 */}
         <Link to="/studio/metrics" className="metrics-link">
           模型调用指标 <span aria-hidden="true">→</span>
@@ -34,7 +36,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
         <Link to="/studio/dependency-preflight" className="metrics-link">
           环境依赖自检 <span aria-hidden="true">→</span>
         </Link>
-        <span className="demo-badge">LOCAL DEMO</span>
+        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
       <section className="import-intro">
@@ -46,11 +48,15 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
       <RuntimeSettings
         models={state.models}
         tutorModels={state.tutorModels}
+        tutorEvaluation={state.tutorEvaluation}
+        tutorEvaluationLoading={state.tutorEvaluationLoading}
+        tutorEvaluationError={state.tutorEvaluationError}
         reviewModels={state.reviewModels}
         ocrProviders={state.ocrProviders}
         loading={state.runtimeLoading}
         phase={state.phase}
         onSelectModel={(provider, model) => void state.selectGenerationModel(provider, model)}
+        onEvaluateTutorModel={(provider, model) => void state.evaluateTutorModel(provider, model)}
         onSelectTutorModel={(provider, model) => void state.selectTutor(provider, model)}
         onSelectReviewModel={(provider, model) => void state.selectReviewer(provider, model)}
         onSelectOcr={(provider) => void state.selectOcr(provider)}

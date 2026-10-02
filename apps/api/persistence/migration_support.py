@@ -42,6 +42,16 @@ _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
     },
     "review_tasks": {
         "evaluation_evidence_json": "JSON_OBJECT_NOT_NULL",
+        "schedule_version": "VARCHAR(64) NOT NULL DEFAULT 'legacy-1-3-7-v1'",
+        "sequence_no": "INTEGER NOT NULL DEFAULT 0",
+        "profile": "VARCHAR(64) NOT NULL DEFAULT 'unknown:legacy'",
+        "trigger_evidence_ref": "VARCHAR(255)",
+        "superseded_at": "FLOAT",
+    },
+    "knowledge_points": {
+        "objective_type": "VARCHAR(32)",
+        "gate_mode": "VARCHAR(32)",
+        "policy_version": "VARCHAR(64)",
     },
     "model_call_metrics": {
         # 历史行没有这两个维度：既有调用按"一次逻辑调用 = 一次 Provider 请求、
@@ -146,6 +156,54 @@ def add_missing_columns(connection: Connection) -> list[str]:
             added.append(f"{table_name}.{column_name}")
             existing.add(column_name)
     return added
+
+
+def ensure_review_task_compatibility(connection: Connection) -> None:
+    """Keep policy columns insert-compatible with pre-policy review writers.
+
+    Some deployed databases already have the policy columns but were created
+    before their server defaults were recorded.  A legacy insert omitting
+    those columns must continue to land as an explicit legacy task; Python
+    defaults on the SQLAlchemy model are not enough for direct SQL writers.
+    """
+    if "review_tasks" not in table_names(connection):
+        return
+    if connection.dialect.name != "postgresql":
+        return
+    columns = column_names(connection, "review_tasks")
+    defaults = {
+        "schedule_version": "'legacy-1-3-7-v1'",
+        "sequence_no": "0",
+        "profile": "'unknown:legacy'",
+        "evaluation_evidence_json": "'{}'::jsonb",
+    }
+    for column_name, default in defaults.items():
+        if column_name not in columns:
+            continue
+        connection.execute(text(
+            f"ALTER TABLE {quote_identifier('review_tasks')} "
+            f"ALTER COLUMN {quote_identifier(column_name)} SET DEFAULT {default}"
+        ))
+    # Backfill before asserting NOT NULL so partially upgraded rows do not make
+    # the migration fail halfway through and leave an unverifiable schema.
+    connection.execute(text(
+        "UPDATE review_tasks SET "
+        "schedule_version = COALESCE(schedule_version, 'legacy-1-3-7-v1'), "
+        "sequence_no = COALESCE(sequence_no, 0), "
+        "profile = COALESCE(profile, 'unknown:legacy'), "
+        "evaluation_evidence_json = COALESCE(evaluation_evidence_json, '{}'::jsonb)"
+    ))
+    for column_name in (
+        "schedule_version",
+        "sequence_no",
+        "profile",
+        "evaluation_evidence_json",
+    ):
+        if column_name in columns:
+            connection.execute(text(
+                f"ALTER TABLE {quote_identifier('review_tasks')} "
+                f"ALTER COLUMN {quote_identifier(column_name)} SET NOT NULL"
+            ))
 
 
 def _foreign_key_matches(reflected: Mapping[str, Any], expected: dict[str, Any]) -> bool:

@@ -89,7 +89,8 @@ class StagedGenerationTests(unittest.TestCase):
             self.assertEqual(stages_for_rerun("solution"), STAGES[1:])
             self.assertTrue(can_run_tutor_script({"status": "verified"}))
 
-    def test_forced_stage_rerun_calls_target_and_skips_extraction(self) -> None:
+    def test_user_reruns_script_without_assigning_current_prompt_to_legacy_artifacts(self) -> None:
+        """Given 旧产物无模板身份；When 只重跑讲解；Then 旧阶段身份保持未知。"""
         original_selection = runtime.selection
         runtime.selection = ModelSelection("codex", "default")
         prior = {
@@ -115,15 +116,19 @@ class StagedGenerationTests(unittest.TestCase):
         for name in ("extraction", "solution", "verification"):
             self.assertEqual(stages[name]["provider"], "artifact")
             self.assertTrue(stages[name]["cacheHit"])
+            self.assertEqual(stages[name]["promptTemplates"], [])
+            self.assertIsNone(stages[name]["promptVersion"])
         self.assertEqual(stages["tutor-script"]["provider"], "codex")
         self.assertFalse(stages["tutor-script"]["cacheHit"])
         self.assertTrue(stages["tutor-script"]["cacheKey"])
 
-    def test_solution_rerun_reuses_extraction_and_runs_downstream(self) -> None:
+    def test_user_reruns_solution_while_preserving_extraction_prompt_revision(self) -> None:
+        """Given 原抽取有版本身份；When 重跑求解；Then 抽取保留旧版本，下游记录当前模板。"""
+        original_template = {"id": "generation.extraction", "version": "historic-v0", "contentHash": "a" * 64}
         original_selection = runtime.selection
         runtime.selection = ModelSelection("codex", "default")
         prior = {
-            "extraction": {"raw": {"questionNumber": "7", "stem": "7. 求 x"}, "run": {}},
+            "extraction": {"raw": {"questionNumber": "7", "stem": "7. 求 x"}, "run": {"promptTemplates": [original_template]}},
         }
         responses = [
             ({"questionType": "numeric", "correctAnswer": "3"}, {"provider": "codex", "model": "default", "fallback": False}),
@@ -148,9 +153,13 @@ class StagedGenerationTests(unittest.TestCase):
         # 其余三个阶段必须真正重新生成，而不是从缓存搬运。
         self.assertEqual(stages["extraction"]["provider"], "artifact")
         self.assertTrue(stages["extraction"]["cacheHit"])
+        self.assertEqual(stages["extraction"]["promptTemplates"], [original_template])
+        self.assertEqual(stages["extraction"]["promptVersion"], "historic-v0")
         for name in ("solution", "verification", "tutor-script"):
             self.assertEqual(stages[name]["provider"], "codex")
             self.assertFalse(stages[name]["cacheHit"])
+            self.assertEqual(stages[name]["promptTemplates"][0]["id"], f"generation.{name}")
+            self.assertEqual(len(stages[name]["promptTemplates"][0]["contentHash"]), 64)
 
     def test_stage_rerun_invalidates_only_target_and_downstream(self) -> None:
         self.assertEqual(stages_for_rerun("solution"), STAGES[1:])

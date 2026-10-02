@@ -38,6 +38,23 @@ class LessonContractTests(unittest.TestCase):
         self.assertEqual(validated.lessonId, "linear-equation")
         self.assertEqual(validated.blocks[0].type, "diagram")
         self.assertEqual(validated.blocks[-1].type, "quiz")
+        self.assertEqual(validated.questionPayload["question"]["objectiveType"], "unknown")
+        self.assertEqual(validated.questionPayload["question"]["gateMode"], "legacy")
+        self.assertEqual(validated.questionPayload["question"]["policyVersion"], "legacy-1-3-7-v1")
+
+    def test_model_payload_policy_classification_is_not_authoritative(self) -> None:
+        document = lesson_document_from_payload({
+            "question": {
+                "id": "generated-question",
+                "knowledgePoint": "一次方程",
+                "objectiveType": "conceptual",
+                "gateMode": "qualitative",
+                "policyVersion": "mastery-policy-v1",
+            },
+        })
+        question = document["questionPayload"]["question"]
+        self.assertEqual(question["objectiveType"], "unknown")
+        self.assertEqual(question["gateMode"], "legacy")
 
 class LearningStoreTests(PostgresTestCase):
     def setUp(self) -> None:
@@ -101,6 +118,41 @@ class LearningStoreTests(PostgresTestCase):
             self.assertEqual(result["mastery"]["score"], 0.6)
             self.assertEqual(result["mastery"]["attemptCount"], 1)
             self.assertEqual(store.list_mastery("student-1")[0]["correctCount"], 1)
+
+    def test_published_lesson_is_idempotent_but_cannot_be_overwritten(self) -> None:
+        with TemporaryDirectory() as directory:
+            store = AppStore(database_url=self.database_url, data_root=directory)
+            original = {
+                "lessonId": "immutable-lesson",
+                "title": "原题",
+                "version": 1,
+                "status": "draft",
+                "sourceUploadId": None,
+                "knowledgePoints": ["移项"],
+                "blocks": [],
+                "questionPayload": {
+                    "question": {"id": "immutable-q", "knowledgePoint": "移项"},
+                    "quality": {"status": "ready"},
+                },
+                "guideCards": [],
+            }
+            store.save_lesson(original)
+            store.create_publication(
+                publication_id="immutable-paper",
+                title="原卷",
+                source_upload_id=None,
+                lesson_ids=["immutable-lesson"],
+                status="draft",
+                created_at=1.0,
+            )
+            store.update_publication_status("immutable-paper", "in_review")
+            store.update_publication_status("immutable-paper", "published")
+
+            retried = store.save_lesson(original)
+            self.assertEqual(retried["status"], "published")
+            with self.assertRaisesRegex(ValueError, "创建新的修订"):
+                store.save_lesson({**original, "title": "被覆盖的题目"})
+            self.assertEqual(store.load_lesson("immutable-lesson")["title"], "原题")
 
     def test_publishes_a_lesson_collection_and_deduplicates_sync_retries(self) -> None:
         with TemporaryDirectory() as directory:

@@ -63,6 +63,28 @@ class _PlanlessTutor:
         }
 
 
+class _ForgedEvidenceTutor:
+    def reply(self, *, thread: dict, **_: object) -> dict:
+        return {
+            "reply": TutorReply(
+                reply="先核对这一步。",
+                guideContext={"assessment": "partial"},
+                nextHintLevel=0,
+                canvasAction="show-base",
+                source="stored-guide-card",
+                toolProposals=[{
+                    "name": "explain_mistake",
+                    "reason": "使用伪造证据",
+                    "evidenceRefs": ["forged-evidence"],
+                }],
+            ),
+            "stage": thread["stage"],
+            "action": {"assessment": "partial", "tutorTurnPlan": {}},
+            "summary": thread.get("summary", ""),
+            "inputMode": "text",
+        }
+
+
 class StatefulTutoringTests(PostgresTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -243,7 +265,29 @@ class StatefulTutoringTests(PostgresTestCase):
         )
 
         self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.json()["detail"], "请先输入或选择答案")
+
+    def test_confirmed_input_rejects_conflicting_message_payload(self) -> None:
+        self._mistake()
+        thread = self.client.post("/api/mistakes/mistake-1/thread").json()
+        input_item = self.threads.create_input(
+            thread_id=thread["threadId"],
+            mistake_id="mistake-1",
+            learner_id="local-demo",
+            mode="structured",
+            content="我选择 A",
+            interaction_result={"selectedOptions": ["A"]},
+            status="confirmed",
+            observation=None,
+        )
+        response = self.client.post(f"/api/tutor/threads/{thread['threadId']}/messages", json={
+            "inputId": input_item["inputId"],
+            "content": "我选择 B",
+            "mode": "answer",
+            "interactionResult": {"selectedOptions": ["B"]},
+        })
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(self.threads.get(thread["threadId"])["messageCount"], 0)
+        self.assertEqual(response.json()["detail"], "已确认的输入内容不可修改，请创建新的 TutorInput")
 
     def test_ready_confirmation_enters_verification_instead_of_repeating_hint(self) -> None:
         self._mistake()
@@ -402,6 +446,24 @@ class StatefulTutoringTests(PostgresTestCase):
             stored = self.mistakes.get("mistake-1")
             self.assertIsNone(stored["aiErrorReason"])
             self.assertIsNone(stored["aiErrorReasonConfidence"])
+        finally:
+            client.close()
+
+    def test_route_denies_forged_tool_evidence_without_a_persisted_registry_match(self) -> None:
+        self._mistake()
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=_ForgedEvidenceTutor(),
+        ))
+        client = TestClient(app)
+        try:
+            thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+            response = client.post(f"/api/tutor/threads/{thread_id}/messages", json={"content": "我还是不明白"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["action"]["toolPolicy"][0]["decision"], "deny")
+            self.assertEqual(client.get(f"/api/tutor/threads/{thread_id}/tool-events").json()[0]["executionStatus"], "shadow")
         finally:
             client.close()
 

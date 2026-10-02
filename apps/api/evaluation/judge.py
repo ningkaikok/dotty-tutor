@@ -18,8 +18,10 @@ import re
 import time
 from typing import Any, Callable
 
+from prompts import CATALOG, freeze_prompts, prompt_identity, render_prompt
+
 # 固定评分 rubric：每个维度 1-5 分，附判分说明。修改任何文案都必须递增版本号。
-JUDGE_PROMPT_VERSION = "judge-rubric-v1"
+JUDGE_PROMPT_VERSION = CATALOG["evaluation.judge"].version
 
 RUBRIC: dict[str, str] = {
     "clarity": "清晰度：步骤是否循序渐进、语言是否无歧义、学生能否独立跟随。",
@@ -52,14 +54,11 @@ _VALID_SCORE = re.compile(r"^[1-5]$")
 def build_judge_prompt(question_context: str, explanation: str) -> str:
     """构建锁定 rubric 的评审提示词；只读输入，不包含学生个人信息。"""
     rubric_lines = "\n".join(f"- {key}：{desc}" for key, desc in RUBRIC.items())
-    return (
-        f"你是独立的讲解质量审核员。按以下 rubric 对讲解文本逐维度打 1-5 分，"
-        f"并给出简短依据（rationale）与整体置信度 confidence（0-1）。\n"
-        f"评分维度：\n{rubric_lines}\n\n"
-        f"【题目上下文】\n{question_context[:600]}\n\n"
-        f"【讲解文本】\n{explanation[:1500]}\n\n"
-        f"只输出符合 JSON Schema 的 JSON；分数必须为 1-5 的整数；"
-        f"不得改写讲解或给出新的解题步骤。"
+    return render_prompt(
+        "evaluation.judge",
+        rubric=rubric_lines,
+        question_context=question_context[:600],
+        explanation=explanation[:1500],
     )
 
 
@@ -90,7 +89,8 @@ def parse_judge_response(content: str) -> dict[str, Any] | None:
         "scores": validated,
         "rationale": rationale.strip()[:600],
         "confidence": round(float(confidence), 2),
-        "judgePromptVersion": JUDGE_PROMPT_VERSION,
+        "judgePromptVersion": prompt_identity("evaluation.judge")["version"],
+        "promptTemplates": [prompt_identity("evaluation.judge")],
     }
 
 
@@ -112,6 +112,7 @@ def run_judge(
     )["outcome"]
 
 
+@freeze_prompts
 def run_judge_detailed(
     *,
     generate_json_as: Callable[..., tuple[dict[str, Any], dict[str, Any]]],

@@ -1,6 +1,6 @@
 # AI 运行治理与后台任务演进计划
 
-> 状态：G1～G4 第一版已落地，G5 仍在规划中。本文记录真实实现边界、下一阶段顺序和验收标准。
+> 状态：G1～G4 第一版已落地，G5 仍在规划中。本文维护运行治理的专题设计与验收标准；当前开发顺序统一见 [工程路线图](engineering-roadmap.md)。
 
 Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL 持久化等基础能力。下一步的重点不是
 引入更多代理框架，而是让一次 AI 处理过程可以被复现、观察、取消和评测。本计划参考通用 Agent Platform
@@ -24,7 +24,7 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 | 能力 | 当前基础 | 下一步 |
 | --- | --- | --- |
 | 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock；运行摘要记录耗时、token、Provider 尝试次数和 Schema 降级 | 继续按真实运行补齐跨任务成本分析 |
-| OCR | 页面路由、局部升级、质量门禁、内容寻址缓存，以及由 PostgreSQL Job Store + Worker 执行的 PDF/批次流程 | 继续补齐批次熔断、部分成功和依赖自检 |
+| OCR | 页面路由、局部升级、质量门禁、内容寻址缓存，以及由 PostgreSQL Job Store + Worker 执行的 PDF/批次流程 | 已实现整卷系统性失败熔断、部分成功汇总及依赖自检；继续按真实故障扩充回归 |
 | 状态 | `upload_jobs` 保存教材进度，`background_jobs` 保存后台执行状态 | 为整套重新审核等后续长任务复用同一 Job Store |
 | 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情 | 将 `run_id` 继续贯穿陪练与后续 Worker 任务 |
 | 质量 | 单元测试、Playwright、结构质量门禁、脱敏离线语料、Badcase 回放和 Judge 报告 | 用真实运行持续扩充样本并建立学习效果报告 |
@@ -96,7 +96,8 @@ API 返回中；陪练与整套重新审核等后续长任务的全链路事件�
 
 ## G3：PostgreSQL Job Store 与单 Worker（已落地）
 
-把整本 PDF 完成、OCR、批量生成和整套重新审核从同步 HTTP 请求迁出：
+已将整本 PDF 完成、OCR 和批量生成迁出同步 HTTP；整套试卷重新审核仍由
+`publication_routes.py` 同步调用 `PublicationRevisionService.create`，后台化属于后续规划：
 
 ```text
 POST complete
@@ -117,7 +118,7 @@ PostgreSQL 使用 `FOR UPDATE SKIP LOCKED` 原子领取任务。Worker 定时续
 - `POST /api/uploads/{uploadId}/complete`：返回 `202` 和任务快照；
 - `POST /api/uploads/{uploadId}/batches/{batchId}/process`：返回 `202` 和任务快照；
 - `GET /api/jobs/{jobId}`、`POST /api/jobs/{jobId}/cancel`、`POST /api/jobs/{jobId}/retry`：查询、取消和人工重试；
-- `python -m worker --registry routers.textbook_routes:textbook_job_registry`：独立 Worker 进程；
+- `python -m worker --registry app:job_registry`：独立 Worker 进程；
 - Compose 和 systemd 分别运行 API 与 Worker，但两者复用同一应用服务、数据库和文件目录。
 
 自动重试预算不会被人工重试清零；人工重试只给失败任务增加一次明确预算并保留最后错误。任务错误统一记录
@@ -182,13 +183,8 @@ Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显
 无法满足测得的并发量时评估 Redis；需要跨服务链路分析时评估 OpenTelemetry；需要让外部代理安全复用三个
 以上工具时评估 MCP。
 
-## 建议提交顺序
+## 后续范围
 
-1. `feature/run-snapshots`：运行快照、版本字段和查询接口。
-2. `refactor/run-events`：稳定事件名、公共字段和日志测试。
-3. `feature/postgres-job-worker`：202 接口、单 Worker 和状态轮询（已完成）。
-4. `feature/job-recovery`：取消、租约、幂等和有限重试（已完成）。
-5. `test/offline-ai-evaluation`：脱敏样本、指标脚本和基线报告。
-6. `refactor/model-gateway-contracts`：统一 ModelRequest/ModelResult 和显式回退。
-
-每个 PR 都应更新本文件的状态、架构文档和相应测试；不得仅因为路线图列出某项能力就把它视为已完成。
+G1～G4 第一版已经落地，不再按旧分支名重复排期。G5、陪练全链路事件和整套重新审核后台化仍是后续项，
+是否推进由 [工程路线图](engineering-roadmap.md) 的当前批次需求决定。
+修改专题设计时同步架构和 API 描述，并保留取消、租约、幂等、失败预算与不可变证据的回归。

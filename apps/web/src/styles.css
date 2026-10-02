@@ -11,6 +11,10 @@ body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
+:where(a, button, input, textarea, select, summary):focus-visible {
+  outline: 3px solid #1b9a72;
+  outline-offset: 3px;
+}
 
 body::before {
   content: "";
@@ -29,7 +33,7 @@ body::before {
 .brand-mark { width: 42px; height: 42px; border-radius: 14px 14px 4px 14px; font-size: 20px; }
 .topbar strong { display: block; font-size: 18px; line-height: 1.1; }
 .topbar span { color: #6d776f; font-size: 13px; }
-.back-home, .product-home-button, .route-back-button { padding: 8px 14px; border: 1px solid #cdd6d0; border-radius: 999px; color: #35463d; font-size: 13px; font-weight: 600; background: #f1f3ef; }
+.back-home, .product-home-button, .route-back-button { min-height: 44px; padding: 8px 14px; border: 1px solid #cdd6d0; border-radius: 999px; color: #35463d; font-size: 13px; font-weight: 600; background: #f1f3ef; }
 .back-home:hover, .product-home-button:hover, .route-back-button:hover { border-color: #9fb6a9; background: #e8efe9; }
 .product-home-button { color: #f8fbf9; border-color: #183f31; background: #183f31; }
 .product-home-button:hover { color: #183f31; }
@@ -173,15 +177,40 @@ body::before {
 /* Each runtime setting owns a label/status row pair. Without explicit placement,
    the second select is auto-placed on top of the generation select and appears
    to be missing even though it is present in the DOM. */
-.model-switcher .tutor-label { grid-column: 1; grid-row: 3 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .tutor-select { grid-column: 2; grid-row: 3; }
-.model-switcher .tutor-status { grid-column: 2; grid-row: 4; }
-.model-switcher .review-label { grid-column: 1; grid-row: 5 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .review-select { grid-column: 2; grid-row: 5; }
-.model-switcher .review-status { grid-column: 2; grid-row: 6; }
-.model-switcher .ocr-label { grid-column: 1; grid-row: 7 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
-.model-switcher .ocr-select { grid-column: 2; grid-row: 7; }
-.model-switcher .ocr-status { grid-column: 2; grid-row: 8; }
+.model-switcher .tutor-label { grid-column: 1 / -1; grid-row: 3; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .tutor-current-model { grid-column: 1; grid-row: 4; color: #52645a; font-size: 12px; }
+.model-switcher .tutor-select { grid-column: 2; grid-row: 4; }
+.model-switcher .tutor-evaluation-actions { grid-column: 2; grid-row: 5; display: flex; flex-wrap: wrap; gap: 8px; }
+.tutor-evaluation-button { min-height: 38px; padding: 8px 12px; border: 1px solid #b9c8bd; border-radius: 9px; color: #234b38; background: #f2f8f4; cursor: pointer; font-weight: 700; }
+.tutor-evaluation-button:disabled { cursor: not-allowed; opacity: .55; }
+.tutor-evaluation-button.primary { border-color: #20543d; color: #fff; background: #20543d; }
+.tutor-evaluation-note, .tutor-evaluation-progress, .tutor-evaluation-error, .tutor-evaluation-report { grid-column: 1 / -1; }
+.tutor-evaluation-note, .tutor-evaluation-report-note { margin: 0; color: #68766e; font-size: 12px; line-height: 1.55; }
+.tutor-evaluation-progress { margin: 0; color: #375c47; font-size: 13px; }
+.tutor-evaluation-error { margin: 0; color: #a0312b; font-size: 13px; }
+.tutor-evaluation-stale { margin: 8px 0; color: #875b16; font-size: 12px; }
+.model-switcher .tutor-evaluation-note { grid-row: 6; }
+.model-switcher .tutor-evaluation-progress { grid-row: 7; }
+.model-switcher .tutor-evaluation-error { grid-row: 8; }
+.tutor-evaluation-report { padding: 14px 0 4px; border-top: 1px solid #e0e3de; }
+.tutor-evaluation-report h3 { margin: 0 0 5px; font-size: 16px; }
+.tutor-evaluation-report h4 { margin: 14px 0 6px; font-size: 13px; }
+.tutor-evaluation-table-wrap { overflow-x: auto; margin: 10px 0; }
+.tutor-evaluation-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tutor-evaluation-report th, .tutor-evaluation-report td { padding: 8px; border: 1px solid #e0e6e1; text-align: left; vertical-align: top; }
+.tutor-evaluation-cases { margin-top: 12px; border-top: 1px solid #e2e8e3; }
+.tutor-evaluation-cases > summary { padding: 10px 0; color: #365345; cursor: pointer; font-size: 13px; font-weight: 700; }
+.tutor-evaluation-cases article { padding: 12px 0; border-top: 1px solid #edf0ed; }
+.tutor-evaluation-cases h4 { margin: 0 0 8px; font-size: 13px; }
+.tutor-evaluation-cases p { margin: 8px 0 4px; font-size: 12px; }
+.tutor-evaluation-cases pre { max-height: 180px; overflow: auto; margin: 0; padding: 9px; border-radius: 7px; background: #f4f6f4; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-switcher .tutor-evaluation-report { grid-row: 9; }
+.model-switcher .review-label { grid-column: 1; grid-row: 10 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .review-select { grid-column: 2; grid-row: 10; }
+.model-switcher .review-status { grid-column: 2; grid-row: 11; }
+.model-switcher .ocr-label { grid-column: 1; grid-row: 12 / span 2; padding-top: 14px; border-top: 1px solid #e0e3de; }
+.model-switcher .ocr-select { grid-column: 2; grid-row: 12; }
+.model-switcher .ocr-status { grid-column: 2; grid-row: 13; }
 .ocr-status.mineru i { background: #6759d9; }
 .ocr-status.pypdf i, .ocr-status.none i { background: #b48248; }
 .library-panel { margin-bottom: 18px; padding: 20px 24px; border-radius: 20px; }
@@ -317,6 +346,10 @@ h2 { letter-spacing: -0.025em; }
 
 .workspace { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; margin-top: 18px; padding: 30px; }
 .question-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.question-position { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 12px; }
+.question-position .eyebrow { margin: 0; }
+.question-position > strong { color: #253b31; font-size: 16px; }
+.question-source-number { padding: 4px 8px; border-radius: 999px; color: #64736b; background: #edf1ed; font-size: 11px; font-weight: 600; }
 .question-navigation { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 /* 三个重生成按钮的代价从左到右递增；legend 是可见分组标签，说明文字把
    之前只藏在 title 里的范围/代价差异变成界面上可见的内容。 */
@@ -391,6 +424,7 @@ h2 { letter-spacing: -0.025em; }
 .draw-line-paper { fill: #fffefa; }
 .draw-line-created { stroke: #1b9a72; stroke-width: 1.2; stroke-linecap: round; }
 .draw-line-point { cursor: pointer; }
+.draw-line-point:focus-visible { outline: 3px solid #1b9a72; outline-offset: 4px; }
 .draw-line-point circle { fill: #fffefa; stroke: #d58232; stroke-width: 1.4; transition: fill .15s, stroke .15s; }
 .draw-line-point text { fill: #24372f; font-size: 4px; font-weight: 700; pointer-events: none; }
 .draw-line-point:hover circle, .draw-line-point.active circle { fill: #dff3e8; stroke: #1b9a72; stroke-width: 2; }
@@ -443,6 +477,14 @@ footer b { color: #b1aea5; }
 .center-state { min-height: 100vh; display: grid; place-content: center; gap: 12px; text-align: center; }
 .center-state span { color: #737b76; }
 .center-state code { padding: 10px 12px; border-radius: 8px; background: #fff; }
+.auth-session-bar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 8px max(16px, calc((100vw - 1200px) / 2)); color: #53605a; background: #f8f8f4; border-bottom: 1px solid #d8d9d3; font-size: 13px; }
+.auth-session-bar details { position: relative; }
+.auth-session-bar details form { display: flex; align-items: end; gap: 8px; padding: 10px; background: white; }
+.auth-session-bar details p { max-width: 460px; overflow-wrap: anywhere; }
+.center-state .panel { border-radius: 18px; }
+.center-state form { display: grid; gap: 14px; margin-top: 18px; }
+.center-state form label { display: grid; gap: 6px; font-weight: 650; }
+.center-state input { min-height: 42px; padding: 8px 10px; border: 1px solid #ccd0ca; border-radius: 8px; }
 
 @media (max-width: 820px) {
   .app-shell { width: min(100% - 24px, 680px); margin-top: 10px; }
@@ -456,6 +498,9 @@ footer b { color: #b1aea5; }
   .model-switcher { grid-template-columns: 1fr; }
   .model-switcher > div:first-child, .model-switcher > select:not(.tutor-select):not(.review-select):not(.ocr-select), .runtime-status,
   .model-switcher .tutor-label, .model-switcher .tutor-select,
+  .model-switcher .tutor-current-model, .model-switcher .tutor-evaluation-actions,
+  .model-switcher .tutor-evaluation-note, .model-switcher .tutor-evaluation-progress,
+  .model-switcher .tutor-evaluation-error, .model-switcher .tutor-evaluation-report,
   .model-switcher .review-label, .model-switcher .review-select,
   .model-switcher .ocr-label, .model-switcher .ocr-select, .model-switcher .ocr-status { grid-column: 1; grid-row: auto; }
   .import-intro { margin: 36px 0; }

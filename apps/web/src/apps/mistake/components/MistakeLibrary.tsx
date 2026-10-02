@@ -1,5 +1,5 @@
 import { RichText } from "../../../RichText";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MistakeItem } from "../../../types/index";
 import { displayedPrompt } from "../../../questionPresentation";
 import { errorReasonLabel } from "../errorReasons";
@@ -17,12 +17,53 @@ interface MistakeLibraryProps {
 export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTutor, onArchive }: MistakeLibraryProps) {
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
+  const [pendingArchive, setPendingArchive] = useState<MistakeItem | null>(null);
+  const archiveTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const archiveCancelRef = useRef<HTMLButtonElement | null>(null);
+  const archiveDialogRef = useRef<HTMLElement | null>(null);
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
   const masteredCount = items.filter((item) => item.status === "mastered").length;
   const visibleItems = items.filter((item) => activeBook === "advanced"
     ? item.status === "mastered"
     : item.status !== "mastered");
+
+  useEffect(() => {
+    if (!pendingArchive) {
+      archiveTriggerRef.current?.focus();
+      return;
+    }
+
+    archiveCancelRef.current?.focus();
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setPendingArchive(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = archiveDialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      ));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => document.removeEventListener("keydown", handleDialogKeyDown);
+  }, [pendingArchive]);
+
+  const cancelArchive = () => setPendingArchive(null);
 
   return (
     <>
@@ -39,7 +80,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
       <section className="mistake-summary" aria-label="错题统计">
         <div><strong>{unmasteredCount}</strong><span>待掌握</span></div>
         <div><strong>{pendingCount}</strong><span>待确认</span></div>
-        <div><strong>{masteredCount}</strong><span>进阶本</span></div>
+        <div><strong>{masteredCount}</strong><span>已掌握</span></div>
       </section>
 
       <nav className="mistake-book-tabs" aria-label="错题本分类">
@@ -47,7 +88,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
           错题本 <span>{pendingCount + unmasteredCount}</span>
         </button>
         <button className={activeBook === "advanced" ? "active" : ""} onClick={() => setActiveBook("advanced")}>
-          进阶本 <span>{masteredCount}</span>
+          已掌握 <span>{masteredCount}</span>
         </button>
       </nav>
 
@@ -57,8 +98,8 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
       ) : visibleItems.length === 0 ? (
         <section className="mistake-empty">
           <span className="empty-sheet" aria-hidden="true" />
-          <h2>{activeBook === "advanced" ? "还没有进入进阶本的题目" : "还没有错题"}</h2>
-          <p>{activeBook === "advanced" ? "掌握验证题答对一次后，题目会自动出现在这里。" : "完成互动试卷后，错题会自动出现；也可以补录纸质作业。"}</p>
+          <h2>{activeBook === "advanced" ? "还没有已掌握的题目" : "还没有错题"}</h2>
+          <p>{activeBook === "advanced" ? "达到掌握策略门槛后，题目会自动出现在这里。" : "完成练习后，错题会自动出现；也可以补录纸质作业。"}</p>
           {activeBook === "mistakes" && <button className="mistake-primary-action compact" onClick={onCapture}>拍照录入纸质错题</button>}
         </section>
       ) : (
@@ -77,8 +118,8 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
                     onError={() => setBrokenImages((current) => ({ ...current, [item.mistakeId]: true }))}
                   />
                 ) : (
-                  <div className="mistake-paper-source" aria-label="来自互动试卷">
-                    <strong>互动试卷</strong>
+                  <div className="mistake-paper-source" aria-label="来自练习">
+                    <strong>练习</strong>
                     <span>自动记录</span>
                   </div>
                 )}
@@ -98,15 +139,46 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
                 </div>
                 <div className="mistake-list-actions">
                   {item.status !== "pending_confirmation" && (
-                    <button className="primary" onClick={() => onTutor(item)}>{item.status === "mastered" ? "查看验证记录" : "开始陪练"}</button>
+                    <button className="primary" onClick={() => onTutor(item)}>{item.status === "mastered" ? "查看验证记录" : "开始辅导"}</button>
                   )}
                   <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
-                  <button className="danger" onClick={() => onArchive(item)}>归档</button>
+                  <button
+                    className="danger"
+                    onClick={(event) => {
+                      archiveTriggerRef.current = event.currentTarget;
+                      setPendingArchive(item);
+                    }}
+                  >归档</button>
                 </div>
               </article>
             );
           })}
         </section>
+      )}
+      {pendingArchive && (
+        <div className="mistake-dialog-backdrop" role="presentation">
+          <section
+            className="mistake-dialog"
+            ref={archiveDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-mistake-title"
+            aria-describedby="archive-mistake-description"
+          >
+            <h2 id="archive-mistake-title">确认归档这道错题？</h2>
+            <p id="archive-mistake-description">归档后会清除这道题的辅导记录，但题目和学习证据仍会保留。</p>
+            <div className="mistake-dialog-actions">
+              <button ref={archiveCancelRef} onClick={cancelArchive}>取消</button>
+              <button
+                className="danger"
+                onClick={() => {
+                  onArchive(pendingArchive);
+                  setPendingArchive(null);
+                }}
+              >确认归档</button>
+            </div>
+          </section>
+        </div>
       )}
     </>
   );

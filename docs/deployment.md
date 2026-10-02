@@ -39,12 +39,13 @@ API 仍建议只运行一个 Uvicorn worker；Worker 是单独进程，和 API �
        └─ 独立模型、OCR 和 TTS 服务
 ```
 
-目标生产架构应增加对象存储、认证、监控和备份；当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
+受保护模式现已提供服务端会话和学生邀请；外网试用仍需 HTTPS 反向代理、密钥管理、备份和监控。
+当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
 [路线图](roadmap.md)。
 
 ## 服务器准备
 
-以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 20.19+（20.x）或 22.12+、Nginx 和 PostgreSQL。
+以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 22.22.2+、Nginx 和 PostgreSQL。
 示例路径、用户和域名需要替换为实际值。
 
 ```bash
@@ -68,11 +69,11 @@ sudo -u postgres createdb -O dotty_app dotty_tutor
 
 ## 后端安装
 
+先安装 uv 与 Corepack（安装步骤见各自官方文档），并确认 dotty 用户的登录环境可执行 `uv` 和 `pnpm`。以下手动部署固定在
+`apps/api` 同步依赖，创建 `apps/api/.venv`；systemd 使用该固定布局，区别于本机启动脚本的根目录环境。
+
 ```bash
-sudo -u dotty python3.12 -m venv /opt/dotty-tutor/.venv
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install --upgrade pip
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  cd apps/api && uv sync --frozen --no-dev
+sudo -H -u dotty bash -lc 'cd /opt/dotty-tutor/apps/api && uv sync --frozen --no-dev'
 
 sudo install -d -o dotty -g dotty /etc/dotty-tutor
 sudo touch /etc/dotty-tutor/api.env
@@ -109,6 +110,9 @@ AZURE_SPEECH_KEY=replace-with-secret
 AZURE_SPEECH_REGION=eastasia
 AZURE_SPEECH_VOICE=zh-CN-XiaoxiaoNeural
 QWEN_TTS_URL=http://127.0.0.1:8020
+AUTH_MODE=protected
+AUTH_COOKIE_SECURE=1
+TEACHER_BOOTSTRAP_SECRET=generate-at-least-32-random-characters-and-store-as-a-secret
 ```
 
 要求：
@@ -117,6 +121,10 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
 - 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到本机 socket 或本地文件。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
+- 默认 `AUTH_MODE=demo` 只供可信本机操作者和完全合成数据使用，不能提供学生身份隔离。Compose 的 Web 与 PostgreSQL 端口绑定 `127.0.0.1`。
+- 独立设备试用须设 `AUTH_MODE=protected`、`AUTH_COOKIE_SECURE=1` 和至少 32 字符的 `TEACHER_BOOTSTRAP_SECRET`，并只经 HTTPS 反向代理访问。缺少配置时 API 启动失败。教师凭证创建教师会话；教师签发 24 小时一次性学生邀请。服务端保存 opaque token 哈希，Cookie 为 HttpOnly/SameSite=Strict/Secure，12 小时过期；退出会撤销当前服务端会话。浏览器写请求校验来源地址。
+- 学生资源按服务端会话 learnerId 校验；联网模式下客户端 learnerId 只能与会话身份相同。教师会话负责班级、发布、上传和 Runtime 管理。
+- 回滚应用版本时，先撤下公网/外部入口并将服务限制到 loopback，再启动不支持 protected 会话的旧应用；不得把 `AUTH_MODE=demo` 的旧应用重新暴露到网络。认证会话、邀请和辅导幂等记录作为审计数据保留；`0014`/`0015` 的 downgrade 不删除这些表，revision 指针可回退后再迁回新版本。schema downgrade 不构成身份安全措施。
 - PostgreSQL 生产库必须显式执行 Alembic 迁移；Store 运行时不会自动创建或修改表。发布前在 `apps/api` 依次执行
   `uv run python -m persistence.migration_cli preflight`、`upgrade` 和 `verify`，顺序固定为
   `backup → preflight → upgrade → verify → deploy/restart`。每个 worktree/session 使用独立 `POSTGRES_DB`，
@@ -130,7 +138,7 @@ sudo -u dotty bash -lc '
   set -a
   . /etc/dotty-tutor/api.env
   set +a
-  ../.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010
+  uv run python -m uvicorn app:app --host 127.0.0.1 --port 8010
 '
 ```
 
@@ -159,7 +167,7 @@ User=dotty
 Group=dotty
 WorkingDirectory=/opt/dotty-tutor/apps/api
 EnvironmentFile=/etc/dotty-tutor/api.env
-ExecStart=/opt/dotty-tutor/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
+ExecStart=/opt/dotty-tutor/apps/api/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
@@ -190,7 +198,7 @@ User=dotty
 Group=dotty
 WorkingDirectory=/opt/dotty-tutor/apps/api
 EnvironmentFile=/etc/dotty-tutor/api.env
-ExecStart=/opt/dotty-tutor/.venv/bin/python -m worker --registry routers.textbook_routes:textbook_job_registry
+ExecStart=/opt/dotty-tutor/apps/api/.venv/bin/python -m worker --registry app:job_registry
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
@@ -218,8 +226,8 @@ API 的 `complete` 和批次处理接口只负责创建任务并返回 `202 + jo
 ```bash
 sudo -u dotty bash -lc '
   cd /opt/dotty-tutor/apps/web
-  npm ci
-  npm run build
+  pnpm install --frozen-lockfile
+  pnpm build
 '
 
 sudo mkdir -p /var/www/dotty-tutor
@@ -431,24 +439,34 @@ tar -czf /srv/backup/dotty-data-$(date +%F).tar.gz \
 
 ```bash
 sudo -u dotty git -C /opt/dotty-tutor pull --ff-only
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  cd apps/api && uv sync --frozen --no-dev
-sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && npm ci && npm run build'
+sudo -H -u dotty bash -lc 'cd /opt/dotty-tutor/apps/api && uv sync --frozen --no-dev'
+sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && pnpm install --frozen-lockfile && pnpm build'
 sudo rsync -a --delete /opt/dotty-tutor/apps/web/dist/ /var/www/dotty-tutor/
 sudo systemctl restart dotty-tutor-api dotty-tutor-worker
 sudo systemctl reload nginx
 ```
 
-各领域 Store 首次访问时会通过 SQLAlchemy metadata 创建当前所需的表。部署前必须准备空数据库；项目不提供
-原地升级脚本或历史 SQL 迁移链，已有数据需要在应用外完成备份、转换和重新导入。
+Store 运行时不执行 DDL；新库和旧库都必须通过 Alembic 升级。上述同步/重启示例只适用于 schema 已就绪的版本；
+涉及迁移时先完成备份，再在加载 `api.env` 的环境中执行 `preflight → upgrade → verify`，成功后才重启 API/Worker。
+受保护会话的角色约束与索引由 `0014_protected_sessions` 校准，辅导幂等回放由 `0015_tutor_turn_idempotency` 管理。
+旧版数据库须先完成正式迁移，再启动 API 与 Worker。
+
+Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 API 后无需重建 Web。
+更新验收需请求 Web 的 `/api/health`，仅检查静态 `/healthz` 不能证明后端代理可用。
 
 ## GitHub CI
 
 `.github/workflows/ci.yml` 在推送和 Pull Request 时执行：
 
-- Python 3.12 后端测试；
-- Node.js 20.19+（20.x）或 22.12+ 前端构建；
-- 后端 Docker 镜像构建。
+- 后端 Python 矩阵的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
+- 前端 pnpm 锁定安装、lint、Vitest、API 类型漂移、TypeScript 与构建；
+- Playwright E2E、Docker Compose 构建/健康检查与独立 CodeQL 工作流。
+
+精确版本和执行命令以 `.github/workflows/ci.yml` 与 `AGENTS.md` 为准。
 
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。
+
+### v0.33.0 发布分支同步
+
+`deploy/render-supabase` 保留 Render 启动脚本、公网限流与 MinerU 云端配置，并同步 v0.33.0 的会话、任务配置快照和并发保护。Static Site 的 Node 固定为 22.22.2，满足前端依赖要求。当前 Render 配置仍为公开合成数据演示；启用 protected 模式前必须使用同源 HTTPS 代理，并配置教师密钥与安全 Cookie，不能直接将分离的 Static Site/API 域名视为已验收的会话部署。数据库迁移仍按 backup → preflight → upgrade → verify 执行。分支同步不代表生产迁移或服务上线已验证。

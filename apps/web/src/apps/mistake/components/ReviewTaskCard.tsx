@@ -18,7 +18,8 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
   const [blankAnswers, setBlankAnswers] = useState<Record<string, string>>({});
   const [numericAnswer, setNumericAnswer] = useState("");
   const [localError, setLocalError] = useState("");
-  const isDue = task.dueAt <= serverTime;
+  const isSuperseded = task.status === "superseded";
+  const isDue = !isSuperseded && task.dueAt <= serverTime;
   const dueLabel = new Date(task.dueAt * 1000).toLocaleDateString("zh-CN", { month: "short", day: "numeric" });
   const question = task.questionPayload?.question;
 
@@ -49,7 +50,7 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
           <span>{task.mistake?.chapter ? `${task.mistake.chapter} · ` : ""}{dueLabel}</span>
         </div>
         <span className={isDue ? "review-due" : "review-upcoming"}>
-          {task.status === "completed" ? "已完成" : isDue ? "今日待复习" : "即将开始"}
+          {isSuperseded ? "已被新计划替代" : task.status === "completed" ? "已完成" : isDue ? "今日待复习" : "即将开始"}
         </span>
       </header>
       {task.status === "scheduled" && (

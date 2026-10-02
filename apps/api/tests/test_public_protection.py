@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import os
 import unittest
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from application import create_app
 from public_protection import PublicProtection
+from tests.auth_test_support import environment
 
 
 class PublicProtectionUnitTests(unittest.TestCase):
@@ -26,7 +25,7 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertTrue(other.allowed)
 
     def test_request_body_limit_returns_413(self) -> None:
-        with patch.dict(os.environ, {"PUBLIC_MAX_REQUEST_BYTES": "10"}, clear=False):
+        with environment({"PUBLIC_MAX_REQUEST_BYTES": "10"}):
             app = create_app()
 
         @app.post("/api/test-body")
@@ -42,13 +41,11 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertEqual(response.json()["errorCode"], "REQUEST_TOO_LARGE")
 
     def test_rate_limit_returns_retryable_problem(self) -> None:
-        with patch.dict(
-            os.environ,
+        with environment(
             {
                 "PUBLIC_RATE_LIMIT_REQUESTS": "1",
                 "PUBLIC_RATE_LIMIT_WINDOW_SECONDS": "60",
             },
-            clear=False,
         ):
             app = create_app()
 
