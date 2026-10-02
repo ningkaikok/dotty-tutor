@@ -72,6 +72,10 @@ dotty-tutor/
 │   │   ├── publication_revision.py # 不可变试卷新版编排
 │   │   ├── run_audit.py        # 运行快照与题目修订审计
 │   │   ├── worker.py            # 独立后台 Worker 入口（PostgreSQL Job Store）
+│   │   ├── prompts/            # Git 基线模板、变量校验与任务快照
+│   │   │                       # 在线版本：persistence/prompt_store.py
+│   │   │                       # 管理契约：domain/prompts/contracts.py
+│   │   │                       # 管理路由：routers/prompt_routes.py
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
 │   │   │   └── files/          # 上传注册和文件边界
@@ -170,6 +174,8 @@ flowchart LR
   Services --> Domain["domain 规则与契约"]
   Routes --> Stores["persistence Store"]
   Services --> Runtime["infrastructure/runtime"]
+  Services --> Prompts["prompts：任务模板快照"]
+  Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
   Runtime --> External["MinerU / Ollama / Codex / Azure / Qwen TTS"]
@@ -467,3 +473,15 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 这些项目属于生产化边界，不阻塞个人 Demo。产品优先级见[路线图](roadmap.md)，运行快照、事件、后台任务
 和离线评测的学习顺序见[AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。
+
+### 提示词维护链路
+
+`prompts/catalog.json → prompts/templates/*.txt → PromptStore 归档/发布指针 → freeze_prompts → render_prompt → 生成/陪练/评测 → promptTemplates 审计`。
+内容平台页面位于 `apps/web/src/apps/prompts/`，网络适配在 `apps/web/src/api/prompts.ts`，
+状态与操作在 `usePromptManager.ts`，页面 `PromptManagerApp.tsx` 只组合界面。
+`routers/prompt_routes.py → persistence/prompt_store.py → prompt_revisions / prompt_heads / prompt_release_events`
+提供草稿、预览、乐观发布和回滚；迁移 `0013_prompt_management` 增加三张表。
+首批迁移四个生成阶段、陪练两段和评测提示词；审核、变式和旧单阶段模板仍由原模块维护。
+新增或修改模板时检查声明变量、递增版本，并运行模板保真和相关业务测试。
+模板不能承载 Python 表达式；上下文选择、输入裁剪和质量门禁留在领域/应用服务。
+详见 [提示词维护说明](../apps/api/prompts/README.md)。

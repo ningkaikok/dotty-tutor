@@ -28,6 +28,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
           <strong>Dotty</strong>
           <span>内容生产工作台</span>
         </div>
+        <Link to="/studio/prompts" className="metrics-link">教学策略 · 提示词管理 →</Link>
         {/* 只读指标面板入口；学生端不可见 */}
         <Link to="/studio/metrics" className="metrics-link">
           模型调用指标 <span aria-hidden="true">→</span>

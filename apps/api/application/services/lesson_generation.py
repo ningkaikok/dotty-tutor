@@ -66,16 +66,17 @@ from domain.tutoring.checks import (
 from infrastructure.runtime.model_runtime import runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 from observability import log_event
+from prompts import CATALOG, freeze_prompts, prompt_identity, render_prompt
 
 # 该缓存仅加速单进程 Demo，PostgreSQL 才是持久化课程的真相来源。
 # 多 Worker 部署应改用共享缓存或 Store，不能尝试在进程间同步这个字典。
 lesson_store: dict[str, dict[str, Any]] = {}
 
 STAGE_VERSIONS = {
-    "extraction": ("question-extraction-v1", "question-ir-v1"),
-    "solution": ("math-solver-v1", "solution-ir-v1"),
-    "verification": ("answer-verifier-v1", "verification-ir-v1"),
-    "tutor-script": ("tutor-script-v1", "tutor-script-v1"),
+    "extraction": (CATALOG["generation.extraction"].version, "question-ir-v1"),
+    "solution": (CATALOG["generation.solution"].version, "solution-ir-v1"),
+    "verification": (CATALOG["generation.verification"].version, "verification-ir-v1"),
+    "tutor-script": (CATALOG["generation.tutor-script"].version, "tutor-script-v1"),
 }
 STAGE_CACHE_LIMIT = 128
 _stage_artifact_cache: dict[str, tuple[dict[str, Any], dict[str, Any]]] = {}
@@ -299,41 +300,30 @@ def _stage_prompt(stage: str, question_ir: dict[str, Any], *, repair_errors: lis
             f"- {str(error)[:180]}" for error in repair_errors[:8]
         )
     if stage == "extraction":
-        return f"""你是试卷结构抽取器。只从下面这一道已切出的原题中提取结构，不求解，不解释，不补写缺失内容。
-必须保留题干原文、题号、小问顺序、选项顺序和图片占位符；图片只记录来源中已有的引用。
-题目来源证据：{question_ir.get('sourceBlockIds', [])}
-图片证据：{question_ir.get('visualAssetIds', [])}
-
-原题：
----
-{source}
----{repair}""".strip()
+        return render_prompt(
+            "generation.extraction",
+            source_block_ids=question_ir.get("sourceBlockIds", []),
+            visual_asset_ids=question_ir.get("visualAssetIds", []),
+            source=source,
+            repair=repair,
+        ).strip()
     if stage == "solution":
-        return f"""你是独立的数学题求解器。只根据已确认的 QuestionIR 求解，不改写题干，不生成新题。
-如果来源不足以确定答案，返回空答案并保持题型；不要猜测。输出只包含答案契约和知识点。
-
-QuestionIR：
----
-{json.dumps(prompt_ir, ensure_ascii=False)}
----{repair}""".strip()
+        return render_prompt(
+            "generation.solution",
+            question_ir=json.dumps(prompt_ir, ensure_ascii=False),
+            repair=repair,
+        ).strip()
     if stage == "verification":
-        return f"""你是独立答案核验器。对照原题来源和 SolutionIR 检查题干完整性、选项对齐、单位、公式和答案。
-不要改写题目或答案。求解结论是否与来源答案等价由确定性程序另行核对，不是你的职责——
-sourceAnswer 只需要如实抄录来源中出现的原始答案文字；来源没有印出答案就返回空字符串，
-不要自己计算、推断或编造。题干不完整、选项对不上、单位/公式有问题、或你看到的来源答案
-与解答明显矛盾时，必须返回 conflict 或 needs_review。
-
-QuestionIR 与 SolutionIR：
----
-{json.dumps(prompt_ir, ensure_ascii=False)}
----{repair}""".strip()
-    return f"""你是教学脚本编排器。根据已确认的原题和独立求解结果，生成恰好 4 步讲解和 3 张递进提示卡。
-不得改变题干、选项或标准答案；开场步骤不得提前泄露答案，提示卡只引导下一步。
-
-QuestionIR 与 SolutionIR：
----
-{json.dumps(prompt_ir, ensure_ascii=False)}
----{repair}""".strip()
+        return render_prompt(
+            "generation.verification",
+            question_ir=json.dumps(prompt_ir, ensure_ascii=False),
+            repair=repair,
+        ).strip()
+    return render_prompt(
+        "generation.tutor-script",
+        question_ir=json.dumps(prompt_ir, ensure_ascii=False),
+        repair=repair,
+    ).strip()
 
 
 def _build_verification(raw_verification: dict[str, Any], raw_solution: dict[str, Any]) -> dict[str, Any]:
@@ -390,8 +380,9 @@ def _merge_stage_runs(stage_runs: list[tuple[str, dict[str, Any]]]) -> dict[str,
             "provider": run.get("provider"),
             "model": run.get("model"),
             "fallback": bool(run.get("fallback")),
-            "promptVersion": STAGE_VERSIONS[name][0],
+            "promptVersion": (run.get("promptTemplates") or [{}])[0].get("version"),
             "schemaVersion": STAGE_VERSIONS[name][1],
+            "promptTemplates": run.get("promptTemplates", []),
             "cacheKey": run.get("cacheKey"),
             "cacheHit": bool(run.get("cacheHit")),
         }
@@ -459,7 +450,7 @@ def _staged_lesson(
             stage_prompt,
             provider=selection.provider,
             model=selection.model,
-            prompt_version=STAGE_VERSIONS[name][0],
+            prompt_version=prompt_identity(f"generation.{name}")["version"],
             schema_version=STAGE_VERSIONS[name][1],
             rerun_token=effective_rerun_token if target_index >= 0 and stage_index >= target_index else "",
         )
@@ -468,7 +459,12 @@ def _staged_lesson(
             if not cached_prior or not isinstance(cached_prior.get("raw"), dict):
                 raise ValueError(f"缺少 {name} 阶段产物，无法只重跑 {target_stage}")
             raw = copy.deepcopy(cached_prior["raw"])
-            run = {"provider": "artifact", "model": "stored", "fallback": False, "cacheHit": True, "stageReused": True}
+            prior_run = cached_prior.get("run") or {}
+            run = {
+                "provider": "artifact", "model": "stored", "fallback": False,
+                "cacheHit": True, "stageReused": True,
+                "promptTemplates": copy.deepcopy(prior_run.get("promptTemplates") or []),
+            }
         else:
             forced = target_index >= 0 and stage_index >= target_index
             cached = _stage_artifact_cache.get(cache_key) if not repair_errors and not forced else None
@@ -488,6 +484,7 @@ def _staged_lesson(
                     schema,
                     max_tokens=max_tokens,
                 )
+                run["promptTemplates"] = [prompt_identity(f"generation.{name}")]
                 if not run.get("fallback") and not repair_errors:
                     _stage_artifact_cache[cache_key] = (copy.deepcopy(raw), copy.deepcopy(run))
                     if disk_cache is not None:
@@ -596,13 +593,14 @@ def _staged_lesson(
     return payload, cards, payload["modelRun"]
 
 
+@freeze_prompts
 def write_staged_prompt_artifact(asset_dir: Path, question_sources: list[tuple[str, str, list[str]]]) -> Path:
     """写入本次实际使用的四阶段提示词，避免审计文件继续展示旧单提示词。"""
     asset_dir.mkdir(parents=True, exist_ok=True)
     sections = [
         "# OCR 后分阶段模型提示词\n",
         "> OCR 不使用自然语言提示词；以下是本次题块的阶段提示词基线，后续阶段运行时会追加前一阶段结构化结果。\n",
-        "> 阶段版本：" + ", ".join(f"`{name}:{STAGE_VERSIONS[name][0]}`" for name in STAGE_VERSIONS) + "\n",
+        "> 阶段版本：" + ", ".join(f"`{name}:{prompt_identity(f'generation.{name}')['version']}`" for name in STAGE_VERSIONS) + "\n",
     ]
     for index, (number, block, images) in enumerate(question_sources, start=1):
         question_ir = first_question_ir(block)
@@ -618,6 +616,7 @@ def write_staged_prompt_artifact(asset_dir: Path, question_sources: list[tuple[s
     return path
 
 
+@freeze_prompts
 def generate_question_from_ir(
     question_ir: dict[str, Any],
     *,
@@ -644,6 +643,7 @@ def generate_question_from_ir(
     return payload, cards, run
 
 
+@freeze_prompts
 def generate_lesson(
     source_text: str,
     *,

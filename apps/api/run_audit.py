@@ -40,6 +40,16 @@ def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
         )
         if run.get(key) is not None
     }
+    if isinstance(run.get("promptTemplates"), list):
+        identity["promptTemplates"] = [
+            {key: item[key] for key in ("id", "version", "contentHash") if isinstance(item.get(key), str)}
+            for item in run["promptTemplates"] if isinstance(item, dict)
+        ]
+    if isinstance(run.get("stages"), list):
+        identity["promptStages"] = [
+            {"name": stage.get("name"), "promptTemplates": _run_identity({"promptTemplates": stage.get("promptTemplates", [])}).get("promptTemplates", [])}
+            for stage in run["stages"] if isinstance(stage, dict)
+        ]
     if isinstance(run.get("config"), dict):
         identity["config"] = RuntimeConfigSnapshot.from_mapping(run["config"]).to_dict()
     return identity

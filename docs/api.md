@@ -425,3 +425,34 @@ createdAt 和 acceptedAt。历史 `error_reason`、`ai_error_reason` 与置信�
 归因会与旧兼容列在同一事务内双写。旧列暂不删除，待观察窗口结束后再单独评估 contract/drop。
 错题确认中的 `errorReason` 省略或为 `null` 都表示“不修改已有学生自评”，不是清除；首次没有已有值仍保存为 `null`，非法枚举返回 `422`。
 旧变式无法反推来源，统一迁移为 `unknown`；使用统一 CLI 的 `preflight`、`upgrade` 和 `verify` 完成迁移。
+
+### 提示词模板身份（运行记录）
+
+题目生成与陪练的 `modelRun.promptTemplates`、生成阶段的 `modelRun.stages[].promptTemplates`
+及运行快照对应配置可包含模板身份列表：`id`（模板标识）、`version`（模板版本）、
+`contentHash`（UTF-8 模板正文 SHA-256，64 位十六进制）。内容哈希针对未插值模板，
+既有 Runtime `config.prompt` 继续表示实际调用的输入摘要。评测结果同样包含模板身份。
+旧记录、未调用模型的阶段或未迁移链路可能不包含该字段，或返回空列表；
+生成阶段缺少模板身份时 `promptVersion` 为 `null`；不得据此推断使用当前模板。
+这些身份不包含教材或学生输入。内容生产预览提供按标识、版本和哈希跳转归档正文的入口。
+运行快照的 `model.promptStages` 仅保存各阶段名称与模板身份，不包含正文和输入。
+
+### 内容平台提示词管理
+
+所有端点要求请求头 `X-Content-Token`。服务器配置 `DOTTY_CONTENT_EDITOR_TOKEN` 和
+`DOTTY_CONTENT_PUBLISHER_TOKEN`，两者必须不同；未配置返回 503，凭据不匹配返回 403。
+这是匿名 Demo 的能力凭据，不是个人账号身份。响应设置 `Cache-Control: no-store`。
+发布接口在服务端校验发布凭据，不能用前端按钮可见性代替授权。
+
+| 方法 | 端点 | 行为 |
+| --- | --- | --- |
+| GET | `/api/content/prompts` | 模板目录、变量契约、不可变修订及发布事件，返回 `canPublish` |
+| GET | `/api/content/prompts/{templateId}` | 当前生效指针和全部归档版本；内容平台按版本/哈希定位 |
+| POST | `/api/content/prompts/{templateId}/drafts` | `{text, baseRevisionId}` 保存为新草稿；正文变量必须与声明完全一致；评分标准禁止编辑 |
+| POST | `/api/content/prompts/{templateId}/preview` | `{revisionId, variables}` 渲染已保存版本，变量值必须为字符串；不调用模型、不保存变量，成功标记已预览 |
+| POST | `/api/content/prompts/{templateId}/activate` | `{revisionId, expectedActiveRevisionId, action: publish 或 rollback}` 原子切换并追加发布事件；仅发布凭据可操作 |
+
+草稿版本标识为 `online-<不可变修订 ID>`，Git 基线沿用原版本号。
+未预览草稿拒绝发布；回滚只能指向基线或曾发布修订。生效指针已变化时返回 409，要求刷新后比较。
+保存草稿不改变生效版本，发布影响新任务，单次生成/陪练/评测固定开始时的模板快照。
+评分标准在此入口只读，Schema、判题和质量门禁不开放在线编辑。

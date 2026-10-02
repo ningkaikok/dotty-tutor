@@ -27,16 +27,19 @@ from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
+from persistence.prompt_store import PromptStore
 from persistence.review_store import ReviewStore
 from persistence.search_store import TutorSearchStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from prompts import configure_prompt_source
 from publication_revision import PublicationRevisionService
 from routers.classroom_routes import build_classroom_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.mistake_routes import build_mistake_router
 from routers.practice_routes import build_practice_router
+from routers.prompt_routes import build_prompt_router
 from routers.publication_routes import build_publication_router
 from routers.review_routes import build_review_router
 from routers.runtime_routes import build_runtime_router
@@ -52,6 +55,10 @@ from variation_service import VariationService
 app = create_app()
 store = get_application_store()
 app.include_router(build_dependency_preflight_router())
+prompt_store = PromptStore(engine=store.engine)
+app.include_router(build_prompt_router(store=prompt_store))
+if os.getenv("DOTTY_CONTENT_EDITOR_TOKEN") or os.getenv("DOTTY_CONTENT_PUBLISHER_TOKEN"):
+    configure_prompt_source(prompt_store.active_templates)
 
 # 运行时配置、教材和正式学习记录共享同一数据库引擎，避免一次请求跨多个事务真相源。
 # 模型调用边界指标的共享存储；生成/陪练两个 Runtime 实例都写入同一张表。
