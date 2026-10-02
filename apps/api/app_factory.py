@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import tomllib
 import uuid
@@ -29,6 +30,15 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 
 def create_app() -> FastAPI:
+    auth_mode = os.getenv("AUTH_MODE", "demo").strip().lower()
+    if auth_mode not in {"demo", "protected"}:
+        raise RuntimeError("AUTH_MODE 只支持 demo 或 protected")
+    if auth_mode == "protected":
+        bootstrap_secret = os.getenv("TEACHER_BOOTSTRAP_SECRET", "")
+        if len(bootstrap_secret) < 32:
+            raise RuntimeError("protected 模式需要至少 32 字符的 TEACHER_BOOTSTRAP_SECRET")
+        if os.getenv("AUTH_COOKIE_SECURE", "") != "1":
+            raise RuntimeError("protected 模式必须设置 AUTH_COOKIE_SECURE=1 并通过 HTTPS 访问")
     # 源码运行和 Docker 都保留 pyproject.toml；发布时只维护包版本，避免 API 描述漂移。
     with Path(__file__).with_name("pyproject.toml").open("rb") as project_file:
         project_version = tomllib.load(project_file)["project"]["version"]
@@ -215,5 +225,104 @@ def create_app() -> FastAPI:
                     duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 )
             request_id_var.reset(token)
+
+    @app.middleware("http")
+    async def authenticate_protected_requests(request: Request, call_next):
+        if auth_mode != "protected" or not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        path = request.url.path
+        method = request.method.upper()
+        if path in {"/api/health", "/api/auth/config"}:
+            return await call_next(request)
+        if method == "OPTIONS":
+            return await call_next(request)
+
+        # SameSite=Strict prevents ambient cross-site cookies. This origin check
+        # adds an explicit CSRF boundary for browser writes behind a TLS proxy.
+        if method in {"POST", "PUT", "PATCH", "DELETE"}:
+            origin = request.headers.get("origin")
+            if origin and origin not in _csv_env("CORS_ORIGINS", ""):
+                return JSONResponse(status_code=403, content={"detail": "请求来源不受信任"})
+
+        if path == "/api/auth/sessions" and method == "POST":
+            return await call_next(request)
+
+        session_store = getattr(request.app.state, "auth_session_store", None)
+        if session_store is None:
+            return JSONResponse(status_code=503, content={"detail": "身份服务不可用"})
+        from routers.auth_routes import COOKIE_NAME
+
+        actor = session_store.resolve(request.cookies.get(COOKIE_NAME))
+        if actor is None:
+            return JSONResponse(status_code=401, content={"detail": "请先登录"})
+        request.state.actor = actor
+
+        # Learners may follow only their own image-import work. The generic job
+        # API also carries textbook paths, model traces and source content, so
+        # it stays teacher-only unless the durable job proves this narrow scope.
+        job_match = re.fullmatch(r"/api/jobs/([^/]+)(?:/(cancel|retry))?", path)
+        if job_match and actor["role"] == "student":
+            if not (
+                (method == "GET" and job_match.group(2) is None)
+                or (method == "POST" and job_match.group(2) in {"cancel", "retry"})
+            ):
+                return JSONResponse(status_code=403, content={"detail": "此操作需要教师会话"})
+            job_store = getattr(request.app.state, "background_job_store", None)
+            job = job_store.get_job(job_match.group(1)) if job_store is not None else None
+            payload = job.get("payload") if isinstance(job, dict) else None
+            if not isinstance(job, dict) or not isinstance(payload, dict):
+                return JSONResponse(status_code=404, content={"detail": "后台任务不存在"})
+            if (
+                job.get("jobType") != "mistake.image.import"
+                or payload.get("learnerId") != actor.get("learnerId")
+            ):
+                return JSONResponse(status_code=404, content={"detail": "后台任务不存在"})
+            request.state.student_mistake_job = True
+
+        # Unknown API paths default to teacher-only so a newly added endpoint cannot
+        # silently become part of the student surface before its data scope is audited.
+        teacher_only = True
+        teacher_only_prefixes = (
+            "/api/debug", "/api/tts", "/api/system",
+            "/api/runtime", "/api/models", "/api/tutor-models", "/api/review-models",
+            "/api/ocr", "/api/metrics", "/api/reports", "/api/classes",
+            "/api/learners", "/api/uploads", "/api/jobs", "/api/textbook",
+            "/api/library", "/api/runs", "/api/tutor-search/rebuild",
+            "/api/tutor-model-evaluations", "/api/question",
+        )
+        if path.startswith(teacher_only_prefixes):
+            teacher_only = True
+        student_only = path.startswith((
+            "/api/mistakes", "/api/tutor/", "/api/learning", "/api/reviews", "/api/progress",
+            "/api/variations", "/api/help",
+        ))
+        if path == "/api/funnel":
+            student_only = True
+        if getattr(request.state, "student_mistake_job", False):
+            student_only = True
+        if path == "/api/tts" and method == "POST":
+            # This exact bounded-text synthesis operation is part of student tutoring;
+            # provider diagnostics and every other TTS path remain teacher-only.
+            student_only = True
+        if student_only:
+            teacher_only = False
+        if path == "/api/assignments":
+            teacher_only = method != "GET"
+            student_only = method == "GET"
+        if path.startswith("/api/lessons"):
+            teacher_only = True
+        if path.startswith("/api/publications"):
+            teacher_only = method != "GET"
+        if path.startswith("/api/publications/source/"):
+            teacher_only = True
+        if path.startswith("/api/auth/invites") or path.startswith("/api/auth/sessions/"):
+            teacher_only = True
+        if path == "/api/auth/sessions":
+            teacher_only = False
+        if teacher_only and actor["role"] != "teacher":
+            return JSONResponse(status_code=403, content={"detail": "此操作需要教师会话"})
+        if student_only and actor["role"] == "teacher":
+            return JSONResponse(status_code=403, content={"detail": "此操作需要学生会话"})
+        return await call_next(request)
 
     return app

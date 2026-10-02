@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from domain.contracts.audit import PublicationRevisionResponse
 from domain.contracts.lesson import PublicationCreate, PublicationStatusUpdate
@@ -64,7 +64,10 @@ def build_publication_router(*, store: Any, revision_service: Any | None = None)
         return publication
 
     @router.get("")
-    def list_publications(status: str = "published") -> dict[str, Any]:
+    def list_publications(request: Request, status: str = "published") -> dict[str, Any]:
+        actor = getattr(request.state, "actor", None)
+        if actor and actor.get("role") == "student":
+            status = "published"
         if status not in {"draft", "in_review", "review", "published", "archived"}:
             raise HTTPException(status_code=400, detail="无效的发布状态")
         return {"items": store.list_publications(status=status)}

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from answer_evaluator import evaluate_structured_answer
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request, require_owner
 from domain.contracts.practice import VariationAnswerRequest
 from domain.learning.mastery_policy import decide_next_action, resolve_policy
 from domain.questions.student_view import student_review_task, student_variation_item
@@ -106,8 +106,9 @@ def build_practice_router(
 
     @router.get("/api/mistakes/{mistake_id}/variations")
     def list_variations(
-        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+        request: Request, mistake_id: str, learnerId: str | None = None
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         """列出该错题的变式题。"""
         # 变式题是掌握验证的载体：此前这里原样返回 questionPayload，答案随题目
         # 一起下发，验证等于失效；归属校验也漏了，与紧邻的 /evidence 不一致。
@@ -129,8 +130,9 @@ def build_practice_router(
 
     @router.get("/api/mistakes/{mistake_id}/evidence")
     def get_mistake_evidence(
-        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+        request: Request, mistake_id: str, learnerId: str | None = None
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         """Return the explainable evidence chain for one mistake."""
         mistake = mistake_store.get(mistake_id)
         if not mistake:
@@ -164,8 +166,9 @@ def build_practice_router(
 
     @router.post("/api/mistakes/{mistake_id}/variations")
     def create_variation(
-        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+        request: Request, mistake_id: str, learnerId: str | None = None
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         mistake = mistake_store.get(mistake_id)
         if not mistake:
             raise HTTPException(status_code=404, detail="错题不存在")
@@ -223,12 +226,14 @@ def build_practice_router(
 
     @router.post("/api/variations/{variation_id}/answer")
     def answer_variation(
+        http_request: Request,
         variation_id: str,
         request: VariationAnswerRequest,
     ) -> dict[str, Any]:
         item = variation_store.get(variation_id)
         if not item:
             raise HTTPException(status_code=404, detail="变式题不存在")
+        require_owner(http_request, item["learnerId"])
         existing_attempt = variation_store.get_attempt(request.attemptId) if request.attemptId else None
         if existing_attempt and existing_attempt["variationId"] != variation_id:
             raise HTTPException(status_code=409, detail="attemptId 已用于其他变式题")

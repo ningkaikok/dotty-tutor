@@ -7,6 +7,8 @@ CAS 判不了的答案（无法解析、开放题/证明题的文字表述）绝
 from __future__ import annotations
 
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
 from domain.questions.answer_solver import (
     SOLVER_VERSION,
@@ -165,6 +167,26 @@ class UndecidableAgreementTests(unittest.TestCase):
     def test_unparseable_mixed_text_is_undecidable(self) -> None:
         result = check_answer_agreement("因为对顶角相等，所以∠A=∠B", "0.05")
         self.assertEqual(result["status"], "undecidable")
+
+    def test_python_calls_attributes_and_unbounded_expressions_are_rejected(self) -> None:
+        malicious = (
+            "print(731)",
+            "x.__class__",
+            "__import__(1)",
+            "x**999999",
+            "(((10**100)**100)**100)**100",
+            "(((10**100)**100)**100)**0",
+            "((x+1)**8)**8",
+            "(((x+1)**8)**8)**0",
+            "(" * 24 + "x" + ")" * 24,
+            "x+" * 80 + "x",
+        )
+        output = StringIO()
+        with redirect_stdout(output):
+            for candidate in malicious:
+                result = check_answer_agreement(candidate, "731")
+                self.assertEqual(result["status"], "undecidable", candidate)
+        self.assertEqual(output.getvalue(), "")
 
 
 class ExtractSolutionAnswerTextTests(unittest.TestCase):

@@ -25,6 +25,7 @@ from infrastructure.runtime.tutor_observation_adapter import TutorObservationAda
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
+from persistence.auth_store import AuthSessionStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
 from persistence.prompt_store import PromptStore
@@ -34,6 +35,7 @@ from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
 from prompts import configure_prompt_source
 from publication_revision import PublicationRevisionService
+from routers.auth_routes import build_auth_router
 from routers.classroom_routes import build_classroom_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
@@ -54,6 +56,10 @@ from variation_service import VariationService
 
 app = create_app()
 store = get_application_store()
+auth_session_store = AuthSessionStore(engine=store.engine)
+app.state.auth_session_store = auth_session_store
+app.state.background_job_store = background_job_store
+app.include_router(build_auth_router(session_store=auth_session_store))
 app.include_router(build_dependency_preflight_router())
 prompt_store = PromptStore(engine=store.engine)
 app.include_router(build_prompt_router(store=prompt_store))

@@ -11,6 +11,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -37,9 +39,30 @@ class OcrRuntime:
     def __init__(self) -> None:
         stored = (selection_store.load("ocr") or {}).get("provider", "")
         configured = stored or os.getenv("OCR_PROVIDER", "mineru").strip().lower()
-        self.selection = OcrSelection(
+        self._selection = OcrSelection(
             provider=configured if configured in {"auto", "mineru", "pypdf"} else "mineru"  # type: ignore[arg-type]
         )
+        self._selection_override: ContextVar[OcrSelection | None] = ContextVar(
+            "ocr_selection_override", default=None,
+        )
+
+    @property
+    def selection(self) -> OcrSelection:
+        """Return a task-pinned OCR provider or the process default."""
+        return self._selection_override.get() or self._selection
+
+    @selection.setter
+    def selection(self, value: OcrSelection) -> None:
+        self._selection = value
+
+    @contextmanager
+    def use_selection(self, provider: str):
+        """Pin OCR selection for one queued task without changing process state."""
+        token = self._selection_override.set(OcrSelection(provider))  # type: ignore[arg-type]
+        try:
+            yield
+        finally:
+            self._selection_override.reset(token)
 
     def mineru_command(self) -> Path | None:
         """按显式配置、项目虚拟环境、PATH 的顺序寻找 MinerU。

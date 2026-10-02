@@ -21,7 +21,8 @@ API 仍建议只运行一个 Uvicorn worker；Worker 是单独进程，和 API �
        └─ 独立模型、OCR 和 TTS 服务
 ```
 
-目标生产架构应增加对象存储、认证、监控和备份；当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
+受保护模式现已提供服务端会话和学生邀请；外网试用仍需 HTTPS 反向代理、密钥管理、备份和监控。
+当前不需要额外 Redis 才能运行首版 Worker。详细优先级见
 [路线图](roadmap.md)。
 
 ## 服务器准备
@@ -85,6 +86,9 @@ AZURE_SPEECH_KEY=replace-with-secret
 AZURE_SPEECH_REGION=eastasia
 AZURE_SPEECH_VOICE=zh-CN-XiaoxiaoNeural
 QWEN_TTS_URL=http://127.0.0.1:8020
+AUTH_MODE=protected
+AUTH_COOKIE_SECURE=1
+TEACHER_BOOTSTRAP_SECRET=generate-at-least-32-random-characters-and-store-as-a-secret
 ```
 
 要求：
@@ -93,6 +97,10 @@ QWEN_TTS_URL=http://127.0.0.1:8020
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
 - 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到本机 socket 或本地文件。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
+- 默认 `AUTH_MODE=demo` 只供可信本机操作者和完全合成数据使用，不能提供学生身份隔离。Compose 的 Web 与 PostgreSQL 端口绑定 `127.0.0.1`。
+- 独立设备试用须设 `AUTH_MODE=protected`、`AUTH_COOKIE_SECURE=1` 和至少 32 字符的 `TEACHER_BOOTSTRAP_SECRET`，并只经 HTTPS 反向代理访问。缺少配置时 API 启动失败。教师凭证创建教师会话；教师签发 24 小时一次性学生邀请。服务端保存 opaque token 哈希，Cookie 为 HttpOnly/SameSite=Strict/Secure，12 小时过期；退出会撤销当前服务端会话。浏览器写请求校验来源地址。
+- 学生资源按服务端会话 learnerId 校验；联网模式下客户端 learnerId 只能与会话身份相同。教师会话负责班级、发布、上传和 Runtime 管理。
+- 回滚应用版本时，先撤下公网/外部入口并将服务限制到 loopback，再启动不支持 protected 会话的旧应用；不得把 `AUTH_MODE=demo` 的旧应用重新暴露到网络。认证会话、邀请和辅导幂等记录作为审计数据保留；`0014`/`0015` 的 downgrade 不删除这些表，revision 指针可回退后再迁回新版本。schema downgrade 不构成身份安全措施。
 - PostgreSQL 生产库必须显式执行 Alembic 迁移；Store 运行时不会自动创建或修改表。发布前在 `apps/api` 依次执行
   `uv run python -m persistence.migration_cli preflight`、`upgrade` 和 `verify`，顺序固定为
   `backup → preflight → upgrade → verify → deploy/restart`。每个 worktree/session 使用独立 `POSTGRES_DB`，
@@ -413,6 +421,11 @@ sudo systemctl reload nginx
 
 Store 运行时不执行 DDL；新库和旧库都必须通过 Alembic 升级。上述同步/重启示例只适用于 schema 已就绪的版本；
 涉及迁移时先完成备份，再在加载 `api.env` 的环境中执行 `preflight → upgrade → verify`，成功后才重启 API/Worker。
+受保护会话的角色约束与索引由 `0014_protected_sessions` 校准，辅导幂等回放由 `0015_tutor_turn_idempotency` 管理。
+旧版数据库须先完成正式迁移，再启动 API 与 Worker。
+
+Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 API 后无需重建 Web。
+更新验收需请求 Web 的 `/api/health`，仅检查静态 `/healthz` 不能证明后端代理可用。
 
 ## GitHub CI
 

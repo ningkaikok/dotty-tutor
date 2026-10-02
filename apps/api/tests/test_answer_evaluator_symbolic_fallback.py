@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
 from answer_evaluator import EVALUATOR_VERSION, evaluate_structured_answer
 
@@ -106,6 +108,14 @@ class SymbolicFallbackNeverOverridesExistingFailureTests(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["assessment"], "incorrect")
         self.assertEqual(result["evaluationEvidence"]["submittedRaw"], "")
+
+    def test_student_numeric_answer_cannot_execute_python_expression(self) -> None:
+        question = _numeric_question("731")
+        output = StringIO()
+        with redirect_stdout(output):
+            result = evaluate_structured_answer(question, "", {"numericAnswer": "print(731)"})
+        self.assertEqual(output.getvalue(), "")
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

@@ -8,13 +8,14 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from application.mistake_jobs import mistake_id_for_capture
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request, require_owner
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
 from domain.questions.student_view import student_mistake_item
+from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
 from observability import log_event
 
 MAX_MISTAKE_IMAGE_BYTES = 10 * 1024 * 1024
@@ -36,11 +37,13 @@ def build_mistake_router(
 
     @router.post("/import")
     async def import_mistake(
+        request: Request,
         file: UploadFile = File(...),
         sourceText: str = Form(default="", max_length=20_000),
         originalAnswer: str = Form(default="", max_length=2_000),
-        learnerId: str = Form(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Form(default=None, min_length=1, max_length=128),
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         filename = Path(file.filename or "mistake-image").name
         suffix = Path(filename).suffix.lower()
         content_type = (file.content_type or "").lower()
@@ -111,12 +114,14 @@ def build_mistake_router(
 
     @router.post("/import-jobs", status_code=202)
     async def queue_mistake_import(
+        request: Request,
         file: UploadFile = File(...),
         sourceText: str = Form(default="", max_length=20_000),
         originalAnswer: str = Form(default="", max_length=2_000),
-        learnerId: str = Form(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Form(default=None, min_length=1, max_length=128),
         captureId: str = Form(..., min_length=1, max_length=128),
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         """Persist the capture and enqueue OCR/model work on the shared Worker."""
         if job_store is None:
             raise HTTPException(status_code=503, detail="错题后台任务暂不可用")
@@ -159,6 +164,7 @@ def build_mistake_router(
                     "originalAnswer": originalAnswer,
                     "sourcePath": str(source_path),
                     "jobId": job_id,
+                    "runtimeSnapshot": current_job_runtime_snapshot(),
                 },
                 idempotency_key=idempotency_key,
                 max_attempts=3,
@@ -182,19 +188,25 @@ def build_mistake_router(
 
     @router.get("")
     def list_mistakes(
-        learnerId: str = DEMO_LEARNER_ID, includeArchived: bool = False
+        request: Request, learnerId: str | None = None, includeArchived: bool = False
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         return {"learnerId": learnerId, "items": [_public_item(item) for item in store.list(learnerId, include_archived=includeArchived)]}
 
     @router.get("/{mistake_id}")
-    def get_mistake(mistake_id: str) -> dict[str, Any]:
+    def get_mistake(request: Request, mistake_id: str) -> dict[str, Any]:
         item = store.get(mistake_id)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, str(item.get("learnerId") or ""))
         return _public_item(item)
 
     @router.patch("/{mistake_id}")
-    def confirm_mistake(mistake_id: str, confirmation: MistakeConfirmation) -> dict[str, Any]:
+    def confirm_mistake(request: Request, mistake_id: str, confirmation: MistakeConfirmation) -> dict[str, Any]:
+        current = store.get(mistake_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, current["learnerId"])
         item = store.confirm(mistake_id, confirmation.model_dump())
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
@@ -207,7 +219,11 @@ def build_mistake_router(
         return _public_item(item)
 
     @router.patch("/{mistake_id}/archive")
-    def archive_mistake(mistake_id: str, request: MistakeArchiveRequest) -> dict[str, Any]:
+    def archive_mistake(http_request: Request, mistake_id: str, request: MistakeArchiveRequest) -> dict[str, Any]:
+        current = store.get(mistake_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(http_request, current["learnerId"])
         item = store.set_archived(mistake_id, request.archived)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
@@ -221,21 +237,25 @@ def build_mistake_router(
         return _public_item(item)
 
     @router.get("/{mistake_id}/source", response_class=FileResponse)
-    def get_mistake_source(mistake_id: str) -> FileResponse:
+    def get_mistake_source(request: Request, mistake_id: str) -> FileResponse:
+        item = store.get(mistake_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, item["learnerId"])
         path = store.source_path(mistake_id)
         if not path or not path.is_file():
             raise HTTPException(status_code=404, detail="错题原图不存在")
-        item = store.get(mistake_id)
         return FileResponse(path, media_type=item["contentType"], filename=item["sourceFilename"])
 
     @router.get("/{mistake_id}/assets/{filename}", response_class=FileResponse)
-    def get_mistake_asset(mistake_id: str, filename: str) -> FileResponse:
+    def get_mistake_asset(request: Request, mistake_id: str, filename: str) -> FileResponse:
         safe_name = Path(filename).name
         if safe_name != filename:
             raise HTTPException(status_code=400, detail="资源名称无效")
         item = store.get(mistake_id)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, str(item.get("learnerId") or ""))
         source_path = Path(str(item.get("sourceImagePath") or "")).expanduser().resolve()
         expected_root = store.mistake_root.resolve()
         if expected_root not in source_path.parents:
