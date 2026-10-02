@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { RichText } from "../RichText";
 import { QuestionAnswer } from "./QuestionAnswer";
 import type { QuestionPayload, TextbookImportResult, TutorReply } from "../types/index";
@@ -135,6 +136,9 @@ export function PracticeWorkspace({
               {payload.question.promptArtifactUrl && <a href={payload.question.promptArtifactUrl} target="_blank" rel="noreferrer">查看模型提示词</a>}
             </div>
           )}
+          {(payload.modelRun.stages || []).some((stage) => stage.promptTemplates?.length) && <div className="artifact-links">
+            {(payload.modelRun.stages || []).flatMap((stage) => stage.promptTemplates || []).map((template) => <Link key={`${template.id}:${template.contentHash}`} to={`/studio/prompts?${new URLSearchParams({ template: template.id, version: template.version, hash: template.contentHash })}`}>查看提示词版本 · {template.id}</Link>)}
+          </div>}
           <QuestionAnswer
             question={payload.question}
             selectedOptions={selectedOptions}

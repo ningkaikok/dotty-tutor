@@ -20,6 +20,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -314,3 +315,33 @@ Index("idx_exercise_attempts_publication_question", exercise_attempts.c.publicat
 Index("uq_mastery_states_learner_knowledge_point", mastery_states.c.learner_id, mastery_states.c.knowledge_point_id, unique=True)
 Index("idx_teacher_review_events_assignment", teacher_review_events.c.assignment_id, teacher_review_events.c.created_at.desc())
 Index("idx_teacher_review_events_evidence", teacher_review_events.c.assignment_id, teacher_review_events.c.learner_id, teacher_review_events.c.question_id, teacher_review_events.c.created_at.desc())
+
+# 提示词正文修订只追加；发布指针与发布事件独立，回滚不改写历史版本。
+prompt_revisions = Table(
+    "prompt_revisions", metadata,
+    Column("revision_id", String(64), primary_key=True),
+    Column("template_id", String(96), nullable=False),
+    Column("version", String(96), nullable=False),
+    Column("content_hash", String(64), nullable=False),
+    Column("body", Text, nullable=False),
+    Column("base_revision_id", String(64)),
+    Column("created_at", Float, nullable=False),
+    Column("created_by", String(32), nullable=False),
+    Column("previewed", Boolean, nullable=False, server_default=text("false")),
+)
+Index("idx_prompt_revisions_template", prompt_revisions.c.template_id, prompt_revisions.c.created_at)
+prompt_heads = Table(
+    "prompt_heads", metadata,
+    Column("template_id", String(96), primary_key=True),
+    Column("active_revision_id", String(64), ForeignKey("prompt_revisions.revision_id"), nullable=False),
+)
+prompt_release_events = Table(
+    "prompt_release_events", metadata,
+    Column("event_id", String(64), primary_key=True),
+    Column("template_id", String(96), nullable=False),
+    Column("revision_id", String(64), ForeignKey("prompt_revisions.revision_id"), nullable=False),
+    Column("previous_revision_id", String(64), ForeignKey("prompt_revisions.revision_id"), nullable=False),
+    Column("action", String(16), nullable=False),
+    Column("created_at", Float, nullable=False),
+    Column("created_by", String(32), nullable=False),
+)

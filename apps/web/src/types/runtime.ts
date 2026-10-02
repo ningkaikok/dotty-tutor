@@ -1,6 +1,9 @@
 export type ModelProvider = "ollama" | "codex" | "mock";
 
+export interface PromptIdentity { id: string; version: string; contentHash: string }
+
 export interface ModelRun {
+  promptTemplates?: PromptIdentity[];
   requestedProvider: string;
   provider: string;
   model: string;
@@ -8,6 +11,7 @@ export interface ModelRun {
   error?: string;
   stages?: Array<{
     name: string;
+    promptTemplates?: PromptIdentity[];
     provider?: string;
     model?: string;
     fallback: boolean;

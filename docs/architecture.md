@@ -727,3 +727,36 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 模型必须一次返回 1–5 道带 `planningTopicKey + LESSON_SCHEMA` 的新题；服务端拒绝回退、复制来源题、不可确定判题、答案不完整或质量门禁失败。
 通过后保存带 `sourcePlanId`、`sourcePublicationId`、`planningTopicKey`、证据引用和 schema/prompt 版本的 lesson，创建不同于来源的 published publication，
 再保存一个可继续确认的 final plan。来源 plan 记录 final plan ID，重复请求不重复模型调用或 publication；确认阶段仍进入现有 `assignments` 事务。
+
+### 内容平台提示词管理与版本溯源
+
+内容生产工作台的 `/studio/prompts` 提供模板查看、草稿编辑、样例变量预览、版本比较、
+发布和回滚。授课老师/学生页面不提供编辑入口。当前系统仍为匿名单用户 Demo，没有账号角色
+系统；管理接口通过服务端配置的独立编辑/发布凭据区分能力，记录凭据角色而非个人身份。
+评分标准只读，防止内容优化时同时改变衡量标准。
+
+`apps/api/prompts/` 管理四个题目生成阶段、陪练稳定段/动态段和独立评测模板。
+`catalog.json` 定义稳定标识、变量契约及 Git 基线版本，`templates/*.txt` 保存基线正文。
+在线正文修订写入 `prompt_revisions`，只追加、不改写；`prompt_heads` 保存生效指针，
+`prompt_release_events` 记录发布/回滚、前后修订和凭据角色。
+首次访问归档 Git 基线，升级代码只归档新基线，不覆盖已发布在线版本。
+
+`PromptStore` 负责持久化与发布事务：草稿须完成已保存版本的变量预览后才能发布；
+发布使用行锁和 `expectedActiveRevisionId`，拒绝过期页面覆盖其他人的发布。
+回滚只能指向基线或曾发布版本，不能绕过草稿预览。预览只验证替换契约，不调用模型，
+不等于数学正确性或教学效果评测；发布者应先审查版本比较及教学内容。
+`routers/prompt_routes.py` 校验内容凭据、请求契约和发布能力，禁止匿名访问及浏览器缓存。
+
+启用内容凭据时，组合根配置 PostgreSQL 发布来源；生成、陪练、独立评测入口通过
+`freeze_prompts` / `ContextVar` 固定单次任务的整套模板。API 和导入组合根的 Worker
+读取同一发布指针，新任务生效，运行中的任务不会被发布打断；不同任务的快照互相隔离。
+未启用内容管理时继续使用 Git 基线，无需额外数据库查询。
+
+运行记录保留模板标识、版本和 SHA-256；`config.prompt` 仍为实际渲染输入的摘要。
+阶段缓存继续包含渲染后的提示词、已选模板版本、模型和 Schema。旧产物局部复用保留
+原模板身份，缺少身份时保持未知。内容预览中的版本链接按标识/版本/哈希定位归档正文，
+未归档的历史版本明确提示无法恢复，不能冒充为当前版本。
+
+上下文裁剪、JSON Schema、来源保真、确定性判题和发布质量门禁继续由业务代码维护。
+在线变量预览不持久化变量或学生输入；正文应仅保存通用教学模板。审核、变式、个性化作业、
+旧单阶段生成及评测专用讲解模板暂未迁移。维护与启用说明见 `apps/api/prompts/README.md`。

@@ -5,6 +5,7 @@ import { PRODUCT_TERMS } from "./productTerms";
 
 // 每个角色入口拥有独立的路由级代码包。学生打开轻量学习空间时，不应同时下载体积更大的内容生产工作台。
 // 当前页面组件采用具名导出，而 React.lazy 只接受 default，因此这里显式完成一次导出映射。
+const PromptManagerApp = lazy(() => import("./apps/prompts/PromptManagerApp").then((module) => ({ default: module.PromptManagerApp })));
 const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
@@ -43,6 +44,7 @@ function AppRoutes() {
           <Route index element={<ProductHome />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
+          <Route path="studio/prompts" element={<PromptManagerApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/dependency-preflight" element={<DependencyPreflightApp />} />
           <Route path="teacher/*" element={<TeacherClassroomApp />} />

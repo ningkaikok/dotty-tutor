@@ -192,6 +192,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/content/prompts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Prompts */
+        get: operations["list_prompts_api_content_prompts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/content/prompts/{template_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Detail */
+        get: operations["detail_api_content_prompts__template_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/content/prompts/{template_id}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate */
+        post: operations["activate_api_content_prompts__template_id__activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/content/prompts/{template_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Draft */
+        post: operations["draft_api_content_prompts__template_id__drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/content/prompts/{template_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview */
+        post: operations["preview_api_content_prompts__template_id__preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/debug/errors": {
         parameters: {
             query?: never;
@@ -1669,6 +1754,18 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ActivateRequest */
+        ActivateRequest: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "publish" | "rollback";
+            /** Expectedactiverevisionid */
+            expectedActiveRevisionId: string;
+            /** Revisionid */
+            revisionId: string;
+        };
         /** AssignmentCreate */
         AssignmentCreate: {
             /**
@@ -1875,6 +1972,13 @@ export interface components {
             checks: components["schemas"]["DependencyCheck"][];
             /** Ok */
             ok: boolean;
+        };
+        /** DraftRequest */
+        DraftRequest: {
+            /** Baserevisionid */
+            baseRevisionId: string;
+            /** Text */
+            text: string;
         };
         /** ExerciseAttemptCreate */
         ExerciseAttemptCreate: {
@@ -2112,6 +2216,65 @@ export interface components {
             /** Questioncount */
             questionCount: number;
         };
+        /** PreviewRequest */
+        PreviewRequest: {
+            /** Revisionid */
+            revisionId: string;
+            /** Variables */
+            variables: {
+                [key: string]: string;
+            };
+        };
+        /** PreviewResponse */
+        PreviewResponse: {
+            /** Rendered */
+            rendered: string;
+        };
+        /** PromptDetail */
+        PromptDetail: {
+            /** Activerevisionid */
+            activeRevisionId: string;
+            /** Editable */
+            editable: boolean;
+            /** Events */
+            events: components["schemas"]["ReleaseEvent"][];
+            /** Id */
+            id: string;
+            /** Revisions */
+            revisions: components["schemas"]["PromptRevision"][];
+            /** Variables */
+            variables: string[];
+        };
+        /** PromptList */
+        PromptList: {
+            /** Canpublish */
+            canPublish: boolean;
+            /** Items */
+            items: components["schemas"]["PromptDetail"][];
+        };
+        /** PromptRevision */
+        PromptRevision: {
+            /** Baserevisionid */
+            baseRevisionId: string | null;
+            /** Contenthash */
+            contentHash: string;
+            /** Createdat */
+            createdAt: number;
+            /** Createdby */
+            createdBy: string;
+            /** Previewed */
+            previewed: boolean;
+            /** Published */
+            published: boolean;
+            /** Revisionid */
+            revisionId: string;
+            /** Templateid */
+            templateId: string;
+            /** Text */
+            text: string;
+            /** Version */
+            version: string;
+        };
         /** PublicationCreate */
         PublicationCreate: {
             /** Lessonids */
@@ -2304,6 +2467,19 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             run: components["schemas"]["RunSummary"];
+        };
+        /** ReleaseEvent */
+        ReleaseEvent: {
+            /** Action */
+            action: string;
+            /** Createdat */
+            createdAt: number;
+            /** Createdby */
+            createdBy: string;
+            /** Previousrevisionid */
+            previousRevisionId: string;
+            /** Revisionid */
+            revisionId: string;
         };
         /** ReviewQueueResponse */
         ReviewQueueResponse: {
@@ -3074,6 +3250,162 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_prompts_api_content_prompts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptList"];
+                };
+            };
+        };
+    };
+    detail_api_content_prompts__template_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activate_api_content_prompts__template_id__activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    draft_api_content_prompts__template_id__drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromptRevision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_content_prompts__template_id__preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                template_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreviewResponse"];
                 };
             };
             /** @description Validation Error */
