@@ -628,6 +628,29 @@ def generate_question_from_ir(
 ) -> tuple[dict, list[dict[str, Any]], dict[str, Any]]:
     """以 QuestionIR 为唯一来源事实生成题目；旧 ``generate_lesson`` 只是文本适配器。"""
     source = str(question_ir.get("sourceText") or question_ir.get("stem") or "").strip()
+    if runtime.selection.provider == "mock":
+        # Compose 的无模型演示模式仍需让整卷任务走完后台流程，但不能把固定示例题
+        # 伪装成 OCR 结果，也不能臆造答案。仅保留来源题干和图片引用，教学字段标明
+        # synthetic，后续质量门禁会将其隔离为待人工审核，不能直接发布给学生。
+        _number, selected_source, selected_images = select_complete_question_source(source)
+        run = mock_model_run()
+        run.update({
+            "synthetic": True,
+            "syntheticKind": "source-preserving-preview",
+            "syntheticNotice": "题干来自 OCR 来源；答案与讲解未由模型生成，发布前需要人工审核。",
+        })
+        payload, cards = _fallback_lesson(
+            source,
+            str(question_ir.get("number") or _number),
+            selected_source or source,
+            selected_images or [str(item) for item in question_ir.get("visualAssetIds", [])],
+            run,
+        )
+        payload["question"] = project_question_ir(question_ir, payload.get("question", {}))
+        payload["question"]["sourceQuestionKey"] = question_ir.get("sourceQuestionKey")
+        payload["modelRun"] = run
+        lesson_store[payload["question"]["id"]] = {"payload": payload, "guideCards": cards}
+        return payload, cards, run
     payload, cards, run = _staged_lesson(
         source,
         repair_errors=repair_errors,

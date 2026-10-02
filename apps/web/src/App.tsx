@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./styles.css";
 import { PRODUCT_TERMS } from "./productTerms";
+import { ProtectedAccess } from "./auth/ProtectedAccess";
 
 // 每个角色入口拥有独立的路由级代码包。学生打开轻量学习空间时，不应同时下载体积更大的内容生产工作台。
 // 当前页面组件采用具名导出，而 React.lazy 只接受 default，因此这里显式完成一次导出映射。
@@ -60,7 +61,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <ProtectedAccess><AppRoutes /></ProtectedAccess>
     </BrowserRouter>
   );
 }

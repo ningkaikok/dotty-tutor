@@ -198,7 +198,7 @@ flowchart TB
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
 | 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 从 50 条用户确认的合成案例中选 42 条文本案例，显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；8 条图像案例待实际传图后再纳入，调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
-| 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用；支持评测任务显式指定模型且不改写进程默认选择 |
+| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
@@ -215,7 +215,7 @@ flowchart TB
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
-| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件 |
+| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件；通过 message_count 条件提交拦截旧生成，并持久化 Idempotency-Key 响应 |
 | 工具策略 | `apps/api/domain/tutoring/tools.py` | 五种固定 ToolProposal、阶段门禁、证据引用和策略版本 |
 | Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 检索已发布题目的题干、条件和标题；返回发布/课程/题目引用，当前索引构建的 `sourcePages` 为空，未实现教材原文页码检索 |
 | Tutor 评测 | `apps/api/evaluation/tutor/` | 六维度 30 case 的确定性语料检查、质量和延迟/成本指标 |
@@ -313,7 +313,18 @@ erDiagram
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
 3. `GET /api/library`：从 PostgreSQL 恢复已完成教材。
 
-模型和 OCR 选择目前写入当前 FastAPI 进程的全局运行时，不按用户或教材隔离。
+模型和 OCR 选择目前仍写入当前 FastAPI 进程的全局运行时，不按用户或教材隔离；联网使用时应由教师统一管理运行时。
+
+## 本机演示与受保护身份
+
+Compose 默认绑定回环地址并以 `AUTH_MODE=demo` 启动，适合可信的本机演示数据，不提供独立学生设备的身份隔离。
+显式配置 `AUTH_MODE=protected`、至少 32 字符的 `TEACHER_BOOTSTRAP_SECRET` 和 HTTPS Secure Cookie 后，API
+才启用服务端会话鉴权。教师用 bootstrap secret 建立会话并签发一次性、限时学生邀请；API 只保存 opaque token
+的 SHA-256 哈希，Cookie 为 HttpOnly、SameSite=Strict、受保护模式要求 Secure。会话可过期或撤销，教师和学生的
+角色由服务端会话解析；学生资源读取同时检查资源所属 learnerId，客户端传入的 learnerId 不能变更身份。跨站来源
+写请求被拒绝。学生只可查看、取消或重试本人错题图片导入任务；任务状态投影隐藏 worker 错误和运行信息。学习漏斗按会话 learnerId 汇总。
+迁移 `0014_protected_sessions` 校准会话角色约束和索引；`0015_tutor_turn_idempotency` 确保辅导提交回放表与索引存在；回滚到旧版本前须先切回可信本机演示并撤下外部入口。
+保护模式的邀请签发不是账号找回或多租户系统，教师 bootstrap 凭据应由部署环境安全管理。
 
 ## 单页导入
 
@@ -511,6 +522,8 @@ revision，只移动"当前展示版本"这个指针，历史证据链条完整�
 答案掩盖失败。`modelRun.stages` 保留各阶段的 provider、model 和回退状态，`sourceProvenance` 保留题目级
 页码、OCR 块 ID、图片 ID、置信度和诊断。
 
+显式使用 `MODEL_PROVIDER=mock` 的整卷演示会保留 OCR 来源题干并生成 `modelRun.synthetic=true` 的来源预览；答案和讲解不冒充模型产物，质量状态固定为 `needs_review`，发布前需要人工确认。真实 Provider 的调用错误仍按原有失败/隔离流程处理。
+
 `verification.solverAgreement` 是确定性程序算出来的，不是模型自我断言的布尔值：`answer_solver.py` 把
 求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做标量或显式解集的
 符号等价判等（文本/数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。
@@ -614,6 +627,13 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 
 ## 学生作答与 Help
 
+学生今日入口以“下一步需要做什么”为组织原则：未完成作业、待确认错题、到期复习和待订正错题
+进入待办，已完成作业移到回看区，自由练习单独列出。`useStudentTodayQueue` 将作业、发布目录、
+错题和复习进度的四路请求合成 learnerId 绑定快照；失败项留空，切换身份立即隐藏旧快照，
+迟到响应不能覆盖新学生的数据。部分失败时保留成功内容并提示列表不完整，全部失败不展示空任务结论。
+这些是本机身份选择的展示隔离，不构成登录授权。设计判断与消融证据见
+[用户任务与消融审视](user-task-ablation.md)。
+
 前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果；多小问额外提交
 `interactionResult.subQuestionAnswers`：
 
@@ -643,6 +663,7 @@ POST /api/tts
 ```
 
 `GET /api/tts/status` 返回当前可用 provider。浏览器回退发生在前端，不是后端音频服务。
+受保护模式下，学生可调用文本上限 2,000 字符的 `POST /api/tts` 完成辅导朗读；状态探测和其它 TTS 管理路径仍要求教师会话。
 
 ## 持久化
 

@@ -26,16 +26,15 @@
 
 from __future__ import annotations
 
+import ast
+import math
 import re
 from typing import Any, Literal
 
 from answer_evaluator import convert_latex_fraction, normalize_text, parse_number
 
-# 判等逻辑的版本号，约定与 EVALUATOR_VERSION/QUESTION_SEGMENTATION_VERSION 等一致：
-# 判等规则（哪怕只是新增一种符号预处理）变化时必须递增，消费方（核验证据、审校面板）
-# 才能正确解释历史判定的语义。v2：新增"数字夹住的 x/X 视为科学计数法乘号"预处理，
-# 修复 "5x10^-2" 这类 OCR 常见写法被误判 disagree 的问题。
-SOLVER_VERSION = "answer-solver-v3"
+# 判等语义变化时递增：v4 用受限 AST 替代对不可信文本的动态解析。
+SOLVER_VERSION = "answer-solver-v5"
 
 AgreementStatus = Literal["agree", "disagree", "undecidable"]
 
@@ -66,6 +65,13 @@ _SCI_NOTATION_X_AS_TIMES = re.compile(r"(?<=[0-9])\s*[xX]\s*(?=[0-9])")
 _ASSIGNMENT_PATTERN = re.compile(
     r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$"
 )
+_MAX_SYMBOLIC_LENGTH = 512
+_MAX_SYMBOLIC_NODES = 64
+_MAX_SYMBOLIC_DEPTH = 16
+_MAX_SYMBOLIC_EXPONENT = 100
+_MAX_SYMBOLIC_INTEGER_BITS = 4096
+_MAX_SYMBOLIC_TERMS = 128
+_MAX_SYMBOLIC_DEGREE = 64
 
 
 def _expand_superscripts(text: str) -> str:
@@ -103,26 +109,175 @@ def _prepare_for_symbolic_parse(value: Any) -> str:
 
 
 def _parse_symbolic(value: Any) -> Any | None:
-    """把答案文本解析成 sympy 表达式；解析失败或含非法字符返回 None，绝不抛错给调用方。"""
+    """用受限 AST 构造 SymPy 表达式，不执行或动态解析输入文本。"""
     prepared = _prepare_for_symbolic_parse(value)
-    if not prepared or not _SYMBOLIC_SAFE_CHARS.fullmatch(prepared):
+    if not prepared or len(prepared) > _MAX_SYMBOLIC_LENGTH:
         return None
-    # sympy 是重量级导入（约 100ms+），且只有数值判等失败时才需要它。延迟到真正
-    # 解析符号表达式时才导入，避免拖慢模块导入方（包含只需要 SOLVER_VERSION/类型
-    # 的调用方）和学生作答判题这类延迟敏感路径——尽管后者目前并不导入本模块。
+    if not _SYMBOLIC_SAFE_CHARS.fullmatch(prepared):
+        return None
+    # 补上教材常见的 2x 与 2(x+1) 隐式乘法；其余 Python 表达式语法仍会在白名单处拒绝。
+    prepared = re.sub(r"(?<=[0-9])(?=[A-Za-z(])", "*", prepared)
+    prepared = re.sub(r"(?<=[)])(?=[0-9A-Za-z(])", "*", prepared)
+    paren_depth = 0
+    for char in prepared:
+        if char == "(":
+            paren_depth += 1
+            if paren_depth > _MAX_SYMBOLIC_DEPTH:
+                return None
+        elif char == ")":
+            paren_depth -= 1
+            if paren_depth < 0:
+                return None
+    if paren_depth:
+        return None
     try:
-        from sympy.parsing.sympy_parser import (
-            convert_xor,
-            implicit_multiplication_application,
-            parse_expr,
-            standard_transformations,
-        )
+        import sympy as sp
     except ImportError:
         return None
-    transformations = standard_transformations + (implicit_multiplication_application, convert_xor)
     try:
-        return parse_expr(prepared, transformations=transformations, evaluate=True)
-    except Exception:
+        tree = ast.parse(prepared.replace("^", "**"), mode="eval")
+    except (SyntaxError, ValueError, RecursionError):
+        return None
+
+    def within_budget(node: ast.AST) -> tuple[bool, int, int, int]:
+        """Conservatively bound exact-number growth and polynomial expansion cost.
+
+        Return (contains_variable, terms, degree, coefficient_bits). This pass
+        runs before constructing SymPy values: expressions whose intermediate
+        integers or expanded symbolic form could grow too large are undecidable.
+        """
+        if isinstance(node, ast.Expression):
+            return within_budget(node.body)
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return False, 1, 0, max(1, abs(node.value).bit_length())
+        if isinstance(node, ast.Constant) and isinstance(node.value, float):
+            return False, 1, 0, 53
+        if isinstance(node, ast.Name):
+            return (node.id not in {"pi", "e"}, 1, 1 if node.id not in {"pi", "e"} else 0, 0)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            return within_budget(node.operand)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "sqrt" and len(node.args) == 1:
+            return within_budget(node.args[0])
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
+            left = within_budget(node.left)
+            right = within_budget(node.right)
+            symbolic = left[0] or right[0]
+            if isinstance(node.op, ast.Add) or isinstance(node.op, ast.Sub):
+                terms = left[1] + right[1]
+                degree = max(left[2], right[2])
+                bits = max(left[3], right[3]) + 1
+            elif isinstance(node.op, ast.Mult):
+                terms = left[1] * right[1]
+                degree = left[2] + right[2]
+                bits = left[3] + right[3]
+            elif isinstance(node.op, ast.Div):
+                # Division by a symbolic expression can force expensive rational
+                # normalization in equals(); fail closed instead of guessing its cost.
+                if right[0]:
+                    return True, _MAX_SYMBOLIC_TERMS + 1, _MAX_SYMBOLIC_DEGREE + 1, _MAX_SYMBOLIC_INTEGER_BITS + 1
+                terms, degree, bits = left[1], left[2], left[3] + right[3]
+            else:
+                exponent_node = node.right
+                sign = 1
+                if isinstance(exponent_node, ast.UnaryOp) and isinstance(exponent_node.op, (ast.UAdd, ast.USub)):
+                    sign = -1 if isinstance(exponent_node.op, ast.USub) else 1
+                    exponent_node = exponent_node.operand
+                exponent: int | float | None = None
+                if isinstance(exponent_node, ast.Constant):
+                    if type(exponent_node.value) is int:
+                        exponent = sign * int(exponent_node.value)
+                    elif type(exponent_node.value) is float:
+                        exponent = sign * float(exponent_node.value)
+                if exponent is None or not math.isfinite(float(exponent)) or abs(exponent) > _MAX_SYMBOLIC_EXPONENT:
+                    return True, _MAX_SYMBOLIC_TERMS + 1, _MAX_SYMBOLIC_DEGREE + 1, _MAX_SYMBOLIC_INTEGER_BITS + 1
+                if symbolic and (exponent < 0 or not float(exponent).is_integer()):
+                    return True, _MAX_SYMBOLIC_TERMS + 1, _MAX_SYMBOLIC_DEGREE + 1, _MAX_SYMBOLIC_INTEGER_BITS + 1
+                if not float(exponent).is_integer() and not symbolic:
+                    terms, degree, bits = 1, 0, 53
+                else:
+                    integer_exponent = int(exponent)
+                    terms = left[1] ** max(0, integer_exponent)
+                    degree = left[2] * max(0, integer_exponent)
+                    bits = left[3] * abs(integer_exponent) + 1
+            # Every intermediate must fit: a later power of zero cannot make an
+            # expensive child safe to construct before that final simplification.
+            if (
+                bits > _MAX_SYMBOLIC_INTEGER_BITS
+                or terms > _MAX_SYMBOLIC_TERMS
+                or (symbolic and degree > _MAX_SYMBOLIC_DEGREE)
+            ):
+                raise ValueError("symbolic intermediate is outside the supported budget")
+            return symbolic, terms, degree, bits
+        return True, _MAX_SYMBOLIC_TERMS + 1, _MAX_SYMBOLIC_DEGREE + 1, _MAX_SYMBOLIC_INTEGER_BITS + 1
+
+    try:
+        contains_variable, estimated_terms, estimated_degree, estimated_bits = within_budget(tree)
+    except (ValueError, OverflowError, RecursionError):
+        return None
+    if (
+        estimated_bits > _MAX_SYMBOLIC_INTEGER_BITS
+        or estimated_terms > _MAX_SYMBOLIC_TERMS
+        or (contains_variable and estimated_degree > _MAX_SYMBOLIC_DEGREE)
+    ):
+        return None
+
+    node_count = 0
+
+    def build(node: ast.AST, depth: int = 0) -> Any:
+        nonlocal node_count
+        node_count += 1
+        if node_count > _MAX_SYMBOLIC_NODES or depth > _MAX_SYMBOLIC_DEPTH:
+            raise ValueError("symbolic expression is too large")
+        if isinstance(node, ast.Expression):
+            return build(node.body, depth + 1)
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            if abs(node.value) > 1e12:
+                raise ValueError("numeric literal is outside the supported range")
+            return sp.Integer(node.value)
+        if isinstance(node, ast.Constant) and isinstance(node.value, float):
+            if not math.isfinite(node.value) or abs(node.value) > 1e12:
+                raise ValueError("numeric literal is outside the supported range")
+            return sp.Float(node.value)
+        if isinstance(node, ast.Name):
+            if node.id == "pi":
+                return sp.pi
+            if node.id == "e":
+                return sp.E
+            if len(node.id) == 1 and node.id.isascii() and node.id.isalpha():
+                return sp.Symbol(node.id)
+            raise ValueError("unsupported identifier")
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            operand = build(node.operand, depth + 1)
+            return operand if isinstance(node.op, ast.UAdd) else -operand
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)):
+            left = build(node.left, depth + 1)
+            right = build(node.right, depth + 1)
+            if isinstance(node.op, ast.Pow):
+                if right.is_number is not True or abs(float(right)) > _MAX_SYMBOLIC_EXPONENT:
+                    raise ValueError("unsupported exponent")
+                if left.is_number is not True and not float(right).is_integer():
+                    raise ValueError("symbolic powers must use integer exponents")
+                return left ** right
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            return left / right
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "sqrt"
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return sp.sqrt(build(node.args[0], depth + 1))
+        raise ValueError("unsupported expression syntax")
+
+    try:
+        return build(tree)
+    except (ValueError, TypeError, OverflowError, RecursionError):
         return None
 
 

@@ -2,18 +2,16 @@ import { useSyncExternalStore } from "react";
 import { DEMO_LEARNER_ID } from "./client";
 
 /**
- * 当前学习者身份（**不是**登录，只是本机上的一个选择）。
- *
- * 背景：老师在班级花名册里加的 learnerId 与学生端使用的 learnerId 必须是同一个值，
- * 两边才能对上——`class_memberships.learner_id` 和学生侧所有表用的是同一列。此前
- * 学生端把 `local-demo` 写死在调用点里，导致老师加的任何学生都收不到作业，看板上
- * 永远显示"未开始"。这个模块把那个值变成可切换的。
- *
- * 边界必须说清楚：**任何人都可以声称自己是任意一个 learnerId**，本模块不做也不能做
- * 任何校验。它只服务于"一台机器、老师在场"的试用场景。接入服务端登录后，本模块连同
- * 学生端的身份选择器一起删除，调用点改为使用服务端下发的身份。
+ * Demo 模式下保存本机学生选择；protected 模式缓存服务端会话里的 learnerId 供 UI 组装请求。
+ * 此模块本身从不授权：HttpOnly 服务端会话是身份事实，API 必须核对所有传入 learnerId。
  */
 const STORAGE_KEY = "dotty-learner-id";
+const AUTH_SESSION_KEY = "dotty-auth-session";
+export interface ProtectedSession {
+  role: "teacher" | "student";
+  learnerId: string | null;
+  expiresAt: number;
+}
 
 const listeners = new Set<() => void>();
 /**
@@ -34,8 +32,32 @@ function readStored(): string {
   }
 }
 
+export function protectedSession(): ProtectedSession | null {
+  try {
+    const raw = localStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as ProtectedSession;
+    return value && (value.role === "teacher" || value.role === "student") ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setProtectedSession(session: ProtectedSession | null): void {
+  try {
+    if (session) localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    else localStorage.removeItem(AUTH_SESSION_KEY);
+  } catch {
+    // The HttpOnly cookie remains the authority; this copy only drives the UI.
+  }
+  if (session?.role === "student" && session.learnerId) current = session.learnerId;
+  listeners.forEach((listener) => listener());
+}
+
 /** 当前身份。所有需要 learnerId 的调用点都应当读它，不要再引用 DEMO_LEARNER_ID。 */
 export function currentLearnerId(): string {
+  const session = protectedSession();
+  if (session?.role === "student" && session.learnerId) return session.learnerId;
   if (current === null) current = readStored();
   return current;
 }

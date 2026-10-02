@@ -11,7 +11,6 @@ export interface PublishedPaperProgress {
   /** 第一题尚未以 correct 结论完成时的索引。全部完成时为 -1。 */
   firstIncompleteIndex: number;
   completed: boolean;
-  isQuestionCompleted: (questionId: string) => boolean;
   /** 从当前题之后寻找下一道未完成题，必要时从试卷开头环回。 */
   nextIncompleteIndex: (currentIndex: number, justCompletedQuestionId?: string) => number | null;
 }
@@ -48,7 +47,6 @@ export function usePublishedPaperProgress(
       latestAttempts: latest,
       firstIncompleteIndex,
       completed: lessons.length > 0 && firstIncompleteIndex === -1,
-      isQuestionCompleted: isComplete,
       nextIncompleteIndex: (currentIndex: number, justCompletedQuestionId?: string) => {
         if (!lessons.length) return null;
         // 正常路径先向后推进；如果学生从目录手动跳题，环回可回到最早未完成题，

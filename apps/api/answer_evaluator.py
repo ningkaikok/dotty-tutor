@@ -125,8 +125,8 @@ def _check_single_answer(actual: Any, expected: list[Any], answer_type: str, tol
 # 消费方（陪练计划、尝试记录）据此解释历史证据的结构。
 # v2：`_check_single_answer` 归一化判否后新增符号等价兜底（复用
 # `answer_solver.check_answer_agreement`），能挽回科学计数法/根式/代数展开这类
-# 假阴性——判等规则变了，即使 evidence 的字段结构没变也要递增版本号。
-EVALUATOR_VERSION = "answer-evaluator-v3"
+# 假阴性。v4 将共享的符号解析改为受限 AST，因此学生判题证据使用新的判等语义。
+EVALUATOR_VERSION = "answer-evaluator-v4"
 
 
 def _has_submitted_sub_answer(value: Any) -> bool:

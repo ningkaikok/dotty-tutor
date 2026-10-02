@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { loadRoster } from "../../api/classroom";
-import { setCurrentLearnerId, useLearnerId } from "../../api/identity";
+import { protectedSession, setCurrentLearnerId, useLearnerId } from "../../api/identity";
 import type { RosterEntry } from "../../types/classroom";
 
 /**
@@ -39,6 +39,7 @@ export function StudentIdentityPicker() {
 
   // 还没有任何班级时不渲染任何东西，纯 Demo 场景与接入本组件之前完全一致。
   if (failed || roster.length === 0) return null;
+  if (protectedSession()) return null;
 
   const known = roster.some((entry) => entry.learnerId === learnerId);
 

@@ -21,6 +21,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Auth Config */
+        get: operations["auth_config_api_auth_config_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Invite */
+        post: operations["create_invite_api_auth_invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current Session */
+        get: operations["current_session_api_auth_sessions_get"];
+        put?: never;
+        /** Create Session */
+        post: operations["create_session_api_auth_sessions_post"];
+        /** End Session */
+        delete: operations["end_session_api_auth_sessions_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Session */
+        delete: operations["revoke_session_api_auth_sessions__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes": {
         parameters: {
             query?: never;
@@ -691,10 +761,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Mistake Evidence
-         * @description Return the explainable evidence chain for one mistake.
-         */
+        /** Get Mistake Evidence */
         get: operations["get_mistake_evidence_api_mistakes__mistake_id__evidence_get"];
         put?: never;
         post?: never;
@@ -730,10 +797,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Thread
-         * @description Create or restore the single tutoring thread for one confirmed mistake.
-         */
+        /** Create Thread */
         post: operations["create_thread_api_mistakes__mistake_id__thread_post"];
         delete?: never;
         options?: never;
@@ -748,10 +812,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Variations
-         * @description 列出该错题的变式题。
-         */
+        /** List Variations */
         get: operations["list_variations_api_mistakes__mistake_id__variations_get"];
         put?: never;
         /** Create Variation */
@@ -788,10 +849,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Queue Mistake Import
-         * @description Persist the capture and enqueue OCR/model work on the shared Worker.
-         */
+        /** Queue Mistake Import */
         post: operations["queue_mistake_import_api_mistakes_import_jobs_post"];
         delete?: never;
         options?: never;
@@ -1857,11 +1915,8 @@ export interface components {
              * @default {}
              */
             interactionResult: string;
-            /**
-             * Learnerid
-             * @default local-demo
-             */
-            learnerId: string;
+            /** Learnerid */
+            learnerId?: string | null;
             /**
              * Mode
              * @default text
@@ -1876,11 +1931,8 @@ export interface components {
         Body_import_mistake_api_mistakes_import_post: {
             /** File */
             file: string;
-            /**
-             * Learnerid
-             * @default local-demo
-             */
-            learnerId: string;
+            /** Learnerid */
+            learnerId?: string | null;
             /**
              * Originalanswer
              * @default
@@ -1908,11 +1960,8 @@ export interface components {
             captureId: string;
             /** File */
             file: string;
-            /**
-             * Learnerid
-             * @default local-demo
-             */
-            learnerId: string;
+            /** Learnerid */
+            learnerId?: string | null;
             /**
              * Originalanswer
              * @default
@@ -2055,6 +2104,11 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InviteCreate */
+        InviteCreate: {
+            /** Learnerid */
+            learnerId: string;
         };
         /** LearningSessionCreate */
         LearningSessionCreate: {
@@ -2555,6 +2609,13 @@ export interface components {
             /** Targetuploadid */
             targetUploadId?: string | null;
         };
+        /** SessionCreate */
+        SessionCreate: {
+            /** Invitetoken */
+            inviteToken?: string | null;
+            /** Teachersecret */
+            teacherSecret?: string | null;
+        };
         /**
          * StageRerunResponse
          * @description 指定阶段及其下游重跑结果。
@@ -2851,7 +2912,7 @@ export interface operations {
     list_student_assignments_api_assignments_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path?: never;
@@ -2867,6 +2928,175 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    auth_config_api_auth_config_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+        };
+    };
+    create_invite_api_auth_invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    current_session_api_auth_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_session_api_auth_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    end_session_api_auth_sessions_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+        };
+    };
+    revoke_session_api_auth_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
                     };
                 };
             };
@@ -3453,7 +3683,7 @@ export interface operations {
     get_learning_funnel_api_funnel_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path?: never;
@@ -4021,7 +4251,7 @@ export interface operations {
         parameters: {
             query?: {
                 includeArchived?: boolean;
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path?: never;
@@ -4191,7 +4421,7 @@ export interface operations {
     get_mistake_evidence_api_mistakes__mistake_id__evidence_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -4255,7 +4485,7 @@ export interface operations {
     create_thread_api_mistakes__mistake_id__thread_post: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -4290,7 +4520,7 @@ export interface operations {
     list_variations_api_mistakes__mistake_id__variations_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -4325,7 +4555,7 @@ export interface operations {
     create_variation_api_mistakes__mistake_id__variations_post: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -4544,7 +4774,7 @@ export interface operations {
     get_progress_api_progress_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path?: never;
@@ -4892,7 +5122,7 @@ export interface operations {
     list_reviews_api_reviews_get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path?: never;
@@ -5261,7 +5491,7 @@ export interface operations {
     get_artifact_api_tutor_inputs__input_id__artifacts__artifact_id__get: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -5295,7 +5525,7 @@ export interface operations {
     decide_observation_api_tutor_inputs__input_id__observations_patch: {
         parameters: {
             query?: {
-                learnerId?: string;
+                learnerId?: string | null;
             };
             header?: never;
             path: {
@@ -5474,7 +5704,9 @@ export interface operations {
     append_message_api_tutor_threads__thread_id__messages_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 thread_id: string;
             };

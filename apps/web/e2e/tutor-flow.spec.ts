@@ -1,6 +1,9 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/auth/config", async (route) => {
+    await route.fulfill({ json: { protected: false } });
+  });
   // 业务会话和离线队列按 publication 持久化；测试不能依赖上一次浏览器上下文的残留。
   await page.addInitScript(() => {
     const resetMarker = "dotty-e2e-storage-reset";
@@ -1068,72 +1071,17 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
     await page.getByRole("button", { name: /A/ }).click();
     await page.getByRole("button", { name: "提交答案" }).click();
-    await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
+    // 最后一题也应先留下可见反馈，再进入完成态；与推进、刷新恢复共用同一条用户流程。
+    const completionHeading = page.getByRole("heading", { name: "这套练习已经完成" });
+    await expect(page.locator(".student-feedback.correct")).toContainText("回答正确。");
+    await expect(completionHeading).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "查看完成结果 →" })).toBeVisible();
+    await expect(completionHeading).toBeVisible();
     expect(ttsRequests).toBe(0);
 
     // 刷新完成态仍由最新 attempts 推导，不会把学生带回第一题。
     await page.reload();
     await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
-  });
-
-  test("最后一题答对后先显示正确反馈，再进入完成页", async ({ page }) => {
-    await mockApi(page);
-    const answerAttempts: Record<string, unknown>[] = [];
-    const publication = {
-      publicationId: "paper-final-feedback",
-      title: "最后一题反馈测试",
-      status: "published",
-      lessonIds: [choiceQuestion.question.id],
-      lessonCount: 1,
-      createdAt: 1,
-      updatedAt: 1,
-      lessons: [{
-        lessonId: choiceQuestion.question.id,
-        title: choiceQuestion.question.knowledgePoint,
-        version: 1,
-        status: "published",
-        questionPayload: choiceQuestion,
-        guideCards: [],
-      }],
-    };
-    const session = () => ({
-      sessionId: "final-feedback-session",
-      learnerId: "local-demo",
-      publicationId: publication.publicationId,
-      startedAt: 1,
-      attempts: answerAttempts,
-    });
-    await page.route("**/api/publications?status=published", async (route) => await route.fulfill({ json: { items: [publication] } }));
-    await page.route("**/api/publications/paper-final-feedback", async (route) => await route.fulfill({ json: publication }));
-    await page.route("**/api/learning/sessions", async (route) => await route.fulfill({ json: session() }));
-    await page.route("**/api/learning/sessions/final-feedback-session", async (route) => await route.fulfill({ json: session() }));
-    await page.route("**/api/learning/sessions/final-feedback-session/attempts", async (route) => {
-      answerAttempts.push(route.request().postDataJSON() as Record<string, unknown>);
-      await route.fulfill({ json: {
-        attemptId: "final-feedback-attempt",
-        mastery: { learnerId: "local-demo", knowledgePoint: "数轴上的大小比较", score: 1, attemptCount: 1, correctCount: 1, lastPracticedAt: 1 },
-        autoMistake: null,
-      } });
-    });
-    await page.route("**/api/help", async (route) => await route.fulfill({ json: {
-      reply: "回答正确，你已经完成这套练习。",
-      guideContext: { assessment: "correct", assessmentAuthority: "deterministic" },
-      nextHintLevel: 0,
-      canvasAction: "none",
-      source: "answer-check",
-      modelRun,
-    } }));
-
-    await page.goto("/learn");
-    await page.getByRole("button", { name: /最后一题反馈测试/ }).click();
-    await page.getByRole("button", { name: /\(B\)/ }).click();
-    await page.getByRole("button", { name: "提交答案" }).click();
-
-    const completionHeading = page.getByRole("heading", { name: "这套练习已经完成" });
-    await expect(page.locator(".student-feedback.correct")).toContainText("回答正确，你已经完成这套练习。");
-    await expect(completionHeading).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "查看完成结果 →" })).toBeVisible();
-    await expect(completionHeading).toBeVisible();
   });
 
   test("可上传裁切后的错题并确认分类与错误原因", async ({ page }) => {

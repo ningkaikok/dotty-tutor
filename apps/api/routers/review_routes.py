@@ -6,12 +6,12 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy.engine import Engine
 
 from answer_evaluator import evaluate_structured_answer
 from application.services.learning_funnel import build_funnel_snapshot
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request, require_owner
 from domain.contracts.practice import VariationAnswerRequest
 from domain.learning.mastery_policy import decide_next_action, resolve_policy
 from domain.questions.student_view import student_review_task
@@ -71,14 +71,16 @@ def build_review_router(
     router = APIRouter(tags=["review"])
 
     @router.get("/api/funnel")
-    def get_learning_funnel(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
+    def get_learning_funnel(request: Request, learnerId: str | None = None) -> dict[str, Any]:
         """学习效果漏斗快照（只读聚合）；engine 未注入时明确返回不可用。"""
+        learnerId = learner_for_request(request, learnerId)
         if engine is None:
             raise HTTPException(status_code=503, detail="漏斗聚合需要数据库连接")
         return build_funnel_snapshot(engine, learnerId)
 
     @router.get("/api/reviews")
-    def list_reviews(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
+    def list_reviews(request: Request, learnerId: str | None = None) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         items = review_store.list_for_learner(learnerId)
         for item in items:
             mistake = mistake_store.get(item["mistakeId"])
@@ -96,7 +98,8 @@ def build_review_router(
         }
 
     @router.get("/api/progress")
-    def get_progress(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
+    def get_progress(request: Request, learnerId: str | None = None) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         mistakes = [item for item in mistake_store.list(learnerId) if item["status"] != "pending_confirmation"]
         tasks = review_store.list_for_learner(learnerId)
         now = time.time()
@@ -139,10 +142,11 @@ def build_review_router(
         }
 
     @router.post("/api/reviews/{task_id}/start")
-    def start_review(task_id: str) -> dict[str, Any]:
+    def start_review(request: Request, task_id: str) -> dict[str, Any]:
         task = review_store.get(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="复习任务不存在")
+        require_owner(request, task["learnerId"])
         if task["status"] == "ready":
             return student_review_task(review_policy_view(task, review_store.list_for_mistake(task["mistakeId"])))
         if task["status"] != "scheduled":
@@ -165,10 +169,11 @@ def build_review_router(
         return student_review_task(review_policy_view(started, review_store.list_for_mistake(task["mistakeId"])))
 
     @router.post("/api/reviews/{task_id}/answer")
-    def answer_review(task_id: str, request: VariationAnswerRequest) -> dict[str, Any]:
+    def answer_review(http_request: Request, task_id: str, request: VariationAnswerRequest) -> dict[str, Any]:
         task = review_store.get(task_id)
         if not task:
             raise HTTPException(status_code=404, detail="复习任务不存在")
+        require_owner(http_request, task["learnerId"])
         if task["status"] == "completed":
             replay_response = {"content": request.content, "interactionResult": request.interactionResult}
             if replay_response != (task.get("response") or {}):
