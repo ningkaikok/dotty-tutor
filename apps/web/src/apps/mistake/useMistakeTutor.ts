@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createTutorThread, loadTutorThread, sendTutorMessage } from "../../api/tutoring";
 import type { MistakeItem, SubQuestionAnswer, TutorStage, TutorThread } from "../../types/index";
 import { buildStructuredAnswer } from "./structuredAnswer";
@@ -16,6 +16,7 @@ function hasMeaningfulValue(value: unknown): boolean {
  * 并且只在一轮对话完整写入后清空学生草稿。
  */
 export function useMistakeTutor(item: MistakeItem) {
+  const pendingTurn = useRef<{ fingerprint: string; key: string } | null>(null);
   const [thread, setThread] = useState<TutorThread | null>(null);
   const [studentInput, setStudentInput] = useState("");
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
@@ -74,7 +75,7 @@ export function useMistakeTutor(item: MistakeItem) {
     setSending(true);
     setError("");
     try {
-      const result = await sendTutorMessage(thread.threadId, {
+      const submission = {
         content,
         mode,
         hintLevel: thread.hintLevel,
@@ -82,9 +83,18 @@ export function useMistakeTutor(item: MistakeItem) {
         ...(Object.keys(meaningfulInteractionResult).length > 0
           ? { interactionResult: meaningfulInteractionResult }
           : {}),
-      });
+      };
+      const fingerprint = JSON.stringify(submission);
+      if (!pendingTurn.current || pendingTurn.current.fingerprint !== fingerprint) {
+        pendingTurn.current = {
+          fingerprint,
+          key: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        };
+      }
+      const result = await sendTutorMessage(thread.threadId, submission, pendingTurn.current.key);
       // 服务端原子保存学生与助教两侧消息后才清空草稿；请求失败时保留现场，允许原样重试。
       setThread(result.thread);
+      pendingTurn.current = null;
       setStudentInput("");
       setSelectedOptions([]);
       setBlankAnswers({});

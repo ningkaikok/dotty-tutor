@@ -18,6 +18,8 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -88,12 +90,33 @@ class ModelRuntime:
         model_name = f"{env_prefix}MODEL_NAME" if env_prefix else "MODEL_NAME"
         self.runtime_name = "tutoring" if env_prefix else "generation"
         stored = selection_store.load(self.runtime_name)
-        self.selection = ModelSelection(
+        self._selection = ModelSelection(
             provider=(stored or {}).get("provider") or os.getenv(provider_name, "codex"),  # type: ignore[arg-type]
             model=(stored or {}).get("model") or os.getenv(model_name, "default"),
         )
+        self._selection_override: ContextVar[ModelSelection | None] = ContextVar(
+            f"{self.runtime_name}_selection_override", default=None,
+        )
         # 调用边界指标（roadmap T2）：只追加写入；存储缺失时为 no-op。
         self.metrics_store = metrics_store
+
+    @property
+    def selection(self) -> ModelSelection:
+        """Return this call context's pinned selection or the process default."""
+        return self._selection_override.get() or self._selection
+
+    @selection.setter
+    def selection(self, value: ModelSelection) -> None:
+        self._selection = value
+
+    @contextmanager
+    def use_selection(self, provider: str, model: str):
+        """Pin an immutable provider/model for one queued task without mutating global state."""
+        token = self._selection_override.set(ModelSelection(provider, model))  # type: ignore[arg-type]
+        try:
+            yield
+        finally:
+            self._selection_override.reset(token)
 
     def ollama_models(self) -> tuple[list[str], str | None]:
         try:

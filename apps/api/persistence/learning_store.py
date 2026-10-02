@@ -39,7 +39,6 @@ class LearningStore(DatabaseStore):
     def save_lesson(self, document: dict[str, Any]) -> dict[str, Any]:
         self._ensure_initialized()
         now = time.time()
-        existing = self.load_lesson(document["lessonId"])
         values = {
             "lesson_id": document["lessonId"],
             "source_upload_id": document.get("sourceUploadId"),
@@ -50,10 +49,40 @@ class LearningStore(DatabaseStore):
             "blocks_json": document.get("blocks", []),
             "question_json": document.get("questionPayload", {}),
             "guide_cards_json": document.get("guideCards", []),
-            "created_at": existing.get("createdAt", now) if existing else now,
+            "created_at": now,
             "updated_at": now,
         }
         with self.engine.begin() as connection:
+            existing = connection.execute(
+                select(lesson_documents)
+                .where(lesson_documents.c.lesson_id == document["lessonId"])
+                .with_for_update()
+            ).mappings().first()
+            if existing:
+                references = connection.execute(
+                    select(lesson_publications.c.status, lesson_publications.c.lesson_ids_json)
+                    .where(lesson_publications.c.status != "draft")
+                ).mappings().all()
+                referenced_by_history = any(
+                    document["lessonId"] in decode_json(item["lesson_ids_json"])
+                    for item in references
+                )
+                immutable = existing["status"] in {"published", "archived"} or referenced_by_history
+                if immutable:
+                    current_content = {
+                        "source_upload_id": existing["source_upload_id"],
+                        "title": existing["title"],
+                        "version": existing["version"],
+                        "knowledge_points_json": decode_json(existing["knowledge_points_json"]),
+                        "blocks_json": decode_json(existing["blocks_json"]),
+                        "question_json": decode_json(existing["question_json"]),
+                        "guide_cards_json": decode_json(existing["guide_cards_json"]),
+                    }
+                    requested_content = {key: values[key] for key in current_content}
+                    if current_content != requested_content:
+                        raise ValueError("已发布或历史版本引用的课程不可覆盖；请创建新的修订")
+                    return self._lesson_from_row(existing)
+                values["created_at"] = existing["created_at"]
             self._upsert(
                 connection,
                 lesson_documents,
@@ -148,7 +177,7 @@ class LearningStore(DatabaseStore):
             rows = connection.execute(
                 select(lesson_documents.c.lesson_id).where(
                     lesson_documents.c.lesson_id.in_(lesson_ids)
-                )
+                ).with_for_update()
             ).scalars().all()
             missing = sorted(set(lesson_ids) - set(rows))
             if missing:
@@ -231,7 +260,7 @@ class LearningStore(DatabaseStore):
             publication = connection.execute(
                 select(lesson_publications).where(
                     lesson_publications.c.publication_id == publication_id
-                )
+                ).with_for_update()
             ).mappings().first()
             if not publication:
                 return None
@@ -246,7 +275,7 @@ class LearningStore(DatabaseStore):
                 raise ValueError(f"发布状态不能从 {current_status} 直接变为 {status}")
             lesson_ids = decode_json(publication["lesson_ids_json"])
             lessons = connection.execute(
-                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids))
+                select(lesson_documents).where(lesson_documents.c.lesson_id.in_(lesson_ids)).with_for_update()
             ).mappings().all()
             if status == "published":
                 lessons_by_id = {lesson["lesson_id"]: lesson for lesson in lessons}

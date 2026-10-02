@@ -12,6 +12,8 @@ import copy
 import json
 import os
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -182,8 +184,39 @@ class ReviewRuntime:
     def __init__(self) -> None:
         # 文字和题图审核使用同一个裁判模型，避免一题得到两套相互矛盾的审核结论。
         stored = selection_store.load("review")
-        self.text_provider: Provider = (stored or {}).get("provider") or os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
-        self.text_model = (stored or {}).get("model") or os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
+        self._text_provider: Provider = (stored or {}).get("provider") or os.getenv("REVIEW_PROVIDER", "codex")  # type: ignore[assignment]
+        self._text_model = (stored or {}).get("model") or os.getenv("REVIEW_MODEL", "gpt-5.6-sol")
+        self._selection_override: ContextVar[tuple[Provider, str] | None] = ContextVar(
+            "review_selection_override", default=None,
+        )
+
+    @property
+    def text_provider(self) -> Provider:
+        """Return this queued-task context's reviewer or the process default."""
+        override = self._selection_override.get()
+        return override[0] if override else self._text_provider
+
+    @text_provider.setter
+    def text_provider(self, value: Provider) -> None:
+        self._text_provider = value
+
+    @property
+    def text_model(self) -> str:
+        override = self._selection_override.get()
+        return override[1] if override else self._text_model
+
+    @text_model.setter
+    def text_model(self, value: str) -> None:
+        self._text_model = value
+
+    @contextmanager
+    def use_selection(self, provider: str, model: str):
+        """Pin review selection per task without mutating worker-wide configuration."""
+        token = self._selection_override.set((provider, model))  # type: ignore[arg-type]
+        try:
+            yield
+        finally:
+            self._selection_override.reset(token)
 
     def _audit_run(
         self,

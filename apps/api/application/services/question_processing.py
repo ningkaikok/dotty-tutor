@@ -208,6 +208,18 @@ def _generate_validated_question(
             # 这是质量门禁的瞬时输入，不进入最终题目契约；门禁会把失败证据写入 quality。
             payload["_imagePlaceholderAudits"] = placeholder_audits
         quality = apply_question_quality_gate(payload, block, images)
+        if model_run.get("synthetic"):
+            # A source-preserving mock preview is useful for exercising the worker and
+            # editor, but its generic teaching fields are not model-reviewed evidence.
+            # Keep it out of the publishable set even when the structural gate passes.
+            quality.setdefault("errors", []).append(
+                "Mock 模式仅生成来源预览，答案与讲解需人工确认后才能发布。"
+            )
+            quality["status"] = "needs_review"
+            payload["question"]["publicationStatus"] = "needs_review"
+            if isinstance(payload.get("review"), dict):
+                payload["review"]["status"] = "needs_review"
+                payload["review"]["needsHumanReview"] = True
         verification = payload["question"].get("verification")
         if isinstance(verification, dict) and verification.get("status") != "verified":
             reason = "答案核验未通过"

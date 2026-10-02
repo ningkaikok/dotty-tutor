@@ -14,18 +14,13 @@ interface QueueRow {
   onAction: () => void;
 }
 
-/**
- * 学生首页：一条有序的今日任务队列，而不是三张等权重的功能卡片。
- *
- * 班级、作业指派这些后端概念还不存在，队列完全由 useStudentTodayQueue 从三个
- * 已有的只读接口派生。顺序是产品判断（先清阻塞项，再做有时效的复习，再订正，
- * 最后才是练习），页面本身只负责渲染，不做任何业务判断。
- */
+/** 今日只计算仍需行动的任务；已完成作业保留独立回看入口。 */
 export function StudentLearningApp() {
   const navigate = useNavigate();
   const { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, assignments, loading, error, allFailed } = useStudentTodayQueue();
 
   const rows: QueueRow[] = [];
+  const completedRows: QueueRow[] = [];
 
   assignments.forEach((assignment) => {
     const statusLabel = assignment.learnerStatus === "completed"
@@ -33,7 +28,8 @@ export function StudentLearningApp() {
       : assignment.learnerStatus === "overdue"
         ? "已逾期"
         : assignment.learnerStatus === "in_progress" ? "进行中" : "待开始";
-    rows.push({
+    const target = assignment.learnerStatus === "completed" ? completedRows : rows;
+    target.push({
       key: `assignment-${assignment.assignmentId}`,
       title: assignment.title,
       description: `${statusLabel} · ${assignment.className || "班级作业"}${assignment.dueAt ? ` · 截止 ${new Date(assignment.dueAt * 1000).toLocaleDateString("zh-CN")}` : ""}`,
@@ -58,7 +54,7 @@ export function StudentLearningApp() {
     rows.push({
       key: "review",
       title: "今日复习",
-      description: "复习是有时效的，过期就失去间隔重复的效果，尽快完成。",
+      description: "这些复习已经到期，完成后会安排下一次复习。",
       badge: `${dueReviewCount} 道`,
       actionLabel: "开始复习",
       onAction: () => navigate("/mistakes/progress"),
@@ -76,14 +72,11 @@ export function StudentLearningApp() {
     });
   }
 
-  // 练习刻意不计入“今天有 N 件事”。作业指派的后端概念还不存在，已发布试卷会一直
-  // 挂在目录里（做完也不会消失），把它们算进待办会让计数永远降不下来，队列也就退化
-  // 成了列表。等 class/assignment 落地、能判断“这套卷子是今天布置的”之后，练习才应该
-  // 升进上面的队列。
+  // 自由练习目录没有完成期限，不计入今日待办。
   const practiceRows: QueueRow[] = papers.map((paper) => ({
     key: `paper-${paper.publicationId}`,
     title: paper.title,
-    description: paper.started ? "继续上次没做完的练习。" : "还没有开始过这套练习。",
+    description: paper.started ? "继续练习，或回看已提交的答案。" : "本机还没有这套练习的学习记录。",
     badge: `${paper.lessonCount} 题`,
     actionLabel: paper.started ? "继续" : "开始",
     onAction: () => navigate(`/learn/papers/${paper.publicationId}`),
@@ -114,16 +107,18 @@ export function StudentLearningApp() {
             // 以为今天已经做完。
             : allFailed
               ? "暂时读不到今天的任务"
-              : taskCount > 0 ? `今天有 ${taskCount} 件事` : "今天没有待办任务"}
+              : taskCount > 0 ? `今天有 ${taskCount} 件事` : error ? "已加载的内容中没有待办" : "今天没有待办任务"}
         </h1>
         <p>
           {loading
-            ? "正在读取错题、复习计划和练习进度。"
+            ? "正在读取作业、错题、复习计划和练习进度。"
             : allFailed
-              ? "错题、复习和练习都没有加载成功。请检查网络后刷新页面重试。"
-              : taskCount > 0
-                ? "按顺序处理完这条队列，今天的学习任务就完成了。"
-                : "没有待确认的错题，也没有到期的复习。可以做下面的练习，或者今天就到这里。"}
+              ? "作业、错题、复习和练习都没有加载成功。请检查网络后刷新页面重试。"
+              : error
+                ? "部分内容还未加载成功，当前列表可能不完整。请刷新后重试。"
+                : taskCount > 0
+                  ? "可以从下面的任务开始，也可以选择你现在需要的练习。"
+                  : "当前没有未完成作业、待确认或待订正错题，也没有到期复习。可以自由练习或回看已完成作业。"}
         </p>
       </section>
 
@@ -147,21 +142,7 @@ export function StudentLearningApp() {
 
       {!loading && taskCount > 0 && (
         <ol className="student-today-queue" aria-label="今日任务队列">
-          {rows.map((row, index) => (
-            <li key={row.key} className="today-queue-row">
-              <span className="today-queue-index" aria-hidden="true">{index + 1}</span>
-              <div className="today-queue-body">
-                <h3>{row.title}</h3>
-                <p>{row.description}</p>
-              </div>
-              <span className="today-queue-badge">{row.badge}</span>
-              <button
-                className="today-queue-action"
-                aria-label={`${row.actionLabel}：${row.title}`}
-                onClick={row.onAction}
-              >{row.actionLabel}</button>
-            </li>
-          ))}
+          {rows.map((row, index) => <QueueItem key={row.key} row={row} index={index + 1} />)}
         </ol>
       )}
 
@@ -170,27 +151,34 @@ export function StudentLearningApp() {
           <h2 id="student-practice-heading">练习</h2>
           {practiceRows.length ? (
             <ol className="student-today-queue" aria-label="练习">
-              {practiceRows.map((row) => (
-                <li key={row.key} className="today-queue-row">
-                  <span className="today-queue-index" aria-hidden="true">卷</span>
-                  <div className="today-queue-body">
-                    <h3>{row.title}</h3>
-                    <p>{row.description}</p>
-                  </div>
-                  <span className="today-queue-badge">{row.badge}</span>
-                  <button
-                    className="today-queue-action"
-                    aria-label={`${row.actionLabel}：${row.title}`}
-                    onClick={row.onAction}
-                  >{row.actionLabel}</button>
-                </li>
-              ))}
+              {practiceRows.map((row) => <QueueItem key={row.key} row={row} index="卷" />)}
             </ol>
           ) : (
-            <p className="student-empty-note">老师还没有发布新的练习，练习任务会自动出现在这里。</p>
+            <p className="student-empty-note">{error ? "练习目录可能尚未完整加载，请刷新后重试。" : "老师还没有发布新的练习，练习任务会自动出现在这里。"}</p>
           )}
         </section>
       )}
+      {!loading && completedRows.length > 0 && (
+        <section className="student-practice-section" aria-labelledby="completed-assignments-heading">
+          <h2 id="completed-assignments-heading">已完成作业</h2>
+          <ol className="student-today-queue" aria-label="已完成作业">
+            {completedRows.map((row) => <QueueItem key={row.key} row={row} index="✓" />)}
+          </ol>
+        </section>
+      )}
     </main>
+  );
+}
+
+function QueueItem({ row, index }: { row: QueueRow; index: number | string }) {
+  return (
+    <li className="today-queue-row">
+      <span className="today-queue-index" aria-hidden="true">{index}</span>
+      <div className="today-queue-body"><h3>{row.title}</h3><p>{row.description}</p></div>
+      <span className="today-queue-badge">{row.badge}</span>
+      <button className="today-queue-action" aria-label={`${row.actionLabel}：${row.title}`} onClick={row.onAction}>
+        {row.actionLabel}
+      </button>
+    </li>
   );
 }

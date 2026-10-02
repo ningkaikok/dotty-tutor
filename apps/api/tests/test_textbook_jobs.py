@@ -10,6 +10,9 @@ from fastapi.testclient import TestClient
 
 from application.job_worker import JobCancelled, RetryableJobError, TerminalJobError
 from application.textbook_jobs import build_textbook_registry
+from infrastructure.runtime.model_runtime import runtime as model_runtime
+from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
+from infrastructure.runtime.review_runtime import runtime_reviewer
 from persistence.job_store import JobStore
 from tests.postgres_test_support import PostgresTestCase
 
@@ -32,6 +35,33 @@ class _Service:
 
 
 class TextbookJobRegistryTests(unittest.TestCase):
+    def test_worker_executes_using_the_selection_captured_by_the_queued_job(self) -> None:
+        service = _Service()
+        observed: list[tuple[str, str, str, str, str]] = []
+
+        def complete(*args, **kwargs):
+            observed.append((
+                model_runtime.selection.provider,
+                model_runtime.selection.model,
+                ocr_runtime.selection.provider,
+                runtime_reviewer.text_provider,
+                runtime_reviewer.text_model,
+            ))
+            return {"ok": True}
+
+        service.complete_upload = complete
+        snapshot = {
+            "version": 1,
+            "generation": {"provider": "mock", "model": "queued-model"},
+            "ocr": {"provider": "pypdf"},
+            "review": {"provider": "mock", "model": "queued-review"},
+        }
+        registry = build_textbook_registry(service)
+        self.assertEqual(registry.get("textbook.upload.complete")(
+            {"uploadId": "u1", "runtimeSnapshot": snapshot}, lambda: False,
+        ), {"ok": True})
+        self.assertEqual(observed, [("mock", "queued-model", "pypdf", "mock", "queued-review")])
+
     def test_transient_http_failures_are_retried_but_validation_failures_are_terminal(self) -> None:
         service = _Service()
         registry = build_textbook_registry(service)
@@ -156,7 +186,15 @@ class TextbookJobRouteTests(PostgresTestCase):
         self.assertEqual(second.status_code, 202)
         self.assertEqual(first.json()["jobId"], second.json()["jobId"])
         queued = store.get_job(first.json()["jobId"])
-        self.assertEqual(queued["payload"], {"uploadId": "u1"})
+        self.assertEqual(queued["payload"]["uploadId"], "u1")
+        snapshot = queued["payload"]["runtimeSnapshot"]
+        self.assertEqual(snapshot["version"], 1)
+        self.assertEqual(set(snapshot), {"version", "generation", "ocr", "review"})
+        self.assertTrue(snapshot["generation"]["provider"])
+        self.assertTrue(snapshot["generation"]["model"])
+        self.assertTrue(snapshot["ocr"]["provider"])
+        self.assertTrue(snapshot["review"]["provider"])
+        self.assertTrue(snapshot["review"]["model"])
 
     def test_full_paper_summary_returns_initial_report_while_job_is_queued(self) -> None:
         from app import app

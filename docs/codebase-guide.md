@@ -19,6 +19,11 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 
 ## 顶层目录
 
+从用户任务重新审视结构、重复状态与测试的依据见
+[用户任务与消融审视](user-task-ablation.md)。学生今日入口的四路读取在
+`useStudentTodayQueue` 中形成绑定 learnerId 的单一快照；`StudentLearningApp`
+把待办、自由练习、已完成作业回看分开呈现，不用本机会话记录推断完成状态。
+
 ```text
 dotty-tutor/
 ├── package.json                # pnpm 工作区根清单（packageManager 固定 pnpm 版本）
@@ -32,8 +37,10 @@ dotty-tutor/
 │   │   ├── Dockerfile          # API/Worker 镜像
 │   │   ├── app.py              # ASGI 组合根；只装配，不写业务逻辑
 │   │   ├── app_factory.py      # 中间件、安全头、CORS、请求日志
+│   │   ├── auth_context.py     # demo/protected 身份解析与学生资源归属校验
 │   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
+│   │   │   ├── auth_routes.py  # 会话、一次性学生邀请和教师撤销 API
 │   │   │   ├── tutoring_routes.py # 错题陪练线程 API、工具策略审计
 │   │   │   ├── tutor_input_routes.py # 文字/结构化/图片/公式/画布输入 API
 │   │   │   ├── tutor_search_routes.py # Tutor PostgreSQL 全文检索 API
@@ -78,6 +85,7 @@ dotty-tutor/
 │   │   │                       # 管理路由：routers/prompt_routes.py
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
+│   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
 │   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
@@ -93,12 +101,13 @@ dotty-tutor/
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
 │   │       ├── tutoring_store.py # TutorInput、线程、工具事件
+│   │       ├── auth_store.py   # opaque 会话/邀请令牌哈希、过期和撤销
 │   │       ├── search_store.py # PostgreSQL FTS 文档和证据引用
 │   │       └── schema.py        # 教材/学习领域表声明
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
 │   │   └── migrations/           # 唯一正式 schema migration 版本链（含 Tutor 多模态/工具/检索）
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
-│   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因、题目人工编辑与回滚指针
+│   │       └── versions/         # adoption、mastery、assignment、review/variation、题目编辑与身份会话迁移
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
 │   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
@@ -106,6 +115,7 @@ dotty-tutor/
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
+│   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
 │   │   │   ├── apps/home/      # 角色入口选择
 │   │   │   ├── apps/student/   # 学生学习空间，不包含生产配置
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板

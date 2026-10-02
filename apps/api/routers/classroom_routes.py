@@ -6,12 +6,12 @@ import time
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.lecture_checklist import LectureChecklistService
 from application.services.personalized_assignment import PersonalizedAssignmentError
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request
 from domain.contracts.classroom import (
     AssignmentCreate,
     AssignmentPlanCreate,
@@ -181,7 +181,8 @@ def build_classroom_router(*, store: Any, planning_service: AssignmentPlanningSe
         return {"items": store.list_roster()}
 
     @router.get("/assignments")
-    def list_student_assignments(learnerId: str = DEMO_LEARNER_ID) -> dict[str, Any]:
+    def list_student_assignments(request: Request, learnerId: str | None = None) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         return {"learnerId": learnerId, "items": store.list_assignments_for_learner(learnerId)}
 
     return router

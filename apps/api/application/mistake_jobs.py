@@ -14,6 +14,7 @@ from application.job_worker import (
     RetryableJobError,
     TaskRegistry,
 )
+from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
 
 CancellationCheck = Callable[[], bool]
 
@@ -127,13 +128,14 @@ def build_mistake_registry(
 
         try:
             check("file_saved")
-            result = recognize(
-                source_path,
-                str(payload.get("sourceText") or ""),
-                asset_directory,
-                asset_prefix,
-                stage_check=check,
-            )
+            with use_job_runtime_snapshot(payload):
+                result = recognize(
+                    source_path,
+                    str(payload.get("sourceText") or ""),
+                    asset_directory,
+                    asset_prefix,
+                    stage_check=check,
+                )
             check("ocr_and_model_complete")
         except JobCancelled:
             cleanup_capture()
