@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import tomllib
 import unittest
+from pathlib import Path
 
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from app_factory import create_app
-from application import AppError
+from application import AppError, create_app
 from infrastructure.runtime.contracts import RuntimeConfigSnapshot
 
 
@@ -40,6 +41,15 @@ class ProblemDetailsTests(unittest.TestCase):
         @self.app.get("/test/unhandled")
         def unhandled() -> None:
             raise RuntimeError("secret provider response")
+
+    def test_user_reads_the_current_package_version_in_openapi(self) -> None:
+        """Given package metadata, when a user opens OpenAPI, then its version matches."""
+        project_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        with project_path.open("rb") as project_file:
+            expected_version = tomllib.load(project_file)["project"]["version"]
+        response = TestClient(self.app).get("/openapi.json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["info"]["version"], expected_version)
 
     def test_http_exception_preserves_status_and_chinese_message(self) -> None:
         response = TestClient(self.app).get("/test/http-error", headers={"X-Request-ID": "req-1"})
