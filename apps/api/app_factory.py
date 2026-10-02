@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import os
 import time
+import tomllib
 import uuid
 from collections import deque
+from pathlib import Path
 from secrets import compare_digest
 
 from fastapi import FastAPI, HTTPException, Request
@@ -27,7 +29,10 @@ def _csv_env(name: str, default: str) -> list[str]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Dotty Tutor", version="0.21.1")
+    # 源码运行和 Docker 都保留 pyproject.toml；发布时只维护包版本，避免 API 描述漂移。
+    with Path(__file__).with_name("pyproject.toml").open("rb") as project_file:
+        project_version = tomllib.load(project_file)["project"]["version"]
+    app = FastAPI(title="Dotty Tutor", version=project_version)
 
     def current_request_id(request: Request) -> str:
         """Prefer the middleware context, with a safe fallback for direct handlers."""

@@ -212,20 +212,10 @@ persistence/tutoring_store.py      线程、摘要和有限消息历史
 2. Store/Route 测试：通过 `PostgresTestCase` 使用隔离 PostgreSQL 和 FastAPI TestClient；纯逻辑边界不连接数据库。
 3. Playwright E2E：保护学生能看到并操作的主路径。
 
-常用命令：
-
-```bash
-MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
-  cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-
-cd apps/web
-npm ci
-npm run build
-npm run test:e2e
-```
-
-重构时先保持行为测试不变。如果依赖边界移动，例如 Route 把工作委托给 Service，Mock 应改为 patch 新的实际
-调用位置；不要为了让测试通过而把业务重新导回 Route。
+完整验证命令见 [AGENTS.md](../AGENTS.md#验证与交付)，环境和测试夹具见
+[开发指南](development.md#测试) 与 [后端测试说明](../apps/api/tests/README.md)。
+重构保护可观察结果、持久化数据和状态转换；不要通过断言内部调用次数绑定实现。
+Mock 仅用于模型/OCR/TTS 等真正外部边界，并按测试纪律登记；Store 使用隔离 PostgreSQL。
 
 ## 8. 本项目的注释约定
 
