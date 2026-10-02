@@ -271,7 +271,8 @@ def normalize_image_choice_question(payload: dict[str, Any], source_block: str, 
     # 判断），因此整行以 A-D 标记（后跟标点或全/半角左括号）开头的内容都是选项占位
     # 文字，删除是安全的。分隔符不能设为可选：几何题干里 "AB是弦" "ABCD是正方形"
     # 这类以裸字母开头的正常内容会被连同后半行一起吞掉，这是本行曾经出现过的真实回归。
-    prompt = re.sub(r"(?m)^\s*(?:\([A-D]\)|[A-D][.．:：、（(])\s*.*$", "", prompt)
+    # 裸字母只匹配整行，既覆盖 OCR 的 A/B/C/D，也保留 AB、ABCD 等几何题意。
+    prompt = re.sub(r"(?m)^\s*(?:[A-D][ \t]*$|(?:\([A-D]\)|[A-D][.．:：、（(])\s*.*$)", "", prompt)
     question["prompt"] = re.sub(r"\n{3,}", "\n\n", prompt).strip()
 
 
@@ -753,7 +754,12 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
             prompt_option_lines.get(chr(65 + index), _MISSING_PROMPT_OPTION) == _option_body(option, index)
             for index, option in enumerate(options)
         )
-        if duplicated:
+        bare_labels = [match.group(1) or match.group(2) for match in STANDALONE_CHOICE_MARKER_PATTERN.finditer(prompt)]
+        duplicate_image_labels = (
+            len(option_images) == len(options) == 4
+            and bare_labels == ["A", "B", "C", "D"]
+        )
+        if duplicated or duplicate_image_labels:
             errors.append("题干中重复包含结构化选项")
     content_blocks = question.get("contentBlocks", [])
     if not content_blocks:

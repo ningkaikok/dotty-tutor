@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { MathContentBlock, QuestionContentBlock, TextContentBlock } from "./types/index";
 import MathText from "./MathText";
+import { presentedContentBlocks } from "./questionPresentation";
 import { RichText } from "./RichText";
 
 type InlineBlock = TextContentBlock | MathContentBlock;
@@ -42,7 +43,7 @@ export function QuestionContent({
     inlineBlocks = [];
   };
 
-  [...blocks].sort((left, right) => left.sourceOrder - right.sourceOrder).forEach((block) => {
+  [...presentedContentBlocks(blocks)].sort((left, right) => left.sourceOrder - right.sourceOrder).forEach((block) => {
     if (block.type === "text" || block.type === "math") {
       inlineBlocks.push(block);
       return;
