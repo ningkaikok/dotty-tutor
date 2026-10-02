@@ -19,6 +19,7 @@ from persistence.job_store import JobStore
 
 CancellationCheck = Callable[[], bool]
 JobHandler = Callable[[dict[str, Any], CancellationCheck], Any]
+CompletionCleanup = Callable[[], None]
 
 # HTTP 状态码到"值得重试"的既有映射，供 handler 把 HTTPException 转换成
 # RetryableJobError/TerminalJobError；批次熔断（textbook_processing.generate_full_paper）
@@ -57,6 +58,21 @@ class RegisteredTask:
     handler: JobHandler
 
 
+@dataclass(frozen=True)
+class CancellableJobResult:
+    """A handler result with compensation for a cancellation race.
+
+    A cooperative handler can observe cancellation before returning, but a
+    request may arrive after it returns and before ``complete_success``
+    commits. Domain handlers that have already written durable side effects
+    attach an idempotent cleanup callback so the Worker can compensate when
+    the job converges to ``cancelled``.
+    """
+
+    value: Any
+    on_cancel: CompletionCleanup | None = None
+
+
 class TaskRegistry:
     """按稳定 jobType 注册 handler，避免 Worker 通过条件分支耦合业务。"""
 
@@ -80,6 +96,10 @@ class TaskRegistry:
     def get(self, job_type: str) -> JobHandler | None:
         task = self._tasks.get(job_type)
         return task.handler if task else None
+
+    def items(self) -> tuple[tuple[str, JobHandler], ...]:
+        """Expose registered handlers for composing domain registries."""
+        return tuple((name, task.handler) for name, task in self._tasks.items())
 
     def __contains__(self, job_type: str) -> bool:
         return job_type in self._tasks
@@ -142,7 +162,7 @@ class JobWorker:
         self.store.update_progress(
             job_id,
             progress=10,
-            message="正在执行教材处理任务",
+            message="正在执行后台任务",
             worker_id=self.worker_id,
         )
 
@@ -176,13 +196,36 @@ class JobWorker:
             daemon=True,
         )
         heartbeat_thread.start()
+        on_cancel: CompletionCleanup | None = None
+
+        def cleanup_after_cancel() -> None:
+            if on_cancel is None:
+                return
+            try:
+                on_cancel()
+            except Exception as error:  # Cleanup must not prevent job convergence.
+                log_event(
+                    "background_job.cancel_cleanup.failed",
+                    level=40,
+                    job_id=job_id,
+                    worker_id=self.worker_id,
+                    error_type=type(error).__name__,
+                    error=str(error)[:300],
+                )
+
         try:
-            result = handler(job["payload"], cancellation_check)
+            execution = handler(job["payload"], cancellation_check)
+            if isinstance(execution, CancellableJobResult):
+                result = execution.value
+                on_cancel = execution.on_cancel
+            else:
+                result = execution
             # 租约丢失表示数据库已经不再承认当前 Worker 的所有权。此时不能继续
             # 写入成功/失败状态，否则会覆盖接管该任务的新 Worker 的执行结果。
             if lease_lost.is_set():
                 return self.store.get_job(job_id)
             if cancellation_check():
+                cleanup_after_cancel()
                 return self.store.mark_cancelled(job_id, self.worker_id)
             try:
                 return self.store.complete_success(job_id, self.worker_id, result)
@@ -191,16 +234,19 @@ class JobWorker:
                 # honor the request instead of leaving an orphaned lease.
                 current = self.store.get_job(job_id)
                 if current and current["status"] == "running" and current["cancelRequested"]:
+                    cleanup_after_cancel()
                     return self.store.mark_cancelled(job_id, self.worker_id)
                 raise
         except JobCancelled as error:
             if lease_lost.is_set():
                 return self.store.get_job(job_id)
+            cleanup_after_cancel()
             return self.store.mark_cancelled(job_id, self.worker_id)
         except JobFailure as error:
             if lease_lost.is_set():
                 return self.store.get_job(job_id)
             if cancellation_check():
+                cleanup_after_cancel()
                 return self.store.mark_cancelled(job_id, self.worker_id)
             return self.store.complete_failure(
                 job_id,
@@ -212,6 +258,7 @@ class JobWorker:
             if lease_lost.is_set():
                 return self.store.get_job(job_id)
             if cancellation_check():
+                cleanup_after_cancel()
                 return self.store.mark_cancelled(job_id, self.worker_id)
             return self.store.complete_failure(
                 job_id,

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" role="img" aria-labelledby="title">
+  <title id="title">AB 等于 AC 的等腰三角形，顶角 A 为四十度</title>
+  <rect width="480" height="300" fill="#fff"/><path d="M240 45L95 250H385Z" fill="#f8fbf9" stroke="#34483e" stroke-width="3"/>
+  <path d="M157 158l15 10M308 168l15-10" stroke="#d86b43" stroke-width="4"/>
+  <path d="M221 72A34 34 0 0 1 259 72" fill="none" stroke="#28795d" stroke-width="3"/>
+  <g font-family="sans-serif" font-size="19" fill="#263b31"><text x="235" y="31">A</text><text x="75" y="270">B</text><text x="390" y="270">C</text><text x="229" y="91">40°</text><text x="126" y="155">x</text></g>
+</svg>

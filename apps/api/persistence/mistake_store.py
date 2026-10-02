@@ -24,11 +24,13 @@ from sqlalchemy import (
     Table,
     Text,
     create_engine,
+    delete,
     select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 from domain.constants import DEMO_LEARNER_ID
 from domain.questions.pipeline import replace_question_prompt
@@ -180,6 +182,39 @@ class MistakeStore:
         with self.engine.begin() as connection:
             connection.execute(mistake_items.insert().values(**values))
         return self.get(item["mistakeId"]) or item
+
+    def create_capture(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Create one capture row, returning the winner under concurrent retries."""
+        created, _ = self.create_capture_with_status(item)
+        return created
+
+    def create_capture_with_status(self, item: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        """Create one capture row and report whether this call won the insert race."""
+        try:
+            return self.create(item), True
+        except IntegrityError:
+            existing = self.get(item["mistakeId"])
+            if existing is not None:
+                return existing, False
+            raise
+
+    def delete_capture(self, mistake_id: str, *, source_image_path: str) -> bool:
+        """Remove only a newly-created capture row when its source still matches.
+
+        Background cancellation may race the final import write. The source-path
+        predicate prevents cleanup from deleting a later, unrelated record that
+        reused the same stable capture-derived id.
+        """
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                delete(mistake_items).where(
+                    mistake_items.c.mistake_id == mistake_id,
+                    mistake_items.c.source_image_path == source_image_path,
+                    mistake_items.c.status == "pending_confirmation",
+                )
+            )
+        return bool(result.rowcount)
 
     def record_published_attempt(
         self,

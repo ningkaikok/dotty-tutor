@@ -266,16 +266,11 @@ markdown | formula | diagram | animation | annotation | quiz | hint
 
 当前主路径由 Vitest、TypeScript 构建和 Playwright 共同保护：
 
-```bash
-cd apps/web
-npm ci
-npm run build
-npm run test:e2e
-```
+完整门禁命令见 [AGENTS.md](../AGENTS.md#验证与交付)，安装步骤见 [开发指南](development.md#安装前端)。
 
 - `tsc --noEmit` 检查前后端契约使用是否一致。
 - Vite Build 检查模块边界和生产打包。
-- Vitest 使用 jsdom、Testing Library 和 user-event 覆盖纯逻辑、路由装配及稳定组件交互；优先把不需要真实浏览器的断言留在这里。
+- Vitest 纯逻辑使用 node，组件按文件使用 jsdom、Testing Library 和 user-event，覆盖路由装配及稳定组件交互；优先把不需要真实浏览器的断言留在这里。
 - Playwright 从用户角度验证角色入口、学生/生产边界、教材导入、题型作答和错题多轮流程。
 
 继续扩展时，可以为纯函数增加 Vitest，例如 `fileValidation.ts`、`questionPresentation.ts` 和课程文档转换；

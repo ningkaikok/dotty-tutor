@@ -204,6 +204,50 @@ class QuestionEditOptimisticConcurrencyTests(unittest.TestCase):
 
 
 class QuestionEditQualityGateTests(unittest.TestCase):
+    def test_teacher_can_explicitly_set_policy_metadata(self) -> None:
+        service, job, _store = _build_service_and_job()
+        with _patched_load_batch_sources(service):
+            result = service.edit_question(
+                "upload-1", _SOURCE_KEY,
+                base_revision_id=None,
+                question_patch={
+                    "objectiveType": "procedural",
+                    "gateMode": "quantitative",
+                    "policyVersion": "mastery-policy-v1",
+                },
+                guide_cards_patch=None,
+            )
+        question = result["questionPayload"]["question"]
+        self.assertEqual(question["objectiveType"], "procedural")
+        self.assertEqual(question["gateMode"], "quantitative")
+        self.assertEqual(question["policyVersion"], "mastery-policy-v1")
+
+    def test_policy_metadata_cannot_be_partially_selected(self) -> None:
+        service, _job, _store = _build_service_and_job()
+        with self.assertRaises(HTTPException) as raised:
+            service.edit_question(
+                "upload-1", _SOURCE_KEY,
+                base_revision_id=None,
+                question_patch={"objectiveType": "procedural"},
+                guide_cards_patch=None,
+            )
+        self.assertEqual(raised.exception.status_code, 422)
+
+    def test_policy_metadata_rejects_mismatched_gate_and_version(self) -> None:
+        service, _job, _store = _build_service_and_job()
+        with self.assertRaises(HTTPException) as raised:
+            service.edit_question(
+                "upload-1", _SOURCE_KEY,
+                base_revision_id=None,
+                question_patch={
+                    "objectiveType": "procedural",
+                    "gateMode": "qualitative",
+                    "policyVersion": "mastery-policy-v2",
+                },
+                guide_cards_patch=None,
+            )
+        self.assertEqual(raised.exception.status_code, 422)
+
     def test_quality_gate_rejection_blocks_the_edit(self) -> None:
         """门禁不通过必须拒绝这次编辑，且绝不写入任何新 revision。
 

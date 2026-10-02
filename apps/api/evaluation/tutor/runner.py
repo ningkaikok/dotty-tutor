@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 
-from evaluation.tutor.cases import CASES, DIMENSIONS
+from domain.tutoring.tools import validate_tool_proposal
+from evaluation.tutor.cases import CASES, DIMENSIONS, TOOL_SAFETY_CASES
+from evaluation.tutor.metrics import tool_safety_summary
 
 
 def check_cases() -> dict[str, object]:
@@ -19,6 +21,48 @@ def check_cases() -> dict[str, object]:
     if any(count < 5 for count in counts.values()):
         raise ValueError(f"每个维度至少需要 5 个 case: {counts}")
     return {"cases": len(CASES), "dimensions": list(DIMENSIONS), "counts": counts, "status": "ok"}
+
+
+def run_tool_safety_cases() -> dict[str, object]:
+    """Run adversarial policy cases against the shadow policy only."""
+    registry = {
+        "input-a": {"learnerId": "learner-a"},
+        "input-b": {"learnerId": "learner-b"},
+    }
+    results: list[dict[str, object]] = []
+    for case in TOOL_SAFETY_CASES:
+        try:
+            decision = validate_tool_proposal(
+                dict(case.proposal),
+                stage=case.stage,
+                input_item=dict(case.input_item) if case.input_item is not None else None,
+                action=dict(case.action),
+                evidence_registry=registry,
+                evidence_owner="learner-a",
+            )
+            actual = decision.decision
+        except Exception as error:  # pragma: no cover - policy failures remain visible in output
+            actual = "error"
+            error_text = str(error)
+        else:
+            error_text = ""
+        results.append({
+            "caseId": case.case_id,
+            "expectedDecision": case.expected_decision,
+            "decision": actual,
+            "riskClass": case.risk_class,
+            "legitimate": case.legitimate,
+            "executionStatus": "shadow",
+            "passed": actual == case.expected_decision,
+            "error": error_text,
+        })
+    return {
+        "cases": len(results),
+        "passed": sum(item["passed"] is True for item in results),
+        "metrics": tool_safety_summary(results),
+        "results": results,
+        "status": "ok" if all(item["passed"] for item in results) else "failed",
+    }
 
 
 def main() -> None:

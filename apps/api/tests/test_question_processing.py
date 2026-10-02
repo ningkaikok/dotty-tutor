@@ -11,7 +11,9 @@ from application.services.question_processing import (
     _generate_validated_question,
     process_question_sources,
 )
+from domain.questions.exam_ir import build_exam_ir
 from domain.questions.source import split_question_sources
+from infrastructure.runtime.model_runtime import ModelSelection, runtime
 
 
 def _candidate() -> tuple[dict, list[dict], dict]:
@@ -31,6 +33,42 @@ def _candidate() -> tuple[dict, list[dict], dict]:
 
 
 class QuestionQualityRecoveryTests(unittest.TestCase):
+    def test_user_mock_worker_generates_source_preserving_synthetic_preview(self) -> None:
+        """Given mock provider and OCR questions, When worker processes them, Then source stays linked and no answer is invented."""
+        source = "1. Calculate 2 + 2.\n2. Solve x + 3 = 5.\n3. Calculate 6 / 2."
+        exam = build_exam_ir(source, batch_id="mock-worker-batch", provider="mock")
+        question_ir = exam.questions[0].as_dict()
+        original_selection = runtime.selection
+
+        def keep_draft(payload, _ocr_source, _image_paths):
+            return payload, {"provider": "mock", "model": "static-demo", "fallback": False}
+
+        try:
+            runtime.selection = ModelSelection("mock", "static-demo")
+            with TemporaryDirectory() as directory, patch(
+                "application.services.lesson_generation.runtime_reviewer.review",
+                side_effect=keep_draft,
+            ):
+                payloads, _cards, model_runs, _review_runs = process_question_sources(
+                    [question_ir],
+                    {"id": "mock-worker-batch", "startPage": 1, "endPage": 1},
+                    {"sourceFingerprint": "synthetic-pdf-fixture"},
+                    Path(directory),
+                )
+        finally:
+            runtime.selection = original_selection
+
+        payload = payloads[0]
+        model_run = model_runs[0]
+        question = payload["question"]
+        self.assertTrue(model_run["synthetic"])
+        self.assertEqual(model_run["syntheticKind"], "source-preserving-preview")
+        self.assertEqual(question["prompt"], question_ir["stem"])
+        self.assertEqual(question["sourceQuestionKey"], question_ir["sourceQuestionKey"])
+        self.assertEqual(question["sourceProvenance"]["sourcePages"], question_ir["sourcePages"])
+        self.assertEqual(question["correctAnswer"], "")
+        self.assertEqual(payload["quality"]["status"], "needs_review")
+
     def test_retries_only_the_failed_question_until_quality_is_ready(self) -> None:
         quality_attempts = 0
 

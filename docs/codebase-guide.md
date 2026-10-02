@@ -1,6 +1,6 @@
 # 代码结构、复用决策与扩展指南
 
-本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
+完整文档分类与维护职责见 [文档索引](README.md)。本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
 哪些能力直接复用开源实现，以及新增功能时应在哪个边界修改。
 
 ## 设计目标
@@ -10,7 +10,7 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 1. 演示路径是否稳定、可解释。
 2. 一名维护者能否在十分钟内找到相关代码。
 3. 相同能力是否已有成熟依赖或仓库内实现。
-4. 模型、OCR、数据库或浏览器能否被 Mock 后独立测试。
+4. 外部模型/OCR/TTS 能否用测试替身隔离，数据库和浏览器能否使用各自测试夹具独立验证。
 5. 只有真实出现第二种实现时，才增加新的抽象层。
 
 因此，本项目采用模块化单体：一个 React 前端、一个 FastAPI 后端、一个 PostgreSQL 数据库，
@@ -18,6 +18,11 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 数据边界清晰。
 
 ## 顶层目录
+
+从用户任务重新审视结构、重复状态与测试的依据见
+[用户任务与消融审视](user-task-ablation.md)。学生今日入口的四路读取在
+`useStudentTodayQueue` 中形成绑定 learnerId 的单一快照；`StudentLearningApp`
+把待办、自由练习、已完成作业回看分开呈现，不用本机会话记录推断完成状态。
 
 ```text
 dotty-tutor/
@@ -32,8 +37,10 @@ dotty-tutor/
 │   │   ├── Dockerfile          # API/Worker 镜像
 │   │   ├── app.py              # ASGI 组合根；只装配，不写业务逻辑
 │   │   ├── app_factory.py      # 中间件、安全头、CORS、请求日志
+│   │   ├── auth_context.py     # demo/protected 身份解析与学生资源归属校验
 │   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
+│   │   │   ├── auth_routes.py  # 会话、一次性学生邀请和教师撤销 API
 │   │   │   ├── tutoring_routes.py # 错题陪练线程 API、工具策略审计
 │   │   │   ├── tutor_input_routes.py # 文字/结构化/图片/公式/画布输入 API
 │   │   │   ├── tutor_search_routes.py # Tutor PostgreSQL 全文检索 API
@@ -43,7 +50,10 @@ dotty-tutor/
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
+│   │   │   ├── lecture_checklist.py # 作业范围讲评清单的确定性聚合
+│   │   │   ├── learner_context.py # 有限生命周期画像的 shadow context 组装
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
+│   │   │   ├── tutor_model_evaluation.py # 内容工作台切换陪练模型前的已确认合成文本配对评测
 │   │   │   ├── tutor_input_service.py # 输入证据与低置信度确认门禁
 │   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
@@ -56,9 +66,12 @@ dotty-tutor/
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
-│   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的确定性符号等价判等（sympy 兜底，只判等价不解题）
+│   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
+│   │   │   │   ├── mastery_policy.py # 按目标类型选择掌握 gate 与复习策略
+│   │   │   │   └── review_scheduler.py # 动态间隔与失败回退的纯调度函数
 │   │   │   ├── tutoring/       # 判题、陪练策略和状态机纯函数（含观察、工具、画布）
+│   │   │   │   └── learner_profile.py # 带证据、过期时间和 publication scope 的 shadow 画像
 │   │   │   └── assignment_planning.py # 跨 publication 聚合、错因统计和目标排序
 │   │   ├── mistake_recognition.py # 复用教材流水线的错题识别适配
 │   │   ├── variation_service.py # 错题变式验证题生成、归因采信和题型门禁
@@ -66,10 +79,17 @@ dotty-tutor/
 │   │   ├── publication_revision.py # 不可变试卷新版编排
 │   │   ├── run_audit.py        # 运行快照与题目修订审计
 │   │   ├── worker.py            # 独立后台 Worker 入口（PostgreSQL Job Store）
+│   │   ├── prompts/            # Git 基线模板、变量校验与任务快照
+│   │   │                       # 在线版本：persistence/prompt_store.py
+│   │   │                       # 管理契约：domain/prompts/contracts.py
+│   │   │                       # 管理路由：routers/prompt_routes.py
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
 │   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
+│   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
+│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
+│   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
 │   │       ├── schema_registry.py # 各领域 metadata 注册和重复表名检查
@@ -81,12 +101,13 @@ dotty-tutor/
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
 │   │       ├── tutoring_store.py # TutorInput、线程、工具事件
+│   │       ├── auth_store.py   # opaque 会话/邀请令牌哈希、过期和撤销
 │   │       ├── search_store.py # PostgreSQL FTS 文档和证据引用
 │   │       └── schema.py        # 教材/学习领域表声明
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
 │   │   └── migrations/           # 唯一正式 schema migration 版本链（含 Tutor 多模态/工具/检索）
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
-│   │       └── versions/         # adoption、mastery、assignment、review/variation、错因归因、题目人工编辑与回滚指针
+│   │       └── versions/         # adoption、mastery、assignment、review/variation、题目编辑与身份会话迁移
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
 │   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
@@ -94,13 +115,17 @@ dotty-tutor/
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
+│   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
 │   │   │   ├── apps/home/      # 角色入口选择
 │   │   │   ├── apps/student/   # 学生学习空间，不包含生产配置
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
+│   │   │   │   ├── LectureChecklistPanel.tsx # 共性错题、错因分布和涉及学生
+│   │   │   │   └── useLectureChecklist.ts # assignment-scoped 讲评清单请求
 │   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
 │   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
 │   │   │   ├── InteractiveMathCanvas.tsx # 最小点放置数学画布
 │   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告；DependencyPreflightApp 环境依赖自检页
+│   │   │   ├── productTerms.ts # 用户可见术语集中表，不重命名 API/type
 │   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
 │   │   │   ├── answerAssembly.ts # 多小问及画线等交互答案的统一组装
 │   │   │   ├── richTextParser.ts # 普通文本与显式数学片段的安全分词
@@ -115,6 +140,8 @@ dotty-tutor/
 ├── scripts/migrate_teacher_review_events.py # deprecated：兼容旧调用
 ├── scripts/migrate_variation_attribution.py # deprecated：兼容旧调用
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
+├── scripts/seed_demo_bundle.py # 固定 ID 的合成三人课堂 bundle，支持 --verify
+├── examples/demo-pack/manifest.json # demo bundle 的隐私声明和固定数据契约
 ├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # PostgreSQL、一次性迁移/卷初始化与应用服务编排
@@ -123,6 +150,14 @@ dotty-tutor/
 前端 API 和类型按领域分别位于 `apps/web/src/api/` 与 `apps/web/src/types/` 目录。后端规范代码必须进入
 `apps/api/routers`、`apps/api/application/services`、`apps/api/domain`、`apps/api/infrastructure` 或
 `apps/api/persistence`；跨领域组合只在明确的应用入口完成。
+
+### 2026-09 学习闭环新增边界
+
+- `LectureChecklistService` 读取单次 assignment 的成员、发布题目、最新作答、教师复核和错题归因，按涉及学生数、错误率、原题序排序；它是只读投影，不改变 mastery 或原始证据。
+- `mastery_policy.py` 与 `review_scheduler.py` 是纯函数：只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy；记忆/程序目标使用定量门槛，概念/设计目标使用受约束 rubric、置信度和证据引用的定性门槛；缺少策略元数据的历史记录保持 `unknown:legacy` 的 legacy 1/3/7 天行为，定性证据不足时为 `needs_review`。
+- `learner_profile.py` 和 `learner_context.py` 只做 shadow 实验。画像事实必须带 publication scope、evidenceRef、observedAt、expiresAt 和 profileVersion；过期、冲突、跨 publication 或敏感/聊天字段会排除并记录原因。
+- `evaluation/benchmark` 的人工金标准 JSONL 校验和配对统计只服务离线实验；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条，synthetic/public/fixture 不计入，当前仍没有 50+ 条人工金标准，也没有真实跨模型结论。`prefix_cache_probe.py` 只消费外部采集的运行结果或 fixture，不自行调用 Provider；只有 warm 阶段高于 cold/control 缓存基线的增量命中，或带官方 source 的 explicit 证据，才能判支持。GPT-5.6/Luna 的官方能力和 CLI cached token 字段已确认，但本轮三阶段均为 8960 的 hidden baseline，应用前缀复用仍为 inconclusive。
+- `scripts/seed_demo_bundle.py` 与 `examples/demo-pack/manifest.json` 提供固定 ID、完全合成、幂等且不删除其他数据的教师演示数据；`--verify` 只读检查，不依赖 OCR、模型或网络。
 
 ### P0～P3 后端分层边界
 
@@ -149,6 +184,8 @@ flowchart LR
   Services --> Domain["domain 规则与契约"]
   Routes --> Stores["persistence Store"]
   Services --> Runtime["infrastructure/runtime"]
+  Services --> Prompts["prompts：任务模板快照"]
+  Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
   Runtime --> External["MinerU / Ollama / Codex / Azure / Qwen TTS"]
@@ -185,7 +222,7 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
-  → domain/questions/source.py（按题号提出候选边界、图注/坐标归属和审计；
+  → domain/questions/source.py（按题号提出候选边界；显式图注优先，独立题号 bbox 高置信纠正线性图片归属，歧义 fail closed 并审计；
      切分失败且 `looks_like_multi_question_document()` 判定为多题文档时，由调用方报 422，
      不走"整页当作一道题"的兜底）
   → domain/questions/exam_ir.py + ir.py（把候选提升为 ExamIR/QuestionIR，保留页码、块 ID、图片 ID、置信度）
@@ -384,9 +421,10 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
    `domain/questions/answer_solver.py`，同一条“确定性程序判对错，模型只提议”的原则，
    不要又让模型自证。两个模块调用路径不同（学生每次提交 vs 生成时的离线核验），
    延迟约束也不同，但不是完全独立：`answer_evaluator._check_single_answer` 在结构化
-   归一化判否之后，会复用 `answer_solver.check_answer_agreement` 再做一次符号等价
-   兜底（科学计数法、根式、代数式展开），只用于挽回假阴性，判否结果不会被反悔成
-   假阳性。新增题型如果需要符号层判等，直接复用 `answer_solver`，不要另起一套。
+   归一化判否之后，会复用 `answer_solver.check_answer_agreement` 再做一次标量/显式解集
+   符号等价兜底（科学计数法、根式、代数式展开和集合顺序），只用于挽回假阴性；所有候选
+   确定冲突才判错，存在 undecidable 就回退，不会把判不了包装成 deterministic incorrect。
+   新增题型如果需要符号层判等，直接复用 `answer_solver`，不要另起一套。
 5. 增加后端单元测试和 Playwright 用户流程。
 
 ### 增加一个模型 Provider
@@ -398,20 +436,21 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 ### 扩展错题复习任务
 
-阶段四已经提供 `review_tasks`、复习 API、进度页和 1/3/7 天排期；验证作答由 `variation_attempts` 追加保存，复习作答的
+阶段四已经提供 `review_tasks`、复习 API、进度页和 versioned schedule；任务带 `scheduleVersion`、`sequenceNo`、`profile`、`supersededAt`，验证作答由 `variation_attempts` 追加保存，复习作答的
 确定性判题证据由 `review_tasks.evaluation_evidence_json` 持久化，Evidence API 负责汇总单道错题的解释链。后续扩展时继续遵循同样边界：
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。
 2. 复用 `QuestionPayload`、确定性判题和掌握度证据，不让模型直接修改状态。
-3. 前端在 `apps/mistake/` 下增加页面与 Hook，通过 React Router 注册子路径。
+3. 前端在 `apps/web/src/apps/mistake/` 下增加页面与 Hook，通过 React Router 注册子路径。
 4. 将跨请求的复习状态保存在 PostgreSQL，不依赖进程内字典。
 
 ## 测试边界
 
 - 纯函数：直接单元测试，不启动 FastAPI。
-- Runtime/Store：使用替身或临时数据库验证边界。
-- API：FastAPI `TestClient` 验证协议、状态码和持久化调用。
-- 用户路径：Playwright Mock API，验证路由、录入、确认和作答交互。
+- Runtime：仅在模型/OCR/TTS 等外部边界使用替身；Store 使用隔离 PostgreSQL 夹具。
+- API：FastAPI `TestClient` 验证协议、状态码、持久化结果和状态转换。
+- DOM：Vitest + Testing Library，纯逻辑用 node、组件按文件用 jsdom。
+- 用户路径：Playwright 固定 API 数据，验证真实浏览器中的跨组件流程。
 - Docker：只验证镜像、网络、健康检查和启动配置，不在其中重复所有业务测试。
 
 提交前命令以 `AGENTS.md` 和 `docs/development.md` 为准。
@@ -429,6 +468,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `apps/api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
 | 教师如何生成并指派个性化作业 | `TeacherClassroomApp.tsx` → `useAssignmentPlanning.ts` → `apps/api/routers/classroom_routes.py` → `application/services/assignment_planning.py` → `persistence/assignment_planning_store.py` | 脱敏班级证据、确定性回退、教师审阅、确认式幂等指派 |
 | 错题如何多轮陪练 | `useMistakeTutor.ts` → `apps/api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
+| 内容工作台如何评测后切换陪练模型 | `RuntimeSettings.tsx` → `useTextbookImport.ts` → `POST /api/tutor-model-evaluations` → `application/services/tutor_model_evaluation.py` → `GET /api/tutor-model-evaluations/{run_id}`；确认应用后调用 `POST /api/tutor-models/select` | 当前/候选模型显式配对调用，不影响学生当前模型；50 条已确认合成案例中仅 42 条文本进入预览，图像未传入模型前排除；学生请求不传模型偏好 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长
 文件开始通读整个仓库。
@@ -443,3 +483,15 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 这些项目属于生产化边界，不阻塞个人 Demo。产品优先级见[路线图](roadmap.md)，运行快照、事件、后台任务
 和离线评测的学习顺序见[AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。
+
+### 提示词维护链路
+
+`prompts/catalog.json → prompts/templates/*.txt → PromptStore 归档/发布指针 → freeze_prompts → render_prompt → 生成/陪练/评测 → promptTemplates 审计`。
+内容平台页面位于 `apps/web/src/apps/prompts/`，网络适配在 `apps/web/src/api/prompts.ts`，
+状态与操作在 `usePromptManager.ts`，页面 `PromptManagerApp.tsx` 只组合界面。
+`routers/prompt_routes.py → persistence/prompt_store.py → prompt_revisions / prompt_heads / prompt_release_events`
+提供草稿、预览、乐观发布和回滚；迁移 `0013_prompt_management` 增加三张表。
+首批迁移四个生成阶段、陪练两段和评测提示词；审核、变式和旧单阶段模板仍由原模块维护。
+新增或修改模板时检查声明变量、递增版本，并运行模板保真和相关业务测试。
+模板不能承载 Python 表达式；上下文选择、输入裁剪和质量门禁留在领域/应用服务。
+详见 [提示词维护说明](../apps/api/prompts/README.md)。

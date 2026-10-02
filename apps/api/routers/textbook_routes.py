@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pypdf import PdfReader
 
 from application.errors import AppError
+from application.mistake_jobs import cleanup_queued_mistake_capture
 from application.services.lesson_generation import (
     generate_lesson,
     generate_model_reply,
@@ -50,8 +51,9 @@ from domain.questions.contracts import (
     QuestionEditRequest,
     StudentTutorReply,
 )
-from domain.questions.student_view import student_tutor_reply
+from domain.questions.student_view import student_mistake_item, student_tutor_reply
 from infrastructure.files.upload_registry import UploadRegistry
+from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from observability import log_event
 from persistence.app_store import get_application_store
@@ -275,9 +277,9 @@ def get_pdf_upload_status(upload_id: str) -> dict:
     return upload_status(upload_job(upload_id))
 
 
-def _job_response(job: dict[str, Any]) -> dict[str, Any]:
+def _job_response(job: dict[str, Any], *, actor: dict[str, Any] | None = None) -> dict[str, Any]:
     """Expose a stable, JSON-safe job snapshot to API clients."""
-    return {
+    response = {
         key: job.get(key)
         for key in (
             "jobId", "jobType", "status", "progress", "message", "attemptCount",
@@ -285,26 +287,46 @@ def _job_response(job: dict[str, Any]) -> dict[str, Any]:
             "startedAt", "completedAt",
         )
     }
+    if actor and actor.get("role") == "student":
+        # The worker's error may include provider details or filesystem paths;
+        # neither those nor a raw domain result belong in the student response.
+        response["message"] = {
+            "queued": "等待识别",
+            "running": "正在识别错题",
+            "succeeded": "错题识别完成",
+            "failed": "识别失败，可重试",
+            "cancelled": "已取消",
+        }.get(str(job.get("status")), "任务状态已更新")
+        response["lastError"] = None
+        result = job.get("result")
+        response["result"] = (
+            student_mistake_item(result)
+            if isinstance(result, dict) and result.get("learnerId") == actor.get("learnerId")
+            else None
+        )
+    return response
 
 
 @router.get("/api/jobs/{job_id}", response_model=BackgroundJobSummary)
-def get_background_job(job_id: str) -> dict[str, Any]:
+def get_background_job(job_id: str, request: Request) -> dict[str, Any]:
     job = job_store.get_job(job_id)
     if not job:
         raise AppError("后台任务不存在", status_code=404, error_code="JOB_NOT_FOUND")
-    return _job_response(job)
+    return _job_response(job, actor=getattr(request.state, "actor", None))
 
 
 @router.post("/api/jobs/{job_id}/cancel", response_model=BackgroundJobSummary)
-def cancel_background_job(job_id: str) -> dict[str, Any]:
+def cancel_background_job(job_id: str, request: Request) -> dict[str, Any]:
     job = job_store.request_cancel(job_id)
     if not job:
         raise AppError("后台任务不存在", status_code=404, error_code="JOB_NOT_FOUND")
-    return _job_response(job)
+    if job["status"] == "cancelled":
+        cleanup_queued_mistake_capture(job, data_root=job_store.root)
+    return _job_response(job, actor=getattr(request.state, "actor", None))
 
 
 @router.post("/api/jobs/{job_id}/retry", response_model=BackgroundJobSummary)
-def retry_background_job(job_id: str) -> dict[str, Any]:
+def retry_background_job(job_id: str, request: Request) -> dict[str, Any]:
     job = job_store.retry_job(job_id)
     if not job:
         raise AppError(
@@ -312,7 +334,7 @@ def retry_background_job(job_id: str) -> dict[str, Any]:
             status_code=409,
             error_code="JOB_NOT_RETRYABLE",
         )
-    return _job_response(job)
+    return _job_response(job, actor=getattr(request.state, "actor", None))
 
 
 @router.post(
@@ -329,7 +351,11 @@ def complete_pdf_upload(
     key = idempotency_key if isinstance(idempotency_key, str) else None
     job = job_store.create_job(
         "textbook.upload.complete",
-        {"uploadId": upload_id, "generateFullPaper": True},
+        {
+            "uploadId": upload_id,
+            "generateFullPaper": True,
+            "runtimeSnapshot": current_job_runtime_snapshot(),
+        },
         idempotency_key=key or f"textbook-upload-complete:{upload_id}",
     )
     return _job_response(job)
@@ -351,7 +377,7 @@ def generate_full_paper(
     key = idempotency_key if isinstance(idempotency_key, str) else None
     queued = job_store.create_job(
         "textbook.paper.generate",
-        {"uploadId": upload_id},
+        {"uploadId": upload_id, "runtimeSnapshot": current_job_runtime_snapshot()},
         # One upload has one durable whole-paper operation. Keeping the default key
         # stable across browser refreshes lets retries reuse already successful
         # batches instead of enqueuing another complete run.
@@ -489,6 +515,7 @@ def process_pdf_batch(
             "batchId": batch_id,
             "force": force,
             "refreshOcr": refreshOcr,
+            "runtimeSnapshot": current_job_runtime_snapshot(),
         },
         idempotency_key=key or (
             f"textbook-batch:{upload_id}:{batch_id}:{int(force)}:{int(refreshOcr)}"

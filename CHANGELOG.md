@@ -7,11 +7,58 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.33.0] - 2026-10-03
+
+### Added
+
+- 内容平台新增教学提示词草稿、样例变量预览、版本比较、发布和回滚；编辑与发布权限分开，历史生成可定位使用的模板版本，新发布不影响正在运行的任务。
+- 为本地模型配对输出新增匿名人工审核包和评分汇总工具；只有审核者逐题完成判定后才生成语义对照，陪练与系统路由任务分开统计。
+- 新增经用户确认的 50 条合成评测案例及审核记录，并提供 42 条文本案例的本地配对运行报告；合成案例仍不计入人工金标准。
+- 内容工作台新增陪练模型切换前的合成案例对照；可查看结构输出、逐维度指标、延迟、Token 和逐题结果，只有评测结束后才可应用候选模型。学生端继续使用服务端当前模型，案例不计入正式人工金标准。
+- 新增明确启用的受保护模式：教师签发限时学生邀请，服务端会话校验角色和资源归属；本机 Compose 保持回环绑定与演示模式。
+- 受保护模式恢复学生自己的错题导入进度、学习漏斗和有界辅导朗读；个人后台任务结果按学生视图投影。
+- 新增 50 条合成评测候选草案及逐条人工审核清单，供审题、修订和复核使用；草案不计入正式人工金标准。
+
+### Fixed
+
+- 容器更新后，Web 自动重新解析 API 地址，避免只重建后端导致接口持续返回 502。
+- 已审核的合成评测集现只让 42 条文本案例参与模型对照，避免 8 条未实际传图的案例产生误导性的视觉评测结果。
+- API 文档的版本号与后端包版本同步，避免发布后仍显示旧版本。
+- 学生答案按受限数学语法判等；无法安全处理的输入明确保持未判定。
+- 后台题目生成、审阅与 OCR 使用入队时的配置，模型切换不会改变已排队任务。
+- 已发布题目与已确认解题输入保持不可变，修订产生新内容，避免历史判定与证据不一致。
+- 非默认学生可正常创建并确认辅导输入；失败重试不会重复记录同一辅导回合。
+- mock 模式下整卷生成保留来源题干并输出明确标记的待审核预览，未经人工补齐与审核不发布给学生。
+- 并发的辅导生成只允许基于最新线程版本的结果落库，旧响应会返回冲突并要求刷新。
+- 教师切换班级或作业后，迟到响应不再覆盖当前选择。
+- 学生今日页只把未完成作业计入待办，已完成作业保留回看入口；切换学生后不再沿用旧任务，部分加载失败时明确提示列表不完整。
+- 最后一题答对后，先展示作答反馈并允许手动查看完成结果，避免完成页立即覆盖反馈。
+- 内容生产端合并练习序号与教材原题号的主次展示，避免两套编号造成理解负担。
+
+### Changed
+
+- 题目生成、陪练和评测的核心提示词独立管理，并记录模板版本与内容摘要，便于追溯教学规则的变化；保持现有教学输入不变。
+
+## [0.32.0] - 2026-09-23
+
 ### Added
 
 - 答案核验阶段的 `solverAgreement` 不再由模型自我声称，改由确定性符号判等程序裁决：解答与来源答案判定为不一致时强制题目进入冲突状态并要求人工复核，判不了的开放题（证明、文字作答）明确记为未核验，不会被当成核验通过。
 - 整卷生成连续遇到 API key 过期/配额耗尽、限流或上游超时时会提前暂停剩余批次并给出具体原因，不再把剩下的题逐一磨成失败记录；已经成功的批次不受影响。
 - 新增只读的环境依赖自检接口 `GET /api/system/dependency-preflight`，一次性检查 MinerU、pypdf、Ollama、Codex CLI、Azure Speech、Qwen3-TTS 和 PostgreSQL 是否配置就绪；内容生产端新增对应的自检页 `/studio/dependency-preflight`，入口在 `/studio` 首屏顶栏。
+- 新增教师讲评清单 `GET /api/classes/{classId}/assignments/{assignmentId}/lecture-checklist?limit=5`：`limit` 约束为 1–50，按最新作答聚合共性错题、错因分布、涉及学生和 evidenceRefs，保留 unknown 错因，并返回 `attributionSource`/`mistakeEvidenceRef`，展示层应用教师最新 overturned 结果。
+- 新增按目标类型选择的复习 policy/gate 元数据、定量/定性双门槛、按掌握度推进与失败回退；只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy，缺少元数据的历史任务继续使用 `unknown:legacy` 兼容策略。定性判题缺少受约束 rubric、置信度或 evidenceRefs 时保持 `needs_review`。
+- 新增错题后台导入 `POST /api/mistakes/import-jobs`，支持幂等、进度查询、协作式取消和有限重试；取消请求在安全点收敛并受租约/状态保护，避免旧 Worker 覆盖终态；新增固定 ID、完全合成、幂等的 `scripts/seed_demo_bundle.py` 与 `--verify`。
+- 新增金标准 JSONL 契约校验、配对统计和离线 Prefix Cache probe；正式 50 条计数只接受独立标注人与复核人的 `sourceKind=human` case，新增 shadow 学习者画像与工具安全评测基础设施。官方资料与 Luna usage 已确认 Provider 具备缓存能力，但应用前缀尚未观察到高于 hidden baseline 的新增命中；上述实验也不代表 50+ 人工金标准或跨模型统计已经完成。
+
+### Changed
+
+- 学生端第一轮移动/键盘体验已收口：窄屏布局、非原生画布键盘等价操作、归档确认焦点管理、弱网作答队列隔离和用户可见术语统一；弱网队列不等于 PWA。
+
+### Fixed
+
+- 修复确定性答案在表达式归一化失败时把开放文本误判为错误的问题；现在支持明确解集的顺序/写法等价，判不了的结果会回退而不写入伪造的 mastery 证据。
+- 修复图片已被 Markdown 线性绑定后 bbox 只能补漏、不能纠正错绑的问题；显式图注优先，高置信 bbox 可纠正，低置信或路径歧义会移除旧绑定、进入审计并阻断整卷质量门禁。纯位置阈值仍待真实坏样本回放校准。
 
 ## [0.31.0] - 2026-09-14
 
@@ -521,7 +568,10 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.32.0...HEAD
+[0.32.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.31.0...v0.32.0
+[0.31.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.30.0...v0.31.0
+[0.30.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.29.0...v0.30.0
 [0.26.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.23.0...v0.24.0

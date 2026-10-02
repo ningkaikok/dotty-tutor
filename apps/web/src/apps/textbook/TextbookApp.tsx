@@ -223,7 +223,7 @@ export function TextbookApp() {
       ? fullPaper.questionPayloads.slice(0, FULL_PAPER_QUESTION_LIMIT)
       : fullPaper.questionPayload ? [fullPaper.questionPayload] : [];
     if (!merged.length) {
-      setFullPaperError("整套试卷未生成可回看的题目");
+      setFullPaperError("整套练习未生成可回看的题目");
       return;
     }
     const summary = fullPaper.summary || fallbackSummary;
@@ -275,12 +275,12 @@ export function TextbookApp() {
       }
       if (job.status === "cancelled") return;
       if (job.status !== "succeeded" || !job.result) {
-        throw new Error(job.lastError?.message || job.message || "整套试卷生成失败");
+        throw new Error(job.lastError?.message || job.message || "整套练习生成失败");
       }
       const report = await loadFullPaperSummary(textbookImport.uploadId).catch(() => null);
       applyFullPaperResult(job.result, report?.summary);
     } catch (error) {
-      setFullPaperError(error instanceof Error ? error.message : "整套试卷生成失败");
+      setFullPaperError(error instanceof Error ? error.message : "整套练习生成失败");
     }
   };
 
@@ -452,7 +452,7 @@ export function TextbookApp() {
 
         {(fullPaperJob || fullPaperSummary) && (
           <p className="studio-notice studio-notice-muted" aria-live="polite">
-            <strong>整套试卷</strong>
+            <strong>整套练习</strong>
             {fullPaperJob && <span> · {fullPaperJob.message}</span>}
             {fullPaperSummary && (
               <span>

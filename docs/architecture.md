@@ -147,6 +147,7 @@ flowchart TB
 | 产品路由 | `apps/web/src/App.tsx` | React Router 根入口、懒加载与页面标题；不持有教材或错题业务状态 |
 | 产品首页 | `apps/web/src/apps/home/ProductHome.tsx` | 展示学生学习、教师和内容生产三个角色入口 |
 | 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，按需生成全班共享的新试卷，确认后指派并查看看板 |
+| 讲评清单 | `LectureChecklistPanel.tsx`、`useLectureChecklist.ts`、`lecture_checklist.py` | assignment 级只读聚合共性错题、错因分布、学生和 evidenceRefs；限制 1–50，附 `attributionSource`/`mistakeEvidenceRef`；不生成教案或修改学习状态 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
@@ -159,7 +160,7 @@ flowchart TB
 | TutorInput 交互 | `apps/web/src/apps/mistake/components/TutorInputComposer.tsx`、`TutorObservationReview.tsx`、`useTutorInput.ts` | 统一文字、结构化答案、题图/步骤图、公式候选和画布输入；低置信度观察确认 |
 | 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
 | 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
-| 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换与错误状态 |
+| 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换及陪练模型配对评测轮询 |
 | 教材导入组件 | `apps/web/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |
 | 课程播放器 | `apps/web/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
 | 内容块注册表 | `apps/web/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
@@ -182,7 +183,7 @@ flowchart TB
 | OCR 路由与缓存 | `apps/api/ocr_pipeline.py` | 页面信号、Provider 选择、内容寻址缓存键和原子缓存文件 |
 | OCR 来源质量 | `apps/api/ocr_quality.py` | 页面/题块质量门禁、有限重试建议和隔离决策纯函数 |
 | 课程生成 | `apps/api/application/services/lesson_generation.py` | 模型 JSON 生成、稳定题目契约、来源绑定与审校缓存 |
-| OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown、图片引用匹配和批次上限纯函数 |
+| OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown；显式图注优先、独立题号 bbox 高置信绑定、否则线性回退；歧义图片 fail closed 并审计 |
 | 导入质量报告 | `apps/api/domain/questions/quality.py` | 在整本生成前汇总题数、题号序列、未识别页和图片归属冲突，决定是否允许继续 |
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
 | 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
@@ -195,8 +196,9 @@ flowchart TB
 | 题目契约 | `apps/api/domain/questions/contracts.py` | 模型 JSON Schema、默认示例题和请求/响应模型 |
 | 题目流水线 | `apps/api/domain/questions/pipeline.py` | 题型提示词、OCR 规范化、内容块和质量门禁 |
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
-| 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、TTS 和学习效果/模型成本联合报告 |
-| 模型适配 | `apps/api/infrastructure/runtime/model_runtime.py` | Ollama、Codex CLI、Mock 和 JSON Schema 约束调用 |
+| 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
+| 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 从 50 条用户确认的合成案例中选 42 条文本案例，显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；8 条图像案例待实际传图后再纳入，调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
+| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
@@ -213,14 +215,17 @@ flowchart TB
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
-| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件 |
+| 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件；通过 message_count 条件提交拦截旧生成，并持久化 Idempotency-Key 响应 |
 | 工具策略 | `apps/api/domain/tutoring/tools.py` | 五种固定 ToolProposal、阶段门禁、证据引用和策略版本 |
-| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 全文检索，返回题目来源和证据定位 |
+| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 检索已发布题目的题干、条件和标题；返回发布/课程/题目引用，当前索引构建的 `sourcePages` 为空，未实现教材原文页码检索 |
 | Tutor 评测 | `apps/api/evaluation/tutor/` | 六维度 30 case 的确定性语料检查、质量和延迟/成本指标 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
 | 模型指标持久化 | `apps/api/persistence/metrics_store.py` | 追加保存逻辑 Runtime 调用的耗时、失败和可选 Token，并提供按时间窗口的只读汇总；不估算货币成本 |
-| 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 幂等排期 1/3/7 天任务，保存复习题、作答证据并聚合进度 |
+| 间隔复习 | `apps/api/routers/review_routes.py`、`apps/api/persistence/review_store.py` | 按 versioned policy 幂等排期，保存 `scheduleVersion`/`sequenceNo`/`profile`/`supersededAt`、复习题和作答证据并聚合进度 |
+| 复习策略 | `apps/api/domain/learning/mastery_policy.py`、`review_scheduler.py` | 按目标类型使用定量/定性双门槛、按表现推进或回退；旧 metadata 缺失时兼容 legacy 策略 |
+| Shadow 画像 | `apps/api/domain/tutoring/learner_profile.py`、`apps/api/application/services/learner_context.py` | 仅聚合确定性 mastery、已确认错因、提示依赖和最近练习；事实有 scope/证据/生命周期，默认不注入 Tutor |
+| AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、合成案例匿名人工审核包、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
 
 ## 错题录入与确认
 
@@ -245,7 +250,9 @@ flowchart TB
 该来源记录在 `errorStrategy.source`，便于回放审计。前端在学生完成或跳过自评后，才把线程中最后一条可信 AI 归因与学生自评并列展示；
 两者都没有时不渲染对照区块。每次验证提交先追加 `variation_attempts`，再更新同一道题的最新状态投影；答错时允许修正但不覆盖原证据。
 答对一次时 `MistakeStore` 只负责执行明确的 `unmastered → mastered` 状态转换。前端据此将题目分到错题本或进阶本，不保存第二份题目副本。
-掌握转换成功后，`ReviewStore.schedule` 以该次作答时间为锚点创建三个唯一任务。复习任务保存自己的题目
+掌握转换成功后，`ReviewStore.schedule` 按题目/知识点的 versioned policy 以该次作答时间为锚点幂等创建带
+`scheduleVersion`、`sequenceNo`、`profile` 和 `triggerEvidenceRef` 的任务；重排时以 `supersededAt` 标记旧任务，
+不假定固定三任务。缺少策略元数据时使用 `unknown:legacy` 的 legacy 1/3/7 天兼容行为。复习任务保存自己的题目
 快照、答案和确定性判题证据，不参与首次掌握连续计数；复习作答的响应和后续读取都会带上 `evaluationEvidence`；`/api/mistakes/{mistakeId}/evidence` 汇总错误原因、策略、验证证据和复习任务，
 `/api/progress` 只从服务端证据实时聚合验证正确率、复习完成率和发布版本内同知识点再错率。
 
@@ -299,13 +306,25 @@ erDiagram
 
 ## 页面初始化
 
-根路径和 `/learn` 只渲染导航，不调用生产端接口。进入 `/studio` 后，上传页首次加载时并行调用：
+根路径显示角色导航；`/learn` 通过 `useStudentTodayQueue` 读取作业、练习、错题和复习队列，
+不加载模型/OCR 等生产配置。进入 `/studio` 后，上传页首次加载时并行调用：
 
 1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
 3. `GET /api/library`：从 PostgreSQL 恢复已完成教材。
 
-模型和 OCR 选择目前写入当前 FastAPI 进程的全局运行时，不按用户或教材隔离。
+模型和 OCR 选择目前仍写入当前 FastAPI 进程的全局运行时，不按用户或教材隔离；联网使用时应由教师统一管理运行时。
+
+## 本机演示与受保护身份
+
+Compose 默认绑定回环地址并以 `AUTH_MODE=demo` 启动，适合可信的本机演示数据，不提供独立学生设备的身份隔离。
+显式配置 `AUTH_MODE=protected`、至少 32 字符的 `TEACHER_BOOTSTRAP_SECRET` 和 HTTPS Secure Cookie 后，API
+才启用服务端会话鉴权。教师用 bootstrap secret 建立会话并签发一次性、限时学生邀请；API 只保存 opaque token
+的 SHA-256 哈希，Cookie 为 HttpOnly、SameSite=Strict、受保护模式要求 Secure。会话可过期或撤销，教师和学生的
+角色由服务端会话解析；学生资源读取同时检查资源所属 learnerId，客户端传入的 learnerId 不能变更身份。跨站来源
+写请求被拒绝。学生只可查看、取消或重试本人错题图片导入任务；任务状态投影隐藏 worker 错误和运行信息。学习漏斗按会话 learnerId 汇总。
+迁移 `0014_protected_sessions` 校准会话角色约束和索引；`0015_tutor_turn_idempotency` 确保辅导提交回放表与索引存在；回滚到旧版本前须先切回可信本机演示并撤下外部入口。
+保护模式的邀请签发不是账号找回或多租户系统，教师 bootstrap 凭据应由部署环境安全管理。
 
 ## 单页导入
 
@@ -358,7 +377,7 @@ erDiagram
     记录、不计入熔断。
 
 取消采用协作式边界：排队任务直接收敛为 `cancelled`，运行任务设置 `cancel_requested`，应用服务在合并、OCR
-和题目循环的安全点终止。Worker 必须持有有效租约才可提交成功或失败，避免进程暂停后由旧执行者覆盖新结果。
+和题目循环的安全点终止。Worker 必须持有有效租约且任务未进入终态才可提交成功或失败，避免取消与完成竞态下由旧执行者覆盖新结果；已完成的 OCR/模型副作用不回滚。
 
 ## 运行治理的当前边界与目标
 
@@ -503,9 +522,13 @@ revision，只移动"当前展示版本"这个指针，历史证据链条完整�
 答案掩盖失败。`modelRun.stages` 保留各阶段的 provider、model 和回退状态，`sourceProvenance` 保留题目级
 页码、OCR 块 ID、图片 ID、置信度和诊断。
 
+显式使用 `MODEL_PROVIDER=mock` 的整卷演示会保留 OCR 来源题干并生成 `modelRun.synthetic=true` 的来源预览；答案和讲解不冒充模型产物，质量状态固定为 `needs_review`，发布前需要人工确认。真实 Provider 的调用错误仍按原有失败/隔离流程处理。
+
 `verification.solverAgreement` 是确定性程序算出来的，不是模型自我断言的布尔值：`answer_solver.py` 把
-求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做符号等价判等
-（数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。三态而不是
+求解阶段的答案（`answerSpec.expected`/`correctAnswer`）与核验阶段抄录的来源答案文本做标量或显式解集的
+符号等价判等（文本/数值容差 → sympy 符号化简，只判等价、不解方程），得到 agree/disagree/undecidable 三态。
+解集只拆花括号、顶层“或/or/分号”以及同一变量重复赋值的逗号；坐标、区间和函数参数内部逗号不拆，元素按
+集合语义去重并一一匹配。三态而不是
 两态的原因是核验阶段面对的多数是几何证明、开放题——CAS 判不了是常态，必须能区分"判不了"和"判定冲突"。
 `disagree` 会把 `status` 强制改成 `conflict` 并要求人工复核（确定性证据的否决权）；`agree`/`undecidable`
 都不会把模型给出的 `needs_review` 提升为 `verified`，因为核验阶段其余检查（题干完整性、选项对齐、单位）
@@ -585,9 +608,13 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - PDF 中的几何线框图、统计图等矢量对象不一定能被 `pypdf` 或 MinerU 当作图片提取。页面文字出现
   “如图/左视图/转盘”等视觉提示且没有局部资源时，OCR 编排器会用 `pdftoppm` 渲染对应页，
   将渲染图放入题块并记录到 `ocrRun.imageUrls`；这是一张页面级兜底图，不伪造不存在的局部裁剪。
-- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox`，且 Markdown、结构化图注都没有
-  明确归属时，`source.py` 才使用同页垂直区间和栏位证据尝试绑定图片。置信度不足或候选接近时保持未绑定，
-  在 `imageAttributionAudit` 中记录候选、分数和 `needs_review`，整卷质量报告会阻断继续生成，避免把相邻题目的图静默贴错。
+- 当 `content_list.json` 同时提供题号文字块与图片/图表的 `page_idx`、`bbox` 时，归属优先级为显式结构化/文本
+  图注、独立题号 bbox、线性 Markdown fallback。bbox 会检查所有没有显式图注的结构化图片，即使图片已经被线性
+  分配；高置信唯一候选会纠正旧绑定，候选接近、相对路径/同 basename 歧义、缺少独立题号 bbox 或 bbox 无效时移除
+  旧绑定并保持未归属。`imageAttributionAudit` 向后兼容保留旧字段，同时记录 `previousQuestionNumber`、候选/分数、
+  `selectedQuestionNumber`、`attributionSource` 和 `abstainReason`；任何 `needs_review` 都让整卷质量报告阻断继续生成。
+  合并 text block 无法提供独立题号坐标时不使用整块 bbox 猜测。当前实现的 `.72` 最低分和 `.12` 候选间隔仍待真实
+  纯位置坏样本回放校准；仓库没有已确认的纯位置真实坏样本，因此不宣称已根治该类语料。
 
 ### 多小问答案边界
 
@@ -599,6 +626,13 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 - 前端快速预览模式最多展示 5 道题；整卷生成模式上限为 100 题（`FULL_PAPER_QUESTION_LIMIT`）。
 
 ## 学生作答与 Help
+
+学生今日入口以“下一步需要做什么”为组织原则：未完成作业、待确认错题、到期复习和待订正错题
+进入待办，已完成作业移到回看区，自由练习单独列出。`useStudentTodayQueue` 将作业、发布目录、
+错题和复习进度的四路请求合成 learnerId 绑定快照；失败项留空，切换身份立即隐藏旧快照，
+迟到响应不能覆盖新学生的数据。部分失败时保留成功内容并提示列表不完整，全部失败不展示空任务结论。
+这些是本机身份选择的展示隔离，不构成登录授权。设计判断与消融证据见
+[用户任务与消融审视](user-task-ablation.md)。
 
 前端向 `POST /api/help` 提交学生文本、提示层级、作答模式和画线结果；多小问额外提交
 `interactionResult.subQuestionAnswers`：
@@ -613,7 +647,8 @@ LaTeX 改写成 KaTeX 不支持的字面命令。因此流水线在所有模型�
 8. 真实模型结合标准步骤、当前引导卡和学生输入生成下一步反馈。
 9. 模型不可用时回退到已存三层引导卡，每次最多推进一级。
 
-判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；后端同步更新知识点掌握度，
+判定完成后，前端将作答、耗时、提示层级和判定写入当前互动试卷学习会话；符号判题返回 undecidable 时不包装成
+deterministic incorrect，服务端拒绝用客户端自报结果写入确定性题目的学习证据；只有确定判定后才更新知识点掌握度，
 并把 `incorrect` / `partial` 作答幂等写入个人错题本。前端在学习证据卡显示当前知识点分数与累计作答，
 答错时给出错题本入口；离线记录补传后走相同自动归档逻辑。详细契约见
 [可编程课程与学习闭环](programmable-learning.md)。
@@ -628,6 +663,7 @@ POST /api/tts
 ```
 
 `GET /api/tts/status` 返回当前可用 provider。浏览器回退发生在前端，不是后端音频服务。
+受保护模式下，学生可调用文本上限 2,000 字符的 `POST /api/tts` 完成辅导朗读；状态探测和其它 TTS 管理路径仍要求教师会话。
 
 ## 持久化
 
@@ -692,6 +728,16 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 错题域的数据模型、智能体状态机和代码复用边界见
 [AI 错题陪练产品规划](mistake-coach-plan.md)。
 
+### 讲评清单、复习策略与实验边界（2026-09）
+
+讲评清单从 `classroom_routes.py` 的独立 GET 端点进入 `LectureChecklistService`。服务只读取该班级、该作业的发布题目、成员、学习会话、作答、错题归因和教师复核事件：每个学生/题目保留最新作答，教师最新 `overturned` 事件只改变清单中的有效判定，不覆盖原始证据；缺少可用错因统一保留为 `unknown`。`limit` 约束为 1–50，输出按涉及学生数、错误率、原题顺序排序，并带 `evidenceRefs`、`attributionSource` 和对应的 `mistakeEvidenceRef`。前端 `LectureChecklistPanel` 只展示结果，不生成课堂时间表。
+
+复习策略由无副作用的 `mastery_policy`/`review_scheduler` 计算。只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy；记忆和程序目标要求定量准确率与最少证据，概念和设计目标要求受约束 rubric 通过、置信度和非空证据引用。缺少可靠定性 evaluator 或 evidence 时保持 `needs_review`；答对可进入更长间隔，答错从重试间隔重新开始，`test_out` 表示达到策略末端。历史知识点缺少策略元数据时保持 `unknown:legacy` 的 legacy 1/3/7 天行为，不能把实验策略追溯写入旧证据。
+
+错题后台导入使用同一 `background_jobs`/Worker：`/api/mistakes/import-jobs` 快速返回 job，前端通过通用 jobs 查询、取消和有限重试；取消是协作式安全点，不保证中断已经完成的 OCR/模型调用。学生端作答离线队列按 learner/publication/session 隔离，无法验证归属的旧记录进入 quarantine，不猜测迁移。移动端布局、画布键盘等价操作、归档对话框 Escape/焦点循环和术语表属于前端体验层，不改变后端判题语义。
+
+评测与画像均保持实验边界：人工金标准校验器只把 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条门槛，并拒绝少于 50 条、缺 reviewer、标注/复核同人、重复 ID 或覆盖不足；synthetic/public/fixture 不计入，仓库只提供少量明确的测试 fixture。Prefix probe 只读取离线 warm/cold/control fixture；只有 warm 阶段高于 cold/control 缓存基线的增量 `cacheHitTokens`，或 explicit 状态有官方 source，才能判支持。三阶段相同的 hidden baseline 不能证明应用前缀复用，缺增量证据时为 `unknown`/`inconclusive`。学习者画像是 feature-flag/shadow context，事实过期、冲突、跨 publication 或包含聊天/敏感字段时排除，不直接改变 mastery 或排期；工具执行仍是 shadow。
+
 当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
 统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
 不再维护外部架构图，避免与代码脱节。
@@ -702,3 +748,36 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 模型必须一次返回 1–5 道带 `planningTopicKey + LESSON_SCHEMA` 的新题；服务端拒绝回退、复制来源题、不可确定判题、答案不完整或质量门禁失败。
 通过后保存带 `sourcePlanId`、`sourcePublicationId`、`planningTopicKey`、证据引用和 schema/prompt 版本的 lesson，创建不同于来源的 published publication，
 再保存一个可继续确认的 final plan。来源 plan 记录 final plan ID，重复请求不重复模型调用或 publication；确认阶段仍进入现有 `assignments` 事务。
+
+### 内容平台提示词管理与版本溯源
+
+内容生产工作台的 `/studio/prompts` 提供模板查看、草稿编辑、样例变量预览、版本比较、
+发布和回滚。授课老师/学生页面不提供编辑入口。当前系统仍为匿名单用户 Demo，没有账号角色
+系统；管理接口通过服务端配置的独立编辑/发布凭据区分能力，记录凭据角色而非个人身份。
+评分标准只读，防止内容优化时同时改变衡量标准。
+
+`apps/api/prompts/` 管理四个题目生成阶段、陪练稳定段/动态段和独立评测模板。
+`catalog.json` 定义稳定标识、变量契约及 Git 基线版本，`templates/*.txt` 保存基线正文。
+在线正文修订写入 `prompt_revisions`，只追加、不改写；`prompt_heads` 保存生效指针，
+`prompt_release_events` 记录发布/回滚、前后修订和凭据角色。
+首次访问归档 Git 基线，升级代码只归档新基线，不覆盖已发布在线版本。
+
+`PromptStore` 负责持久化与发布事务：草稿须完成已保存版本的变量预览后才能发布；
+发布使用行锁和 `expectedActiveRevisionId`，拒绝过期页面覆盖其他人的发布。
+回滚只能指向基线或曾发布版本，不能绕过草稿预览。预览只验证替换契约，不调用模型，
+不等于数学正确性或教学效果评测；发布者应先审查版本比较及教学内容。
+`routers/prompt_routes.py` 校验内容凭据、请求契约和发布能力，禁止匿名访问及浏览器缓存。
+
+启用内容凭据时，组合根配置 PostgreSQL 发布来源；生成、陪练、独立评测入口通过
+`freeze_prompts` / `ContextVar` 固定单次任务的整套模板。API 和导入组合根的 Worker
+读取同一发布指针，新任务生效，运行中的任务不会被发布打断；不同任务的快照互相隔离。
+未启用内容管理时继续使用 Git 基线，无需额外数据库查询。
+
+运行记录保留模板标识、版本和 SHA-256；`config.prompt` 仍为实际渲染输入的摘要。
+阶段缓存继续包含渲染后的提示词、已选模板版本、模型和 Schema。旧产物局部复用保留
+原模板身份，缺少身份时保持未知。内容预览中的版本链接按标识/版本/哈希定位归档正文，
+未归档的历史版本明确提示无法恢复，不能冒充为当前版本。
+
+上下文裁剪、JSON Schema、来源保真、确定性判题和发布质量门禁继续由业务代码维护。
+在线变量预览不持久化变量或学生输入；正文应仅保存通用教学模板。审核、变式、个性化作业、
+旧单阶段生成及评测专用讲解模板暂未迁移。维护与启用说明见 `apps/api/prompts/README.md`。

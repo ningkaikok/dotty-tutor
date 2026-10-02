@@ -6,7 +6,7 @@ import unittest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from persistence.mistake_store import MistakeStore
+from persistence.mistake_store import MistakeStore, mistake_items
 from persistence.review_store import ReviewStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
@@ -152,6 +152,55 @@ class VariationPracticeTests(PostgresTestCase):
 
     def _advance_thread_to_verify(self) -> None:
         self._advance_thread("verify")
+
+    def _set_policy(self, objective_type: str, gate_mode: str) -> None:
+        item = self.mistakes.get("mistake-1") or {}
+        payload = item["questionPayload"]
+        payload["question"]["objectiveType"] = objective_type
+        payload["question"]["gateMode"] = gate_mode
+        with self.engine.begin() as connection:
+            connection.execute(
+                mistake_items.update()
+                .where(mistake_items.c.mistake_id == "mistake-1")
+                .values(question_payload_json=payload)
+            )
+
+    def test_quantitative_gate_needs_two_correct_evidence_before_mastery(self) -> None:
+        self._set_policy("procedural", "quantitative")
+        self._advance_thread("practice")
+        first = self.client.post("/api/mistakes/mistake-1/variations").json()
+        first_result = self.client.post(f"/api/variations/{first['variationId']}/answer", json={
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        }).json()
+        self.assertEqual(first_result["nextAction"], "stay")
+        self.assertFalse(first_result["mastery"]["mastered"])
+        self.assertEqual(first_result["tutorStage"], "practice")
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "unmastered")
+
+        second = self.client.post("/api/mistakes/mistake-1/variations")
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["sequence"], 2)
+        second_result = self.client.post(f"/api/variations/{second.json()['variationId']}/answer", json={
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        }).json()
+        self.assertEqual(second_result["nextAction"], "advance")
+        self.assertTrue(second_result["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "mastered")
+
+    def test_qualitative_correct_without_evidence_refs_stays_unmastered(self) -> None:
+        self._set_policy("conceptual", "qualitative")
+        self._advance_thread("practice")
+        item = self.client.post("/api/mistakes/mistake-1/variations").json()
+        answered = self.client.post(f"/api/variations/{item['variationId']}/answer", json={
+            "content": "我选择 A",
+            "interactionResult": {"selectedOptions": ["A"]},
+        })
+        self.assertEqual(answered.status_code, 200)
+        self.assertEqual(answered.json()["nextAction"], "needs_review")
+        self.assertFalse(answered.json()["mastery"]["mastered"])
+        self.assertEqual(self.mistakes.get("mistake-1")["status"], "unmastered")
 
     def test_first_variation_correct_completes_single_question_mastery(self) -> None:
         self._advance_thread("practice")

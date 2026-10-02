@@ -207,7 +207,7 @@ function SubQuestionFields({
           onChange={(connections) => onChange({ ...answer, connections })}
           readOnly={readOnly}
         />
-        {subQuestion.evaluation.mode === "tutor" && <small className="sub-question-tutor-note">此小问由陪练反馈，不参与自动判分</small>}
+        {subQuestion.evaluation.mode === "tutor" && <small className="sub-question-tutor-note">此小问由辅导反馈，不参与自动判分</small>}
       </fieldset>
     );
   }
@@ -268,7 +268,7 @@ function SubQuestionFields({
           placeholder={subQuestion.evaluation.mode === "tutor" ? "写出你的理由或推导过程" : "写出答案或过程"}
         />
       )}
-      {subQuestion.evaluation.mode === "tutor" && <small className="sub-question-tutor-note">此小问由陪练反馈，不参与自动判分</small>}
+      {subQuestion.evaluation.mode === "tutor" && <small className="sub-question-tutor-note">此小问由辅导反馈，不参与自动判分</small>}
     </fieldset>
   );
 }

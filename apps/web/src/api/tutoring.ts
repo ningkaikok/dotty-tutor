@@ -28,10 +28,14 @@ export async function sendTutorMessage(
     formulaRecognitions?: TutorFormulaRecognition[];
     canvasState?: TutorCanvasState;
   },
+  idempotencyKey?: string,
 ): Promise<TutorTurnResult> {
   return parse<TutorTurnResult>(await fetch(`/api/tutor/threads/${threadId}/messages`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+    },
     body: JSON.stringify(input),
   }));
 }

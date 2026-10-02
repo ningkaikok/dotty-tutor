@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
+StageCheck = Callable[[str], None]
+
 
 def build_mistake_recognizer(
     *,
@@ -22,14 +24,23 @@ def build_mistake_recognizer(
         source_text: str,
         asset_dir: Path,
         asset_url_prefix: str,
+        *,
+        stage_check: StageCheck | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+        if stage_check:
+            stage_check("ocr_before")
         lesson_source, ocr_run = resolve_ocr_text(
             source_text,
             source_path=source_path,
             asset_dir=asset_dir,
             asset_url_prefix=asset_url_prefix,
         )
+        if stage_check:
+            stage_check("ocr_after")
+            stage_check("model_before")
         payload, guide_cards, model_run = generate_lesson(lesson_source)
+        if stage_check:
+            stage_check("model_after")
         question = payload["question"]
         references = question.pop("imageReferences", [])
         available = {

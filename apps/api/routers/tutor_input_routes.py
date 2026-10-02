@@ -7,10 +7,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request, require_owner
 from domain.contracts.tutoring import TutorObservationDecision
 from observability import log_event
 
@@ -59,19 +59,22 @@ def build_tutor_input_router(*, tutoring_store: Any, input_service: Any, mistake
 
     @router.post("/api/tutor/threads/{thread_id}/inputs")
     async def create_input(
+        request: Request,
         thread_id: str,
         content: str = Form(default="", max_length=2_000),
         mode: str = Form(default="text"),
         interactionResult: str = Form(default="{}"),
         formulaRecognitions: str = Form(default="[]"),
         canvasState: str = Form(default=""),
-        learnerId: str = Form(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Form(default=None, min_length=1, max_length=128),
         photo: UploadFile | None = File(default=None),
         questionImage: UploadFile | None = File(default=None),
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         thread = tutoring_store.get(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="辅导线程不存在")
+        require_owner(request, thread["learnerId"])
         if thread["learnerId"] != learnerId:
             raise HTTPException(status_code=403, detail="不能访问其他学生的辅导线程")
         if mode not in {"text", "structured"}:
@@ -120,13 +123,16 @@ def build_tutor_input_router(*, tutoring_store: Any, input_service: Any, mistake
 
     @router.patch("/api/tutor/inputs/{input_id}/observations")
     def decide_observation(
+        request: Request,
         input_id: str,
         decision: TutorObservationDecision,
-        learnerId: str = Query(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Query(default=None, min_length=1, max_length=128),
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         item = tutoring_store.get_input(input_id)
         if not item:
             raise HTTPException(status_code=404, detail="TutorInput 不存在")
+        require_owner(request, item["learnerId"])
         if item["learnerId"] != learnerId:
             raise HTTPException(status_code=403, detail="不能访问其他学生的输入证据")
         saved = input_service.decide(input_id, learner_id=learnerId, decision=decision.model_dump())
@@ -142,16 +148,19 @@ def build_tutor_input_router(*, tutoring_store: Any, input_service: Any, mistake
 
     @router.get("/api/tutor/inputs/{input_id}/artifacts/{artifact_id}")
     def get_artifact(
+        request: Request,
         input_id: str,
         artifact_id: str,
-        learnerId: str = Query(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Query(default=None, min_length=1, max_length=128),
     ) -> FileResponse:
+        learnerId = learner_for_request(request, learnerId)
         input_item = tutoring_store.get_input(input_id)
         if not input_item:
             raise HTTPException(status_code=404, detail="TutorInput 不存在")
         artifact = tutoring_store.get_artifact(artifact_id)
         if not artifact or artifact["inputId"] != input_id:
             raise HTTPException(status_code=404, detail="证据资源不存在")
+        require_owner(request, artifact["learnerId"])
         if artifact["learnerId"] != learnerId:
             raise HTTPException(status_code=403, detail="不能访问其他学生的证据资源")
         mistake_root = mistake_store.item_directory(input_item["mistakeId"]).resolve()

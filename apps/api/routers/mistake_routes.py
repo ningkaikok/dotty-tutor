@@ -8,12 +8,14 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from domain.constants import DEMO_LEARNER_ID
+from application.mistake_jobs import mistake_id_for_capture
+from auth_context import learner_for_request, require_owner
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
 from domain.questions.student_view import student_mistake_item
+from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
 from observability import log_event
 
 MAX_MISTAKE_IMAGE_BYTES = 10 * 1024 * 1024
@@ -29,16 +31,19 @@ ArchiveCleanup = Callable[[str, str], int | None]
 def build_mistake_router(
     *, store: Any, recognize: RecognizeMistake,
     archive_cleanup: ArchiveCleanup | None = None,
+    job_store: Any | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/mistakes", tags=["mistakes"])
 
     @router.post("/import")
     async def import_mistake(
+        request: Request,
         file: UploadFile = File(...),
         sourceText: str = Form(default="", max_length=20_000),
         originalAnswer: str = Form(default="", max_length=2_000),
-        learnerId: str = Form(default=DEMO_LEARNER_ID, min_length=1, max_length=128),
+        learnerId: str | None = Form(default=None, min_length=1, max_length=128),
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         filename = Path(file.filename or "mistake-image").name
         suffix = Path(filename).suffix.lower()
         content_type = (file.content_type or "").lower()
@@ -107,21 +112,101 @@ def build_mistake_router(
         )
         return _public_item(item)
 
+    @router.post("/import-jobs", status_code=202)
+    async def queue_mistake_import(
+        request: Request,
+        file: UploadFile = File(...),
+        sourceText: str = Form(default="", max_length=20_000),
+        originalAnswer: str = Form(default="", max_length=2_000),
+        learnerId: str | None = Form(default=None, min_length=1, max_length=128),
+        captureId: str = Form(..., min_length=1, max_length=128),
+    ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
+        """Persist the capture and enqueue OCR/model work on the shared Worker."""
+        if job_store is None:
+            raise HTTPException(status_code=503, detail="错题后台任务暂不可用")
+        capture_id = captureId.strip()
+        if not capture_id:
+            raise HTTPException(status_code=422, detail="captureId 不能为空")
+        idempotency_key = f"mistake-capture:{learnerId}:{capture_id}"
+        existing = job_store.get_by_idempotency_key(idempotency_key)
+        if existing:
+            await file.close()
+            return _import_job_response(existing, capture_id)
+
+        filename = Path(file.filename or "mistake-image").name
+        suffix = Path(filename).suffix.lower()
+        content_type = (file.content_type or "").lower()
+        _validate_image_upload(filename, suffix, content_type)
+        content = await file.read(MAX_MISTAKE_IMAGE_BYTES + 1)
+        await file.close()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传图片不能为空")
+        if len(content) > MAX_MISTAKE_IMAGE_BYTES:
+            raise HTTPException(status_code=413, detail="错题图片不能超过 10 MB")
+
+        mistake_id = mistake_id_for_capture(capture_id, learnerId)
+        job_id = uuid.uuid4().hex
+        directory = store.item_directory(mistake_id) / job_id
+        source_path = directory / f"source{suffix or '.jpg'}"
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            source_path.write_bytes(content)
+            job = job_store.create_job(
+                "mistake.image.import",
+                {
+                    "captureId": capture_id,
+                    "mistakeId": mistake_id,
+                    "learnerId": learnerId,
+                    "filename": filename,
+                    "contentType": content_type or "application/octet-stream",
+                    "sourceText": sourceText,
+                    "originalAnswer": originalAnswer,
+                    "sourcePath": str(source_path),
+                    "jobId": job_id,
+                    "runtimeSnapshot": current_job_runtime_snapshot(),
+                },
+                idempotency_key=idempotency_key,
+                max_attempts=3,
+                job_id=job_id,
+            )
+        except Exception:
+            shutil.rmtree(directory, ignore_errors=True)
+            raise
+        if job["jobId"] != job_id:
+            # A concurrent request won the idempotency race; never leave the
+            # losing request's source image beside the winner's capture.
+            shutil.rmtree(directory, ignore_errors=True)
+        log_event(
+            "mistake.import.queued",
+            capture_id=capture_id,
+            job_id=job["jobId"],
+            mistake_id=mistake_id,
+            size_bytes=len(content),
+        )
+        return _import_job_response(job, capture_id)
+
     @router.get("")
     def list_mistakes(
-        learnerId: str = DEMO_LEARNER_ID, includeArchived: bool = False
+        request: Request, learnerId: str | None = None, includeArchived: bool = False
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         return {"learnerId": learnerId, "items": [_public_item(item) for item in store.list(learnerId, include_archived=includeArchived)]}
 
     @router.get("/{mistake_id}")
-    def get_mistake(mistake_id: str) -> dict[str, Any]:
+    def get_mistake(request: Request, mistake_id: str) -> dict[str, Any]:
         item = store.get(mistake_id)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, str(item.get("learnerId") or ""))
         return _public_item(item)
 
     @router.patch("/{mistake_id}")
-    def confirm_mistake(mistake_id: str, confirmation: MistakeConfirmation) -> dict[str, Any]:
+    def confirm_mistake(request: Request, mistake_id: str, confirmation: MistakeConfirmation) -> dict[str, Any]:
+        current = store.get(mistake_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, current["learnerId"])
         item = store.confirm(mistake_id, confirmation.model_dump())
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
@@ -134,7 +219,11 @@ def build_mistake_router(
         return _public_item(item)
 
     @router.patch("/{mistake_id}/archive")
-    def archive_mistake(mistake_id: str, request: MistakeArchiveRequest) -> dict[str, Any]:
+    def archive_mistake(http_request: Request, mistake_id: str, request: MistakeArchiveRequest) -> dict[str, Any]:
+        current = store.get(mistake_id)
+        if not current:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(http_request, current["learnerId"])
         item = store.set_archived(mistake_id, request.archived)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
@@ -148,22 +237,30 @@ def build_mistake_router(
         return _public_item(item)
 
     @router.get("/{mistake_id}/source", response_class=FileResponse)
-    def get_mistake_source(mistake_id: str) -> FileResponse:
+    def get_mistake_source(request: Request, mistake_id: str) -> FileResponse:
+        item = store.get(mistake_id)
+        if not item:
+            raise HTTPException(status_code=404, detail="错题不存在")
+        require_owner(request, item["learnerId"])
         path = store.source_path(mistake_id)
         if not path or not path.is_file():
             raise HTTPException(status_code=404, detail="错题原图不存在")
-        item = store.get(mistake_id)
         return FileResponse(path, media_type=item["contentType"], filename=item["sourceFilename"])
 
     @router.get("/{mistake_id}/assets/{filename}", response_class=FileResponse)
-    def get_mistake_asset(mistake_id: str, filename: str) -> FileResponse:
+    def get_mistake_asset(request: Request, mistake_id: str, filename: str) -> FileResponse:
         safe_name = Path(filename).name
         if safe_name != filename:
             raise HTTPException(status_code=400, detail="资源名称无效")
         item = store.get(mistake_id)
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
-        path = store.item_directory(mistake_id) / "assets" / safe_name
+        require_owner(request, str(item.get("learnerId") or ""))
+        source_path = Path(str(item.get("sourceImagePath") or "")).expanduser().resolve()
+        expected_root = store.mistake_root.resolve()
+        if expected_root not in source_path.parents:
+            raise HTTPException(status_code=404, detail="错题资源不存在")
+        path = source_path.parent / "assets" / safe_name
         if not path.is_file():
             raise HTTPException(status_code=404, detail="错题资源不存在")
         return FileResponse(path)
@@ -180,3 +277,27 @@ def _public_item(item: dict[str, Any]) -> dict[str, Any]:
     merely being added to the store record.
     """
     return student_mistake_item(item)
+
+
+def _validate_image_upload(filename: str, suffix: str, content_type: str) -> None:
+    if content_type not in ALLOWED_IMAGE_MIME_TYPES and suffix not in ALLOWED_IMAGE_SUFFIXES:
+        raise HTTPException(status_code=415, detail="错题录入目前只支持单张图片")
+
+
+def _import_job_response(job: dict[str, Any], capture_id: str) -> dict[str, Any]:
+    return {
+        "jobId": job["jobId"],
+        "captureId": capture_id,
+        "status": job["status"],
+        "progress": job["progress"],
+        "message": job["message"],
+        "attemptCount": job["attemptCount"],
+        "maxAttempts": job["maxAttempts"],
+        "cancelRequested": job["cancelRequested"],
+        "lastError": job["lastError"],
+        "result": job["result"],
+        "createdAt": job["createdAt"],
+        "updatedAt": job["updatedAt"],
+        "startedAt": job["startedAt"],
+        "completedAt": job["completedAt"],
+    }

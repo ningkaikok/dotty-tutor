@@ -42,7 +42,7 @@ export function usePaperPublication(
       })
       .catch((requestError) => {
         if (active) {
-          setError(requestError instanceof Error ? requestError.message : "试卷版本恢复失败");
+          setError(requestError instanceof Error ? requestError.message : "练习版本恢复失败");
         }
       })
       .finally(() => {
@@ -63,13 +63,13 @@ export function usePaperPublication(
         saveLesson(lessonDocumentFromPayload(item, textbookImport.uploadId)),
       ));
       const created = await createPublication({
-        title: `${textbookImport.extraction.chapter || textbookImport.filename} · 互动试卷`,
+        title: `${textbookImport.extraction.chapter || textbookImport.filename} · 练习`,
         sourceUploadId: textbookImport.uploadId,
         lessonIds: questionBank.map((item) => item.question.id),
       });
       setPublication(await updatePublicationStatus(created.publicationId, "in_review"));
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "试卷送审失败");
+      setError(requestError instanceof Error ? requestError.message : "练习送审失败");
     } finally {
       setBusy(false);
     }
@@ -89,10 +89,10 @@ export function usePaperPublication(
           + `其余 ${published.qualityRecovery.publishedCount} 道题已安全发布。`,
         );
       } else {
-        setNotice("试卷已发布，全部题目均通过自动质量校验。");
+        setNotice("练习已发布，全部题目均通过自动质量校验。");
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "试卷发布失败");
+      setError(requestError instanceof Error ? requestError.message : "练习发布失败");
     } finally {
       setBusy(false);
     }

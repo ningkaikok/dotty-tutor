@@ -73,6 +73,9 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dotty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dotty_tutor}
       DOTTY_DATA_DIR: /data
       DOTTY_RUNTIME_MODE: docker
+      AUTH_MODE: ${AUTH_MODE:-demo}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-0}
+      TEACHER_BOOTSTRAP_SECRET: ${TEACHER_BOOTSTRAP_SECRET:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-localhost,127.0.0.1}
@@ -133,7 +136,7 @@ services:
       - -m
       - worker
       - --registry
-      - routers.textbook_routes:textbook_job_registry
+      - app:job_registry
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-dotty}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dotty_tutor}
       DOTTY_DATA_DIR: /data
@@ -183,7 +186,7 @@ services:
     restart: unless-stopped
     init: true
     ports:
-      - ${WEB_PORT:-8080}:80
+      - 127.0.0.1:${WEB_PORT:-8080}:80
     depends_on:
       api:
         condition: service_healthy

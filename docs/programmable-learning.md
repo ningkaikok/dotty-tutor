@@ -52,7 +52,7 @@ Dotty Tutor 将教材题目转换成带版本的 `LessonDocument`，前端通过
 
 | 类型 | 用途 | 当前渲染方式 |
 | --- | --- | --- |
-| `markdown` | 文字讲解 | 文本内容块 |
+| `markdown` | 文字讲解（保留契约名称） | RichText 普通文字与显式数学片段，不解析通用 Markdown |
 | `formula` | 独立公式 | KaTeX |
 | `diagram` | 可交互图形步骤 | `GeometryCanvas` |
 | `animation` | 预生成动画 | HTML Video |
@@ -180,7 +180,7 @@ TTS，语音只属于明确的“请求讲解”动作。
 
 - 前端暂用 `local-demo` 作为匿名学习者，接入登录后必须改为服务端身份。
 - 课程保存 API 暂未加教师角色与发布审核权限，不应直接暴露到匿名公网。
-- `animation` 只负责播放已有资源，尚未引入 Manim 渲染 worker、对象存储和任务队列。
+- `animation` 只负责播放已有资源，尚未接入视频渲染任务和对象存储；通用 PostgreSQL Job Store/Worker 已存在，可在阶段 C 复用。
 - 掌握度尚未包含遗忘曲线、题目难度、猜测概率和跨题知识图谱；当前知识点 ID 仍按发布版本隔离，尚未做跨教材聚合。
 - `mistake_items` 保存错题录入和确认结果，`tutor_threads` 与 `tutor_messages` 独立保存多轮状态、
   摘要和必要消息；变式验证与复习任务使用独立的 `variation_exercises`、`review_tasks` 表和 API，

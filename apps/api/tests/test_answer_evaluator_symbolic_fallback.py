@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
 from answer_evaluator import EVALUATOR_VERSION, evaluate_structured_answer
 
@@ -60,7 +62,7 @@ class SymbolicFallbackRescuesFalseNegativesTests(unittest.TestCase):
 
 
 class SymbolicFallbackNeverOverridesExistingFailureTests(unittest.TestCase):
-    """符号层判 disagree/undecidable 时必须维持原判否结果，不能比现状更严格也不能反悔。"""
+    """符号层确定冲突才判错，判不了必须回退而不是伪造 deterministic incorrect。"""
 
     def test_symbolic_disagreement_keeps_incorrect(self) -> None:
         # (x+1)^2 展开是 x^2+2x+1，不是 x^2+2x+2——符号层会明确判 disagree，
@@ -70,14 +72,28 @@ class SymbolicFallbackNeverOverridesExistingFailureTests(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["assessment"], "incorrect")
 
-    def test_unparseable_open_ended_text_keeps_incorrect(self) -> None:
-        # 两句不同的开放题措辞：符号层解析失败/判不了（undecidable），必须维持
-        # 归一化给出的判否结果，不能被误判成"符号层也说不一致所以更该判错"，
-        # 也不能被误判成 correct——原结果原样保留才是唯一正确行为。
+    def test_unparseable_open_ended_text_abstains(self) -> None:
+        # 两句不同的开放题措辞：符号层解析失败/判不了（undecidable），不能维持
+        # 归一化给出的判否结果，否则开放文本会被伪装成 deterministic incorrect。
         question = _fill_blank_question("text", ["见解析"])
         result = evaluate_structured_answer(question, "", {"blankAnswers": {"b1": "证明过程如上"}})
+        self.assertIsNone(result)
+
+    def test_candidate_set_agrees_with_reordered_reference_set(self) -> None:
+        question = _numeric_question("x=1 或 x=2")
+        result = evaluate_structured_answer(question, "", {"numericAnswer": "x=2；x=1"})
         assert result is not None
-        self.assertEqual(result["assessment"], "incorrect")
+        self.assertEqual(result["assessment"], "correct")
+
+    def test_mixed_candidate_aggregation_prefers_agreement_over_undecidable(self) -> None:
+        question = _fill_blank_question("expression", ["x=1 或 x=2", "x=3"])
+        result = evaluate_structured_answer(
+            question,
+            "",
+            {"blankAnswers": {"b1": "x=2,x=1"}},
+        )
+        assert result is not None
+        self.assertEqual(result["assessment"], "correct")
 
     def test_plain_wrong_number_keeps_incorrect(self) -> None:
         question = _numeric_question("3")
@@ -92,6 +108,14 @@ class SymbolicFallbackNeverOverridesExistingFailureTests(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["assessment"], "incorrect")
         self.assertEqual(result["evaluationEvidence"]["submittedRaw"], "")
+
+    def test_student_numeric_answer_cannot_execute_python_expression(self) -> None:
+        question = _numeric_question("731")
+        output = StringIO()
+        with redirect_stdout(output):
+            result = evaluate_structured_answer(question, "", {"numericAnswer": "print(731)"})
+        self.assertEqual(output.getvalue(), "")
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

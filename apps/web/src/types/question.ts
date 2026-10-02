@@ -154,6 +154,10 @@ export interface Question {
   selectionMode?: "single" | "multiple";
   chapter: string;
   knowledgePoint: string;
+  /** Teacher-selected learning policy; omitted means unknown legacy. */
+  objectiveType?: "memory" | "procedural" | "conceptual" | "design" | "unknown";
+  gateMode?: "quantitative" | "qualitative" | "legacy";
+  policyVersion?: string;
   questionNumber?: string;
   prompt: string;
   correctAnswer?: string;

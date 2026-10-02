@@ -115,7 +115,7 @@ describe("EvaluationEvidence", () => {
       evaluatorVersion: version,
     }} />);
     expect(screen.getByText("共 2 个可判分小问，答对 1 个；1 个小问暂未计入判分。")).toBeInTheDocument();
-    expect(screen.getByText("待陪练反馈")).toBeInTheDocument();
+    expect(screen.getByText("待辅导反馈")).toBeInTheDocument();
   });
 
   it("renders nothing for missing or empty evidence", () => {

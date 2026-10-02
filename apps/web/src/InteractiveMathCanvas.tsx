@@ -55,14 +55,22 @@ export function InteractiveMathCanvas({ value, onChange, readOnly = false }: Int
         viewBox="0 0 100 100"
         role="application"
         aria-label="交互数学画布"
+        aria-roledescription="可操作坐标画布"
+        aria-valuetext={point ? `当前点 (${point.x}, ${point.y})` : "尚未设置点"}
+        aria-disabled={readOnly}
         tabIndex={0}
         onPointerMove={(event) => { if (event.buttons === 1) movePoint(event); }}
         onPointerDown={movePoint}
         onKeyDown={(event) => {
-          if (event.key === "ArrowLeft") moveByKeyboard(-0.25, 0);
-          if (event.key === "ArrowRight") moveByKeyboard(0.25, 0);
-          if (event.key === "ArrowUp") moveByKeyboard(0, 0.25);
-          if (event.key === "ArrowDown") moveByKeyboard(0, -0.25);
+          if (event.key === "ArrowLeft") { event.preventDefault(); moveByKeyboard(-0.25, 0); }
+          if (event.key === "ArrowRight") { event.preventDefault(); moveByKeyboard(0.25, 0); }
+          if (event.key === "ArrowUp") { event.preventDefault(); moveByKeyboard(0, 0.25); }
+          if (event.key === "ArrowDown") { event.preventDefault(); moveByKeyboard(0, -0.25); }
+          if (!readOnly && (event.key === "Enter" || event.key === " ")) {
+            event.preventDefault();
+            // Enter/Space confirms the focused point without requiring a pointer.
+            moveByKeyboard(0, 0);
+          }
         }}
       >
         <rect x="0" y="0" width="100" height="100" className="math-canvas-paper" />

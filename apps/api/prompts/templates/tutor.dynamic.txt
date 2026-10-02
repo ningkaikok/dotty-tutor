@@ -1,0 +1,13 @@
+
+本轮学生状态：
+当前提示层级：${hint_level}
+候选引导卡：${guide_card}
+学生输入：${student_input}
+学生交互作答结果：${interaction_result}
+公式识别候选（未经学生确认前只能视为待确认观察）：${formula_recognitions}
+结构化画布状态（只使用其结构化状态，不把截图当作判题事实）：${canvas_state}
+最近对话摘要：${conversation_context}
+用户操作：${mode}
+系统确定性校验：${conflict_instruction}
+
+现在请严格按上面的七条要求，对本轮作答给出回复。

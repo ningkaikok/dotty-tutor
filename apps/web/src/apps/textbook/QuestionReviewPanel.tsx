@@ -35,6 +35,9 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
   const [editing, setEditing] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [correctAnswerDraft, setCorrectAnswerDraft] = useState("");
+  const [objectiveDraft, setObjectiveDraft] = useState<QuestionPayload["question"]["objectiveType"]>(undefined);
+  const [gateDraft, setGateDraft] = useState<QuestionPayload["question"]["gateMode"]>(undefined);
+  const [policyVersionDraft, setPolicyVersionDraft] = useState("");
   const sourceKey = payload.question.sourceQuestionKey;
 
   useEffect(() => {
@@ -80,6 +83,9 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
   const beginEdit = () => {
     setPromptDraft(payload.question.prompt || "");
     setCorrectAnswerDraft(payload.question.correctAnswer || "");
+    setObjectiveDraft(payload.question.objectiveType);
+    setGateDraft(payload.question.gateMode);
+    setPolicyVersionDraft(payload.question.policyVersion || "");
     setEditing(true);
     setError("");
   };
@@ -92,6 +98,9 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
         baseRevisionId: review?.currentRevisionId ?? null,
         prompt: promptDraft,
         correctAnswer: correctAnswerDraft,
+        ...(objectiveDraft && gateDraft && policyVersionDraft
+          ? { objectiveType: objectiveDraft, gateMode: gateDraft, policyVersion: policyVersionDraft }
+          : {}),
       });
       if (result.questionPayload) onPayload(result.questionPayload);
       setEditing(false);
@@ -152,6 +161,37 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
             标准答案
             <input value={correctAnswerDraft} onChange={(event) => setCorrectAnswerDraft(event.target.value)} />
           </label>
+          <fieldset>
+            <legend>掌握目标（可选，需由老师明确选择）</legend>
+            <label>
+              目标类型
+              <select value={objectiveDraft || ""} onChange={(event) => {
+                const next = event.target.value as typeof objectiveDraft;
+                setObjectiveDraft(next || undefined);
+                if (next === "memory" || next === "procedural") {
+                  setGateDraft("quantitative");
+                  setPolicyVersionDraft("mastery-policy-v1");
+                } else if (next === "conceptual" || next === "design") {
+                  setGateDraft("qualitative");
+                  setPolicyVersionDraft("mastery-policy-v1");
+                } else if (next === "unknown") {
+                  setGateDraft("legacy");
+                  setPolicyVersionDraft("legacy-1-3-7-v1");
+                } else {
+                  setGateDraft(undefined);
+                  setPolicyVersionDraft("");
+                }
+              }}>
+                <option value="">未指定（旧题目兼容策略）</option>
+                <option value="memory">记忆</option>
+                <option value="procedural">程序</option>
+                <option value="conceptual">概念</option>
+                <option value="design">设计</option>
+                <option value="unknown">未知（legacy）</option>
+              </select>
+            </label>
+            {objectiveDraft && <small>gate：{gateDraft} · policy：{policyVersionDraft}</small>}
+          </fieldset>
           <div className="question-review-edit-actions">
             <button type="button" disabled={busy === "edit"} onClick={() => void submitEdit()}>
               {busy === "edit" ? "保存中…" : "保存编辑"}

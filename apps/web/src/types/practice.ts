@@ -40,7 +40,27 @@ export interface VariationExercise {
     requiredCorrect: number;
     mastered: boolean;
     answeredCount: number;
+    policy?: {
+      objectiveType: string;
+      gateMode: string;
+      policyVersion: string;
+      profile: string;
+    };
+    gate?: {
+      mode: string;
+      passed?: boolean;
+      [key: string]: unknown;
+    };
+    nextAction?: "stay" | "advance" | "test_out" | "needs_review";
   };
+  policy?: {
+    objectiveType: string;
+    gateMode: string;
+    policyVersion: string;
+    profile: string;
+  };
+  gate?: Record<string, unknown>;
+  nextAction?: "stay" | "advance" | "test_out" | "needs_review";
 }
 
 export interface VariationAttempt {

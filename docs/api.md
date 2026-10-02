@@ -10,15 +10,33 @@ FastAPI 交互文档启动后可从以下地址查看：
 - Swagger UI：<http://127.0.0.1:8010/docs>
 - OpenAPI JSON：<http://127.0.0.1:8010/openapi.json>
 
+Swagger/OpenAPI 的版本号由 `apps/api/pyproject.toml` 的 `project.version` 读取，发布时不再单独修改应用工厂。
+
 前端 API 类型由应用自身的 OpenAPI 文档生成，不要手工修改
 `apps/web/src/types/generated/api.ts`。接口响应模型变更后，在 `apps/web` 目录执行：
 
 ```bash
-npm run generate:api  # 重新生成
-npm run check:api     # 只校验，过期时返回非零状态
+pnpm generate:api  # 重新生成
+pnpm check:api     # 只校验，过期时返回非零状态
 ```
 
 生成器使用与 API 应用相同的 `app.openapi()`；生成类型只作为 API 层的契约，页面领域类型仍可通过适配器保留。
+
+## 身份与权限
+
+`AUTH_MODE=demo` 是本机可信操作者、合成数据的匿名演示模式；Compose Web 和 PostgreSQL 只绑定回环接口。
+`AUTH_MODE=protected` 要求 HTTPS、`AUTH_COOKIE_SECURE=1` 和至少 32 字符的 `TEACHER_BOOTSTRAP_SECRET`，否则 API 启动失败。
+教师用引导凭证创建会话，再签发 24 小时一次性学生邀请；会话为服务端存储的 12 小时 opaque token，数据库仅保存哈希。
+浏览器使用 HttpOnly、SameSite=Strict、Secure Cookie；退出会撤销服务端会话。写请求校验 Origin，学生 learnerId 由会话决定，跨学生资源访问返回 404。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/auth/config` | 返回是否启用受保护模式；不返回凭证或会话信息 |
+| `POST` | `/api/auth/sessions` | 用教师引导凭证或一次性学生邀请创建会话；凭证只放 JSON body，不放 URL |
+| `GET` | `/api/auth/sessions` | 返回当前会话角色、学生身份和过期时间 |
+| `DELETE` | `/api/auth/sessions` | 撤销当前会话并清除 Cookie |
+| `POST` | `/api/auth/invites` | 教师签发 24 小时一次性学生邀请，响应中的令牌仅显示一次 |
+| `DELETE` | `/api/auth/sessions/{sessionId}` | 教师撤销指定服务端会话 |
 
 ## 健康与运行时
 
@@ -32,6 +50,8 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
 | `GET` | `/api/tutor-models` | 返回错题陪练独立使用的模型目录 |
 | `POST` | `/api/tutor-models/select` | 切换后续陪练轮次使用的模型，不影响生成/审核/OCR 选择 |
+| `POST` | `/api/tutor-model-evaluations` | 内容工作台从 50 条已确认合成案例中选 42 条文本案例，发起当前陪练模型与候选模型的配对评测；8 条图像案例待实际传图后纳入。返回进程内任务 ID，不会自动切换模型 |
+| `GET` | `/api/tutor-model-evaluations/{run_id}` | 轮询配对评测进度；完成后返回总体统计、任务维度汇总和逐题输出，服务进程重启后记录会丢失 |
 | `GET` | `/api/ocr` | 返回 OCR provider 和自动探测结果 |
 | `POST` | `/api/ocr/select` | 切换 `auto`、`mineru` 或 `pypdf` |
 | `GET` | `/api/tts/status` | 返回当前 TTS provider 和可用状态 |
@@ -42,9 +62,9 @@ npm run check:api     # 只校验，过期时返回非零状态
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/learners` | 列出全部班级花名册条目（`learnerId`、姓名、班级），供学生端选择当前身份。**只读名册，不是身份认证**：任何调用方都能看到全部学生并声称自己是其中任意一个 |
+| `GET` | `/api/learners` | 教师读取班级花名册。仅 `demo` 模式下学生界面会读取名单用于本机身份选择；受保护模式拒绝学生访问 |
 | `GET` | `/api/classes` | 列出本地单库中的教学班级和成员数 |
-| `POST` | `/api/classes` | 创建班级；当前不包含登录、角色权限或租户字段 |
+| `POST` | `/api/classes` | 创建班级；受保护模式仅教师会话可用 |
 | `GET` | `/api/classes/{classId}` | 读取班级、成员和已布置作业 |
 | `POST` | `/api/classes/{classId}/members` | 添加或更新一个 `learnerId` 的班级成员 |
 | `POST` | `/api/classes/{classId}/assignment-plans` | 根据班级和一份已发布互动试卷生成并保存分析草稿；只读聚合证据，不创建 assignment |
@@ -52,6 +72,7 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/classes/{classId}/assignment-plans/{planId}/personalized` | 根据仍有效且有班级个性化证据的草稿，一次生成 1–5 道新题并返回可确认的最终 plan；模型回退、坏答案或质量门禁失败均失败关闭 |
 | `POST` | `/api/classes/{classId}/assignments` | 确认计划后指派已发布互动试卷；必须携带 `planId`、`publicationId`、`sourceFingerprint` 和 `confirmWarnings`，同一计划重复确认幂等 |
 | `GET` | `/api/classes/{classId}/dashboard?assignmentId=...` | 返回该班级某次作业的完成率、学生进度和知识点掌握分布；不传 assignmentId 时读取最近一次作业 |
+| `GET` | `/api/classes/{classId}/assignments/{assignmentId}/lecture-checklist?limit=5` | 只读返回该作业的共性错题、错因分布、涉及学生和 `evidenceRefs`；`limit` 为 1–50，按涉及人数、错误率、原题序排序，最新作答去重，教师最新 `overturned` 覆盖展示，缺失错因保留为 `unknown`，并返回 `attributionSource` 与对应的 `mistakeEvidenceRef` |
 | `POST` | `/api/classes/{classId}/assignments/{assignmentId}/reviews` | 追加教师复核、推翻判定或知识点掌握度覆盖；原始作答和 AI 判题不被改写 |
 | `GET` | `/api/assignments?learnerId=local-demo` | 返回学生所属班级的作业及服务端派生进度 |
 
@@ -70,11 +91,11 @@ npm run check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/uploads/{uploadId}/status` | 查询上传、OCR 和生成进度 |
 | `POST` | `/api/uploads/{uploadId}/complete` | 创建 PDF 合并、OCR 与整本生成任务，返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
-| `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；返回 `202 + jobId`；支持 `Idempotency-Key` |
+| `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；显式 `MODEL_PROVIDER=mock` 时仅保留 OCR 来源题干并返回标记为 synthetic 的预览，答案与讲解待人工确认且题目保持 `needs_review`，不会直接发布；返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport`、各批次 `examIRByBatch` 和题目载荷；批次循环连续命中系统性失败（API key 过期/配额耗尽、429 限流、上游超时）达到阈值时会提前停止剩余批次，此时 `summary.haltedEarly=true` 且 `summary.haltReason` 给出具体原因（如 `rate_limit: 429 ...`），已成功批次不受影响 |
-| `GET` | `/api/jobs/{jobId}` | 查询后台任务状态、进度、尝试次数、结果或结构化失败详情 |
-| `POST` | `/api/jobs/{jobId}/cancel` | 取消排队任务，或请求运行中的 Worker 在安全点停止 |
-| `POST` | `/api/jobs/{jobId}/retry` | 对已失败任务增加一次明确预算并重新排队；保留历史尝试次数和最后错误 |
+| `GET` | `/api/jobs/{jobId}` | 教师查询后台任务状态、进度、结果或失败详情；受保护模式下学生仅能查询自己发起的错题图片导入任务，响应去除运行时错误详情 |
+| `POST` | `/api/jobs/{jobId}/cancel` | 教师取消任意任务；受保护模式下学生只能取消本人错题图片导入任务 |
+| `POST` | `/api/jobs/{jobId}/retry` | 教师重试任意失败任务；受保护模式下学生只能重试本人错题图片导入任务 |
 | `POST` | `/api/uploads/{uploadId}/questions/{sourceQuestionKey}/regenerate` | 修复单题；传 `refreshOcr=true` 时先重新 OCR |
 | `GET` | `/api/uploads/{uploadId}/review-queue` | 返回题目审核队列；每项包含 `provenance`、`issues`、`stageRuns` 和当前题目载荷 |
 | `GET` | `/api/uploads/{uploadId}/review-queue/{sourceQuestionKey}` | 读取单题来源证据、诊断和阶段运行摘要 |
@@ -93,7 +114,10 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 
 整本导入的 `qualityReport` 是确定性 OCR 检查结果：`ready` 表示可继续生成，`warning` 允许继续但需人工留意，
 `blocked` 表示检测到题号/图片归属等阻断项，Worker 不会继续调用模型。报告同时返回预计题数、题号范围、重复
-题号、缺失页、图片归属冲突以及坐标归属审计 `imageAttributionAudit`，便于定位后重新上传或修复 OCR。
+题号、缺失页、图片归属冲突以及坐标归属审计 `imageAttributionAudit`，便于定位后重新上传或修复 OCR。审计条目
+向后兼容保留 `image`、`status`、`reason`，并可提供 `previousQuestionNumber`、`candidates`（含分数）、
+`selectedQuestionNumber`、`attributionSource` 和 `abstainReason`；显式图注优先于 bbox，bbox 低置信/相对路径歧义
+会移除旧线性归属并进入 `needs_review`，因此 `readyForFullPaper` 为 `false`。
 
 题目来源优先读取批次目录中的 `source.content_list.json` 与 `source.middle.json`，并写入
 `assets/{batchId}/exam-ir.json`。每个 `QuestionIR` 保留真实 `sourceBlockIds`、页码、bbox、`textHash`、
@@ -119,7 +143,7 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 | `POST` | `/api/learning/sessions/{sessionId}/sync` | 批量补传离线期间排队的作答记录；按 `attemptId` 幂等 |
 | `GET` | `/api/learning/mastery/{learnerId}` | 查询包含 `knowledgePointId`、`score`、`rawScore`、`evidenceCount`、`evidenceConfidence`、`algorithmVersion` 和 `computedAt` 的掌握度 |
 | `POST` | `/api/help` | 判定学生答案或返回下一层提示 |
-| `POST` | `/api/tts` | 调用 Azure Speech 或代理 Qwen3-TTS |
+| `POST` | `/api/tts` | 调用 Azure Speech 或代理 Qwen3-TTS；受保护模式下登录学生可提交最多 2,000 字符的朗读文本 |
 
 发布状态只有 `draft`、`in_review`、`published` 和 `archived`。允许的主路径是
 `draft → in_review → published → archived`，归档内容可恢复为草稿；接口拒绝跳过审核直接发布。
@@ -177,7 +201,8 @@ mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确�
 不会返回完整 Prompt、密钥或学生数据。运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
 
 人工字段级编辑（PATCH）只接受题目内容字段（`prompt`、`options`、`correctAnswer`、`correctAnswers`、
-`guideCards`），绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单
+`guideCards`）以及教师明确选择的 `objectiveType`、`gateMode`、`policyVersion`；三项 policy 字段必须同时提供，
+否则仍保持 `unknown:legacy`，模型生成 payload 不能自动启用 typed policy。绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单
 过滤，未列出字段直接 `422`。请求必须带 `baseRevisionId`（从 `review-queue` 响应的 `currentRevisionId`
 读取，或上一次编辑/回滚返回的 `revision.revisionId`）；服务端当前版本一旦与之不一致（说明期间有人也改过
 这道题），返回 `409` 并在 `detail` 里带回服务端当前的 `currentRevisionId` 和完整 `questionPayload`，不做
@@ -217,12 +242,17 @@ curl -X POST http://127.0.0.1:8010/api/help \
 ```
 
 - `multi-select`：前端提交 `interactionResult.selectedOptions`，后端比较完整的 `correctAnswers` 集合。
-- `fill-blank`：前端提交 `interactionResult.blankAnswers`，逐空比较文本或数值。
-- `numeric`：前端提交 `interactionResult.numericAnswer`，按 `answerSpec.tolerance` 判定数值误差。
+- `fill-blank`：前端提交 `interactionResult.blankAnswers`，逐空比较文本或数值；非纯文本的表达式答案会复用
+  标量/显式解集三态判等。`x=1 或 x=2`、`{x=2;x=1}` 等明确解集写法按集合语义比较，坐标/区间/函数参数
+  内部逗号不会被拆开。
+- `numeric`：前端提交 `interactionResult.numericAnswer`，按 `answerSpec.tolerance` 判定数值误差；归一化无法判定时
+  复用同一套符号判等。
 - `subQuestions`：多小问各自声明 `id`、`questionType` 和 `evaluation.mode`；前端提交
   `interactionResult.subQuestionAnswers`，键为小问 `id`，值沿用选择、填空、数值或文本字段。
   `deterministic` 小问复用对应题型判题，`tutor` 小问只进入陪练反馈，不自动判分。
-- 没有明确答案规格的题目继续交给模型和分层引导卡处理。
+- 没有明确答案规格的题目继续交给模型和分层引导卡处理。确定性契约遇到 `undecidable` 时 `/api/help` 不返回
+  deterministic incorrect，写入 `/api/learning/sessions/{sessionId}/attempts` 或 `/sync` 也会拒绝客户端自报判定
+  （422），避免污染 mastery 证据。
 
 多小问响应的 `guideContext.evaluationSummary` 会列出每个小问的 `status`、可判分数量、完成情况和
 `masteryEligible`。该字段只用于解释本轮结果，不能作为学习证据授权；掌握度投影会根据已发布题目契约在服务端
@@ -283,12 +313,15 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/mistakes/import` | 上传最大 10 MB 的单张图片，OCR 并创建待确认错题 |
+| `POST` | `/api/mistakes/import-jobs` | 持久化图片并以 `202` 创建错题 OCR/结构化后台任务；按 `captureId` 幂等，返回 job 状态、进度、重试次数和取消标记 |
 | `GET` | `/api/mistakes?learnerId=local-demo` | 列出个人错题本，默认不含已归档记录 |
 | `GET` | `/api/mistakes/{mistakeId}` | 读取学生安全的题目快照、原答案和两路归因；服务端保留的运行信息不下发 |
 | `PATCH` | `/api/mistakes/{mistakeId}` | 确认题干、学段、学科、章节和知识点；错误原因不再是确认时的必填项，改为陪练首轮自评时回填 |
 | `PATCH` | `/api/mistakes/{mistakeId}/archive` | 归档或恢复错题 |
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
+
+`import-jobs` 返回的 `jobId` 使用通用后台任务接口：`GET /api/jobs/{jobId}` 查询，`POST /api/jobs/{jobId}/cancel` 请求取消，`POST /api/jobs/{jobId}/retry` 对失败任务增加一次有限重试预算。运行中的取消在 Worker 安全点收敛，并以租约和终态检查防止取消与完成竞态下旧 Worker 覆盖状态；不承诺回滚已完成的 OCR/模型副作用。演示模式教师端可见失败详情；受保护模式学生只能操作与本人会话 `learnerId` 匹配的错题导入任务，且返回文案和结果经过学生视图投影，不包含 worker 异常、文件路径或内部题目答案。
 
 互动试卷自动记录的错题先进入 `pending_confirmation`，不会根据一次错答自动填写 `errorReason`；学生确认错误原因后才进入
 `unmastered` 并允许开始陪练。纸质错题沿用相同确认契约。错题响应中的 `errorReason` 是学生自评归因；
@@ -312,12 +345,12 @@ concept | reading | calculation | missing_step | unknown | careless
 | --- | --- | --- |
 | `POST` | `/api/mistakes/{mistakeId}/thread` | 为已确认错题创建或恢复唯一线程 |
 | `GET` | `/api/tutor/threads/{threadId}` | 获取当前阶段、摘要和最近最多 40 条消息 |
-| `POST` | `/api/tutor/threads/{threadId}/messages` | 提交文字或结构化答案并完成一轮辅导 |
+| `POST` | `/api/tutor/threads/{threadId}/messages` | 提交文字或结构化答案并完成一轮辅导；`Idempotency-Key` 可在 24 小时内回放原结果，同 key 不同输入返回 `409`；并发旧线程版本返回 `409` |
 | `POST` | `/api/tutor/threads/{threadId}/inputs` | 创建统一 TutorInput；可携带文字、结构化答案、`photo`/`questionImage`、公式识别候选和 `math-canvas-v1` 画布状态 |
 | `PATCH` | `/api/tutor/inputs/{inputId}/observations` | 确认、修正或拒绝观察结果；低置信度输入未确认前不能提交判题 |
 | `GET` | `/api/tutor/inputs/{inputId}/artifacts/{artifactId}` | 读取当前学生拥有的证据资源 |
 | `GET` | `/api/tutor/threads/{threadId}/tool-events` | 读取服务端工具提案策略和 shadow 审计 |
-| `GET` | `/api/tutor/search?q=...&publicationId=...` | 在已建立索引的发布题目中进行 PostgreSQL 全文检索并返回来源证据引用 |
+| `GET` | `/api/tutor/search?q=...&publicationId=...` | 在已建立索引的发布题目中进行 PostgreSQL 全文检索，返回发布/课程/题目引用；当前构建索引的 `sourcePages` 为空，不代表教材原文页码定位 |
 | `POST` | `/api/tutor/search/rebuild` | 为已发布互动试卷建立或刷新全文检索索引 |
 
 选择题可以同时携带用户可读文字和结构化答案：
@@ -359,7 +392,7 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/mistakes/{mistakeId}/variations` | 按生成顺序读取该错题的验证题和作答结果 |
-| `GET` | `/api/mistakes/{mistakeId}/evidence` | 读取单道错题的错误原因、变式策略、每次验证作答证据和 1/3/7 天复习任务 |
+| `GET` | `/api/mistakes/{mistakeId}/evidence` | 读取单道错题的错误原因、变式策略、每次验证作答证据和 versioned review schedule（旧任务可能是 `unknown:legacy`） |
 | `POST` | `/api/mistakes/{mistakeId}/variations` | 陪练进入 `practice`/`verify` 后生成或复用该错题唯一的验证题 |
 | `POST` | `/api/variations/{variationId}/answer` | 提交结构化答案并完成确定性判题；答错可对同一道题重新提交 |
 
@@ -377,15 +410,19 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 1/3/7 天复习任务和服务器时间 |
+| `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 versioned review schedule 和服务器时间；缺少策略元数据的旧任务标记为 `unknown:legacy` |
 | `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
 | `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案，响应返回并持久化确定性判题结果及客观判题证据 |
 | `GET` | `/api/progress?learnerId=local-demo` | 返回掌握率、待复习数、完成数、复习正确率、变式验证正确率、复习完成率、同知识点再错率和知识点聚合 |
-| `GET` | `/api/funnel?learnerId=local-demo` | 学习效果漏斗快照：导入→确认→陪练→验证→复习各阶段计数与比率（分母为零时比率为 null） |
+| `GET` | `/api/funnel?learnerId=local-demo` | 学习效果漏斗快照：导入→确认→陪练→验证→复习各阶段计数与比率（分母为零时比率为 null）；受保护模式下 learnerId 取自学生会话 |
 
-错题首次变为 `mastered` 时，以第二次正确作答时间为基准，幂等创建三个任务。相同错题和间隔有唯一
-约束，网络重试不会重复排期。任务状态依次为 `scheduled → ready → completed`；已完成任务不能重复
-提交。当前 MVP 允许提前开始未来任务，方便个人演示和主动复习。
+复习任务响应还会返回 `objectiveType`、`gateMode`、`policyVersion`、`profile`、`policy`、`gate` 和 `nextAction`。`quantitative` gate 同时要求准确率与最少证据数，`qualitative` gate 要求受约束 rubric 通过、置信度达到门槛且存在 evidenceRefs；没有可靠 evaluator 或缺少这些证据时保持 `needs_review`。只有教师明确编辑契约中的三项 typed metadata 才能启用策略；缺少策略元数据的历史任务使用 `unknown:legacy` 与 legacy 1/3/7 天兼容行为。`nextAction` 可能为 `stay`、`advance`、`test_out` 或 `needs_review`，不接受客户端直接提交掌握结论。
+
+掌握验证通过后，服务端按题目/知识点中的 typed policy 创建 versioned schedule，任务带有
+`scheduleVersion`、`policyVersion`、`profile`、`sequenceNo`、`triggerEvidenceRef`，并记录被替代任务的
+`supersededAt`。相同 `(mistakeId, scheduleVersion, sequenceNo)` 幂等，网络重试不会重复排期；这不承诺固定三任务。
+缺少策略元数据的旧任务使用 `unknown:legacy` 与 legacy 1/3/7 天兼容行为。任务状态依次为
+`scheduled → ready → completed`；已完成任务不能重复提交，定性 gate 未取得可靠证据时保持 `needs_review`。
 
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 
@@ -404,3 +441,34 @@ createdAt 和 acceptedAt。历史 `error_reason`、`ai_error_reason` 与置信�
 归因会与旧兼容列在同一事务内双写。旧列暂不删除，待观察窗口结束后再单独评估 contract/drop。
 错题确认中的 `errorReason` 省略或为 `null` 都表示“不修改已有学生自评”，不是清除；首次没有已有值仍保存为 `null`，非法枚举返回 `422`。
 旧变式无法反推来源，统一迁移为 `unknown`；使用统一 CLI 的 `preflight`、`upgrade` 和 `verify` 完成迁移。
+
+### 提示词模板身份（运行记录）
+
+题目生成与陪练的 `modelRun.promptTemplates`、生成阶段的 `modelRun.stages[].promptTemplates`
+及运行快照对应配置可包含模板身份列表：`id`（模板标识）、`version`（模板版本）、
+`contentHash`（UTF-8 模板正文 SHA-256，64 位十六进制）。内容哈希针对未插值模板，
+既有 Runtime `config.prompt` 继续表示实际调用的输入摘要。评测结果同样包含模板身份。
+旧记录、未调用模型的阶段或未迁移链路可能不包含该字段，或返回空列表；
+生成阶段缺少模板身份时 `promptVersion` 为 `null`；不得据此推断使用当前模板。
+这些身份不包含教材或学生输入。内容生产预览提供按标识、版本和哈希跳转归档正文的入口。
+运行快照的 `model.promptStages` 仅保存各阶段名称与模板身份，不包含正文和输入。
+
+### 内容平台提示词管理
+
+所有端点要求请求头 `X-Content-Token`。服务器配置 `DOTTY_CONTENT_EDITOR_TOKEN` 和
+`DOTTY_CONTENT_PUBLISHER_TOKEN`，两者必须不同；未配置返回 503，凭据不匹配返回 403。
+这是匿名 Demo 的能力凭据，不是个人账号身份。响应设置 `Cache-Control: no-store`。
+发布接口在服务端校验发布凭据，不能用前端按钮可见性代替授权。
+
+| 方法 | 端点 | 行为 |
+| --- | --- | --- |
+| GET | `/api/content/prompts` | 模板目录、变量契约、不可变修订及发布事件，返回 `canPublish` |
+| GET | `/api/content/prompts/{templateId}` | 当前生效指针和全部归档版本；内容平台按版本/哈希定位 |
+| POST | `/api/content/prompts/{templateId}/drafts` | `{text, baseRevisionId}` 保存为新草稿；正文变量必须与声明完全一致；评分标准禁止编辑 |
+| POST | `/api/content/prompts/{templateId}/preview` | `{revisionId, variables}` 渲染已保存版本，变量值必须为字符串；不调用模型、不保存变量，成功标记已预览 |
+| POST | `/api/content/prompts/{templateId}/activate` | `{revisionId, expectedActiveRevisionId, action: publish 或 rollback}` 原子切换并追加发布事件；仅发布凭据可操作 |
+
+草稿版本标识为 `online-<不可变修订 ID>`，Git 基线沿用原版本号。
+未预览草稿拒绝发布；回滚只能指向基线或曾发布修订。生效指针已变化时返回 409，要求刷新后比较。
+保存草稿不改变生效版本，发布影响新任务，单次生成/陪练/评测固定开始时的模板快照。
+评分标准在此入口只读，Schema、判题和质量门禁不开放在线编辑。

@@ -56,8 +56,8 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
         <span className="eyebrow">第 2 步 · 确认</span>
         <h1>确认题目</h1>
         <p>{fromPublishedPaper
-          ? "题目来自已发布互动试卷，确认题干无误即可保存；稍后陪练时会先问你觉得错在哪。"
-          : "AI 识别可能出错。请以原图为准修正题干，再保存到错题本；稍后陪练时会先问你觉得错在哪，这一步不用现在填。"}</p>
+          ? "题目来自已发布练习，确认题干无误即可保存；稍后辅导时会先问你觉得错在哪。"
+          : "AI 识别可能出错。请以原图为准修正题干，再保存到错题本；稍后辅导时会先问你觉得错在哪，这一步不用现在填。"}</p>
       </div>
 
       <section className="mistake-confirm-grid">
@@ -66,7 +66,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
             <img src={item.sourceImageUrl} alt="上传的错题原图" onError={() => setSourceImageBroken(true)} />
           ) : (
             <div className="mistake-published-source">
-              <span>{fromPublishedPaper ? "互动试卷自动记录" : "原图暂不可用"}</span>
+              <span>{fromPublishedPaper ? "练习自动记录" : "原图暂不可用"}</span>
               <strong>{fromPublishedPaper ? item.sourceFilename : "请重新上传或检查数据目录"}</strong>
             </div>
           )}
@@ -77,7 +77,7 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
               <ol>{question.options.map((option) => <li key={option}><RichText text={optionText(option)} /></li>)}</ol>
             ) : null}
           </div>
-          <small>{fromPublishedPaper ? "来源：已发布互动试卷" : "来源：上传的错题图片"}</small>
+          <small>{fromPublishedPaper ? "来源：已发布练习" : "来源：上传的错题图片"}</small>
         </aside>
 
         <div className="mistake-confirm-form">

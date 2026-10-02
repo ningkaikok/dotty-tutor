@@ -26,6 +26,8 @@ from sqlalchemy.engine import Engine
 
 from domain.constants import DEMO_LEARNER_ID
 
+TUTOR_TURN_IDEMPOTENCY_RETENTION_SECONDS = 24 * 60 * 60
+
 tutoring_metadata = MetaData()
 json_document = JSON().with_variant(JSONB(), "postgresql")
 
@@ -108,12 +110,27 @@ tutor_messages = Table(
     Column("created_at", Float, nullable=False),
 )
 
+tutor_turn_requests = Table(
+    "tutor_turn_requests",
+    tutoring_metadata,
+    Column("request_key", String(64), primary_key=True),
+    Column("thread_id", String(64), ForeignKey("tutor_threads.thread_id", ondelete="CASCADE"), nullable=False),
+    Column("request_hash", String(64), nullable=False),
+    Column("response_json", json_document, nullable=False),
+    Column("created_at", Float, nullable=False),
+)
+Index("idx_tutor_turn_requests_thread", tutor_turn_requests.c.thread_id)
+
 Index("idx_tutor_threads_mistake", tutor_threads.c.mistake_id, tutor_threads.c.learner_id, unique=True)
 Index("idx_tutor_threads_updated", tutor_threads.c.learner_id, tutor_threads.c.updated_at.desc())
 Index("idx_tutor_messages_thread", tutor_messages.c.thread_id, tutor_messages.c.created_at)
 Index("idx_tutor_inputs_thread", tutor_inputs.c.thread_id, tutor_inputs.c.created_at)
 Index("idx_tutor_artifacts_input", tutor_artifacts.c.input_id, tutor_artifacts.c.created_at)
 Index("idx_tutor_observation_events_input", tutor_observation_events.c.input_id, tutor_observation_events.c.created_at)
+
+
+class ConcurrentTurnError(RuntimeError):
+    """Raised when a tutor turn was generated from a stale thread version."""
 
 tutor_tool_events = Table(
     "tutor_tool_events",
@@ -416,12 +433,17 @@ class TutoringStore:
         hint_level: int,
         summary: str,
         input_id: str | None = None,
+        expected_message_count: int | None = None,
+        request_key: str | None = None,
+        request_hash: str | None = None,
+        replay_response: dict[str, Any] | None = None,
+        now: float | None = None,
     ) -> dict[str, Any] | None:
         """Persist both sides of a turn and update thread state atomically."""
         self._ensure_initialized()
         if not self.get(thread_id, message_limit=1):
             return None
-        now = time.time()
+        timestamp = time.time() if now is None else now
         with self.engine.begin() as connection:
             connection.execute(tutor_messages.insert(), [
                 {
@@ -434,7 +456,7 @@ class TutoringStore:
                     "assessment": None,
                     "action_json": {},
                     "model_run_json": {},
-                    "created_at": now,
+                    "created_at": timestamp,
                 },
                 {
                     "message_id": uuid.uuid4().hex,
@@ -448,21 +470,60 @@ class TutoringStore:
                     "model_run_json": model_run,
                     # Time is currently the stable display order. A tiny offset
                     # keeps the assistant after the learner on coarse clocks.
-                    "created_at": now + 0.000001,
+                    "created_at": timestamp + 0.000001,
                 },
             ])
-            connection.execute(
-                tutor_threads.update()
-                .where(tutor_threads.c.thread_id == thread_id)
+            update = tutor_threads.update().where(tutor_threads.c.thread_id == thread_id)
+            if expected_message_count is not None:
+                update = update.where(tutor_threads.c.message_count == expected_message_count)
+            result = connection.execute(
+                update
                 .values(
                     stage=stage,
                     summary=summary[-2_000:],
                     hint_level=hint_level,
                     message_count=tutor_threads.c.message_count + 2,
-                    updated_at=now,
+                    updated_at=timestamp,
                 )
             )
+            if result.rowcount != 1:
+                raise ConcurrentTurnError("辅导线程已被其他请求更新，请刷新后重试")
+            if request_key:
+                if not request_hash or replay_response is None:
+                    raise ValueError("幂等辅导请求缺少请求摘要或响应快照")
+                connection.execute(delete(tutor_turn_requests).where(
+                    tutor_turn_requests.c.created_at < timestamp - TUTOR_TURN_IDEMPOTENCY_RETENTION_SECONDS
+                ))
+                connection.execute(tutor_turn_requests.insert().values(
+                    request_key=request_key,
+                    thread_id=thread_id,
+                    request_hash=request_hash,
+                    response_json=replay_response,
+                    created_at=timestamp,
+                ))
         return self.get(thread_id)
+
+    def get_turn_request(
+        self, thread_id: str, request_key: str, *, now: float | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the persisted response snapshot for one successful idempotent turn."""
+        timestamp = time.time() if now is None else now
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                select(tutor_turn_requests).where(
+                    tutor_turn_requests.c.thread_id == thread_id,
+                    tutor_turn_requests.c.request_key == request_key,
+                    tutor_turn_requests.c.created_at >= timestamp - TUTOR_TURN_IDEMPOTENCY_RETENTION_SECONDS,
+                )
+            ).mappings().first()
+        if not row:
+            return None
+        from persistence.database import decode_json
+
+        return {
+            "requestHash": row["request_hash"],
+            "response": decode_json(row["response_json"]),
+        }
 
     @staticmethod
     def _serialize_thread(row: Any) -> dict[str, Any]:

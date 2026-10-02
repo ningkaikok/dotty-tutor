@@ -6,9 +6,9 @@ import hashlib
 import json
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 
-from domain.constants import DEMO_LEARNER_ID
+from auth_context import learner_for_request, require_owner
 from domain.contracts.tutoring import TutorMessageRequest
 from domain.questions.student_view import (
     student_tutor_action,
@@ -18,6 +18,7 @@ from domain.questions.student_view import (
 from domain.tutoring.tools import TOOL_POLICY_VERSION, validate_tool_proposal
 from domain.tutoring.turn_plan import ERROR_STRATEGIES
 from observability import log_event
+from persistence.tutoring_store import ConcurrentTurnError
 
 
 def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> bool:
@@ -40,6 +41,39 @@ def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> b
     return False
 
 
+def _evidence_registry(
+    *, thread: dict[str, Any], mistake: dict[str, Any], input_item: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Build only references the server can prove belong to this learner.
+
+    Tutor proposals are model output, so a non-empty string is not evidence.
+    The registry deliberately contains stable IDs from persisted records only;
+    unknown references remain denied even while execution is shadow-only.
+    """
+    owner = thread.get("learnerId")
+    registry: dict[str, dict[str, Any]] = {}
+    mistake_id = mistake.get("mistakeId")
+    if isinstance(mistake_id, str) and mistake_id:
+        record = {"learnerId": owner, "kind": "mistake"}
+        registry[mistake_id] = record
+        registry[f"mistake:{mistake_id}"] = record
+    if not input_item:
+        return registry
+    input_id = input_item.get("inputId") or input_item.get("input_id")
+    if isinstance(input_id, str) and input_id:
+        record = {"learnerId": owner, "kind": "tutor-input"}
+        registry[input_id] = record
+        registry[f"input:{input_id}"] = record
+    for artifact in input_item.get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        artifact_id = artifact.get("artifactId") or artifact.get("artifact_id")
+        if isinstance(artifact_id, str) and artifact_id:
+            registry[artifact_id] = {"learnerId": owner, "kind": "artifact"}
+            registry[f"artifact:{artifact_id}"] = registry[artifact_id]
+    return registry
+
+
 def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any) -> APIRouter:
     """Build the tutoring HTTP adapter from replaceable domain dependencies.
 
@@ -52,8 +86,9 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
 
     @router.post("/api/mistakes/{mistake_id}/thread")
     def create_thread(
-        mistake_id: str, learnerId: str = DEMO_LEARNER_ID
+        request: Request, mistake_id: str, learnerId: str | None = None
     ) -> dict[str, Any]:
+        learnerId = learner_for_request(request, learnerId)
         """Create or restore the single tutoring thread for one confirmed mistake."""
         mistake = mistake_store.get(mistake_id)
         if not mistake:
@@ -70,36 +105,82 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         return student_tutor_thread(tutoring_store.get(thread["threadId"]) or thread)
 
     @router.get("/api/tutor/threads/{thread_id}")
-    def get_thread(thread_id: str) -> dict[str, Any]:
+    def get_thread(request: Request, thread_id: str) -> dict[str, Any]:
         """Return bounded persisted messages and the current tutoring state."""
         thread = tutoring_store.get(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="辅导线程不存在")
+        require_owner(request, thread["learnerId"])
         return student_tutor_thread(thread)
 
     @router.post("/api/tutor/threads/{thread_id}/messages")
-    def append_message(thread_id: str, request: TutorMessageRequest) -> dict[str, Any]:
+    def append_message(
+        http_request: Request,
+        thread_id: str,
+        request: TutorMessageRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, Any]:
         """Evaluate one learner turn, generate guidance and persist both messages."""
         thread = tutoring_store.get(thread_id)
         if not thread:
             raise HTTPException(status_code=404, detail="辅导线程不存在")
+        require_owner(http_request, thread["learnerId"])
+        request_hash = hashlib.sha256(json.dumps(
+            request.model_dump(mode="json"), ensure_ascii=False, sort_keys=True,
+        ).encode("utf-8")).hexdigest()
+        if idempotency_key is not None and (not idempotency_key.strip() or len(idempotency_key) > 128):
+            raise HTTPException(status_code=422, detail="Idempotency-Key 长度须为 1 到 128 字符")
+        request_key = hashlib.sha256(f"{thread_id}:{idempotency_key}".encode("utf-8")).hexdigest() if idempotency_key else None
+
+        def replay_existing() -> dict[str, Any] | None:
+            if request_key is None:
+                return None
+            existing = tutoring_store.get_turn_request(thread_id, request_key)
+            if not existing:
+                return None
+            if existing["requestHash"] != request_hash:
+                raise HTTPException(status_code=409, detail="Idempotency-Key 已用于不同的辅导输入")
+            saved_response = existing["response"]
+            current_thread = tutoring_store.get(thread_id)
+            if not current_thread:
+                raise HTTPException(status_code=404, detail="辅导线程不存在")
+            return {
+                "thread": student_tutor_thread(current_thread),
+                "reply": student_tutor_reply(saved_response["reply"]),
+                "action": student_tutor_action(saved_response["action"]),
+            }
+
+        replay = replay_existing()
+        if replay:
+            return replay
         mistake = mistake_store.get(thread["mistakeId"])
         if not mistake:
             raise HTTPException(status_code=404, detail="原错题不存在")
+        require_owner(http_request, mistake["learnerId"])
         if request.inputId:
             input_item = tutoring_store.get_input(request.inputId)
             if not input_item or input_item["threadId"] != thread_id:
                 raise HTTPException(status_code=404, detail="TutorInput 不存在")
             if input_item["status"] != "confirmed":
                 raise HTTPException(status_code=409, detail="请先确认解题步骤识别结果")
-            # New clients submit an immutable input envelope; legacy clients keep
-            # their JSON body unchanged. The persisted envelope wins when fields
-            # are present so a caller cannot alter confirmed evidence in transit.
+            incoming_formulas = [item.model_dump() for item in request.formulaRecognitions]
+            stored_formulas = input_item.get("formulaRecognitions", [])
+            incoming_canvas = request.canvasState.model_dump() if request.canvasState else None
+            if request.content and request.content != input_item["content"]:
+                raise HTTPException(status_code=409, detail="已确认的输入内容不可修改，请创建新的 TutorInput")
+            if request.interactionResult and request.interactionResult != input_item["interactionResult"]:
+                raise HTTPException(status_code=409, detail="已确认的结构化答案不可修改，请创建新的 TutorInput")
+            if incoming_formulas and incoming_formulas != stored_formulas:
+                raise HTTPException(status_code=409, detail="已确认的公式识别不可修改，请创建新的 TutorInput")
+            if incoming_canvas is not None and incoming_canvas != input_item.get("canvasState"):
+                raise HTTPException(status_code=409, detail="已确认的画布状态不可修改，请创建新的 TutorInput")
+            # The confirmed server snapshot is the sole evidence source, including
+            # when a legacy client sends conflicting or partial fields.
             request = request.model_copy(update={
-                "content": request.content or input_item["content"],
-                "interactionResult": request.interactionResult or input_item["interactionResult"],
-                "formulaRecognitions": request.formulaRecognitions or input_item.get("formulaRecognitions", []),
-                "canvasState": request.canvasState or input_item.get("canvasState"),
+                "content": input_item["content"],
+                "interactionResult": input_item["interactionResult"],
+                "formulaRecognitions": stored_formulas,
+                "canvasState": input_item.get("canvasState"),
             })
         if request.mode == "answer" and not has_meaningful_answer(
             request.content,
@@ -115,12 +196,19 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         )
         proposals = result["reply"].toolProposals
         policy_decisions: list[dict[str, Any]] = []
+        evidence_registry = _evidence_registry(
+            thread=thread,
+            mistake=mistake,
+            input_item=input_item if request.inputId else None,
+        )
         for proposal in proposals:
             decision = validate_tool_proposal(
                 proposal,
                 stage=thread["stage"],
                 input_item=input_item if request.inputId else None,
                 action=result["action"],
+                evidence_registry=evidence_registry,
+                evidence_owner=thread["learnerId"],
             )
             policy_decisions.append(decision.model_dump())
             key_source = json.dumps(
@@ -156,6 +244,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         # the latest trusted value, and this boundary keeps StatefulTutor store-free.
         category = diagnosis.get("category") if isinstance(diagnosis, dict) else None
         confidence = diagnosis.get("confidence") if isinstance(diagnosis, dict) else None
+        diagnosis_update = None
         if (
             isinstance(diagnosis, dict)
             and diagnosis.get("needsConfirmation") is False
@@ -163,33 +252,50 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
             and category != "unknown"
             and confidence is not None
         ):
-            mistake_store.update_ai_error_reason(
-                thread["mistakeId"],
-                category=category,
-                confidence=confidence,
-                evidence={
+            diagnosis_update = {
+                "mistake_id": thread["mistakeId"],
+                "category": category,
+                "confidence": confidence,
+                "evidence": {
                     "text": diagnosis.get("evidence", ""),
                     "matched": diagnosis.get("evidenceMatched", False),
                 },
-                model_version=(
+                "model_version": (
                     result["reply"].modelRun.get("model")
                     if isinstance(result["reply"].modelRun, dict)
                     else None
                 ),
+            }
+        try:
+            saved = tutoring_store.append_turn(
+                thread_id,
+                student_content=request.content.strip() or "请求下一步提示",
+                input_mode=result["inputMode"],
+                assistant_content=result["reply"].reply,
+                assessment=result["action"]["assessment"],
+                action=result["action"],
+                model_run=result["reply"].modelRun,
+                stage=result["stage"],
+                hint_level=result["reply"].nextHintLevel,
+                summary=result["summary"],
+                input_id=request.inputId,
+                expected_message_count=int(thread.get("messageCount", 0)),
+                request_key=request_key,
+                request_hash=request_hash if request_key else None,
+                replay_response={
+                    "reply": result["reply"].model_dump(),
+                    "action": result["action"],
+                } if request_key else None,
             )
-        saved = tutoring_store.append_turn(
-            thread_id,
-            student_content=request.content.strip() or "请求下一步提示",
-            input_mode=result["inputMode"],
-            assistant_content=result["reply"].reply,
-            assessment=result["action"]["assessment"],
-            action=result["action"],
-            model_run=result["reply"].modelRun,
-            stage=result["stage"],
-            hint_level=result["reply"].nextHintLevel,
-            summary=result["summary"],
-            input_id=request.inputId,
-        )
+        except ConcurrentTurnError as error:
+            replay = replay_existing()
+            if replay:
+                return replay
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        if saved is None:
+            raise HTTPException(status_code=404, detail="辅导线程不存在")
+        if diagnosis_update:
+            mistake_store.update_ai_error_reason(**diagnosis_update)
         log_event(
             "tutor.turn.completed",
             thread_id=thread_id,
@@ -205,11 +311,12 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         }
 
     @router.get("/api/tutor/threads/{thread_id}/tool-events")
-    def list_tool_events(thread_id: str) -> list[dict[str, Any]]:
+    def list_tool_events(request: Request, thread_id: str) -> list[dict[str, Any]]:
         """Return the server-side shadow audit for a tutor thread."""
         thread = tutoring_store.get(thread_id, message_limit=1)
         if not thread:
             raise HTTPException(status_code=404, detail="辅导线程不存在")
+        require_owner(request, thread["learnerId"])
         return tutoring_store.list_tool_events(thread_id)
 
     return router

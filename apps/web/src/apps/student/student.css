@@ -55,6 +55,9 @@
 }
 
 .student-nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 14px;
   border: 1px solid transparent;
   border-radius: 999px;
@@ -251,7 +254,7 @@
 .student-paper-completed h1 { margin: 12px 0; color: #183a2e; font-size: clamp(30px, 5vw, 52px); }
 .student-paper-completed p { max-width: 620px; margin: 0 auto; color: #59675f; line-height: 1.8; }
 .student-completed-actions { display: flex; justify-content: center; gap: 10px; margin-top: 26px; }
-.student-completed-actions button { padding: 11px 17px; border: 1px solid #bdcbc3; border-radius: 11px; color: #245c47; background: #f4f8f5; font-weight: 700; }
+.student-completed-actions button { min-height: 44px; padding: 11px 17px; border: 1px solid #bdcbc3; border-radius: 11px; color: #245c47; background: #f4f8f5; font-weight: 700; }
 .student-completed-actions .student-submit-button { color: #fff; border-color: #183f31; background: #183f31; }
 
 .student-question-header {
@@ -274,6 +277,7 @@
 .student-help-button,
 .student-submit-button,
 .student-mistake-notice button {
+  min-height: 44px;
   padding: 10px 15px;
   border: 1px solid #bdcbc3;
   border-radius: 11px;
@@ -354,6 +358,10 @@
 .student-explanation-heading p { margin: 0; color: #68766e; }
 
 @media (max-width: 560px) {
+  .student-header { flex-wrap: wrap; }
+  .student-header > div { min-width: 0; }
+  .student-header .demo-badge { margin-left: auto; }
+  .student-nav { flex-wrap: wrap; }
   .student-completed-actions { flex-direction: column; }
   .student-completed-actions button { width: 100%; }
 }
@@ -394,6 +402,10 @@
   .student-question-nav, .student-answer-actions { width: 100%; }
   .student-question-nav button, .student-answer-actions button { flex: 1; }
   .student-mistake-notice { align-items: stretch; flex-direction: column; margin-inline: 18px; }
+  .paper-question-progress-item { width: 44px; height: 44px; }
+  .student-feedback { margin-inline: 18px; }
+  .student-paper-panel > .evaluation-evidence { margin-inline: 18px; }
+  .student-auto-advance { margin-inline: 18px; }
 }
 
 /* 练习区与今日队列刻意分开：作业指派还不存在时，已发布试卷是自助目录而不是待办。 */

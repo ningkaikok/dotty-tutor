@@ -36,6 +36,7 @@ from infrastructure.runtime.contracts import (
     RuntimeConfigSnapshot,
     attach_runtime_config,
 )
+from prompts import freeze_prompts, prompt_identity, render_prompt
 
 
 def _safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -60,6 +61,7 @@ class TutorEngine:
         self.runtime = runtime
         self.guide_cards = guide_cards
 
+    @freeze_prompts
     def reply(self, request: HelpRequest, *, conversation_context: str = "") -> TutorReply:
         """Return one tutoring reply.
 
@@ -203,39 +205,24 @@ class TutorEngine:
         # 这是一次真实的提示词结构改动。动态段末尾补一句收束指令来保持要求的显著性；
         # 现有评测覆盖的是讲解质量，不覆盖陪练回复质量，因此这次改动的效果没有被
         # 自动化手段验证——判断依据只有人工阅读。
-        stable_prefix = f"""
-你正在辅导下面这道题。先用标准讲解脚本独立核对学生的每一步计算，再判断卡点。
-
-题目：{payload['question']['prompt']}
-已知条件：{'；'.join(payload['question']['givens'])}
-标准讲解脚本：{_json_dumps(payload['lessonSteps'])}
-
-要求：
-1. assessment 必须是 correct、partial 或 incorrect。
-2. 特别核对移项符号、算术和单位；只有确实正确时才能说“对”或表扬该步骤。
-3. 如果错误，温和但明确指出哪一步不成立，然后给一个不泄露最终答案的提示。
-4. 如果用户是请求提示，只引导下一步，不给最终答案；如果是提交回答，先明确判断再引导修改或继续。
-5. reply 应像真人老师一样简短，最后提一个学生可以继续回答的问题。
-6. misconception 只是对当前误区的假设：evidence 必须引用学生本轮输入中的具体内容；
-   category 必须从 concept（概念）、reading（读题）、calculation（计算）、missing_step（漏步骤）、
-   unknown（无法判断）或 careless（粗心）中选择最符合的一项；必须根据本轮输入填写，不能凭空补写。
-   没有证据或置信度低于 0.65 时 needsConfirmation 必须为 true，并通过问题向学生确认。
-7. 严格遵守最近对话摘要中的“学生意图”和“唯一教学动作”；不能自行改判、切换动作或推进阶段。
-""".lstrip()
-        dynamic_suffix = f"""
-本轮学生状态：
-当前提示层级：{request.hintLevel}
-候选引导卡：{_json_dumps(current_card)}
-学生输入：{request.studentInput.strip() or '学生没有输入内容'}
-学生交互作答结果：{_json_dumps(request.interactionResult) if request.interactionResult else '无'}
-公式识别候选（未经学生确认前只能视为待确认观察）：{_json_dumps(request.formulaRecognitions) if request.formulaRecognitions else '无'}
-结构化画布状态（只使用其结构化状态，不把截图当作判题事实）：{_json_dumps(request.canvasState) if request.canvasState else '无'}
-最近对话摘要：{conversation_context[:2400] or '这是本线程第一轮'}
-用户操作：{'提交回答并请求判题' if request.mode == 'answer' else '请求下一步提示'}
-系统确定性校验：{conflict_instruction or '未发现同左边等式冲突，仍需自行核对。'}
-
-现在请严格按上面的七条要求，对本轮作答给出回复。
-""".rstrip()
+        stable_prefix = render_prompt(
+            "tutor.stable",
+            question=payload["question"]["prompt"],
+            givens="；".join(payload["question"]["givens"]),
+            lesson_steps=_json_dumps(payload["lessonSteps"]),
+        ).lstrip()
+        dynamic_suffix = render_prompt(
+            "tutor.dynamic",
+            hint_level=request.hintLevel,
+            guide_card=_json_dumps(current_card),
+            student_input=request.studentInput.strip() or "学生没有输入内容",
+            interaction_result=_json_dumps(request.interactionResult) if request.interactionResult else "无",
+            formula_recognitions=_json_dumps(request.formulaRecognitions) if request.formulaRecognitions else "无",
+            canvas_state=_json_dumps(request.canvasState) if request.canvasState else "无",
+            conversation_context=conversation_context[:2400] or "这是本线程第一轮",
+            mode="提交回答并请求判题" if request.mode == "answer" else "请求下一步提示",
+            conflict_instruction=conflict_instruction or "未发现同左边等式冲突，仍需自行核对。",
+        ).rstrip()
         prompt_parts = PromptParts(stable=stable_prefix, dynamic=dynamic_suffix)
         prompt = prompt_parts.text
         selection = self.runtime.selection
@@ -262,6 +249,8 @@ class TutorEngine:
                     timeout=450.0,
                 ),
             )
+
+        run["promptTemplates"] = [prompt_identity("tutor.stable"), prompt_identity("tutor.dynamic")]
 
         action = generated.get("canvasAction")
         if action not in CANVAS_ACTIONS:

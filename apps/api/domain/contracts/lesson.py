@@ -81,9 +81,23 @@ def lesson_document_from_payload(
     *,
     source_upload_id: str | None = None,
     guide_cards: list[dict[str, Any]] | None = None,
+    allow_policy_metadata: bool = False,
 ) -> dict[str, Any]:
     """Adapt the current question payload to the versioned lesson runtime."""
-    question = payload.get("question", {})
+    # Generated questions never authoritatively classify learning objectives.
+    # Materialize the conservative legacy profile at the publication boundary
+    # so the immutable Question and its knowledge-point projection share an
+    # explicit default; only a teacher edit may replace all three fields.
+    normalized_payload = dict(payload)
+    question = dict(payload.get("question") or {})
+    if not allow_policy_metadata:
+        question.pop("objectiveType", None)
+        question.pop("gateMode", None)
+        question.pop("policyVersion", None)
+    question.setdefault("objectiveType", "unknown")
+    question.setdefault("gateMode", "legacy")
+    question.setdefault("policyVersion", "legacy-1-3-7-v1")
+    normalized_payload["question"] = question
     lesson_id = str(question.get("id") or "lesson")[:128]
     title = str(question.get("knowledgePoint") or question.get("chapter") or "互动课程")[:200]
     blocks: list[dict[str, Any]] = []
@@ -130,7 +144,7 @@ def lesson_document_from_payload(
         knowledgePoints=[str(question.get("knowledgePoint") or title)],
         # blocks 由 _prompt_content_blocks 构造，字段结构在此经 Pydantic 校验兜底。
         blocks=cast("list[LessonBlock]", blocks),
-        questionPayload=payload,
+        questionPayload=normalized_payload,
         guideCards=guide_cards or [],
     )
     return document.model_dump()

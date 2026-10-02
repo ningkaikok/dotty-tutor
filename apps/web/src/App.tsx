@@ -1,9 +1,12 @@
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
 import "./styles.css";
+import { PRODUCT_TERMS } from "./productTerms";
+import { ProtectedAccess } from "./auth/ProtectedAccess";
 
 // 每个角色入口拥有独立的路由级代码包。学生打开轻量学习空间时，不应同时下载体积更大的内容生产工作台。
 // 当前页面组件采用具名导出，而 React.lazy 只接受 default，因此这里显式完成一次导出映射。
+const PromptManagerApp = lazy(() => import("./apps/prompts/PromptManagerApp").then((module) => ({ default: module.PromptManagerApp })));
 const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
@@ -22,7 +25,7 @@ function PageTitle() {
       : pathname.startsWith("/learn")
         ? "学生学习空间 · Dotty Tutor"
       : pathname.startsWith("/mistakes")
-          ? "AI 错题陪练 · Dotty Tutor"
+          ? `AI 错题${PRODUCT_TERMS.tutoring} · Dotty Tutor`
           : pathname.startsWith("/teacher")
             ? "教师工作台 · Dotty Tutor"
           : "Dotty Tutor · 个人 AI 学习工具";
@@ -42,6 +45,7 @@ function AppRoutes() {
           <Route index element={<ProductHome />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
+          <Route path="studio/prompts" element={<PromptManagerApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/dependency-preflight" element={<DependencyPreflightApp />} />
           <Route path="teacher/*" element={<TeacherClassroomApp />} />
@@ -57,7 +61,7 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <ProtectedAccess><AppRoutes /></ProtectedAccess>
     </BrowserRouter>
   );
 }
