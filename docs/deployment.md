@@ -26,7 +26,7 @@ API 仍建议只运行一个 Uvicorn worker；Worker 是单独进程，和 API �
 
 ## 服务器准备
 
-以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 20.19+（20.x）或 22.12+、Nginx 和 PostgreSQL。
+以下示例使用 Ubuntu 22.04/24.04、Python 3.12、Node.js 22.22.2+、Nginx 和 PostgreSQL。
 示例路径、用户和域名需要替换为实际值。
 
 ```bash
@@ -50,11 +50,11 @@ sudo -u postgres createdb -O dotty_app dotty_tutor
 
 ## 后端安装
 
+先安装 uv 与 Corepack（安装步骤见各自官方文档），并确认 dotty 用户的登录环境可执行 `uv` 和 `pnpm`。以下手动部署固定在
+`apps/api` 同步依赖，创建 `apps/api/.venv`；systemd 使用该固定布局，区别于本机启动脚本的根目录环境。
+
 ```bash
-sudo -u dotty python3.12 -m venv /opt/dotty-tutor/.venv
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install --upgrade pip
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  cd apps/api && uv sync --frozen --no-dev
+sudo -H -u dotty bash -lc 'cd /opt/dotty-tutor/apps/api && uv sync --frozen --no-dev'
 
 sudo install -d -o dotty -g dotty /etc/dotty-tutor
 sudo touch /etc/dotty-tutor/api.env
@@ -106,7 +106,7 @@ sudo -u dotty bash -lc '
   set -a
   . /etc/dotty-tutor/api.env
   set +a
-  ../.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010
+  uv run python -m uvicorn app:app --host 127.0.0.1 --port 8010
 '
 ```
 
@@ -135,7 +135,7 @@ User=dotty
 Group=dotty
 WorkingDirectory=/opt/dotty-tutor/apps/api
 EnvironmentFile=/etc/dotty-tutor/api.env
-ExecStart=/opt/dotty-tutor/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
+ExecStart=/opt/dotty-tutor/apps/api/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
@@ -166,7 +166,7 @@ User=dotty
 Group=dotty
 WorkingDirectory=/opt/dotty-tutor/apps/api
 EnvironmentFile=/etc/dotty-tutor/api.env
-ExecStart=/opt/dotty-tutor/.venv/bin/python -m worker --registry routers.textbook_routes:textbook_job_registry
+ExecStart=/opt/dotty-tutor/apps/api/.venv/bin/python -m worker --registry app:job_registry
 Restart=on-failure
 RestartSec=5
 PrivateTmp=true
@@ -194,8 +194,8 @@ API 的 `complete` 和批次处理接口只负责创建任务并返回 `202 + jo
 ```bash
 sudo -u dotty bash -lc '
   cd /opt/dotty-tutor/apps/web
-  npm ci
-  npm run build
+  pnpm install --frozen-lockfile
+  pnpm build
 '
 
 sudo mkdir -p /var/www/dotty-tutor
@@ -404,24 +404,25 @@ tar -czf /srv/backup/dotty-data-$(date +%F).tar.gz \
 
 ```bash
 sudo -u dotty git -C /opt/dotty-tutor pull --ff-only
-sudo -u dotty /opt/dotty-tutor/.venv/bin/pip install \
-  cd apps/api && uv sync --frozen --no-dev
-sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && npm ci && npm run build'
+sudo -H -u dotty bash -lc 'cd /opt/dotty-tutor/apps/api && uv sync --frozen --no-dev'
+sudo -u dotty bash -lc 'cd /opt/dotty-tutor/apps/web && pnpm install --frozen-lockfile && pnpm build'
 sudo rsync -a --delete /opt/dotty-tutor/apps/web/dist/ /var/www/dotty-tutor/
 sudo systemctl restart dotty-tutor-api dotty-tutor-worker
 sudo systemctl reload nginx
 ```
 
-各领域 Store 首次访问时会通过 SQLAlchemy metadata 创建当前所需的表。部署前必须准备空数据库；项目不提供
-原地升级脚本或历史 SQL 迁移链，已有数据需要在应用外完成备份、转换和重新导入。
+Store 运行时不执行 DDL；新库和旧库都必须通过 Alembic 升级。上述同步/重启示例只适用于 schema 已就绪的版本；
+涉及迁移时先完成备份，再在加载 `api.env` 的环境中执行 `preflight → upgrade → verify`，成功后才重启 API/Worker。
 
 ## GitHub CI
 
 `.github/workflows/ci.yml` 在推送和 Pull Request 时执行：
 
-- Python 3.12 后端测试；
-- Node.js 20.19+（20.x）或 22.12+ 前端构建；
-- 后端 Docker 镜像构建。
+- 后端 Python 矩阵的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
+- 前端 pnpm 锁定安装、lint、Vitest、API 类型漂移、TypeScript 与构建；
+- Playwright E2E、Docker Compose 构建/健康检查与独立 CodeQL 工作流。
+
+精确版本和执行命令以 `.github/workflows/ci.yml` 与 `AGENTS.md` 为准。
 
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。

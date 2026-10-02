@@ -10,12 +10,14 @@ FastAPI 交互文档启动后可从以下地址查看：
 - Swagger UI：<http://127.0.0.1:8010/docs>
 - OpenAPI JSON：<http://127.0.0.1:8010/openapi.json>
 
+Swagger/OpenAPI 的版本号由 `apps/api/pyproject.toml` 的 `project.version` 读取，发布时不再单独修改应用工厂。
+
 前端 API 类型由应用自身的 OpenAPI 文档生成，不要手工修改
 `apps/web/src/types/generated/api.ts`。接口响应模型变更后，在 `apps/web` 目录执行：
 
 ```bash
-npm run generate:api  # 重新生成
-npm run check:api     # 只校验，过期时返回非零状态
+pnpm generate:api  # 重新生成
+pnpm check:api     # 只校验，过期时返回非零状态
 ```
 
 生成器使用与 API 应用相同的 `app.openapi()`；生成类型只作为 API 层的契约，页面领域类型仍可通过适配器保留。
@@ -332,7 +334,7 @@ concept | reading | calculation | missing_step | unknown | careless
 | `PATCH` | `/api/tutor/inputs/{inputId}/observations` | 确认、修正或拒绝观察结果；低置信度输入未确认前不能提交判题 |
 | `GET` | `/api/tutor/inputs/{inputId}/artifacts/{artifactId}` | 读取当前学生拥有的证据资源 |
 | `GET` | `/api/tutor/threads/{threadId}/tool-events` | 读取服务端工具提案策略和 shadow 审计 |
-| `GET` | `/api/tutor/search?q=...&publicationId=...` | 在已建立索引的发布题目中进行 PostgreSQL 全文检索并返回来源证据引用 |
+| `GET` | `/api/tutor/search?q=...&publicationId=...` | 在已建立索引的发布题目中进行 PostgreSQL 全文检索，返回发布/课程/题目引用；当前构建索引的 `sourcePages` 为空，不代表教材原文页码定位 |
 | `POST` | `/api/tutor/search/rebuild` | 为已发布互动试卷建立或刷新全文检索索引 |
 
 选择题可以同时携带用户可读文字和结构化答案：

@@ -35,7 +35,7 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 
 ### AI 错题陪练（`/mistakes`）
 
-拍照录题、错误原因归因、单题多轮陪练线程、变式掌握验证和 1/3/7 天复习计划，形成完整闭环。
+拍照录题、错误原因归因、单题多轮陪练线程、变式掌握验证和版本化复习策略（旧数据兼容 1/3/7 天），形成完整闭环。
 产品设计见 [AI 错题陪练产品规划](docs/mistake-coach-plan.md)。
 
 ### 平台
@@ -100,41 +100,23 @@ docker compose up --build --detach
 
 ## 文档
 
-- [系统架构与调用流程](docs/architecture.md)
-- [代码结构、复用决策与扩展指南](docs/codebase-guide.md)
-- [产品路线图](docs/product-roadmap.md)
-- [技术路线图](docs/engineering-roadmap.md)
-- [学科组试用方案](docs/pilot-plan.md)
-- [AI 运行治理与后台任务演进计划](docs/runtime-governance-plan.md)
-- [后端架构学习指南](docs/backend-learning-guide.md)
-- [前端架构学习指南](docs/frontend-learning-guide.md)
-- [AI 错题陪练产品规划](docs/mistake-coach-plan.md)
-- [本地开发与模型配置](docs/development.md)
-- [API 接口](docs/api.md)
-- [可编程课程与学习闭环](docs/programmable-learning.md)
-- [部署与运维](docs/deployment.md)
-- [日志与运行监控](docs/observability.md)
-- [路线图与生产边界](docs/roadmap.md)
-- [模型与系统测试报告](docs/model-evaluation-report.md)
-- [参与贡献](CONTRIBUTING.md)
-- [安全策略](SECURITY.md)
-- [支持说明](SUPPORT.md)
-- [变更记录](CHANGELOG.md)
+完整分类、阅读顺序和文档维护职责见 [文档索引](docs/README.md)。常用入口：
+
+- [本地开发](docs/development.md)与[部署运维](docs/deployment.md)。
+- [代码地图](docs/codebase-guide.md)、[系统架构](docs/architecture.md)与[API](docs/api.md)。
+- [当前优先级](docs/roadmap.md)、[产品路线图](docs/product-roadmap.md)与[工程路线图](docs/engineering-roadmap.md)。
+- [参与贡献](CONTRIBUTING.md)、[安全策略](SECURITY.md)、[支持说明](SUPPORT.md)与[变更记录](CHANGELOG.md)。
 
 ## 测试
 
-```bash
-cd apps/api && ../.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-cd apps/web && npm run build
-```
-
-GitHub Actions 会在每次推送和 Pull Request 中运行后端测试、前端构建，以及完整 Docker
-Compose 构建和健康检查。
+完整门禁命令见 [AGENTS.md](AGENTS.md#验证与交付)，环境与夹具见 [开发指南](docs/development.md#测试)。
+GitHub Actions 执行后端 Python 矩阵、前端静态检查与测试、API 类型漂移、E2E、Docker 健康检查及 CodeQL。
+工作流通过不等于已部署或已验证真实教学效果。
 
 ## 参与开发
 
 请优先通过 Issue 讨论问题和方案，代码修改使用独立分支并通过 Pull Request 合并。提交前请
-运行后端测试和前端构建，不要提交 `.env`、模型权重、教材文件、`data/` 或构建产物。
+按 AGENTS.md 执行相关门禁，不要提交 `.env`、模型权重、教材文件、`data/` 或构建产物。
 
 参与前请阅读[贡献指南](CONTRIBUTING.md)和[行为准则](CODE_OF_CONDUCT.md)。安全漏洞请按照
 [安全策略](SECURITY.md)私下报告，不要创建公开 Issue。

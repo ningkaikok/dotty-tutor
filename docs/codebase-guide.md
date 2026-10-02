@@ -1,6 +1,6 @@
 # 代码结构、复用决策与扩展指南
 
-本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
+完整文档分类与维护职责见 [文档索引](README.md)。本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
 哪些能力直接复用开源实现，以及新增功能时应在哪个边界修改。
 
 ## 设计目标
@@ -10,7 +10,7 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 1. 演示路径是否稳定、可解释。
 2. 一名维护者能否在十分钟内找到相关代码。
 3. 相同能力是否已有成熟依赖或仓库内实现。
-4. 模型、OCR、数据库或浏览器能否被 Mock 后独立测试。
+4. 外部模型/OCR/TTS 能否用测试替身隔离，数据库和浏览器能否使用各自测试夹具独立验证。
 5. 只有真实出现第二种实现时，才增加新的抽象层。
 
 因此，本项目采用模块化单体：一个 React 前端、一个 FastAPI 后端、一个 PostgreSQL 数据库，
@@ -142,7 +142,7 @@ dotty-tutor/
 - `LectureChecklistService` 读取单次 assignment 的成员、发布题目、最新作答、教师复核和错题归因，按涉及学生数、错误率、原题序排序；它是只读投影，不改变 mastery 或原始证据。
 - `mastery_policy.py` 与 `review_scheduler.py` 是纯函数：只有教师明确编辑的 `objectiveType`、`gateMode`、`policyVersion` 才能启用 typed policy；记忆/程序目标使用定量门槛，概念/设计目标使用受约束 rubric、置信度和证据引用的定性门槛；缺少策略元数据的历史记录保持 `unknown:legacy` 的 legacy 1/3/7 天行为，定性证据不足时为 `needs_review`。
 - `learner_profile.py` 和 `learner_context.py` 只做 shadow 实验。画像事实必须带 publication scope、evidenceRef、observedAt、expiresAt 和 profileVersion；过期、冲突、跨 publication 或敏感/聊天字段会排除并记录原因。
-- `evaluation/benchmark` 的人工金标准 JSONL 校验和配对统计只服务离线实验；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条，synthetic/public/fixture 不计入，当前仍没有 50+ 条人工金标准，也没有真实跨模型结论。`prefix_cache_probe.py` 只消费 fixture；只有 warm 阶段高于 cold/control 缓存基线的增量命中，或带官方 source 的 explicit 证据，才能判支持。GPT-5.6/Luna 的官方能力和 CLI cached token 字段已确认，但本轮三阶段均为 8960 的 hidden baseline，应用前缀复用仍为 inconclusive。
+- `evaluation/benchmark` 的人工金标准 JSONL 校验和配对统计只服务离线实验；只有 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条，synthetic/public/fixture 不计入，当前仍没有 50+ 条人工金标准，也没有真实跨模型结论。`prefix_cache_probe.py` 只消费外部采集的运行结果或 fixture，不自行调用 Provider；只有 warm 阶段高于 cold/control 缓存基线的增量命中，或带官方 source 的 explicit 证据，才能判支持。GPT-5.6/Luna 的官方能力和 CLI cached token 字段已确认，但本轮三阶段均为 8960 的 hidden baseline，应用前缀复用仍为 inconclusive。
 - `scripts/seed_demo_bundle.py` 与 `examples/demo-pack/manifest.json` 提供固定 ID、完全合成、幂等且不删除其他数据的教师演示数据；`--verify` 只读检查，不依赖 OCR、模型或网络。
 
 ### P0～P3 后端分层边界
@@ -425,15 +425,16 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 
 1. 在错题域扩展任务契约和表，不复用教材上传任务表。
 2. 复用 `QuestionPayload`、确定性判题和掌握度证据，不让模型直接修改状态。
-3. 前端在 `apps/mistake/` 下增加页面与 Hook，通过 React Router 注册子路径。
+3. 前端在 `apps/web/src/apps/mistake/` 下增加页面与 Hook，通过 React Router 注册子路径。
 4. 将跨请求的复习状态保存在 PostgreSQL，不依赖进程内字典。
 
 ## 测试边界
 
 - 纯函数：直接单元测试，不启动 FastAPI。
-- Runtime/Store：使用替身或临时数据库验证边界。
-- API：FastAPI `TestClient` 验证协议、状态码和持久化调用。
-- 用户路径：Playwright Mock API，验证路由、录入、确认和作答交互。
+- Runtime：仅在模型/OCR/TTS 等外部边界使用替身；Store 使用隔离 PostgreSQL 夹具。
+- API：FastAPI `TestClient` 验证协议、状态码、持久化结果和状态转换。
+- DOM：Vitest + Testing Library，纯逻辑用 node、组件按文件用 jsdom。
+- 用户路径：Playwright 固定 API 数据，验证真实浏览器中的跨组件流程。
 - Docker：只验证镜像、网络、健康检查和启动配置，不在其中重复所有业务测试。
 
 提交前命令以 `AGENTS.md` 和 `docs/development.md` 为准。

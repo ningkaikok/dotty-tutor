@@ -12,7 +12,7 @@
 | QuestionIR | 已完成核心 | `domain/questions/ir.py` 保存题号、原文、选项、图片 ID、真实 block ref、置信度和答案引用 | 继续扩展学科 profile 的小问核验 |
 | 原题 extraction | 已完成核心 | `lesson_generation.py` 使用独立 `QUESTION_EXTRACTION_SCHEMA`，输入为 QuestionIR | 按真实业务 badcase 扩充局部修复策略 |
 | SolutionIR | 已接入初版 | 独立 `SOLUTION_SCHEMA` 调用，只接收 QuestionIR | 增加依据、置信度和来源答案分离 |
-| VerificationIR | 已接入初版 | 独立 `VERIFICATION_SCHEMA` 调用；非 `verified` 自动进入 `needs_review` | 增加更强的 solver/verifier agreement 与数学等价核验 |
+| VerificationIR | 已接入初版 | 独立 `VERIFICATION_SCHEMA` 调用；非 `verified` 自动进入 `needs_review` | 确定性 `answer_solver.py` 已接入三态判等及 `solverCheck`；后续增加覆盖范围，不代表自动求解几何证明 |
 | TutorScript | 已完成核心 | 独立 `TUTOR_SCRIPT_SCHEMA`，继续投影为 4 步/3 卡；verification 非 verified 时跳过模型调用 | 后续补充更细的学科脚本约束 |
 | 旧 lesson payload adapter | 已完成 | 保留 `questionPayload`、`lessonSteps`、`guideCards` 和前端字段 | 补齐新 provenance/stage 字段的 API 回归测试 |
 | 阶段缓存 | 已完成核心 | `assets/{batch}/stage-cache` 内容寻址、原子写入、损坏安全 miss 和大小/条目上限；按目标阶段复用上游 | 后续可替换为共享缓存后端 |
@@ -20,7 +20,7 @@
 | 测试与评测 | 已完成核心 | ExamIR/staged-pipeline golden evaluator、缓存/门禁回归测试和既有 OCR replay 均纳入 unittest | 持续增加脱敏版式 fixtures |
 | 审核工作台及局部重跑 | 已完成核心 | review queue API 与前端面板支持四个阶段指定重跑 | 后续增强逐字段冲突对比 |
 
-## P0 实施顺序
+## 已采用的实施顺序（历史记录）
 
 1. 固定 IR 字段、版本和序列化契约，兼容旧题目投影。
 2. 将现有正则明确限制为候选定位；ExamIR 负责聚合候选和来源证据。
@@ -36,7 +36,7 @@
 - 旧的 `generate_lesson()` 保留入口，内部使用阶段编排；模型不可用时只返回明确带 fallback/隔离证据的兼容候选。
 - 不删除现有题型、发布门禁和批次断点续跑；新增字段均为向后兼容字段。
 
-## 本轮验收命令
+## 相关验证命令（不代表当前运行结果）
 
 ```bash
 cd apps/api

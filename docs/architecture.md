@@ -217,7 +217,7 @@ flowchart TB
 | 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件 |
 | 工具策略 | `apps/api/domain/tutoring/tools.py` | 五种固定 ToolProposal、阶段门禁、证据引用和策略版本 |
-| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 全文检索，返回题目来源和证据定位 |
+| Tutor 检索 | `apps/api/persistence/search_store.py`、`apps/api/routers/tutor_search_routes.py` | PostgreSQL `tsvector + GIN` 检索已发布题目的题干、条件和标题；返回发布/课程/题目引用，当前索引构建的 `sourcePages` 为空，未实现教材原文页码检索 |
 | Tutor 评测 | `apps/api/evaluation/tutor/` | 六维度 30 case 的确定性语料检查、质量和延迟/成本指标 |
 | 变式验证 | `apps/api/variation_service.py`、`practice_routes.py` | 按错误原因选择策略、限制可判题题型并编排生成与提交 |
 | 验证持久化 | `apps/api/persistence/variation_store.py`、`apps/api/persistence/migration_cli.py` | 保存唯一验证题快照、固化归因来源、最新状态投影，以及追加式 `variation_attempts` 验证证据；旧迁移脚本仅作兼容包装器 |
@@ -306,7 +306,8 @@ erDiagram
 
 ## 页面初始化
 
-根路径和 `/learn` 只渲染导航，不调用生产端接口。进入 `/studio` 后，上传页首次加载时并行调用：
+根路径显示角色导航；`/learn` 通过 `useStudentTodayQueue` 读取作业、练习、错题和复习队列，
+不加载模型/OCR 等生产配置。进入 `/studio` 后，上传页首次加载时并行调用：
 
 1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。

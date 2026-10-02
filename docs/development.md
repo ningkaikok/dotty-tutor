@@ -5,8 +5,8 @@ Qwen3-TTS 和 Azure Speech。
 
 ## 环境要求
 
-- Python 3.12
-- Node.js 20.19+（20.x）或 22.12+
+- Python 3.12+
+- Node.js 22.22.2+
 - PostgreSQL 16+
 - 可选：Ollama、MinerU、Qwen3-TTS、Codex CLI
 
@@ -37,13 +37,13 @@ scripts/check-node-version.sh
 检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:59174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
 
-前端单元测试使用 Vitest（`npm run test`，纯函数模块优先，组件测试按需引入 jsdom）。
+前端单元测试使用 Vitest（`pnpm test`，纯函数模块优先，组件测试按需引入 jsdom）。
 本地提交前检查可选用 [pre-commit](https://pre-commit.com/)：`pip install pre-commit && pre-commit install`，
 钩子会在提交时自动运行 ruff 与 eslint（与 CI 相同的命令；未安装也不影响推送，CI 仍是最终门禁）。
 
-**可选**：已安装 [uv](https://docs.astral.sh/uv/) 时可用精确锁跳过手动装依赖——
-在仓库根目录执行 `uv sync --frozen`（创建根目录 `.venv`，与脚本预期一致），
-之后命令改用 `uv run` 前缀即可。`uv.lock` 是唯一锁文件事实来源；
+Python 依赖统一使用 [uv](https://docs.astral.sh/uv/) 与 `apps/api/uv.lock`。
+手动开发在 `apps/api` 执行 `uv sync --frozen` 与 `uv run`；`scripts/dev-local.sh` 会在该目录同步依赖，
+并通过 `UV_PROJECT_ENVIRONMENT` 显式写入根目录 `.venv`，两种布局不要混用硬编码解释器路径。
 
 ### 本机开发页与 Docker 页面
 
@@ -118,9 +118,9 @@ curl -v --proxy http://127.0.0.1:7897 https://api.openai.com
 git clone https://github.com/ningkaikok/dotty-tutor.git
 cd dotty-tutor
 
-python3.12 -m venv .venv
-.venv/bin/pip install --upgrade pip
+cd apps/api
 uv sync --frozen
+cd ../..
 ```
 
 创建本地数据库：
@@ -200,7 +200,7 @@ TUTOR_MODEL_NAME=gpt-5.6-sol
 
 ```bash
 cd apps/api
-../.venv/bin/python -m uvicorn app:app --reload --port 8010
+uv run python -m uvicorn app:app --reload --port 8010
 ```
 
 无需本地模型的界面开发可以使用 Mock：
@@ -208,7 +208,7 @@ cd apps/api
 ```bash
 cd apps/api
 MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
-  ../.venv/bin/python -m uvicorn app:app --reload --port 8010
+  uv run python -m uvicorn app:app --reload --port 8010
 ```
 
 ## 安装前端
@@ -217,15 +217,16 @@ MODEL_PROVIDER=mock REVIEW_PROVIDER=mock \
 
 ```bash
 cd apps/web
-npm ci
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
 修改 FastAPI 的 `response_model` 或路径契约后，同步刷新前端生成类型并检查工作树：
 
 ```bash
-npm run generate:api
-npm run check:api
+pnpm generate:api
+pnpm check:api
 ```
 
 `check:api` 会在临时目录生成 OpenAPI 类型并与已提交文件逐字比较；它不会用生成结果静默覆盖工作树。
@@ -340,7 +341,7 @@ backup → preflight → upgrade → verify → deploy/restart
   pnpm --filter dotty-tutor-web exec playwright test --grep "<用例名>" --update-snapshots
   ```
 - **linux**：不要用官方 `mcr.microsoft.com/playwright` 镜像生成。该镜像的字体环境与 CI 的
-  `npx playwright install --with-deps chromium` 不一致，生成出来的快照仍然对不上。正确做法是
+  `pnpm exec playwright install --with-deps chromium` 不一致，生成出来的快照仍然对不上。正确做法是
   推一次让 CI 跑，然后从 `playwright-report` artifact 里取 `*-actual.png` 作为基线：
   ```bash
   gh run download <run-id> -n playwright-report -D /tmp/ci-e2e
@@ -474,11 +475,11 @@ Azure 凭据只应存在于本地环境变量、服务器密钥管理或 GitHub 
 ## 测试
 
 ```bash
-cd apps/api && uv run python -m unittest discover -s tests -p 'test_*.py' -v
+(cd apps/api && uv run python -m unittest discover -s tests -p 'test_*.py' -v)
 cd apps/web
-npm run build
-npx playwright install chromium   # 首次运行或浏览器版本更新时执行
-npm run test:e2e
+pnpm build
+pnpm exec playwright install chromium   # 首次运行或浏览器版本更新时执行
+pnpm test:e2e
 ```
 
 Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API mock 覆盖双产品入口、直接子路径、
@@ -523,14 +524,13 @@ mock 真正的外部边界（模型/OCR/TTS/审校 Runtime），时间相关行�
 无意义测试：
 
 ```bash
-cd apps/api && uv run coverage run -m unittest discover -s tests -p 'test_*.py' && uv run coverage report -m
-cd apps/web && npm run test:coverage
+(cd apps/api && uv run coverage run -m unittest discover -s tests -p 'test_*.py' && uv run coverage report -m)
+cd apps/web && pnpm test:coverage
 ```
 
-前端整体行覆盖率数字目前很低（多数页面组件是 0%），这是预期的，不代表质量问题：这些页面级
-流程主要由 [Playwright E2E](../apps/web/e2e/tutor-flow.spec.ts) 覆盖行为，vitest 单测只负责
-纯函数（`richTextParser`、`questionPresentation`、`answerAssembly` 等）。评估覆盖率缺口时要把
-E2E 覆盖的路径一起算进去，不能只看 vitest 一侧的数字。
+覆盖率以当次运行报告为准。Vitest 覆盖纯逻辑和稳定组件 DOM 行为，组件按文件使用 jsdom，
+纯逻辑使用 node；[Playwright E2E](../apps/web/e2e/tutor-flow.spec.ts) 保护跨组件用户流程与真实浏览器交互。
+评估失败路径时结合两层测试，不用旧覆盖率读数推断当前质量。
 
 后端默认以 JSON 输出结构化运行日志，使用 `LOG_LEVEL=DEBUG` 可以临时查看分块上传等细节；
 事件字段和生产健康检查工作流见[日志与运行监控](observability.md)。
@@ -552,43 +552,7 @@ gh secret set FEISHU_WEBHOOK_SECRET
 工作流引用 [ningkaikok/feishu-notify-action](https://github.com/ningkaikok/feishu-notify-action)，
 每个仓库和飞书群建议使用独立机器人，不要在多个项目之间共享 Webhook。
 
-## 分支与提交
+## 分支与发布准备
 
-```bash
-git switch -c feat/your-change
-git add .
-git commit -m "feat: describe the change"
-git push -u origin feat/your-change
-```
-
-请通过 Pull Request 合并到 `main`，并在修改用户可见行为、配置或文档时同步更新
-[`CHANGELOG.md`](../CHANGELOG.md)。
-
-## 手动生成 CHANGELOG 初稿
-
-项目保留 [git-cliff](https://git-cliff.org/) 作为发布准备工具，根据 Conventional Commits 生成
-`CHANGELOG.md` 的 `Unreleased` 初稿，不会覆盖已有版本记录。分类规则与项目开发规范一致：
-
-- `feat` → `Added`
-- `fix` → `Fixed`
-- `perf`、`refactor` → `Changed`
-- `docs`、`style`、`chore`、`test` 不写入 CHANGELOG
-
-本地安装 `git-cliff` 后运行：
-
-```bash
-scripts/generate-changelog.sh
-```
-
-默认会先同步远程版本 Tag，并只扫描“最新 Tag 到当前提交”的范围，避免旧版本条目再次进入 `Unreleased`。
-离线或需要指定范围时，可运行 `scripts/generate-changelog.sh v0.3.0..HEAD`。
-
-请只在准备发布或整理一组用户可见改动时运行。脚本会替换 `Unreleased` 区域，因此运行后必须检查：
-
-- 将英文提交摘要改写为中文用户视角描述。
-- 合并重复条目，并删除只有内部实现意义的内容。
-- 确认没有把上一个正式版本已经发布的内容重新加入。
-- 在 `release/*` 分支或对应功能 PR 中提交审核后的结果。
-
-仓库不再在 `main` 推送后自动创建 CHANGELOG PR。自动流程无法判断用户影响，会重复扫描最新 Tag 后的
-提交，并可能覆盖已经人工整理的文案。
+分支、提交格式、PR 与 CHANGELOG 分类及发布步骤统一维护在 [CONTRIBUTING.md](../CONTRIBUTING.md)。
+代理的授权与检查约束见 [AGENTS.md](../AGENTS.md)，不在开发指南复制第二套规则。
