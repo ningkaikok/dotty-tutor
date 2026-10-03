@@ -42,6 +42,9 @@ _QUESTION_KEEP = frozenset({
     "variationObjective",
     "variationAttributionSource",
     "variationLevel",
+    "sourceRevisionId",
+    "sourceLocator",
+    "questionKind",
 })
 
 # 需要递归脱敏的结构化字段。

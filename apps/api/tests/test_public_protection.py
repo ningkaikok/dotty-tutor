@@ -13,6 +13,8 @@ class PublicProtectionUnitTests(unittest.TestCase):
     def test_expensive_paths_include_model_and_background_work(self) -> None:
         self.assertTrue(PublicProtection.is_expensive_path("/api/help"))
         self.assertTrue(PublicProtection.is_expensive_path("/api/tutor/threads/t1/messages"))
+        self.assertTrue(PublicProtection.is_expensive_path("/api/chapters/c1/generate-ai"))
+        self.assertFalse(PublicProtection.is_expensive_path("/api/chapters/c1/lessons/l1/review"))
         self.assertFalse(PublicProtection.is_expensive_path("/api/health"))
 
     def test_rate_limit_is_scoped_to_client(self) -> None:

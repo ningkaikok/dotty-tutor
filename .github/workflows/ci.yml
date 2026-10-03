@@ -60,6 +60,8 @@ jobs:
         run: python scripts/check_test_discipline.py
       - name: Type check (pyright)
         run: uv --directory apps/api run pyright
+      - name: Install original PDF page renderer
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: Run backend tests in isolated PostgreSQL databases
         run: bash scripts/test-backend-postgres.sh
 

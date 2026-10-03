@@ -142,7 +142,8 @@ class PublicProtection:
 
     @classmethod
     def is_expensive_path(cls, path: str) -> bool:
-        return path.startswith(cls.EXPENSIVE_PREFIXES)
+        chapter_generation = path.startswith("/api/chapters/") and path.endswith("/generate-ai")
+        return chapter_generation or path.startswith(cls.EXPENSIVE_PREFIXES)
 
     def check(self, request: Request) -> ProtectionDecision:
         if not self.enabled or request.method == "OPTIONS":

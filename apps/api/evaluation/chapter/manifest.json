@@ -1,0 +1,819 @@
+{
+  "version": "chapter-scenarios-v1",
+  "title": "初中数学：一次函数（synthetic）；英语阅读微型证据场景（synthetic）",
+  "counted": false,
+  "cases": [
+    {
+      "id": "math-text-pdf-01",
+      "subject": "math",
+      "tags": [
+        "text_pdf_ocr"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 1,
+      "sourceRegion": {
+        "x": 0,
+        "y": 80,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y=2x+1",
+          "x=2"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第1页。\n1. 一次函数 y=2x+1。求 x=2 时 y 的值。",
+        "artifactKind": "synthetic_text_pdf_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1",
+          "x=2"
+        ]
+      }
+    },
+    {
+      "id": "math-scan-ocr-02",
+      "subject": "math",
+      "tags": [
+        "scan_page_ocr"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 2,
+      "sourceRegion": {
+        "x": 0,
+        "y": 160,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y=-3x+4",
+          "x=1"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第2页\n1. 已知一次函数 y=-3x+4，当 x=1 时，求 y。",
+        "artifactKind": "synthetic_scanned_page_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=-3x+4",
+          "x=1"
+        ]
+      }
+    },
+    {
+      "id": "math-chart-03",
+      "subject": "math",
+      "tags": [
+        "chart"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 3,
+      "sourceRegion": {
+        "x": 0,
+        "y": 240,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/linear-chart.svg"
+          ]
+        },
+        "requiredSourceFragments": [
+          "y=2x+1"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第3页\n1. 如图，直线表示 y=2x+1。\n![原创函数图](assets/linear-chart.svg) 第1题图\n求 x=1 时 y。",
+        "artifactKind": "synthetic_ocr_markdown_with_original_svg_reference"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/linear-chart.svg"
+          ]
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1"
+        ]
+      }
+    },
+    {
+      "id": "math-formula-04",
+      "subject": "math",
+      "tags": [
+        "formula"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 4,
+      "sourceRegion": {
+        "x": 0,
+        "y": 320,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y=\\frac{1}{2}x-3",
+          "x=4"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第4页\n1. 已知 y=\\frac{1}{2}x-3，求 x=4 时的函数值。"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=\\frac{1}{2}x-3",
+          "x=4"
+        ]
+      }
+    },
+    {
+      "id": "math-scan-formula-05",
+      "subject": "math",
+      "tags": [
+        "scan_page_ocr",
+        "formula"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 5,
+      "sourceRegion": {
+        "x": 0,
+        "y": 400,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y＝２ｘ＋１",
+          "x=3"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第5页\n1. 一次函数 y＝２ｘ＋１ 的图象经过点（0，1），求 x=3 时的 y。",
+        "artifactKind": "synthetic_scanned_page_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y＝２ｘ＋１",
+          "x=3"
+        ]
+      }
+    },
+    {
+      "id": "math-missing-page-06",
+      "subject": "math",
+      "tags": [
+        "missing_page"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 6,
+      "sourceRegion": {
+        "x": 0,
+        "y": 480,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1",
+          "2",
+          "3"
+        ],
+        "requiredSourceFragments": [
+          "y=2x+1",
+          "y=3x-2"
+        ]
+      },
+      "expectedOutcome": "known_failure",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第6页\n1. 求 y=2x+1 在 x=0 时的值。\n<!-- page 7 missing -->\n3. 求 y=3x-2 在 x=1 时的值。"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1",
+          "3"
+        ],
+        "imagesByQuestion": {
+          "1": [],
+          "3": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1",
+          "y=3x-2"
+        ]
+      }
+    },
+    {
+      "id": "math-wrong-image-07",
+      "subject": "math",
+      "tags": [
+        "wrong_image",
+        "chart"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 7,
+      "sourceRegion": {
+        "x": 0,
+        "y": 560,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/linear-chart.svg"
+          ]
+        },
+        "requiredSourceFragments": [
+          "y=2x+1"
+        ]
+      },
+      "expectedOutcome": "known_failure",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第8页\n1. 如图，直线表示 y=2x+1，求截距。\n![错误配图](assets/unrelated-chart.svg) 第1题图",
+        "artifactKind": "synthetic_ocr_markdown_with_original_svg_reference"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/unrelated-chart.svg"
+          ]
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1"
+        ]
+      }
+    },
+    {
+      "id": "math-omitted-condition-08",
+      "subject": "math",
+      "tags": [
+        "omitted_condition"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 8,
+      "sourceRegion": {
+        "x": 0,
+        "y": 640,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "x>0",
+          "y=2x+1"
+        ]
+      },
+      "expectedOutcome": "known_failure",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第9页\n1. 已知 y=2x+1，求函数值。"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1"
+        ]
+      }
+    },
+    {
+      "id": "math-two-questions-09",
+      "subject": "math",
+      "tags": [
+        "text_pdf_ocr"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 9,
+      "sourceRegion": {
+        "x": 0,
+        "y": 720,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1",
+          "2"
+        ],
+        "requiredSourceFragments": [
+          "y=4x-2",
+          "x=2"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第10页\n1. 写出 y=4x-2 的比例系数和常数项。\n2. 求 y=4x-2 在 x=2 时的值。",
+        "artifactKind": "synthetic_text_pdf_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1",
+          "2"
+        ],
+        "imagesByQuestion": {
+          "1": [],
+          "2": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=4x-2",
+          "x=2"
+        ]
+      }
+    },
+    {
+      "id": "math-repeated-page-number-10",
+      "subject": "math",
+      "tags": [
+        "scan_page_ocr"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 10,
+      "sourceRegion": {
+        "x": 0,
+        "y": 800,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y=2x+1",
+          "x=2"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第11页\n1. 已知 y=2x+1。\n第12页\n1. （续）求 x=2 时的函数值。",
+        "artifactKind": "synthetic_scanned_page_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": [
+          "y=2x+1",
+          "x=2"
+        ]
+      }
+    },
+    {
+      "id": "math-chart-caption-11",
+      "subject": "math",
+      "tags": [
+        "chart"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 11,
+      "sourceRegion": {
+        "x": 0,
+        "y": 880,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/linear-chart.svg"
+          ]
+        },
+        "requiredSourceFragments": [
+          "一次函数图象"
+        ]
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第13页\n1. 一次函数图象如图。\n![原创坐标网格](assets/linear-chart.svg) 第1题图\n读出直线经过的点。",
+        "artifactKind": "synthetic_ocr_markdown_with_original_svg_reference"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": [
+            "assets/linear-chart.svg"
+          ]
+        },
+        "requiredSourceFragmentsPresent": [
+          "一次函数图象"
+        ]
+      }
+    },
+    {
+      "id": "math-truncated-ocr-12",
+      "subject": "math",
+      "tags": [
+        "scan_page_ocr",
+        "formula"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 12,
+      "sourceRegion": {
+        "x": 0,
+        "y": 960,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "questionNumbers": [
+          "1"
+        ],
+        "requiredSourceFragments": [
+          "y=2x+1"
+        ]
+      },
+      "expectedOutcome": "known_failure",
+      "input": {
+        "format": "synthetic_ocr_markdown",
+        "ocrText": "第14页\n1. OCR识别：一次函数 y=2x+，求 x=1 时的函数值。",
+        "artifactKind": "synthetic_scanned_page_ocr_markdown"
+      },
+      "baselineSignature": {
+        "questionNumbers": [
+          "1"
+        ],
+        "imagesByQuestion": {
+          "1": []
+        },
+        "requiredSourceFragmentsPresent": []
+      }
+    },
+    {
+      "id": "en-word-meaning",
+      "subject": "english",
+      "tags": [
+        "word_meaning"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 21,
+      "sourceRegion": {
+        "x": 0,
+        "y": 80,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "intelligent"
+        ],
+        "evidence": "Mia is a bright student who solves puzzles quickly."
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "passage": "In the passage, “bright” means intelligent.",
+        "providedAnswer": "intelligent",
+        "providedEvidence": "Mia is a bright student who solves puzzles quickly."
+      }
+    },
+    {
+      "id": "en-reference",
+      "subject": "english",
+      "tags": [
+        "reference"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 22,
+      "sourceRegion": {
+        "x": 0,
+        "y": 160,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "the volunteers"
+        ],
+        "evidence": "The volunteers arrived early. They set up the tables."
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "passage": "The word “they” refers to the volunteers.",
+        "providedAnswer": "the volunteers",
+        "providedEvidence": "The volunteers arrived early. They set up the tables."
+      }
+    },
+    {
+      "id": "en-explicit",
+      "subject": "english",
+      "tags": [
+        "explicit"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 23,
+      "sourceRegion": {
+        "x": 0,
+        "y": 240,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "at nine o’clock"
+        ],
+        "evidence": "The notice says the train leaves at nine o’clock."
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "passage": "The train leaves at nine o’clock.",
+        "providedAnswer": "at nine o’clock",
+        "providedEvidence": "The notice says the train leaves at nine o’clock."
+      }
+    },
+    {
+      "id": "en-inference",
+      "subject": "english",
+      "tags": [
+        "inference"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 24,
+      "sourceRegion": {
+        "x": 0,
+        "y": 320,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "It likely rained recently.",
+          "It probably rained not long ago."
+        ],
+        "evidence": "The road was wet and drops still fell from the trees."
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "passage": "The road was wet, so it likely rained recently.",
+        "providedAnswer": "It likely rained recently.",
+        "providedEvidence": "The road was wet and drops still fell from the trees."
+      }
+    },
+    {
+      "id": "en-correct-answer-wrong-evidence",
+      "subject": "english",
+      "tags": [
+        "wrong_evidence"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 25,
+      "sourceRegion": {
+        "x": 0,
+        "y": 400,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "Maya left the red umbrella by the door."
+        ],
+        "evidence": "Maya left the red umbrella by the door.",
+        "knownFailureCheck": "evidence"
+      },
+      "expectedOutcome": "expected_rejection",
+      "input": {
+        "passage": "Maya left the red umbrella by the door.",
+        "providedAnswer": "Maya left the red umbrella by the door.",
+        "providedEvidence": "Lena borrowed the blue coat from Jo."
+      }
+    },
+    {
+      "id": "en-reasonable-paraphrase",
+      "subject": "english",
+      "tags": [
+        "paraphrase"
+      ],
+      "sourceKind": "synthetic",
+      "source": {
+        "license": "Original synthetic content; CC0-1.0",
+        "version": "synthetic-chapter-v1"
+      },
+      "sourcePage": 26,
+      "sourceRegion": {
+        "x": 0,
+        "y": 480,
+        "width": 600,
+        "height": 70
+      },
+      "reviewStatus": "pending_human_review",
+      "reviewer": null,
+      "counted": false,
+      "expected": {
+        "acceptedAnswers": [
+          "The gardener watered the plants before sunrise.",
+          "The gardener gave the plants water before sunrise."
+        ],
+        "evidence": "Before the sun came up, the gardener gave the plants water."
+      },
+      "expectedOutcome": "pass",
+      "input": {
+        "passage": "The gardener watered the plants before sunrise.",
+        "providedAnswer": "The gardener gave the plants water before sunrise.",
+        "providedEvidence": "Before the sun came up, the gardener gave the plants water."
+      }
+    }
+  ]
+}

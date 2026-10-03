@@ -5,6 +5,7 @@ export * from "./practice";
 export * from "./question";
 export * from "./publication";
 export * from "./classroom";
+export * from "./chapter";
 export * from "./review";
 export * from "./runtime";
 export * from "./textbook";

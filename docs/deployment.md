@@ -469,4 +469,16 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 
 ### v0.33.0 发布分支同步
 
-`deploy/render-supabase` 保留 Render 启动脚本、公网限流与 MinerU 云端配置，并同步 v0.33.0 的会话、任务配置快照和并发保护。Static Site 的 Node 固定为 22.22.2，满足前端依赖要求。当前 Render 配置仍为公开合成数据演示；启用 protected 模式前必须使用同源 HTTPS 代理，并配置教师密钥与安全 Cookie，不能直接将分离的 Static Site/API 域名视为已验收的会话部署。数据库迁移仍按 backup → preflight → upgrade → verify 执行。分支同步不代表生产迁移或服务上线已验证。
+`deploy/render-supabase` 保留 Render 启动脚本、公网限流与 MinerU 云端配置，并同步 main 的提示词管理修复、章节课程与来源约束 AI 草稿。章节生成使用任务冻结的 DeepSeek 配置，计入昂贵请求限额；普通审核不占用模型请求额度。原页图片使用 `VITE_API_ORIGIN` 指向独立 API 域名。已有库须升级至 `0016_chapter_courses`，不能只替换应用镜像。Static Site 的 Node 固定为 22.22.2，满足前端依赖要求。当前 Render 配置仍为公开合成数据演示；启用 protected 模式前必须使用同源 HTTPS 代理，并配置教师密钥与安全 Cookie，不能直接将分离的 Static Site/API 域名视为已验收的会话部署。数据库迁移仍按 backup → preflight → upgrade → verify 执行。分支同步不代表生产迁移或服务上线已验证。
+
+
+### 2026-10-03 章节同步验收
+
+同步 main 的提示词管理/题图修复、章节课程和来源约束草稿后，发布分支本地执行并通过：
+
+- `apps/api`：`uv run ruff check .`、`uv run pyright`、`uv run python -m unittest discover -s tests -p 'test_*.py'`，720 项测试通过；由隔离 PostgreSQL 包装器创建并迁移 runtime 库后执行原命令，没有跳过数据库验收。
+- `apps/web`：`pnpm lint`、`pnpm vitest run`（131 项）、`pnpm check:api`、`pnpm exec tsc --noEmit`、`pnpm run build`、`DOTTY_WEB_PORT=59236 pnpm run test:e2e`（20 项）通过。
+- 根目录测试纪律检查（94 文件）及 `git diff --check` 通过。
+- 在独立 `dotty-dcaa-quality` Docker 项目执行 `docker compose config --quiet`、`docker compose up --build --detach`；Web `/healthz` 返回 `ok`，`/api/health` 返回 `status=ok/database=postgresql/schema=current`，API/数据库/Web 健康，Worker 运行。采用 59237/59238 隔离端口替代默认 8080/15432；验收后 `docker compose down --volumes` 清理任务专用容器与临时卷。
+
+未执行生产 Supabase 迁移、Render 上线核验或真实 DeepSeek/MinerU 质量评测；真实材料 18 个案例仍待人工复核。已有库部署前须完成 `0016_chapter_courses` 的正式升级与验证。

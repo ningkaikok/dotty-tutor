@@ -32,6 +32,8 @@
 人工标注操作见 [审题队列](../apps/api/evaluation/benchmark/review_queue/README.md)，后端测试夹具与纪律见
 [测试说明](../apps/api/tests/README.md)。
 
+数学章节与英语阅读的批次、失败判据和验收边界见 [A/B 实施与验收计划](chapter-ab-implementation-plan.md)。
+
 ## 同步规则
 
 - 当前组件/调用链变化更新 architecture；文件或领域边界变化更新 codebase-guide；接口变化更新 api。

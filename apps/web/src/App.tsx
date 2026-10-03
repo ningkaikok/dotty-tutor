@@ -15,6 +15,8 @@ const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((modul
 const ModelMetricsApp = lazy(() => import("./apps/metrics/ModelMetricsApp").then((module) => ({ default: module.ModelMetricsApp })));
 const DependencyPreflightApp = lazy(() => import("./apps/metrics/DependencyPreflightApp").then((module) => ({ default: module.DependencyPreflightApp })));
 const TeacherClassroomApp = lazy(() => import("./apps/teacher/TeacherClassroomApp").then((module) => ({ default: module.TeacherClassroomApp })));
+const ChapterStudioApp = lazy(() => import("./apps/chapters/ChapterStudioApp").then((module) => ({ default: module.ChapterStudioApp })));
+const PublishedChapterApp = lazy(() => import("./apps/student/PublishedChapterApp").then((module) => ({ default: module.PublishedChapterApp })));
 
 function PageTitle() {
   const { pathname } = useLocation();
@@ -43,8 +45,11 @@ function AppRoutes() {
       <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
         <Routes>
           <Route index element={<ProductHome />} />
+          <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
+          <Route path="studio/chapters" element={<ChapterStudioApp />} />
+          <Route path="studio/chapters/:chapterId" element={<ChapterStudioApp />} />
           <Route path="studio/prompts" element={<PromptManagerApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/dependency-preflight" element={<DependencyPreflightApp />} />

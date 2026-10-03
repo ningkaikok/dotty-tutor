@@ -8,9 +8,11 @@ import os
 from pathlib import Path
 
 from application import create_app
+from application.chapter_jobs import build_chapter_registry
 from application.job_registry import merge_registries
 from application.mistake_jobs import build_mistake_registry
 from application.services.assignment_planning import AssignmentPlanningService
+from application.services.chapter_courses import ChapterCourseService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.stateful_tutor import StatefulTutor
@@ -36,6 +38,7 @@ from persistence.variation_store import VariationStore
 from prompts import configure_prompt_source
 from publication_revision import PublicationRevisionService
 from routers.auth_routes import build_auth_router
+from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
@@ -115,6 +118,8 @@ app.include_router(build_publication_router(
     store=store,
     revision_service=publication_revision_service,
 ))
+chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
+app.include_router(build_chapter_router(chapter_course_service))
 app.include_router(textbook_router)
 
 # 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
@@ -148,7 +153,7 @@ mistake_job_registry = build_mistake_registry(
     recognize=mistake_recognizer,
     project_result=student_mistake_item,
 )
-job_registry = merge_registries(textbook_job_registry, mistake_job_registry)
+job_registry = merge_registries(textbook_job_registry, mistake_job_registry, build_chapter_registry(chapter_course_service))
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,

@@ -70,7 +70,15 @@ def build_publication_router(*, store: Any, revision_service: Any | None = None)
             status = "published"
         if status not in {"draft", "in_review", "review", "published", "archived"}:
             raise HTTPException(status_code=400, detail="无效的发布状态")
-        return {"items": store.list_publications(status=status)}
+        items = store.list_publications(status=status)
+        if hasattr(store, "list_chapters"):
+            chapter_publication_ids = {
+                publication.get("publicationId")
+                for chapter in store.list_chapters()
+                for publication in chapter.get("publications", [])
+            }
+            items = [item for item in items if item["publicationId"] not in chapter_publication_ids]
+        return {"items": items}
 
     @router.get("/source/{source_upload_id}")
     def get_latest_publication_for_source(source_upload_id: str) -> dict[str, Any]:
@@ -125,6 +133,9 @@ def build_publication_router(*, store: Any, revision_service: Any | None = None)
             raise HTTPException(status_code=404, detail="互动试卷不存在")
         if publication["status"] != "published":
             raise HTTPException(status_code=404, detail="互动试卷尚未发布")
+        chapter_owned = getattr(store, "is_chapter_publication", None)
+        if callable(chapter_owned) and chapter_owned(publication_id):
+            raise HTTPException(status_code=404, detail="章节课程请从章节阅读入口打开")
         publication["lessons"] = [_public_lesson(lesson) for lesson in publication["lessons"]]
         return publication
 

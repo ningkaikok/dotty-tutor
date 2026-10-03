@@ -50,6 +50,13 @@ async function savePreview() {
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe("内容平台提示词管理", () => {
+  it("user understands credential permissions before entering prompt management", () => {
+    // Given 未连接的内容平台入口，When 用户查看凭据说明，Then 可了解权限与会话范围。
+    render(<MemoryRouter><PromptManagerApp /></MemoryRouter>);
+    expect(screen.getByRole("heading", { name: "教学策略 · 提示词管理" })).toBeInTheDocument();
+    expect(screen.getByLabelText("内容平台凭据")).toHaveAccessibleDescription(/维护者.*编辑凭据.*发布凭据.*当前页面内存/);
+    expect(screen.getByRole("button", { name: "进入管理" })).toBeDisabled();
+  });
   it("user editor saves and previews a draft without publishing permissions", async () => {
     fixture(); await connect();
     expect(JSON.parse((screen.getByLabelText("样例变量") as HTMLTextAreaElement).value).repair).toBe("");

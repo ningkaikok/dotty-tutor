@@ -124,6 +124,10 @@ body::before {
 .product-entry-card.producer li::before { background: #596de4; }
 .product-entry-card button { width: 100%; margin-top: auto; padding: 14px 18px; border: 0; border-radius: 13px; color: #fff; background: #183f31; font-weight: 700; }
 .product-entry-card button:hover { background: #245b46; }
+.producer-entry-actions { display: grid; gap: 8px; margin-top: auto; }
+.producer-entry-actions button { margin-top: 0; }
+.product-entry-card .secondary-entry-button { border: 1px solid #cbd0dc; color: #424e93; background: #f4f5fc; }
+.product-entry-card .secondary-entry-button:hover { background: #e9ebf8; }
 
 .import-intro { max-width: 680px; margin: 48px 0; }
 .import-intro h1 { margin: 10px 0 13px; font-size: clamp(38px, 7vw, 68px); line-height: 1.02; }

@@ -1,5 +1,13 @@
 import type { CanvasAction } from "./question";
 
+export interface LessonSourceRef {
+  sourceRevisionId: string;
+  page: number;
+  regionId?: string;
+  sentenceId?: string;
+  quote?: string;
+}
+
 export interface LessonStep {
   id: string;
   title: string;
@@ -12,49 +20,49 @@ export interface DiagramLessonBlock {
   id: string;
   type: "diagram";
   title: string;
-  payload: { renderer: "geometry"; action: CanvasAction; text: string; speechText: string };
+  payload: { renderer: "geometry"; action: CanvasAction; text: string; speechText: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface MarkdownLessonBlock {
   id: string;
   type: "markdown";
   title: string;
-  payload: { markdown: string };
+  payload: { markdown: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface FormulaLessonBlock {
   id: string;
   type: "formula";
   title: string;
-  payload: { latex: string };
+  payload: { latex: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface AnimationLessonBlock {
   id: string;
   type: "animation";
   title: string;
-  payload: { src: string; poster?: string; caption?: string };
+  payload: { src: string; poster?: string; caption?: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface AnnotationLessonBlock {
   id: string;
   type: "annotation";
   title: string;
-  payload: { text: string };
+  payload: { text: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface QuizLessonBlock {
   id: string;
   type: "quiz";
   title: string;
-  payload: { questionId: string };
+  payload: { questionId: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export interface HintLessonBlock {
   id: string;
   type: "hint";
   title: string;
-  payload: { level: number; hint: string; question?: string };
+  payload: { level: number; hint: string; question?: string; sourceRefs?: LessonSourceRef[] };
 }
 
 export type LessonBlock =

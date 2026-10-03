@@ -47,6 +47,42 @@ upload_jobs = Table(
     Column("completed_at", Float),
 )
 
+chapter_records = Table(
+    "chapter_records", metadata,
+    Column("chapter_id", String(64), primary_key=True),
+    Column("subject", String(16), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("chapter_json", json_document, nullable=False),
+    Column("record_version", Integer, nullable=False, default=1),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+)
+
+chapter_english_attempts = Table(
+    "chapter_attempts", metadata,
+    Column("attempt_id", String(64), primary_key=True),
+    Column("subject", String(16), nullable=False),
+    Column("publication_id", String(64), ForeignKey("lesson_publications.publication_id", ondelete="CASCADE"), nullable=False),
+    Column("learner_id", String(128), nullable=False),
+    Column("lesson_id", String(128), nullable=False),
+    Column("answer_json", json_document, nullable=False),
+    Column("evidence_json", json_document, nullable=False),
+    Column("assessment", String(32), nullable=False),
+    Column("evidence_verdict", String(32), nullable=False),
+    Column("feedback_json", json_document, nullable=False),
+    Column("created_at", Float, nullable=False),
+)
+
+chapter_english_attempt_reviews = Table(
+    "chapter_english_attempt_reviews", metadata,
+    Column("review_id", String(64), primary_key=True),
+    Column("attempt_id", String(64), ForeignKey("chapter_attempts.attempt_id", ondelete="CASCADE"), nullable=False),
+    Column("reviewer", String(128), nullable=False),
+    Column("decision", String(32), nullable=False),
+    Column("note", Text, nullable=False, default=""),
+    Column("created_at", Float, nullable=False),
+)
+
 # Generic executable work is deliberately separate from upload metadata.  An
 # upload may produce several jobs (OCR, generation, review), while its upload
 # row remains the durable domain record and is not a queue state machine.
