@@ -15,11 +15,43 @@ import unittest
 
 from domain.questions.pipeline import (
     apply_question_quality_gate,
+    normalize_image_choice_question,
     validate_question_payload,
 )
 
 
 class QuestionContentResidueTests(unittest.TestCase):
+    def test_user_sees_only_image_options_after_bare_ocr_labels_are_normalized(self) -> None:
+        # Given OCR 把 A-D 单独成行，When 图片选项规范化，Then 题干只保留题意。
+        images = [f"images/option-{label}.jpg" for label in "ABCD"]
+        source = "1. 选择有稳定性的图形\n" + "\n".join(
+            f"{label}\n![]({image})" for label, image in zip("ABCD", images)
+        )
+        urls = [f"/api/assets/option-{label}.jpg" for label in "ABCD"]
+        payload = {"question": {
+            "questionNumber": "1", "prompt": "选择有稳定性的图形\nABCD是四边形\n\nA\n\nB\n\nC\n\nD",
+            "options": ["(A)", "(B)", "(C)", "(D)"], "imageUrls": urls,
+        }}
+        normalize_image_choice_question(payload, source, images)
+        apply_question_quality_gate(payload, source, images)
+        self.assertEqual(payload["question"]["prompt"], "选择有稳定性的图形\nABCD是四边形")
+        options = next(block for block in payload["question"]["contentBlocks"] if block["type"] == "options")
+        self.assertEqual([item["imageUrl"] for item in options["items"]], urls)
+        self.assertEqual([item["label"] for item in options["items"]], ["(A)", "(B)", "(C)", "(D)"])
+
+    def test_user_cannot_publish_image_choices_with_bare_duplicate_labels(self) -> None:
+        # Given 清理被绕过，When 门禁检查，Then 裸标签重复必须进入人工复核。
+        images = [f"images/option-{label}.jpg" for label in "ABCD"]
+        urls = [f"/api/assets/option-{label}.jpg" for label in "ABCD"]
+        prompt = "选择有稳定性的图形\n\nA\n\nB\n\nC\n\nD"
+        payload = {"question": {
+            "prompt": prompt, "options": ["(A)", "(B)", "(C)", "(D)"],
+            "imageUrls": urls, "optionImageUrls": urls,
+            "contentBlocks": [{"id": "stem", "type": "text", "text": prompt}],
+        }}
+        quality = validate_question_payload(payload, prompt, images)
+        self.assertIn("题干中重复包含结构化选项", quality["errors"])
+
     def test_strips_image_reference_from_ordinary_question_prompt(self) -> None:
         """普通题（非 A-D 图片选择题）模型误把图片路径写回 prompt 时，仍需被清理。
 

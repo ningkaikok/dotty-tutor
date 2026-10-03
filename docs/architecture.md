@@ -166,7 +166,7 @@ flowchart TB
 | 内容块注册表 | `apps/web/src/lesson/rendererRegistry.tsx` | Markdown、公式、图形、动画、标注、练习和提示渲染 |
 | 内容预览工作区 | `apps/web/src/components/PracticeWorkspace.tsx` | 内容生产端题目导航、重新生成、质量信息和预览反馈 |
 | 题型作答 | `apps/web/src/components/QuestionAnswer.tsx`、`apps/web/src/answerAssembly.ts` | 选择、多选、判断、填空、数值、画线和多小问输入及答案组装 |
-| 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染 |
+| 题目展示 | `apps/web/src/questionPresentation.ts`、`QuestionContent.tsx` | 题干、LaTeX、题图和选项规范化渲染；旧题目仅在完整图片选项佐证下清理题干中的整行 A-D 标签 |
 | API 契约 | `apps/web/src/api/`、`apps/web/src/types/` | 按产品域组织请求和类型 |
 | 内容渲染 | `QuestionContent.tsx`、`RichText.tsx`、`richTextParser.ts`、`MathText.tsx` | 普通文字、显式 LaTeX、题图和选项 |
 | 交互画布 | `DrawLineCanvas.tsx`、`GeometryCanvas.tsx`、`apps/web/src/InteractiveMathCanvas.tsx` | 画线作答、几何演示和 Tutor 最小点放置画布 |
@@ -226,6 +226,36 @@ flowchart TB
 | 复习策略 | `apps/api/domain/learning/mastery_policy.py`、`review_scheduler.py` | 按目标类型使用定量/定性双门槛、按表现推进或回退；旧 metadata 缺失时兼容 legacy 策略 |
 | Shadow 画像 | `apps/api/domain/tutoring/learner_profile.py`、`apps/api/application/services/learner_context.py` | 仅聚合确定性 mastery、已确认错因、提示依赖和最近练习；事实有 scope/证据/生命周期，默认不注入 Tutor |
 | AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、合成案例匿名人工审核包、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
+
+## 来源关联章节课程与英语阅读
+
+章节是已有教材与课程能力的一个新编排入口，使用 `domain/contracts/chapter.py`、
+`application/services/chapter_courses.py` 和 `persistence/chapter_store.py`。
+纯来源处理与有限模板构造分别在 `domain/chapters/source.py` 和 `templates.py`，沿用已有 OCR 页标记；
+来源保存页范围、页文本、归一化区域、版本与指纹；来源变更追加修订并要求重新审核，
+已发布课程继续通过原有 `lesson_publications` 保存，不覆盖历史题目和作答。
+
+确定性课程模板按来源页构造概念、原文例式、提示和检查题：数学只识别有限关系式，英语只自动构造有限地点明示题。
+另有来源约束的 AI 草稿路径：`application/chapter_jobs.py` 装配既有 Worker，服务在锁外调用 ModelRuntime，
+`domain/chapters/quality.py` 校验来源版本、页与句/区域引用，再在事务内比较章节版本后写入待审草稿。
+数学输出概念、条件、例题、三级提示与检查题；英语输出四类阅读题及待审变体/rubric。定位通过不代表内容正确，
+必须教师审核；未知改写仍进入人工复核。AI 调用只执行一次，失败后人工重试追加预算，避免自动重复消费。
+任务持久化来源指纹、Prompt/Schema 哈希及安全 Runtime 诊断；取消与版本冲突不能覆盖教师编辑或历史发布。
+课程使用既有 `LessonBlock`；前端 `LessonPlayer` 可直接消费课程文档，同时兼容旧题目 payload。
+来源不足或存在缺页、图文、条件问题时进入待复核，生成不等于发布。教师补齐检查题并显式审核后才能发布。
+章节写操作用 PostgreSQL 章节锁串行化，`DatabaseStore.atomic/read_connection` 让嵌套领域读写共享同一事务，避免发布或修订失败后留下部分状态；编辑与审核请求携带当前记录版本防止旧页面批准新内容。
+数学检查题复用确定性判题和学习存储；英语答案与所选原文依据分别保存，英语不写数学掌握度。
+未校准简答需要人工确认，不能把字符串不匹配直接视为语义错误。教师通过专用作答编号查询入口追加审核记录；学生恢复接口绑定自身会话。前端恢复按学习者、章节和发布版本隔离，只信任服务端反馈。
+
+`application/services/chapter_source_preview.py` 复用 OCR Runtime 的原 PDF 页渲染适配器，按文件哈希隔离缓存；
+上传目录与缓存路径均受限制，预览固定来源修订，文件替换后拒绝展示历史原页。前端在真实原页上叠加归一化区域，
+支持放大；缺失或加载失败明确提示，文字回看不会冒充原页。
+
+离线 `evaluation/chapter/baseline.py` 保留原创合成场景；新增 `real_sources.py` 从外部开放教材 PDF 的文本层
+准备带来源许可、版本、哈希、页码及预期/实际的待复核包，英语复用生产判定器重放。
+两者均不执行 OCR 或模型质量评测。人工决策导入验证材料、包与案例哈希，单次审核始终不计双审金标准。
+真实教材人工复核、跨模型质量和真实参与者学习效果仍需独立验证，见 [增强验收记录](chapter-source-quality-acceptance.md)。
+完整依赖和验收门槛见 [A/B 实施计划](chapter-ab-implementation-plan.md)。
 
 ## 错题录入与确认
 

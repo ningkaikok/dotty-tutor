@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -45,6 +47,33 @@ class DatabaseStore:
             future=True,
             pool_pre_ping=True,
         )
+        self._active_connection: ContextVar[Connection | None] = ContextVar(
+            f"store_connection_{id(self)}", default=None
+        )
+
+    @contextmanager
+    def atomic(self):
+        """Share one database transaction across nested domain-store writes."""
+        active = self._active_connection.get()
+        if active is not None:
+            yield active
+            return
+        with self.engine.begin() as connection:
+            token = self._active_connection.set(connection)
+            try:
+                yield connection
+            finally:
+                self._active_connection.reset(token)
+
+    @contextmanager
+    def read_connection(self):
+        """Read uncommitted workflow changes on the active transaction when present."""
+        active = self._active_connection.get()
+        if active is not None:
+            yield active
+        else:
+            with self.engine.connect() as connection:
+                yield connection
 
     @property
     def backend(self) -> str:

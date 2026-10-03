@@ -65,6 +65,15 @@ Python 依赖统一使用 [uv](https://docs.astral.sh/uv/) 与 `apps/api/uv.lock
 如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
 `docker compose up --build --detach` 并打开 `http://localhost:8080`。
 
+### 内容平台管理凭据
+
+`/studio/prompts` 的“内容平台凭据”填写维护者提供的内容管理访问令牌。
+本地开发时，在 `.env.local` 中分别配置 `DOTTY_CONTENT_EDITOR_TOKEN` 和
+`DOTTY_CONTENT_PUBLISHER_TOKEN`，使用不同的随机值，然后重启 `scripts/dev-local.sh`。
+可用 `python3 -c 'import secrets; print(secrets.token_urlsafe(32))'` 分别生成两个值。
+编辑令牌可保存和预览草稿，发布令牌还可发布与回滚。两者均未配置时，管理接口拒绝访问。
+凭据只保留在页面内存中，退出或刷新后需要重新输入；不要提交本地配置文件。
+
 ### 可重复的教师演示数据
 
 在当前 PostgreSQL schema 已完成迁移、API 依赖可导入的环境中，从仓库根目录运行唯一播种命令：

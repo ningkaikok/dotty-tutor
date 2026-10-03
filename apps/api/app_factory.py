@@ -380,6 +380,17 @@ def create_app() -> FastAPI:
             student_only = method == "GET"
         if path.startswith("/api/lessons"):
             teacher_only = True
+        chapter_student_match = re.fullmatch(r"/api/chapters/[^/]+/(?:published|attempts(?:/[^/]+)?)", path)
+        if chapter_student_match and path.endswith("/published") and method == "GET":
+            # Published projections contain only learner-safe blocks and question prompts.
+            teacher_only = False
+            student_only = False
+        elif chapter_student_match and "/attempts" in path and method in {"GET", "POST"}:
+            teacher_only = False
+            student_only = True
+        if path.startswith("/api/chapters/") and not chapter_student_match:
+            teacher_only = True
+            student_only = False
         if path.startswith("/api/publications"):
             teacher_only = method != "GET"
         if path.startswith("/api/publications/source/"):

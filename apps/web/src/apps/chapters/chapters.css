@@ -1,0 +1,129 @@
+.chapter-shell { max-width: 1320px; margin: 0 auto; padding: 22px clamp(16px, 4vw, 42px) 48px; color: #203b30; }
+.chapter-topbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 30px; }
+.chapter-topbar button, .chapter-toolbar button, .chapter-source-review header button, .chapter-lesson-heading button { border: 1px solid #cdd9d0; border-radius: 9px; padding: 9px 12px; background: #fff; color: #28533e; cursor: pointer; font: inherit; font-size: 13px; }
+.chapter-topbar button:disabled, .chapter-toolbar button:disabled, .chapter-review-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.chapter-page-heading { margin: 22px 0 24px; }
+.chapter-page-heading h1 { margin: 6px 0; font-size: clamp(26px, 4vw, 38px); }
+.chapter-page-heading p, .chapter-help, .chapter-panel > p { color: #64766c; line-height: 1.6; }
+.chapter-creator-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr); gap: 18px; }
+.chapter-panel, .chapter-source-review, .chapter-lesson-review { padding: 20px; border: 1px solid #dce5dd; border-radius: 16px; background: #fff; box-shadow: 0 10px 28px rgba(30, 60, 42, .045); }
+.chapter-panel h2, .chapter-source-review h2, .chapter-lesson-review h2 { margin: 0 0 14px; font-size: 19px; }
+.chapter-gates ul, .chapter-blockers ul { padding-left: 20px; color: #53695c; line-height: 1.9; }
+.chapter-source-form { display: grid; gap: 13px; }
+.chapter-source-form > label, .chapter-check-editor > label { display: grid; gap: 6px; color: #3f5749; font-size: 13px; font-weight: 650; }
+.chapter-source-form input, .chapter-source-form select, .chapter-source-form textarea, .chapter-check-editor input, .chapter-check-editor select { width: 100%; box-sizing: border-box; border: 1px solid #cbd7ce; border-radius: 8px; padding: 9px 10px; color: #1e382a; background: #fcfdfb; font: inherit; font-weight: 400; }
+.chapter-source-form textarea { resize: vertical; line-height: 1.6; }
+.chapter-page-range { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.chapter-source-form fieldset { border: 1px solid #e0e5d9; border-radius: 9px; }
+.chapter-source-flags { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; }
+.chapter-source-flags legend { padding: 0 5px; color: #6c6d47; font-size: 12px; }
+.chapter-source-flags label { display: flex; align-items: center; gap: 6px; color: #6c6242; font-size: 12px; }
+.chapter-source-flags input { width: auto; }
+.chapter-manual-region > label { display: flex; align-items: center; gap: 6px; color: #526458; font-size: 12px; }
+.chapter-manual-region > label input { width: auto; }
+.chapter-manual-region > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 8px; }
+.chapter-manual-region > div label { display: grid; gap: 4px; color: #637467; font-size: 10px; }
+.chapter-source-form > button, .chapter-review-actions .primary, .chapter-toolbar .primary { border: 0; border-radius: 9px; padding: 11px 15px; color: #fff; background: #267451; font: inherit; font-weight: 700; cursor: pointer; }
+.chapter-source-form > p, .chapter-error { margin: 0; color: #9a3d34; }
+.chapter-error, .chapter-notice, .chapter-warning { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0; padding: 11px 13px; border-radius: 9px; background: #fff1ed; color: #933d31; }
+.chapter-error button { border: 1px solid #dcb6ad; border-radius: 7px; padding: 6px 9px; background: #fff; color: inherit; cursor: pointer; }
+.chapter-notice { background: #edf8ef; color: #2d6841; }
+.chapter-warning { background: #fff7df; color: #765b14; }
+.chapter-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.chapter-ai-job { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; margin-top: 10px; padding: 10px 12px; border: 1px solid #dce5dd; border-radius: 9px; background: #f6faf5; color: #3f5749; font-size: 12px; }
+.chapter-ai-job button { border: 1px solid #cdd9d0; border-radius: 7px; padding: 6px 9px; background: #fff; color: #28533e; font: inherit; cursor: pointer; }
+.chapter-existing-list { margin-bottom: 18px; }
+.chapter-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chapter-list-heading h2 { margin: 0 0 12px; }
+.chapter-list-heading button { margin-bottom: 12px; border: 1px solid #cdd9d0; border-radius: 8px; padding: 7px 10px; color: #28533e; background: #fff; cursor: pointer; }
+.chapter-existing-items { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.chapter-existing-items button { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; border: 1px solid #e2e9e2; border-radius: 9px; padding: 10px 12px; background: #fbfdfa; color: #345541; text-align: left; cursor: pointer; }
+.chapter-existing-items span { color: #748278; font-size: 12px; }
+.chapter-review-layout { display: grid; grid-template-columns: minmax(260px, .88fr) minmax(0, 1.4fr); align-items: start; gap: 18px; margin: 18px 0; }
+.chapter-source-review { position: sticky; top: 12px; max-height: calc(100vh - 28px); overflow: auto; }
+.chapter-source-review > header, .chapter-lesson-review > header, .chapter-lesson-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.chapter-source-review header h2, .chapter-lesson-review header h2 { margin-bottom: 0; }
+.chapter-source-version { margin-top: 20px; }
+.chapter-source-version h3 { margin: 0 0 9px; color: #597262; font-size: 13px; }
+.chapter-source-license { color: #7e8b80; font-size: 10px; overflow-wrap: anywhere; }
+.chapter-source-page { margin: 9px 0; padding: 12px; border: 1px solid #e2e9e2; border-radius: 11px; background: #f8faf7; scroll-margin: 14px; transition: border-color .15s, background .15s; }
+.chapter-source-page.focused { border-color: #2f9063; background: #f0faf2; box-shadow: 0 0 0 2px rgba(47, 144, 99, .11); }
+.chapter-source-page-heading { display: flex; justify-content: space-between; gap: 8px; color: #345541; font-size: 12px; }
+.chapter-source-page-heading span, .chapter-source-page small { color: #869389; font-size: 11px; }
+.chapter-source-page > p { white-space: pre-wrap; color: #344c3d; font-size: 13px; line-height: 1.65; }
+.chapter-page-preview-wrap { position: relative; margin: 10px 0; overflow: hidden; border: 1px solid #ccd7cc; border-radius: 5px; background: #f5f5f0; }
+.chapter-page-preview { display: block; width: 100%; height: auto; }
+.chapter-region-overlay { position: absolute; inset: 0; pointer-events: none; }
+.chapter-region-overlay button { position: absolute; min-width: 12px; min-height: 12px; border: 2px solid #167343; border-radius: 3px; background: rgba(82, 176, 116, .2); cursor: pointer; pointer-events: auto; }
+.chapter-region-overlay button.active { border: 3px solid #d4802d; background: rgba(244, 179, 81, .4); }
+.chapter-region-overlay button span { position: absolute; left: 1px; top: 0; color: #124c2b; font-size: 11px; font-weight: 800; text-shadow: 0 1px white; }
+.chapter-preview-enlarge { position: absolute; right: 6px; bottom: 6px; border: 1px solid #bac9bb; border-radius: 6px; padding: 5px 8px; background: rgba(255,255,255,.94); color: #28533e; font: inherit; font-size: 11px; cursor: pointer; }
+.chapter-preview-unavailable { padding: 9px 10px; border-radius: 7px; background: #fff7df; color: #765b14 !important; font-size: 12px !important; }
+.chapter-preview-dialog { position: fixed; z-index: 1000; inset: 4vh 4vw; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 12px; border: 1px solid #cbd7ce; border-radius: 12px; background: white; box-shadow: 0 12px 45px rgba(0,0,0,.25); }
+.chapter-preview-dialog img { display: block; width: 100%; height: calc(100% - 44px); object-fit: contain; }
+.chapter-preview-dialog button { border: 1px solid #cdd9d0; border-radius: 7px; padding: 7px 10px; background: white; color: #28533e; cursor: pointer; }
+.chapter-source-regions { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.chapter-source-regions button { border: 0; padding: 4px 0; background: transparent; color: #32714e; font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.chapter-source-regions button.active { color: #a35a19; font-weight: 700; }
+.chapter-flag { display: inline-block; margin: 3px 5px 0 0; padding: 3px 6px; border-radius: 8px; background: #fff0d7; color: #835b18; font-size: 10px; }
+.chapter-issue { margin: 8px 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5; }
+.chapter-issue.blocking { background: #fff2ed; color: #964334; }
+.chapter-lesson-card { margin-top: 13px; padding: 15px; border: 1px solid #e1e8e2; border-radius: 13px; background: #fcfdfb; }
+.chapter-lesson-heading { align-items: flex-start; }
+.chapter-lesson-heading h3 { margin: 0; font-size: 16px; }
+.chapter-status { display: inline-block; margin-top: 5px; color: #8a6c28; font-size: 11px; }
+.chapter-status.approved { color: #28804f; }
+.chapter-status.needs_review { color: #a44235; }
+.chapter-lesson-generated-label { margin: 12px 0 8px; color: #718076; font-size: 11px; }
+.chapter-lesson-card .hero-grid { display: block; }
+.chapter-lesson-card .explanation-card { display: none; }
+.chapter-check-question { margin-top: 13px; padding: 12px; border: 1px solid #dce8dc; border-radius: 10px; background: #fff; }
+.chapter-check-question h4 { margin: 0 0 7px; }
+.chapter-check-question p { font-size: 13px; line-height: 1.6; }
+.chapter-author-answer { color: #66766a; }
+.chapter-review-note, .chapter-review-citations { margin: 9px 0; padding: 9px 11px; border: 1px solid #e3e8dc; border-radius: 8px; background: #f8faf5; color: #536659; font-size: 12px; line-height: 1.6; }
+.chapter-review-note p { margin: 5px 0; }
+.chapter-review-note ul, .chapter-review-citations ul { margin: 6px 0 0; padding-left: 20px; }
+.chapter-review-note pre { max-height: 220px; overflow: auto; white-space: pre-wrap; }
+.chapter-review-citations li { margin: 4px 0; }
+.chapter-variant-review label { display: flex; gap: 7px; align-items: flex-start; margin: 7px 0; font-size: 12px; }
+.chapter-variant-review input { margin-top: 3px; }
+.chapter-check-editor { display: grid; gap: 10px; margin-top: 12px; }
+.chapter-check-editor > div { display: flex; gap: 8px; justify-content: flex-end; }
+.chapter-check-editor button, .chapter-check-question > button, .chapter-review-actions button { border: 1px solid #cbd9cf; border-radius: 8px; padding: 8px 11px; background: white; color: #2d6145; font: inherit; font-size: 12px; cursor: pointer; }
+.chapter-review-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.chapter-blockers { margin-top: 18px; border-color: #ecd7ca; }
+.chapter-blockers h2 { color: #8d4537; }
+.chapter-student-nav { display: flex; gap: 7px; margin-bottom: 14px; overflow-x: auto; }
+.chapter-student-nav button, .chapter-student-footer button { flex: 0 0 auto; border: 1px solid #d0ddd2; border-radius: 8px; padding: 8px 11px; background: #fff; color: #436450; cursor: pointer; }
+.chapter-student-nav button.active { border-color: #2c8656; background: #edf8ee; color: #226440; font-weight: 700; }
+.chapter-student-source { margin-bottom: 16px; padding: 14px 16px; border: 1px solid #dee8dc; border-radius: 12px; background: #f8fbf5; }
+.chapter-student-source > div { display: flex; justify-content: space-between; gap: 10px; color: #46634f; font-size: 12px; }
+.chapter-student-source span { color: #79877c; }
+.chapter-student-source blockquote { margin: 9px 0 0; padding: 8px 10px; border-left: 3px solid #84b38b; color: #405a47; font-size: 13px; line-height: 1.6; white-space: pre-wrap; }
+.chapter-student-player { margin-bottom: 16px; padding: 14px; border: 1px solid #dfe7de; border-radius: 14px; background: #fff; }
+.chapter-course-player .hero-grid { display: block; }
+.chapter-course-player .explanation-card { display: none; }
+.chapter-student-attempt { display: grid; gap: 10px; padding: 18px; border: 1px solid #dce6dc; border-radius: 15px; background: #fff; }
+.chapter-student-attempt h2 { margin: 0; font-size: 20px; line-height: 1.5; }
+.chapter-student-attempt > label { font-size: 13px; font-weight: 650; }
+.chapter-student-attempt textarea { width: 100%; box-sizing: border-box; border: 1px solid #cad8cc; border-radius: 9px; padding: 10px; font: inherit; resize: vertical; }
+.chapter-evidence-options { display: grid; gap: 8px; padding: 12px; border: 1px solid #e1e8df; border-radius: 10px; }
+.chapter-evidence-options legend { padding: 0 5px; color: #496251; font-size: 13px; font-weight: 700; }
+.chapter-evidence-options label { display: flex; align-items: flex-start; gap: 8px; color: #405747; font-size: 13px; line-height: 1.55; }
+.chapter-evidence-options input { margin-top: 3px; accent-color: #267451; }
+.chapter-student-attempt > button { justify-self: start; border: 0; border-radius: 9px; padding: 11px 15px; background: #267451; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+.chapter-student-attempt > button:disabled { opacity: .5; cursor: not-allowed; }
+.chapter-attempt-feedback { padding: 12px; border-radius: 10px; background: #f0f7ee; color: #315d3d; }
+.chapter-attempt-feedback.incorrect, .chapter-attempt-feedback.needs_review { background: #fff3e7; color: #81511c; }
+.chapter-attempt-feedback p { margin: 6px 0; line-height: 1.6; }
+.chapter-attempt-feedback small { display: block; margin-top: 4px; }
+.chapter-student-footer { display: flex; justify-content: space-between; margin-top: 14px; }
+.chapter-student-footer button:disabled { opacity: .4; cursor: not-allowed; }
+.chapter-attempt-review { margin: 16px 0; }
+.chapter-attempt-review form { display: flex; flex-wrap: wrap; align-items: end; gap: 9px; }
+.chapter-attempt-review label { display: grid; flex: 1 1 260px; gap: 5px; color: #435a4b; font-size: 12px; }
+.chapter-attempt-review input, .chapter-attempt-review textarea { width: 100%; box-sizing: border-box; border: 1px solid #ccd8ce; border-radius: 8px; padding: 9px; font: inherit; }
+.chapter-attempt-review button { border: 1px solid #c8d7cb; border-radius: 8px; padding: 9px 12px; background: white; color: #315d41; cursor: pointer; }
+.chapter-attempt-review-detail { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e4e9e2; }
+@media (max-width: 880px) { .chapter-creator-grid, .chapter-review-layout { grid-template-columns: 1fr; } .chapter-source-review { position: static; max-height: none; } }

@@ -43,17 +43,33 @@ export function PromptManagerApp() {
   const choose = (item: PromptDetail, version?: PromptRevision) => {
     setSelectedId(item.id); setSelectedRevisionId(version?.revisionId || item.activeRevisionId); manager.setPreview("");
   };
-  return <main className="prompt-shell">
-    <header className="prompt-header"><Link to="/studio">← 内容生产工作台</Link><h1>教学策略 · 提示词管理</h1>
-      {manager.connected && <><span>{manager.canPublish ? "内容发布权限" : "内容编辑权限"}</span><button disabled={manager.busy || dirty} onClick={() => void manager.refresh()}>刷新版本</button><button disabled={manager.busy} onClick={manager.disconnect}>退出管理</button></>}
+  return <main className="app-shell prompt-shell">
+    <header className="topbar prompt-header">
+      <Link className="route-back-button" to="/studio">← 内容生产工作台</Link>
+      <div className="brand-mark" aria-hidden="true">D</div>
+      <div className="prompt-brand"><strong>Dotty</strong><span>内容平台 · 教学策略管理</span></div>
+      <span className="status">{manager.connected ? manager.canPublish ? "内容发布权限" : "内容编辑权限" : "内容管理入口"}</span>
+      {manager.connected && <div className="prompt-actions"><button disabled={manager.busy || dirty} onClick={() => void manager.refresh()}>刷新版本</button><button disabled={manager.busy} onClick={manager.disconnect}>退出管理</button></div>}
     </header>
-    {!manager.connected ? <form className="prompt-login" onSubmit={(event) => { event.preventDefault(); void manager.connect(); }}>
-      <h2>进入内容平台管理</h2><p>供内容老师、教研和内容负责人维护教学策略。授课老师从教师工作台使用已发布能力。</p>
-      <label>内容平台凭据<input type="password" autoComplete="off" disabled={manager.busy} value={manager.token} onChange={(event) => manager.setToken(event.target.value)} /></label>
-      <button disabled={manager.busy || !manager.token.trim()}>进入管理</button>
+    <section className="prompt-intro">
+      <span className="eyebrow">教学策略</span>
+      <h1>教学策略 · 提示词管理</h1>
+      <p className="muted">维护教学规则，预览和比较版本，让每一次内容调整都有据可查。</p>
+    </section>
+    {!manager.connected ? <form className="prompt-login panel" onSubmit={(event) => { event.preventDefault(); void manager.connect(); }}>
+      <span className="eyebrow">内容平台访问</span>
+      <h2>进入内容平台管理</h2>
+      <p className="muted">供内容老师、教研和内容负责人维护教学策略。授课老师从教师工作台使用已发布能力。</p>
+      <div className="prompt-access-note" id="prompt-credential-help">
+        <strong>凭据从哪里获取？</strong>
+        <p>请向项目维护者获取内容管理访问令牌。编辑凭据可保存和预览草稿；发布凭据还可发布与回滚版本。</p>
+      </div>
+      <label>内容平台凭据<input type="password" autoComplete="off" aria-describedby="prompt-credential-help prompt-credential-privacy" placeholder="输入维护者提供的访问令牌" disabled={manager.busy} value={manager.token} onChange={(event) => manager.setToken(event.target.value)} /></label>
+      <p className="muted" id="prompt-credential-privacy">凭据仅保留在当前页面内存中，刷新页面或退出管理后需重新输入。</p>
+      <button className="prompt-primary" disabled={manager.busy || !manager.token.trim()}>{manager.busy ? "正在验证…" : "进入管理"}</button>
     </form> : <div className="prompt-layout">
       <nav aria-label="教学提示词">{manager.items.map((item) => <button key={item.id} disabled={manager.busy || dirty} aria-current={item.id === selectedId ? "page" : undefined} onClick={() => choose(item)}>{LABELS[item.id] || item.id}</button>)}</nav>
-      {detail && revision && active && <section className="prompt-editor">
+      {detail && revision && active && <section className="prompt-editor panel">
         <h2>{LABELS[detail.id] || detail.id}</h2><p>当前生效：{active.version}。保存草稿不会影响学生；发布后的新任务才使用新版本。</p>
         {historicalMissing && <p role="alert">记录中的历史版本尚未归档，无法定位原文。下方为当前版本，请勿把它当作当时使用的版本。</p>}
         {!detail.editable && <p>评测评分标准由开发维护者管理，内容平台只读。</p>}
@@ -63,7 +79,7 @@ export function PromptManagerApp() {
         <small>内容摘要：{revision.contentHash}</small>
         <label>提示词正文<textarea aria-label="提示词正文" rows={15} value={text} readOnly={!detail.editable} disabled={manager.busy} onChange={(event) => { setText(event.target.value); manager.setPreview(""); }} /></label>
         <p>保留变量：{detail.variables.map((name) => `\${${name}}`).join("、")}</p>
-        <div className="prompt-actions">{dirty && <button disabled={manager.busy} onClick={() => setText(revision.text)}>放弃未保存修改</button>}<button disabled={manager.busy || !detail.editable || !dirty} onClick={() => void manager.save(detail, text, revision.revisionId, (saved) => setSelectedRevisionId(saved.revisionId))}>保存为新草稿</button>
+        <div className="prompt-actions">{dirty && <button disabled={manager.busy} onClick={() => setText(revision.text)}>放弃未保存修改</button>}<button className="prompt-primary" disabled={manager.busy || !detail.editable || !dirty} onClick={() => void manager.save(detail, text, revision.revisionId, (saved) => setSelectedRevisionId(saved.revisionId))}>保存为新草稿</button>
           <button disabled={manager.busy || dirty} onClick={() => void manager.render(detail, revision, variables)}>预览已保存版本</button>
           {manager.canPublish && detail.editable && <button disabled={manager.busy || dirty || revision.revisionId === detail.activeRevisionId || (!revision.published && !revision.previewed)} onClick={() => void manager.activate(detail, revision, revision.published ? "rollback" : "publish")}>{revision.published ? "回滚到此版本" : "发布此草稿"}</button>}
         </div>
