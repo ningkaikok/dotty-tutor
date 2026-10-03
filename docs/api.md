@@ -38,6 +38,32 @@ pnpm check:api     # 只校验，过期时返回非零状态
 | `POST` | `/api/auth/invites` | 教师签发 24 小时一次性学生邀请，响应中的令牌仅显示一次 |
 | `DELETE` | `/api/auth/sessions/{sessionId}` | 教师撤销指定服务端会话 |
 
+## 来源关联章节课程
+
+章节使用已有 OCR 产物，来源可指定上传任务及页范围，或提供有页码的文本。页码/区域、来源版本和指纹随修订保留。
+工作台接口用于教师审阅；学生只读取已发布视图并提交自己的答案与原文依据。
+数学作答复用已有学习证据与掌握度，英语作答单独记录，不进入数学定量门槛。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/chapters` | 创建数学或英语章节来源草稿 |
+| `GET` | `/api/chapters` | 教师列出章节工作台摘要，草稿不属于学生目录 |
+| `GET` | `/api/chapters/{chapter_id}` | 教师读取来源修订、当前课程与复核项 |
+| `POST` | `/api/chapters/{chapter_id}/revisions` | 追加来源修订，保留历史发布版本与作答 |
+| `POST` | `/api/chapters/{chapter_id}/generate` | 从当前来源生成有限课程模板；不调用新 OCR，不自动发布 |
+| `PUT` | `/api/chapters/{chapter_id}/lessons/{lesson_id}` | 教师补齐来源关联检查题与评分依据；修改后需要重新复核 |
+| `PATCH` | `/api/chapters/{chapter_id}/lessons/{lesson_id}/review` | 显式批准或要求修改；不能绕过来源完整性门禁 |
+| `POST` | `/api/chapters/{chapter_id}/publish` | 所有当前课程通过复核后，创建已有课程体系中的不可变发布版本 |
+| `GET` | `/api/chapters/{chapter_id}/published` | 学生读取已发布课程的安全投影；可用 `publicationId` 回看固定版本，不含标准答案和内部复核字段 |
+| `POST` | `/api/chapters/{chapter_id}/attempts` | 以 `attemptId` 提交答案与独立 `evidenceRefs`；服务端判定，证据不足保持 `needs_review` |
+| `GET` | `/api/chapters/{chapter_id}/attempts/{attempt_id}` | 恢复当前学生的提交与反馈，其他学生不可读取 |
+| `GET` | `/api/chapters/{chapter_id}/review-attempts/{attempt_id}` | 教师按作答编号读取英语提交，用于人工复核；学生不能访问 |
+| `PATCH` | `/api/chapters/{chapter_id}/attempts/{attempt_id}/review` | 教师追加英语待复核简答的审核决策，保留原始作答与判定，不写数学掌握度 |
+
+来源修订、课程编辑及审核请求必须携带当前 `expectedRecordVersion`，陈旧页面返回 `409` 并要求刷新重审。学生作答省略 `learnerId` 时由会话解析；显式传入其他身份会被拒绝。章节发布使用现有课程存储，但旧数学试卷目录和学习会话不能绕过章节依据判定，学生使用 `/learn/chapters/{chapterId}?publicationId=...` 分享链接。
+
+实施、测试与真实教材人工验收边界见 [A/B 计划](chapter-ab-implementation-plan.md)。
+
 ## 健康与运行时
 
 | 方法 | 路径 | 说明 |
@@ -472,3 +498,5 @@ createdAt 和 acceptedAt。历史 `error_reason`、`ai_error_reason` 与置信�
 未预览草稿拒绝发布；回滚只能指向基线或曾发布修订。生效指针已变化时返回 409，要求刷新后比较。
 保存草稿不改变生效版本，发布影响新任务，单次生成/陪练/评测固定开始时的模板快照。
 评分标准在此入口只读，Schema、判题和质量门禁不开放在线编辑。
+
+章节课程只经 `/api/chapters/{chapter_id}/published` 的安全投影读取（教师可预览）；旧 `/api/publications/{publication_id}` 与普通数学会话入口拒绝章节课程，避免绕过来源依据及复核边界。

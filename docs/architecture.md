@@ -227,6 +227,25 @@ flowchart TB
 | Shadow 画像 | `apps/api/domain/tutoring/learner_profile.py`、`apps/api/application/services/learner_context.py` | 仅聚合确定性 mastery、已确认错因、提示依赖和最近练习；事实有 scope/证据/生命周期，默认不注入 Tutor |
 | AI 评测实验 | `apps/api/evaluation/benchmark/`、`prefix_cache_probe.py`、`evaluation/tutor/` | 金标准契约、合成案例匿名人工审核包、配对统计、工具安全和离线 Prefix probe；不把实验结果写入生产学习状态 |
 
+## 来源关联章节课程与英语阅读
+
+章节是已有教材与课程能力的一个新编排入口，使用 `domain/contracts/chapter.py`、
+`application/services/chapter_courses.py` 和 `persistence/chapter_store.py`。
+纯来源处理与有限模板构造分别在 `domain/chapters/source.py` 和 `templates.py`，沿用已有 OCR 页标记；
+来源保存页范围、页文本、归一化区域、版本与指纹；来源变更追加修订并要求重新审核，
+已发布课程继续通过原有 `lesson_publications` 保存，不覆盖历史题目和作答。
+
+课程模板目前按来源页构造概念、原文例式、提示和检查题：数学只识别有限关系式，英语只自动构造有限地点明示题；其他题型与讲解由教师编辑补齐。它不是通用章节教学模型。
+课程使用既有 `LessonBlock`；前端 `LessonPlayer` 可直接消费课程文档，同时兼容旧题目 payload。
+来源不足或存在缺页、图文、条件问题时进入待复核，生成不等于发布。教师补齐检查题并显式审核后才能发布。
+章节写操作用 PostgreSQL 章节锁串行化，`DatabaseStore.atomic/read_connection` 让嵌套领域读写共享同一事务，避免发布或修订失败后留下部分状态；编辑与审核请求携带当前记录版本防止旧页面批准新内容。
+数学检查题复用确定性判题和学习存储；英语答案与所选原文依据分别保存，英语不写数学掌握度。
+未校准简答需要人工确认，不能把字符串不匹配直接视为语义错误。教师通过专用作答编号查询入口追加审核记录；学生恢复接口绑定自身会话。前端恢复按学习者、章节和发布版本隔离，只信任服务端反馈。
+
+离线 `evaluation/chapter/` 提供原创合成场景与可复现的来源切分基线。它不执行 OCR、模型、网络或数据库，
+英语 fixture 自检不表示生产语义能力。真实教材许可与人工复核、跨模型质量和真实参与者学习效果仍需独立验证。
+完整依赖和验收门槛见 [A/B 实施计划](chapter-ab-implementation-plan.md)。
+
 ## 错题录入与确认
 
 ```text

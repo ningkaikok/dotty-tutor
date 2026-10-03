@@ -1,22 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { playSpeech, preloadSpeech, stopSpeech } from "../speech";
 import { RichText } from "../RichText";
-import type { CanvasAction, LessonBlock, QuestionPayload } from "../types/index";
+import type { CanvasAction, LessonBlock, LessonDocument, QuestionPayload } from "../types/index";
 import { lessonDocumentFromPayload } from "./lessonDocument";
 import { renderLessonBlock } from "./rendererRegistry";
 
-interface LessonPlayerProps {
-  payload: QuestionPayload;
+type LessonPlayerProps = ({ payload: QuestionPayload; document?: never } | { document: LessonDocument; payload?: never }) & {
   onActionChange?: (action: CanvasAction) => void;
   studentMode?: boolean;
-}
+};
 
 const ignoreCanvasAction = () => undefined;
 
-export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, studentMode = false }: LessonPlayerProps) {
-  const document = useMemo(() => lessonDocumentFromPayload(payload), [payload]);
+export function LessonPlayer(props: LessonPlayerProps) {
+  const { onActionChange = ignoreCanvasAction, studentMode = false } = props;
+  const document = useMemo(
+    () => {
+      if (props.document) return props.document;
+      if (props.payload) return lessonDocumentFromPayload(props.payload);
+      return null;
+    },
+    [props.document, props.payload],
+  );
   const playableBlocks = useMemo(
-    () => document.blocks.filter((block) => block.type !== "quiz"),
+    () => document?.blocks.filter((block) => block.type !== "quiz") ?? [],
     [document],
   );
   const [step, setStep] = useState(0);
@@ -38,6 +45,7 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
   };
 
   useEffect(() => {
+    if (!document) return;
     stopSpeech();
     setStep(0);
     setPlaying(false);
@@ -51,7 +59,7 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     // 刻意只在课程切换时重置播放状态；playableBlocks/activateBlock 的身份变化
     // 不应打断正在进行的讲解。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document.lessonId]);
+  }, [document?.lessonId]);
 
   useEffect(() => {
     if (!playing || !current) return;
@@ -79,14 +87,14 @@ export function LessonPlayer({ payload, onActionChange = ignoreCanvasAction, stu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current, onActionChange, playableBlocks.length, playing, step]);
 
-  if (!current) return null;
+  if (!document || !current) return null;
 
   return (
     <section className="hero-grid" aria-label={document.title}>
       <article className="canvas-card panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">{payload.question.chapter}</span>
+            <span className="eyebrow">{props.payload ? props.payload.question.chapter : document.knowledgePoints?.join(" · ") || "章节课程"}</span>
             <h1>{document.title}</h1>
           </div>
           <button

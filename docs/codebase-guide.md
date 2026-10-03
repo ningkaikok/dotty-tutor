@@ -40,6 +40,7 @@ dotty-tutor/
 │   │   ├── auth_context.py     # demo/protected 身份解析与学生资源归属校验
 │   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
+│   │   │   ├── chapter_routes.py # 来源关联章节、人工复核、发布与学科作答
 │   │   │   ├── auth_routes.py  # 会话、一次性学生邀请和教师撤销 API
 │   │   │   ├── tutoring_routes.py # 错题陪练线程 API、工具策略审计
 │   │   │   ├── tutor_input_routes.py # 文字/结构化/图片/公式/画布输入 API
@@ -50,6 +51,7 @@ dotty-tutor/
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
+│   │   │   ├── chapter_courses.py # 来源版本、人工复核、发布及学科作答编排
 │   │   │   ├── lecture_checklist.py # 作业范围讲评清单的确定性聚合
 │   │   │   ├── learner_context.py # 有限生命周期画像的 shadow context 组装
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
@@ -65,6 +67,7 @@ dotty-tutor/
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
+│   │   │   ├── chapters/       # source.py 定位与句证据；templates.py 有限课程构造；english.py 依据判定
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -88,6 +91,7 @@ dotty-tutor/
 │   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
+│   │   │   ├── chapter/        # 数学章节与英语合成场景、元数据检查及确定性基线
 │   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
 │   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
@@ -97,6 +101,7 @@ dotty-tutor/
 │   │       ├── migration_cli.py # current/head/preflight/upgrade/verify 统一命令
 │   │       ├── textbook_store.py # 教材导入、题目批次和教材库；`batch_questions.current_revision_id` 是当前展示版本指针，人工编辑/回滚都靠它做乐观并发和指针移动
 │   │       ├── learning_store.py # 课程、学习会话、作答和掌握度
+│   │       ├── chapter_store.py # 章节来源修订、两学科提交/依据及英语人工审核；数学确判沿用学习证据
 │   │       ├── classroom_store.py # 班级、成员、作业指派、教师复核和看板聚合
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
@@ -117,7 +122,8 @@ dotty-tutor/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
 │   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
 │   │   │   ├── apps/home/      # 角色入口选择
-│   │   │   ├── apps/student/   # 学生学习空间，不包含生产配置
+│   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
+│   │   │   ├── apps/chapters/  # 章节工作台、来源/课程编辑及学生作答/教师复核 Hook
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
 │   │   │   │   ├── LectureChecklistPanel.tsx # 共性错题、错因分布和涉及学生
 │   │   │   │   └── useLectureChecklist.ts # assignment-scoped 讲评清单请求
@@ -250,6 +256,24 @@ THRESHOLD` 可调）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩
 Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。原题题干、题号、选项和图片归属以
 `QuestionIR`/OCR 为准，模型不能通过提示词改变题目边界或凭空补题。最终 `modelRun.stages` 保留每次调用的
 provider、model 和回退状态；前端继续消费原有的 `questionPayload` 契约。
+
+### 章节课程与英语阅读链路
+
+```text
+已有上传/OCR产物或人工提供的页段文本
+  → domain/contracts/chapter.py（学科、页码/区域、修订及作答请求）
+  → routers/chapter_routes.py
+  → domain/chapters/source.py / templates.py（来源定位与有限课程纯构造）
+  → application/services/chapter_courses.py（复核、修订、发布与作答编排）
+  → persistence/chapter_store.py（章节草稿及来源版本）
+  → persistence/learning_store.py（已有课程与不可变发布快照）
+  → 数学：已有确定性判题、exercise_attempts 与掌握度派生
+  → 英语：答案与依据分别记录，存疑结果待复核，不写数学掌握度
+```
+
+`domain/chapters/english.py` 对已审核客观答案和显式简答变体作确定性判定，同时检查引用的来源版本、句与区域。未知改写和不受原文支持的推断保持待复核；选择多个冲突答案、伪造或混入非法引用不会被当作正确。
+
+`evaluation/chapter/` 的候选与基线明确使用合成 OCR 产物，不运行 OCR 或模型；英语场景自检不是生产语义判题评测。真实教材许可、人工复核和学习效果属于独立验收门槛，批次安排见 [实施计划](chapter-ab-implementation-plan.md)。
 
 ### 错题链路
 
