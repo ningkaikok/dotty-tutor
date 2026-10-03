@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220" viewBox="0 0 320 220" role="img" aria-label="Synthetic graph of y equals 2x plus 1">
+  <rect width="320" height="220" fill="#fff"/>
+  <g stroke="#e2e8f0" stroke-width="1"><path d="M40 20V190M80 20V190M120 20V190M160 20V190M200 20V190M240 20V190M280 20V190M30 30H290M30 70H290M30 110H290M30 150H290M30 190H290"/></g>
+  <g stroke="#334155" stroke-width="2"><path d="M30 110H295M160 195V18"/></g>
+  <path d="M70 190L240 20" fill="none" stroke="#2563eb" stroke-width="4"/>
+  <circle cx="160" cy="100" r="5" fill="#dc2626"/>
+  <text x="246" y="34" font-family="sans-serif" font-size="14" fill="#1e293b">y = 2x + 1</text>
+</svg>

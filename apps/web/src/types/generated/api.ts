@@ -91,6 +91,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chapters */
+        get: operations["list_chapters_api_chapters_get"];
+        put?: never;
+        /** Create Chapter */
+        post: operations["create_chapter_api_chapters_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chapter */
+        get: operations["get_chapter_api_chapters__chapter_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Chapter Attempt */
+        post: operations["record_chapter_attempt_api_chapters__chapter_id__attempts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/attempts/{attempt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chapter Attempt */
+        get: operations["get_chapter_attempt_api_chapters__chapter_id__attempts__attempt_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/attempts/{attempt_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Review Chapter Attempt */
+        patch: operations["review_chapter_attempt_api_chapters__chapter_id__attempts__attempt_id__review_patch"];
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Chapter */
+        post: operations["generate_chapter_api_chapters__chapter_id__generate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/lessons/{lesson_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Lesson */
+        put: operations["edit_lesson_api_chapters__chapter_id__lessons__lesson_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/lessons/{lesson_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Review Lesson */
+        patch: operations["review_lesson_api_chapters__chapter_id__lessons__lesson_id__review_patch"];
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish Chapter */
+        post: operations["publish_chapter_api_chapters__chapter_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Published Chapter */
+        get: operations["get_published_chapter_api_chapters__chapter_id__published_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/review-attempts/{attempt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chapter Attempt For Review */
+        get: operations["get_chapter_attempt_for_review_api_chapters__chapter_id__review_attempts__attempt_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revise Chapter */
+        post: operations["revise_chapter_api_chapters__chapter_id__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes": {
         parameters: {
             query?: never;
@@ -1973,6 +2178,549 @@ export interface components {
              */
             sourceText: string;
         };
+        /** ChapterAttempt */
+        ChapterAttempt: {
+            /** Answer */
+            answer?: {
+                [key: string]: unknown;
+            };
+            /** Attemptid */
+            attemptId: string;
+            /** Evidencerefs */
+            evidenceRefs?: {
+                [key: string]: unknown;
+            }[];
+            /** Learnerid */
+            learnerId?: string | null;
+            /** Lessonid */
+            lessonId: string;
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Questionid */
+            questionId: string;
+        };
+        /** ChapterAttemptResponse */
+        ChapterAttemptResponse: {
+            /** Answer */
+            answer?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Assessment
+             * @enum {string}
+             */
+            assessment: "correct" | "incorrect" | "needs_review";
+            /** Attemptid */
+            attemptId: string;
+            /** Evidencerefs */
+            evidenceRefs?: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Evidenceverdict
+             * @enum {string}
+             */
+            evidenceVerdict: "supported" | "mismatch" | "missing" | "needs_review";
+            /** Feedback */
+            feedback: {
+                [key: string]: unknown;
+            };
+            /** Learnerid */
+            learnerId?: string | null;
+            /** Lessonid */
+            lessonId: string;
+            /** Mastery */
+            mastery?: {
+                [key: string]: unknown;
+            } | null;
+            /** Publicationid */
+            publicationId: string;
+            /** Reviews */
+            reviews?: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** ChapterAttemptReview */
+        ChapterAttemptReview: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "correct" | "incorrect";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /** ChapterAuthorQuestion */
+        ChapterAuthorQuestion: {
+            /** Acceptedanswers */
+            acceptedAnswers?: string[] | null;
+            /** Answermode */
+            answerMode?: string | null;
+            /** Answerspec */
+            answerSpec?: {
+                [key: string]: unknown;
+            } | null;
+            /** Correctanswers */
+            correctAnswers?: string[] | null;
+            /** Evaluation */
+            evaluation?: {
+                [key: string]: unknown;
+            } | null;
+            /** Id */
+            id: string;
+            /** Knowledgepoint */
+            knowledgePoint?: string | null;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Prompt */
+            prompt: string;
+            /** Questionkind */
+            questionKind?: string | null;
+            /** Questiontype */
+            questionType: string;
+            /** Requiredevidencerefs */
+            requiredEvidenceRefs?: components["schemas"]["ChapterEvidenceRef"][];
+            /** Rubric */
+            rubric?: {
+                [key: string]: unknown;
+            } | null;
+            sourceLocator?: components["schemas"]["ChapterSourceLocator"] | null;
+            /** Sourcerevisionid */
+            sourceRevisionId?: string | null;
+            /** Subject */
+            subject?: ("math" | "english") | null;
+        };
+        /** ChapterAuthorQuestionPayload */
+        ChapterAuthorQuestionPayload: {
+            /** Lessonsteps */
+            lessonSteps?: {
+                [key: string]: unknown;
+            }[];
+            /** Quality */
+            quality?: {
+                [key: string]: unknown;
+            };
+            question: components["schemas"]["ChapterAuthorQuestion"];
+        };
+        /** ChapterCreate */
+        ChapterCreate: {
+            source: components["schemas"]["ChapterSource"];
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+        };
+        /** ChapterEvidenceOption */
+        ChapterEvidenceOption: {
+            /** Label */
+            label: string;
+            /** Page */
+            page: number;
+            /** Quote */
+            quote?: string | null;
+            /** Regionid */
+            regionId?: string | null;
+            /** Sentenceid */
+            sentenceId?: string | null;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** ChapterEvidenceRef */
+        ChapterEvidenceRef: {
+            /** Page */
+            page: number;
+            /** Quote */
+            quote?: string | null;
+            /** Regionid */
+            regionId?: string | null;
+            /** Sentenceid */
+            sentenceId?: string | null;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** ChapterIssue */
+        ChapterIssue: {
+            /** Code */
+            code: string;
+            /** Lessonid */
+            lessonId?: string | null;
+            /** Message */
+            message: string;
+        };
+        /** ChapterLessonEdit */
+        ChapterLessonEdit: {
+            /** Acceptedanswers */
+            acceptedAnswers?: string[];
+            /** Answer */
+            answer: string;
+            /**
+             * Answermode
+             * @default short_answer
+             * @enum {string}
+             */
+            answerMode: "objective" | "short_answer";
+            /**
+             * Answertype
+             * @default text
+             * @enum {string}
+             */
+            answerType: "text" | "numeric";
+            /** Conceptmarkdown */
+            conceptMarkdown?: string | null;
+            /** Exampletext */
+            exampleText?: string | null;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Hint */
+            hint?: string | null;
+            /** Page */
+            page: number;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Questionkind
+             * @default short_answer
+             * @enum {string}
+             */
+            questionKind: "word_meaning" | "reference" | "explicit" | "inference" | "short_answer";
+            /** Requiredevidencerefs */
+            requiredEvidenceRefs?: {
+                [key: string]: unknown;
+            }[];
+            /** Rubric */
+            rubric?: {
+                [key: string]: unknown;
+            };
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** ChapterLessonView */
+        ChapterLessonView: {
+            /** Blocks */
+            blocks: components["schemas"]["LessonBlock"][];
+            /** Evidenceoptions */
+            evidenceOptions?: components["schemas"]["ChapterEvidenceOption"][];
+            /** Knowledgepoints */
+            knowledgePoints?: string[];
+            /** Lessonid */
+            lessonId: string;
+            questionPayload: components["schemas"]["ChapterAuthorQuestionPayload"];
+            /** Reviewissues */
+            reviewIssues?: components["schemas"]["ChapterIssue"][];
+            /** Reviews */
+            reviews?: components["schemas"]["ChapterReviewRecord"][];
+            sourceLocator?: components["schemas"]["ChapterSourceLocator"] | null;
+            /** Sourcerevisionid */
+            sourceRevisionId?: string | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** ChapterListResponse */
+        ChapterListResponse: {
+            /** Items */
+            items: components["schemas"]["ChapterSummaryView"][];
+        };
+        /** ChapterPage */
+        ChapterPage: {
+            /** Flags */
+            flags?: string[];
+            /** Page */
+            page: number;
+            /** Regions */
+            regions?: components["schemas"]["ChapterRegion"][];
+            /** Sentences */
+            sentences?: components["schemas"]["ChapterSentence"][];
+            /** Text */
+            text: string;
+        };
+        /** ChapterPageFlag */
+        ChapterPageFlag: {
+            /** Flags */
+            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable")[];
+            /** Page */
+            page: number;
+        };
+        /** ChapterPublicationView */
+        ChapterPublicationView: {
+            /** Publicationid */
+            publicationId: string;
+            /** Publishedat */
+            publishedAt: number;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Version */
+            version: number;
+        };
+        /** ChapterPublicLessonView */
+        ChapterPublicLessonView: {
+            /** Blocks */
+            blocks: components["schemas"]["LessonBlock"][];
+            /** Evidenceoptions */
+            evidenceOptions?: components["schemas"]["ChapterEvidenceOption"][];
+            /** Knowledgepoints */
+            knowledgePoints: string[];
+            /** Lessonid */
+            lessonId: string;
+            questionPayload: components["schemas"]["ChapterPublicQuestionPayload"];
+            sourceLocator?: components["schemas"]["ChapterSourceLocator"] | null;
+            /** Sourcerevisionid */
+            sourceRevisionId?: string | null;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** ChapterPublicQuestion */
+        ChapterPublicQuestion: {
+            /** Id */
+            id: string;
+            /** Knowledgepoint */
+            knowledgePoint?: string | null;
+            /** Options */
+            options?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Prompt */
+            prompt: string;
+            /** Questionkind */
+            questionKind?: string | null;
+            /** Questiontype */
+            questionType: string;
+            sourceLocator?: components["schemas"]["ChapterSourceLocator"] | null;
+            /** Sourcerevisionid */
+            sourceRevisionId?: string | null;
+        };
+        /** ChapterPublicQuestionPayload */
+        ChapterPublicQuestionPayload: {
+            /** Lessonsteps */
+            lessonSteps?: {
+                [key: string]: unknown;
+            }[];
+            question: components["schemas"]["ChapterPublicQuestion"];
+        };
+        /** ChapterPublishedResponse */
+        ChapterPublishedResponse: {
+            /** Chapterid */
+            chapterId: string;
+            /** Lessons */
+            lessons: components["schemas"]["ChapterPublicLessonView"][];
+            /** Publicationid */
+            publicationId: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "published";
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** ChapterPublishResponse */
+        ChapterPublishResponse: {
+            /** Chapterid */
+            chapterId: string;
+            /** Publicationid */
+            publicationId: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "published";
+            /** Version */
+            version: number;
+        };
+        /** ChapterRegion */
+        ChapterRegion: {
+            /** Assetid */
+            assetId?: string | null;
+            /** Height */
+            height: number;
+            /** Regionid */
+            regionId?: string | null;
+            /** Width */
+            width: number;
+            /** X */
+            x: number;
+            /** Y */
+            y: number;
+        };
+        /** ChapterResponse */
+        ChapterResponse: {
+            /** Chapterid */
+            chapterId: string;
+            /** Currentlessonids */
+            currentLessonIds: string[];
+            /** Lessons */
+            lessons: components["schemas"]["ChapterLessonView"][];
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Publications */
+            publications: components["schemas"]["ChapterPublicationView"][];
+            /** Recordversion */
+            recordVersion: number;
+            /** Reviewissues */
+            reviewIssues: components["schemas"]["ChapterIssue"][];
+            /** Sourcerevisions */
+            sourceRevisions: components["schemas"]["ChapterSourceRevisionView"][];
+            /** Status */
+            status: string;
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** ChapterReview */
+        ChapterReview: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /** ChapterReviewRecord */
+        ChapterReviewRecord: {
+            /** Createdat */
+            createdAt?: number | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes" | "correct" | "incorrect";
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Reviewer */
+            reviewer: string;
+        };
+        /** ChapterRevisionCreate */
+        ChapterRevisionCreate: {
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            source: components["schemas"]["ChapterSource"];
+        };
+        /** ChapterSentence */
+        ChapterSentence: {
+            /** Regionid */
+            regionId?: string | null;
+            /** Sentenceid */
+            sentenceId: string;
+            /** Text */
+            text: string;
+        };
+        /** ChapterSource */
+        ChapterSource: {
+            /** License */
+            license?: string | null;
+            /** Pageend */
+            pageEnd?: number | null;
+            /** Pageflags */
+            pageFlags?: components["schemas"]["ChapterPageFlag"][];
+            /** Pages */
+            pages?: components["schemas"]["ChapterPage"][];
+            /** Pagestart */
+            pageStart?: number | null;
+            /**
+             * Sourceversion
+             * @default 1
+             */
+            sourceVersion: string;
+            /** Uploadid */
+            uploadId?: string | null;
+        };
+        /** ChapterSourceLocator */
+        ChapterSourceLocator: {
+            /** Page */
+            page: number;
+            /** Regions */
+            regions?: components["schemas"]["ChapterRegion"][];
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** ChapterSourceRevisionView */
+        ChapterSourceRevisionView: {
+            /** Createdat */
+            createdAt: number;
+            /** Fingerprint */
+            fingerprint: string;
+            /** Issues */
+            issues: components["schemas"]["ChapterIssue"][];
+            /** License */
+            license?: string | null;
+            /** Pageend */
+            pageEnd: number;
+            /** Pages */
+            pages: components["schemas"]["ChapterPage"][];
+            /** Pagestart */
+            pageStart: number;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Sourceversion */
+            sourceVersion: string;
+            /** Uploadid */
+            uploadId?: string | null;
+        };
+        /** ChapterSummaryView */
+        ChapterSummaryView: {
+            /** Chapterid */
+            chapterId: string;
+            /** Currentlessonids */
+            currentLessonIds: string[];
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Recordversion */
+            recordVersion: number;
+            /** Reviewissues */
+            reviewIssues: components["schemas"]["ChapterIssue"][];
+            /** Status */
+            status: string;
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
         /** ClassCreate */
         ClassCreate: {
             /**
@@ -3098,6 +3846,429 @@ export interface operations {
                     "application/json": {
                         [key: string]: boolean;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chapters_api_chapters_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterListResponse"];
+                };
+            };
+        };
+    };
+    create_chapter_api_chapters_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chapter_api_chapters__chapter_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_chapter_attempt_api_chapters__chapter_id__attempts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterAttempt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chapter_attempt_api_chapters__chapter_id__attempts__attempt_id__get: {
+        parameters: {
+            query?: {
+                learnerId?: string | null;
+            };
+            header?: never;
+            path: {
+                attempt_id: string;
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_chapter_attempt_api_chapters__chapter_id__attempts__attempt_id__review_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt_id: string;
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterAttemptReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_chapter_api_chapters__chapter_id__generate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_lesson_api_chapters__chapter_id__lessons__lesson_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                lesson_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterLessonEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_lesson_api_chapters__chapter_id__lessons__lesson_id__review_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                lesson_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterReview"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_chapter_api_chapters__chapter_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterPublishResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_published_chapter_api_chapters__chapter_id__published_get: {
+        parameters: {
+            query?: {
+                publicationId?: string | null;
+            };
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterPublishedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chapter_attempt_for_review_api_chapters__chapter_id__review_attempts__attempt_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt_id: string;
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_chapter_api_chapters__chapter_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChapterRevisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChapterResponse"];
                 };
             };
             /** @description Validation Error */

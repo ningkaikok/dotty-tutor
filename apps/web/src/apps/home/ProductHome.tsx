@@ -45,6 +45,11 @@ export function ProductHome() {
     navigate("/teacher");
   };
 
+  const enterChapterStudio = () => {
+    rememberEntry("studio");
+    navigate("/studio/chapters");
+  };
+
   return (
     <main className="product-home">
       <header className="product-home-header">
@@ -91,7 +96,10 @@ export function ProductHome() {
             <li>生成模型和 OCR 运行时配置</li>
             <li>多题型交互与分步讲解预览</li>
           </ul>
-          <button onClick={enterStudio}>进入内容生产工作台</button>
+          <div className="producer-entry-actions">
+            <button onClick={enterStudio}>进入内容生产工作台</button>
+            <button className="secondary-entry-button" onClick={enterChapterStudio}>章节课程与英语阅读</button>
+          </div>
         </article>
         <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>
           <div className="entry-card-heading"><span className="entry-index">03</span><span className="entry-status">教师入口</span>{lastEntry === "teacher" && <span className="entry-last-badge">上次从这里进入</span>}</div>

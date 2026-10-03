@@ -6,6 +6,13 @@ import type { operations } from "../types/generated/api";
  */
 export const DEMO_LEARNER_ID = "local-demo";
 
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 /** Extract the documented 200 response while keeping domain adapters local to each API module. */
 export type GeneratedSuccess<Operation extends keyof operations> =
   operations[Operation] extends { responses: infer Responses }
@@ -31,7 +38,7 @@ export async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const detail = data?.detail;
     const message = typeof detail === "string" ? detail : detail?.message;
-    throw new Error(data?.message || message || `请求失败：${response.status}`);
+    throw new ApiRequestError(data?.message || message || `请求失败：${response.status}`, response.status);
   }
   if (!data) throw new Error("后端返回了无法解析的数据");
   return data;

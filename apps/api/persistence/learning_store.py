@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, select
 
@@ -18,6 +18,7 @@ from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import (
     batch_questions,
+    chapter_english_attempts,
     exercise_attempts,
     knowledge_points,
     learning_sessions,
@@ -52,7 +53,7 @@ class LearningStore(DatabaseStore):
             "created_at": now,
             "updated_at": now,
         }
-        with self.engine.begin() as connection:
+        with self.atomic() as connection:
             existing = connection.execute(
                 select(lesson_documents)
                 .where(lesson_documents.c.lesson_id == document["lessonId"])
@@ -98,7 +99,7 @@ class LearningStore(DatabaseStore):
 
     def load_lesson(self, lesson_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
-        with self.engine.connect() as connection:
+        with self.read_connection() as connection:
             row = connection.execute(
                 select(lesson_documents).where(lesson_documents.c.lesson_id == lesson_id)
             ).mappings().first()
@@ -147,7 +148,7 @@ class LearningStore(DatabaseStore):
     def update_lesson_status(self, lesson_id: str, status: str) -> dict[str, Any] | None:
         """只改变课程发布状态，不重写题目正文和审核证据。"""
         self._ensure_initialized()
-        with self.engine.begin() as connection:
+        with self.atomic() as connection:
             result = connection.execute(
                 lesson_documents.update()
                 .where(lesson_documents.c.lesson_id == lesson_id)
@@ -170,10 +171,35 @@ class LearningStore(DatabaseStore):
         revision_of: str | None = None,
     ) -> dict[str, Any]:
         """创建一份由稳定 lesson ID 组成的不可变互动试卷版本。"""
+        return self._create_publication(
+            publication_id=publication_id, title=title, source_upload_id=source_upload_id,
+            lesson_ids=lesson_ids, status=status, created_at=created_at, version=version,
+            revision_of=revision_of, allow_chapter=False,
+        )
+
+    def create_chapter_publication(
+        self, *, publication_id: str, title: str, source_upload_id: str | None,
+        lesson_ids: list[str], status: str, created_at: float, version: int,
+        revision_of: str | None,
+    ) -> dict[str, Any]:
+        """Create chapter snapshots only from the chapter authoring workflow."""
+        return self._create_publication(
+            publication_id=publication_id, title=title, source_upload_id=source_upload_id,
+            lesson_ids=lesson_ids, status=status, created_at=created_at, version=version,
+            revision_of=revision_of, allow_chapter=True,
+        )
+
+    def _create_publication(
+        self, *, publication_id: str, title: str, source_upload_id: str | None,
+        lesson_ids: list[str], status: str, created_at: float, version: int,
+        revision_of: str | None, allow_chapter: bool,
+    ) -> dict[str, Any]:
         self._ensure_initialized()
         if len(lesson_ids) != len(set(lesson_ids)):
             raise ValueError("互动试卷不能包含重复题目")
-        with self.engine.begin() as connection:
+        if not allow_chapter and self.is_chapter_lesson_ids(lesson_ids):
+            raise ValueError("章节课程只能通过章节审核与发布流程发布")
+        with self.atomic() as connection:
             rows = connection.execute(
                 select(lesson_documents.c.lesson_id).where(
                     lesson_documents.c.lesson_id.in_(lesson_ids)
@@ -197,7 +223,7 @@ class LearningStore(DatabaseStore):
 
     def load_publication(self, publication_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
-        with self.engine.connect() as connection:
+        with self.read_connection() as connection:
             row = connection.execute(
                 select(lesson_publications).where(
                     lesson_publications.c.publication_id == publication_id
@@ -256,7 +282,7 @@ class LearningStore(DatabaseStore):
         """
         self._ensure_initialized()
         recovery: dict[str, Any] | None = None
-        with self.engine.begin() as connection:
+        with self.atomic() as connection:
             publication = connection.execute(
                 select(lesson_publications).where(
                     lesson_publications.c.publication_id == publication_id
@@ -361,7 +387,44 @@ class LearningStore(DatabaseStore):
         assignment_id: str | None = None,
         started_at: float,
     ) -> dict[str, Any]:
+        return self._create_learning_session(
+            session_id=session_id, learner_id=learner_id, publication_id=publication_id,
+            assignment_id=assignment_id, started_at=started_at, allow_chapter=False,
+        )
+
+    def create_chapter_learning_session(
+        self,
+        *,
+        session_id: str,
+        learner_id: str,
+        publication_id: str,
+        started_at: float,
+    ) -> dict[str, Any]:
+        """Create the math evidence session used only inside chapter orchestration."""
+        return self._create_learning_session(
+            session_id=session_id, learner_id=learner_id, publication_id=publication_id,
+            assignment_id=None, started_at=started_at, allow_chapter=True,
+        )
+
+    def _create_learning_session(
+        self,
+        *,
+        session_id: str,
+        learner_id: str,
+        publication_id: str,
+        assignment_id: str | None = None,
+        started_at: float,
+        allow_chapter: bool,
+    ) -> dict[str, Any]:
         self._ensure_initialized()
+        publication = self.load_publication(publication_id)
+        if not publication or publication.get("status") != "published":
+            raise LookupError("已发布互动试卷不存在")
+        if (not allow_chapter and self.is_chapter_publication(publication_id)) or any(
+            (lesson.get("questionPayload") or {}).get("question", {}).get("subject") == "english"
+            for lesson in publication.get("lessons", [])
+        ):
+            raise ValueError("章节作答必须使用带来源依据的章节接口")
         with self.engine.begin() as connection:
             connection.execute(learning_sessions.insert().values(
                 session_id=session_id,
@@ -379,6 +442,27 @@ class LearningStore(DatabaseStore):
             "startedAt": started_at,
         }
 
+    def _chapter_records(self) -> list[dict[str, Any]]:
+        """Chapter ownership exists only on the composed application store."""
+        list_chapters = getattr(self, "list_chapters", None)
+        return cast(list[dict[str, Any]], list_chapters()) if callable(list_chapters) else []
+
+    def is_chapter_publication(self, publication_id: str) -> bool:
+        """Prevent legacy learning routes from bypassing chapter evidence checks."""
+        publication = self.load_publication(publication_id)
+        return any(
+            publication_id in {item.get("publicationId") for item in chapter.get("publications", [])}
+            for chapter in self._chapter_records()
+        ) or bool(publication and self.is_chapter_lesson_ids(publication.get("lessonIds", [])))
+
+    def is_chapter_lesson_ids(self, lesson_ids: list[str]) -> bool:
+        chapter_ids = {
+            lesson.get("lessonId")
+            for chapter in self._chapter_records()
+            for lesson in chapter.get("lessons", [])
+        }
+        return bool(chapter_ids.intersection(lesson_ids))
+
     def record_exercise_attempt(
         self,
         *,
@@ -391,6 +475,7 @@ class LearningStore(DatabaseStore):
         hint_level: int,
         duration_ms: int,
         created_at: float,
+        chapter_submission: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         # Keep the optional argument for direct-store callers during the
         # transition, but never use client-provided text as identity data.
@@ -399,7 +484,7 @@ class LearningStore(DatabaseStore):
             session = connection.execute(
                 select(learning_sessions).where(
                     learning_sessions.c.session_id == session_id
-                )
+                ).with_for_update()
             ).mappings().first()
             if not session:
                 raise LookupError("学习会话不存在")
@@ -411,6 +496,10 @@ class LearningStore(DatabaseStore):
                     # attempt_id is the idempotency key. Reusing it in another
                     # session is a client error, not a successful retry.
                     raise LookupError("作答记录不属于当前学习会话")
+                # Chapter submissions include immutable source evidence. Legacy
+                # retries keep their established first-result-wins behavior.
+                if chapter_submission is not None and decode_json(existing_attempt["response_json"]) != response:
+                    raise ValueError("attemptId 已用于不同作答内容")
                 existing_kp_id = existing_attempt.get("knowledge_point_id")
                 current = connection.execute(
                     select(mastery_states).where(
@@ -418,6 +507,18 @@ class LearningStore(DatabaseStore):
                         mastery_states.c.knowledge_point_id == existing_kp_id,
                     )
                 ).mappings().first()
+                if chapter_submission is not None:
+                    saved_submission = connection.execute(select(chapter_english_attempts.c.attempt_id).where(
+                        chapter_english_attempts.c.attempt_id == attempt_id
+                    )).scalar_one_or_none()
+                    if saved_submission is None:
+                        connection.execute(chapter_english_attempts.insert().values(
+                            attempt_id=attempt_id, subject="math", publication_id=session["publication_id"],
+                            learner_id=session["learner_id"], lesson_id=question_id,
+                            answer_json=chapter_submission["answer"], evidence_json=chapter_submission["evidenceRefs"],
+                            assessment=existing_attempt["assessment"], evidence_verdict=chapter_submission["evidenceVerdict"],
+                            feedback_json=chapter_submission["feedback"], created_at=created_at,
+                        ))
                 return {
                     "attemptId": attempt_id,
                     "mastery": self._mastery_from_row(
@@ -467,6 +568,19 @@ class LearningStore(DatabaseStore):
                 .where(learning_sessions.c.session_id == session_id)
                 .values(updated_at=max(float(session["updated_at"]), created_at))
             )
+            if chapter_submission is not None:
+                connection.execute(chapter_english_attempts.insert().values(
+                    attempt_id=attempt_id, subject="math",
+                    publication_id=session["publication_id"],
+                    learner_id=session["learner_id"],
+                    lesson_id=question_id,
+                    answer_json=chapter_submission["answer"],
+                    evidence_json=chapter_submission["evidenceRefs"],
+                    assessment=verified,
+                    evidence_verdict=chapter_submission["evidenceVerdict"],
+                    feedback_json=chapter_submission["feedback"],
+                    created_at=created_at,
+                ))
         return {
             "attemptId": attempt_id,
             "mastery": mastery,

@@ -98,6 +98,8 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
         if not publication or publication["status"] != "published":
             # 只有通过发布质量门禁的内容才能创建真实学习记录；任意草稿 ID 不得污染掌握度数据。
             raise HTTPException(status_code=404, detail="已发布互动试卷不存在")
+        if store.is_chapter_publication(request.publicationId):
+            raise HTTPException(status_code=409, detail="章节作答必须使用带来源依据的章节接口")
         if request.assignmentId:
             try:
                 assignment = store.add_assignment_session(
@@ -108,13 +110,16 @@ def build_learning_router(*, store: Any, mistake_store: Any | None = None) -> AP
                 raise HTTPException(status_code=404, detail=str(error)) from error
             if assignment["publication_id"] != request.publicationId:
                 raise HTTPException(status_code=409, detail="作业与互动试卷不匹配")
-        session = store.create_learning_session(
-            session_id=uuid.uuid4().hex,
-            learner_id=learner_id,
-            publication_id=request.publicationId,
-            assignment_id=request.assignmentId,
-            started_at=time.time(),
-        )
+        try:
+            session = store.create_learning_session(
+                session_id=uuid.uuid4().hex,
+                learner_id=learner_id,
+                publication_id=request.publicationId,
+                assignment_id=request.assignmentId,
+                started_at=time.time(),
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         log_event(
             "learning.session.started",
             session_id=session["sessionId"],
