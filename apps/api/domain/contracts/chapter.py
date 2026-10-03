@@ -89,6 +89,7 @@ class ChapterLessonEdit(BaseModel):
     conceptMarkdown: str | None = Field(default=None, max_length=12000)
     exampleText: str | None = Field(default=None, max_length=12000)
     hint: str | None = Field(default=None, max_length=2000)
+    hints: list[str] | None = Field(default=None, min_length=1, max_length=3)
     sourceRevisionId: str = Field(min_length=1, max_length=64)
     page: int = Field(ge=1)
     expectedRecordVersion: int = Field(ge=1)
@@ -117,6 +118,7 @@ class ChapterResponse(BaseModel):
     reviewIssues: list[ChapterIssue]
     publicationId: str | None = None
     publications: list[ChapterPublicationView]
+    generationJobId: str | None = None
 
 
 class ChapterPublishResponse(BaseModel):
@@ -167,6 +169,16 @@ class ChapterReviewRecord(BaseModel):
     createdAt: float | None = None
 
 
+class ChapterSourcePageView(ChapterPage):
+    """Original-page URL is derived by the server, never accepted as source input."""
+
+    previewUrl: str | None = None
+
+
+class ChapterAIGenerationRequest(BaseModel):
+    expectedRecordVersion: int = Field(ge=1)
+
+
 class ChapterSourceRevisionView(BaseModel):
     sourceRevisionId: str
     fingerprint: str
@@ -175,7 +187,8 @@ class ChapterSourceRevisionView(BaseModel):
     license: str | None = None
     pageStart: int
     pageEnd: int
-    pages: list[ChapterPage]
+    sourceFileSha256: str | None = None
+    pages: list[ChapterSourcePageView]
     issues: list[ChapterIssue]
     createdAt: float
 
@@ -242,6 +255,8 @@ class ChapterAuthorQuestion(BaseModel):
     correctAnswers: list[str] | None = None
     answerSpec: dict[str, Any] | None = None
     acceptedAnswers: list[str] | None = None
+    teacherVariants: list[str] | None = None
+    variantReviewStatus: str | None = None
     requiredEvidenceRefs: list[ChapterEvidenceRef] = Field(default_factory=list)
     rubric: dict[str, Any] | None = None
     evaluation: dict[str, Any] | None = None

@@ -5,10 +5,11 @@ import type { QuestionType } from "./question";
 export type ChapterSubject = components["schemas"]["ChapterCreate"]["subject"];
 export type ChapterStatus = "draft" | "needs_review" | "in_review" | "published";
 export type ChapterRegion = components["schemas"]["ChapterRegion"];
-export type ChapterSourcePage = components["schemas"]["ChapterPage"];
+/** Server-derived same-origin endpoint for an authorized teacher preview of the source page. */
+export type ChapterSourcePage = components["schemas"]["ChapterPage"] & { previewUrl: string | null };
 export type ChapterSourceFlag = NonNullable<components["schemas"]["ChapterPageFlag"]["flags"]>[number];
 export type ChapterSource = components["schemas"]["ChapterSource"];
-export type ChapterSourceRevision = components["schemas"]["ChapterSourceRevisionView"];
+export type ChapterSourceRevision = Omit<components["schemas"]["ChapterSourceRevisionView"], "pages"> & { pages: ChapterSourcePage[] };
 export type ChapterReviewIssue = components["schemas"]["ChapterIssue"];
 export type ChapterEvidenceRef = components["schemas"]["ChapterEvidenceRef"];
 export type ChapterEvidenceOption = components["schemas"]["ChapterEvidenceOption"];
@@ -25,6 +26,7 @@ export interface ChapterPublicQuestion {
 }
 
 export interface ChapterAuthorQuestion extends ChapterPublicQuestion {
+  subject?: ChapterSubject;
   correctAnswers?: string[];
   answerSpec?: { expected?: string; accepted?: string[]; answerType?: string };
   questionKind?: "word_meaning" | "reference" | "explicit" | "inference" | "short_answer";
@@ -32,6 +34,8 @@ export interface ChapterAuthorQuestion extends ChapterPublicQuestion {
   acceptedAnswers?: string[];
   requiredEvidenceRefs?: ChapterEvidenceRef[];
   rubric?: Record<string, unknown>;
+  teacherVariants?: string[];
+  variantReviewStatus?: "needs_teacher_review" | "approved" | string;
 }
 
 export interface ChapterLesson extends Omit<LessonDocument, "blocks" | "questionPayload" | "status"> {
@@ -57,6 +61,7 @@ export interface ChapterManagement {
   reviewIssues: ChapterReviewIssue[];
   publicationId: string | null;
   publications: components["schemas"]["ChapterPublicationView"][];
+  generationJobId?: string | null;
 }
 
 export type ChapterSummary = components["schemas"]["ChapterSummaryView"];
@@ -64,6 +69,8 @@ export type ChapterSummary = components["schemas"]["ChapterSummaryView"];
 export interface ChapterLessonEditInput extends Omit<components["schemas"]["ChapterLessonEdit"], "expectedRecordVersion"> {
   requiredEvidenceRefs: ChapterEvidenceRef[];
   rubric: Record<string, unknown>;
+  hints?: string[];
+  teacherVariants?: string[];
 }
 
 export interface PublishedChapter {

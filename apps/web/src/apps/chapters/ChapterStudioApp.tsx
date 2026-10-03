@@ -72,7 +72,7 @@ function ChapterCreator() {
 
 function ChapterWorkspace({ chapterId }: { chapterId: string }) {
   const navigate = useNavigate();
-  const { chapter, loading, busy, error, notice, reload, generate, revise, edit, review, publish } = useChapterStudio(chapterId);
+  const { chapter, loading, busy, error, notice, aiJob, reload, generate, startAiGeneration, retryAiGeneration, cancelAiGeneration, revise, edit, review, publish } = useChapterStudio(chapterId);
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
   const [showRevision, setShowRevision] = useState(false);
   const [libraryError, setLibraryError] = useState("");
@@ -88,6 +88,7 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
 
   const source = chapter.sourceRevisions[chapter.sourceRevisions.length - 1];
   const currentLessons = chapter.lessons.filter((lesson) => chapter.currentLessonIds.includes(lesson.lessonId));
+  const aiJobActive = aiJob?.status === "queued" || aiJob?.status === "running";
   const blockers = [
     ...chapter.reviewIssues,
     ...(source?.issues ?? []),
@@ -112,11 +113,17 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
         <h1>{chapter.title}</h1>
         <p>状态：{({ draft: "草稿", needs_review: "需复核", in_review: "审核中", published: "已发布" } as const)[chapter.status]} · 来源修订 {chapter.sourceRevisions.length} 个 · 发布历史 {chapter.publications.length} 个</p>
         <div className="chapter-toolbar">
-          <button type="button" disabled={Boolean(busy)} onClick={() => setShowRevision((value) => !value)}>修订来源</button>
-          <button type="button" disabled={Boolean(busy) || Boolean(chapter.currentLessonIds.length)} onClick={() => void generate()}>{busy === "generate" ? "生成中…" : "生成课程草稿"}</button>
-          <button type="button" className="primary" disabled={Boolean(busy) || !canPublish} title={canPublish ? "发布经审核课程" : "请解决来源/课程复核项并审核所有检查题"} onClick={() => void publish()}>{busy === "publish" ? "发布中…" : "发布课程"}</button>
+          <button type="button" disabled={Boolean(busy) || aiJobActive} onClick={() => setShowRevision((value) => !value)}>修订来源</button>
+          <button type="button" disabled={Boolean(busy) || aiJobActive || Boolean(chapter.currentLessonIds.length)} onClick={() => void generate()}>{busy === "generate" ? "生成中…" : "模板生成课程草稿"}</button>
+          <button type="button" disabled={Boolean(busy) || aiJobActive} onClick={() => void startAiGeneration()}>AI 生成来源约束草稿</button>
+          <button type="button" className="primary" disabled={Boolean(busy) || aiJobActive || !canPublish} title={canPublish ? "发布经审核课程" : "请解决来源/课程复核项并审核所有检查题"} onClick={() => void publish()}>{busy === "publish" ? "发布中…" : "发布课程"}</button>
           {chapter.publicationId && <button type="button" onClick={() => navigate(`/learn/chapters/${chapter.chapterId}`)}>学生端预览</button>}
         </div>
+        {aiJob && <div className="chapter-ai-job" role="status">
+          <span>AI 来源约束草稿：{({ queued: "排队中", running: "生成中", succeeded: "已完成", failed: "失败", cancelled: "已取消" } as const)[aiJob.status]} · {Math.max(0, Math.min(100, Math.round(aiJob.progress)))}%{aiJob.message ? ` · ${aiJob.message}` : ""}</span>
+          {aiJobActive && <button type="button" disabled={Boolean(busy)} onClick={() => void cancelAiGeneration()}>取消生成</button>}
+          {aiJob.status === "failed" && <button type="button" disabled={Boolean(busy)} onClick={() => void retryAiGeneration()}>重试生成</button>}
+        </div>}
       </section>
       {error && <div className="chapter-error" role="alert"><span>{error}</span><button type="button" onClick={() => void reload()}>重试读取</button></div>}
       {notice && <p className="chapter-notice" role="status">{notice}</p>}
@@ -127,7 +134,7 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
         <ChapterLessonReview
           lessons={currentLessons}
           busyLessonId={busy.startsWith("edit:") ? busy.slice(5) : busy.startsWith("review:") ? busy.slice(7) : ""}
-          busyAction={busy.startsWith("edit:") ? "edit" : busy.startsWith("review:") ? "review" : ""}
+          busyAction={aiJobActive ? "locked" : busy.startsWith("edit:") ? "edit" : busy.startsWith("review:") ? "review" : ""}
           onEdit={(lesson, value) => edit(lesson, { ...value, sourceRevisionId: lesson.sourceRevisionId, page: lesson.sourceLocator.page })}
           onReview={(lesson, decision) => void review(lesson, decision)}
           onFocusSource={(lesson) => setFocusedLocator(lesson.sourceLocator)}

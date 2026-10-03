@@ -116,6 +116,16 @@ class JobStore(DatabaseStore):
             ).mappings().first()
         return self._row_to_job(row) if row else None
 
+    def latest_for_payload(self, job_type: str, key: str, value: str) -> dict[str, Any] | None:
+        """Recover one domain's latest task without scanning or exposing other jobs."""
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            row = connection.execute(select(background_jobs).where(
+                background_jobs.c.job_type == job_type,
+                background_jobs.c.payload_json[key].as_string() == value,
+            ).order_by(background_jobs.c.created_at.desc()).limit(1)).mappings().first()
+        return self._row_to_job(row) if row else None
+
     def list_jobs(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
         """按创建时间倒序读取任务，供 CLI 和后续状态查询复用。"""
         if status is not None and status not in JOB_STATUSES:

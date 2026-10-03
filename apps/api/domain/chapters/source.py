@@ -27,10 +27,17 @@ def sentences(text: str, page: int, revision_id: str) -> list[dict[str, str]]:
         raise ValueError("来源页文本不能超过 20000 个字符")
     spans: list[tuple[int, int]] = []
     start = 0
-    for boundary in re.finditer(r"(?<=[.!?。！？；;])\s*|\n+", text):
-        if text[start:boundary.start()].strip():
-            spans.append((start, boundary.start()))
-        start = boundary.end()
+    # PDF soft line wraps belong to the same sentence. Decimal points are not
+    # boundaries, and closing quotation marks remain part of exact citations.
+    for boundary in re.finditer(r"(?<=[.!?。！？；;])\s*|\n{2,}", text):
+        end = boundary.start()
+        if end > 1 and end < len(text) and text[end - 1] == "." and text[end - 2].isdigit() and text[end].isdigit():
+            continue
+        while end < len(text) and text[end] in "\"'”’)]":
+            end += 1
+        if text[start:end].strip():
+            spans.append((start, end))
+        start = max(end, boundary.end())
     if text[start:].strip():
         spans.append((start, len(text)))
 

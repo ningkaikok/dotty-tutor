@@ -52,6 +52,7 @@ dotty-tutor/
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
 │   │   │   ├── chapter_courses.py # 来源版本、人工复核、发布及学科作答编排
+│   │   │   ├── chapter_source_preview.py # 固定修订的原 PDF 页渲染与文件边界
 │   │   │   ├── lecture_checklist.py # 作业范围讲评清单的确定性聚合
 │   │   │   ├── learner_context.py # 有限生命周期画像的 shadow context 组装
 │   │   │   ├── stateful_tutor.py # 有状态陪练编排
@@ -59,6 +60,7 @@ dotty-tutor/
 │   │   │   ├── tutor_input_service.py # 输入证据与低置信度确认门禁
 │   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
+│   │   ├── application/chapter_jobs.py # 章节 AI 草稿 Worker 注册、取消与错误分类
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
 │   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
@@ -67,7 +69,7 @@ dotty-tutor/
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
-│   │   │   ├── chapters/       # source.py 定位与句证据；templates.py 有限课程构造；english.py 依据判定
+│   │   │   ├── chapters/       # source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -91,7 +93,7 @@ dotty-tutor/
 │   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
-│   │   │   ├── chapter/        # 数学章节与英语合成场景、元数据检查及确定性基线
+│   │   │   ├── chapter/        # 合成基线与 real_sources.py 真实材料待复核包/人工决策导入
 │   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
 │   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
@@ -265,6 +267,8 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
   → routers/chapter_routes.py
   → domain/chapters/source.py / templates.py（来源定位与有限课程纯构造）
   → application/services/chapter_courses.py（复核、修订、发布与作答编排）
+  → AI：application/chapter_jobs.py → 既有 Job Store/Worker → ModelRuntime
+       → domain/chapters/quality.py → 比较来源/记录版本后保存待审草稿
   → persistence/chapter_store.py（章节草稿及来源版本）
   → persistence/learning_store.py（已有课程与不可变发布快照）
   → 数学：已有确定性判题、exercise_attempts 与掌握度派生
@@ -273,7 +277,14 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 
 `domain/chapters/english.py` 对已审核客观答案和显式简答变体作确定性判定，同时检查引用的来源版本、句与区域。未知改写和不受原文支持的推断保持待复核；选择多个冲突答案、伪造或混入非法引用不会被当作正确。
 
-`evaluation/chapter/` 的候选与基线明确使用合成 OCR 产物，不运行 OCR 或模型；英语场景自检不是生产语义判题评测。真实教材许可、人工复核和学习效果属于独立验收门槛，批次安排见 [实施计划](chapter-ab-implementation-plan.md)。
+`chapter_source_preview.py` 经教师原页接口检查文件哈希与路径边界，复用 OCR Runtime 的 PDF 渲染；
+`ChapterSourceReview` 在原页上显示区域，`useChapterStudio` 恢复生成任务、进度及失败重试。
+服务保留现有来源/复核/发布事务边界；生成的纯校验已分到 `quality.py`，异步任务注册在 `chapter_jobs.py`，
+不在 `app.py` 增加流程。章节服务目前仍较长，后续拆分以业务职责与独立替身为依据。
+
+`evaluation/chapter/baseline.py` 使用合成产物；`real_sources.py` 使用仓库外的真实开放 PDF、文本层与生产英语判定器，
+提供待复核案例和校验过的人工决策导入。两者均不证明真实 OCR/模型质量或学习效果；单审不计双审金标准。
+批次安排见 [实施计划](chapter-ab-implementation-plan.md)，本轮结果见 [增强验收记录](chapter-source-quality-acceptance.md)。
 
 ### 错题链路
 

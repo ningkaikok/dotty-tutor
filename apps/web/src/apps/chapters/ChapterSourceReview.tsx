@@ -8,12 +8,18 @@ interface ChapterSourceReviewProps {
 
 export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewProps) {
   const [focused, setFocused] = useState<{ revisionId: string; page: number; regionId?: string } | null>(null);
+  const [failedPreviews, setFailedPreviews] = useState<Set<string>>(() => new Set());
+  const [enlarged, setEnlarged] = useState<{ url: string; label: string } | null>(null);
 
   const focus = (revisionId: string, page: number, regionId?: string) => {
     setFocused({ revisionId, page, regionId });
-    requestAnimationFrame(() => document.getElementById(
-      regionId ? `source-region-${revisionId}-${regionId}` : `source-${revisionId}-${page}`,
-    )?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    requestAnimationFrame(() => {
+      const imageRegion = regionId ? document.getElementById(`source-image-region-${revisionId}-${regionId}`) : null;
+      const target = imageRegion ?? document.getElementById(
+        regionId ? `source-region-${revisionId}-${regionId}` : `source-${revisionId}-${page}`,
+      );
+      target?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
   };
 
   return (
@@ -39,28 +45,38 @@ export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewP
                 aria-label={`来源第 ${page.page} 页`}
               >
                 <div className="chapter-source-page-heading"><strong>第 {page.page} 页</strong><span>{page.regions?.length ?? 0} 个定位区域</span></div>
+                {page.previewUrl && !failedPreviews.has(page.previewUrl) ? (
+                  <div className="chapter-page-preview-wrap">
+                    <img
+                      className="chapter-page-preview"
+                      src={page.previewUrl}
+                      alt={`教材原页，第 ${page.page} 页`}
+                      onError={() => setFailedPreviews((current) => new Set(current).add(page.previewUrl!))}
+                    />
+                    {page.regions?.length ? <div className="chapter-region-overlay" role="group" aria-label={`第 ${page.page} 页原图区域定位`}>
+                      {page.regions.map((region, index) => {
+                        const regionId = region.regionId || `${page.page}-${index}`;
+                        const active = focused?.regionId === regionId && pageFocused;
+                        return <button
+                          key={regionId}
+                          id={`source-image-region-${revision.sourceRevisionId}-${regionId}`}
+                          type="button"
+                          aria-label={`回看第 ${page.page} 页原图区域 ${index + 1}`}
+                          className={active ? "active" : ""}
+                          style={{ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` }}
+                          onClick={() => focus(revision.sourceRevisionId, page.page, regionId)}
+                        ><span>{index + 1}</span></button>;
+                      })}
+                    </div> : null}
+                    <button type="button" className="chapter-preview-enlarge" onClick={() => setEnlarged({ url: page.previewUrl!, label: `教材原页，第 ${page.page} 页` })}>放大查看原页</button>
+                  </div>
+                ) : <p className="chapter-preview-unavailable" role="status">{page.previewUrl ? "原页图片加载失败，无法显示教材预览。" : "此来源没有可用的教材原页图片，当前仅供文字复核。"}</p>}
                 <p>{page.text || "（本页没有可识别原文）"}</p>
                 {page.regions?.length ? (
                   <>
-                    <div className="chapter-region-map" role="group" aria-label={`第 ${page.page} 页区域定位图`}>
-                      {page.regions.map((region, index) => {
-                        const regionId = region.regionId || `${page.page}-${index}`;
-                        const active = focused?.regionId === region.regionId && pageFocused;
-                        return <button
-                          id={`source-region-${revision.sourceRevisionId}-${regionId}`}
-                          type="button"
-                          key={regionId}
-                          aria-label={`回看第 ${page.page} 页区域 ${index + 1}`}
-                          className={active ? "active" : ""}
-                          style={{ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` }}
-                          onClick={() => focus(revision.sourceRevisionId, page.page, region.regionId || regionId)}
-                        ><span>{index + 1}</span></button>;
-                      })}
-                    </div>
-                    <small className="chapter-region-caption">区域坐标示意图；当前回看的是 OCR 原文与位置标注，没有教材原图预览。</small>
                     <ol className="chapter-source-regions" aria-label={`第 ${page.page} 页区域`}>
                       {page.regions.map((region, index) => <li key={region.regionId || `${page.page}-${index}`}>
-                        <button type="button" className={focused?.regionId === region.regionId && pageFocused ? "active" : ""} onClick={() => focus(revision.sourceRevisionId, page.page, region.regionId || `${page.page}-${index}`)}>
+                        <button id={`source-region-${revision.sourceRevisionId}-${region.regionId || `${page.page}-${index}`}`} type="button" className={focused?.regionId === (region.regionId || `${page.page}-${index}`) && pageFocused ? "active" : ""} onClick={() => focus(revision.sourceRevisionId, page.page, region.regionId || `${page.page}-${index}`)}>
                           回看区域 {index + 1} · x {region.x.toFixed(2)}，y {region.y.toFixed(2)} · {Math.round(region.width * 100)}% × {Math.round(region.height * 100)}%
                         </button>
                       </li>)}
@@ -74,6 +90,10 @@ export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewP
         </div>
       ))}
       {revisions.length === 0 && <p>还没有可回看的来源版本。</p>}
+      {enlarged && <div className="chapter-preview-dialog" role="dialog" aria-modal="true" aria-label={enlarged.label}>
+        <button type="button" onClick={() => setEnlarged(null)}>关闭原页放大预览</button>
+        <img src={enlarged.url} alt={enlarged.label} />
+      </div>}
     </section>
   );
 }
