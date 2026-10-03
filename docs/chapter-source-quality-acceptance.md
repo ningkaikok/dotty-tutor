@@ -94,7 +94,7 @@ lint、API 类型漂移、TypeScript、build 通过，33 文件/129 项 Vitest �
 未拦截的非场景模型配置请求产生本机 8010 连接提示，不是完整部署或真实模型调用验收。
 
 根目录 `python3 scripts/check_test_discipline.py` 通过（93 个测试文件，无未登记 mock/sleep）；
-`git diff --check` 通过。没有改 Docker 配置，未执行 Docker 构建/启动；未执行线上迁移或部署。
+`git diff --check` 通过。首次 CI 发现 Linux runner 未安装原页渲染依赖，已在后端矩阵显式安装 `poppler-utils`，保持真实渲染验收而不跳过测试。没有改 Docker 配置，未执行 Docker 构建/启动；未执行线上迁移或部署。
 
 PDF 技能使用 Poppler 渲染并查看真实数学 214 页和英语 123 页；原页文字、公式及段落可读。
 Playwright 真实页面布局检查使用原教材渲染图片与人工选定区域作为明确的 UI 测试数据，
