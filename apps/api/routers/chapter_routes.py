@@ -5,9 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
+from application.services.chapter_source_preview import ChapterSourcePreview
 from auth_context import learner_for_request
+from domain.contracts.audit import BackgroundJobSummary
 from domain.contracts.chapter import (
+    ChapterAIGenerationRequest,
     ChapterAttempt,
     ChapterAttemptResponse,
     ChapterAttemptReview,
@@ -52,6 +56,15 @@ def build_chapter_router(service: Any) -> APIRouter:
     @router.post("/{chapter_id}/generate", response_model=ChapterResponse)
     def generate_chapter(chapter_id: str) -> dict[str, Any]:
         return call(service.generate, chapter_id)
+
+    @router.post("/{chapter_id}/generate-ai", response_model=BackgroundJobSummary, status_code=202)
+    def generate_ai_chapter(chapter_id: str, request: ChapterAIGenerationRequest) -> dict[str, Any]:
+        return call(service.enqueue_ai_generation, chapter_id, expected_record_version=request.expectedRecordVersion)
+
+    @router.get("/{chapter_id}/sources/{revision_id}/pages/{page}/preview", response_class=FileResponse)
+    def preview_source_page(chapter_id: str, revision_id: str, page: int) -> FileResponse:
+        path = call(ChapterSourcePreview(service.store).get, chapter_id, revision_id, page)
+        return FileResponse(path, media_type="image/png", headers={"Cache-Control": "private, no-store"})
 
     @router.put("/{chapter_id}/lessons/{lesson_id}", response_model=ChapterResponse)
     def edit_lesson(chapter_id: str, lesson_id: str, request: ChapterLessonEdit) -> dict[str, Any]:

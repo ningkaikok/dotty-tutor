@@ -71,6 +71,7 @@ async function routeChapterApi(page: Page, subject: "math" | "english") {
     const url = new URL(request.url());
     const method = request.method();
     const path = url.pathname;
+    if (path.endsWith("/preview") && method === "GET") return route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/x2cAAAAASUVORK5CYII=", "base64") });
     if (path === "/api/chapters" && method === "GET") return route.fulfill({ json: { items: [] } });
     if (path === "/api/chapters" && method === "POST") return route.fulfill({ status: 201, json: fixture.chapter });
     if (path.endsWith("/generate") && method === "POST") {
@@ -129,6 +130,32 @@ async function routeChapterApi(page: Page, subject: "math" | "english") {
   });
   return fixture;
 }
+
+test("user Given a chapter page backed by an uploaded source When a teacher opens its review Then the original-page endpoint is shown with the matching region overlay", async ({ page }) => {
+  const fixture = await routeChapterApi(page, "math");
+  Object.assign(fixture.source.pages[0], { previewUrl: "/api/chapters/chapter-1/sources/source-revision-1/pages/12/preview" });
+  fixture.source.pages[0].text = "来源页含有需要逐段核对的公式、条件和例题文字。".repeat(80);
+  await page.goto("/studio/chapters/chapter-1");
+  await expect(page.getByRole("img", { name: "教材原页，第 12 页" })).toHaveAttribute("src", /\/preview$/);
+  await expect(page.getByRole("group", { name: "第 12 页原图区域定位" })).toBeVisible();
+  const region = page.getByRole("button", { name: "回看第 12 页原图区域 1" });
+  await region.click();
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    let previous = window.scrollY;
+    let stableFrames = 0;
+    const settle = () => {
+      stableFrames = window.scrollY === previous ? stableFrames + 1 : 0;
+      previous = window.scrollY;
+      if (stableFrames >= 5) resolve();
+      else requestAnimationFrame(settle);
+    };
+    requestAnimationFrame(settle);
+  }));
+  await expect(region).toBeInViewport();
+  await page.getByRole("button", { name: "放大查看原页" }).click();
+  await expect(page.getByRole("dialog", { name: "教材原页，第 12 页" })).toBeVisible();
+  await page.screenshot({ path: "/tmp/dotty-chapter-source-preview.png", fullPage: true });
+});
 
 test("user Given a math chapter source When a teacher reviews and publishes it Then the student can answer with evidence and restore the attempt after refresh", async ({ page }) => {
   await routeChapterApi(page, "math");

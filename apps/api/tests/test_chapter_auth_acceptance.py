@@ -41,6 +41,23 @@ class ChapterAuthAcceptanceTests(PostgresTestCase):
         self.addCleanup(client.close)
         return client
 
+    def test_user_student_tries_teacher_source_and_generation_routes_then_access_is_denied(self) -> None:
+        # Given a chapter visible to its teacher author
+        response = self.teacher.post("/api/chapters", json={
+            "subject": "math", "title": "Original source", "source": {
+                "license": "Original fixture", "pages": [{"page": 1, "text": "y=2x+1。"}],
+            },
+        })
+        chapter = response.json()
+        revision = chapter["sourceRevisions"][0]["sourceRevisionId"]
+        # When a student requests an original page or model-generation job
+        preview = f"/api/chapters/{chapter['chapterId']}/sources/{revision}/pages/1/preview"
+        generation = f"/api/chapters/{chapter['chapterId']}/generate-ai"
+        # Then teacher-only endpoints are blocked before any source/model work
+        self.assertEqual(self.alpha.get(preview).status_code, 403)
+        self.assertEqual(self.alpha.post(generation, json={"expectedRecordVersion": chapter["recordVersion"]}).status_code, 403)
+        self.assertEqual(self.teacher.get(preview).status_code, 404)
+
     def test_user_student_identity_is_bound_and_teacher_can_review_without_student_credentials(self) -> None:
         # Given a teacher-reviewed English publication and two protected student sessions
         created = self.teacher.post("/api/chapters", json={

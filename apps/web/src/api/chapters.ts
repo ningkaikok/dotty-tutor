@@ -3,6 +3,8 @@ import { currentLearnerId } from "./identity";
 import type { components, operations } from "../types/generated/api";
 import type { CanvasAction } from "../types/question";
 import type { LessonBlock } from "../types/lesson";
+import type { LessonSourceRef } from "../types/lesson";
+import type { BackgroundJob } from "../types/textbook";
 import type {
   ChapterAttemptInput,
   ChapterAttemptResult,
@@ -35,6 +37,8 @@ type ApiManagement = components["schemas"]["ChapterResponse"];
 type ApiPublicChapter = components["schemas"]["ChapterPublishedResponse"];
 type ApiAttempt = components["schemas"]["ChapterAttemptResponse"];
 
+type ApiChapterPageWithPreview = components["schemas"]["ChapterPage"] & { previewUrl?: unknown };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -48,6 +52,20 @@ function isCanvasAction(value: unknown): value is CanvasAction {
   return value === "show-base" || value === "show-point-p" || value === "show-triangles" || value === "show-bisector";
 }
 
+function sourceRefsFromPayload(payload: Record<string, unknown>): { sourceRefs?: LessonSourceRef[] } {
+  if (!Array.isArray(payload.sourceRefs)) return {};
+  const sourceRefs: LessonSourceRef[] = payload.sourceRefs.flatMap((item) => {
+    try {
+      const reference = evidenceRefFromJson(item);
+      return [{ sourceRevisionId: reference.sourceRevisionId, page: reference.page,
+        ...(reference.regionId ? { regionId: reference.regionId } : {}),
+        ...(reference.sentenceId ? { sentenceId: reference.sentenceId } : {}),
+        ...(reference.quote ? { quote: reference.quote } : {}) }];
+    } catch { return []; }
+  });
+  return sourceRefs.length ? { sourceRefs } : {};
+}
+
 function normalizeLessonBlocks(blocks: components["schemas"]["LessonBlock"][]): LessonBlock[] {
   return blocks.map((block) => {
     const id = requiredString(block.id, "课程步骤编号");
@@ -55,13 +73,13 @@ function normalizeLessonBlocks(blocks: components["schemas"]["LessonBlock"][]): 
     const payload = isRecord(block.payload) ? block.payload : {};
     const stringField = (name: string) => requiredString(payload[name], `课程步骤${name}`);
     switch (block.type) {
-      case "markdown": return { id, title, type: "markdown", payload: { markdown: stringField("markdown") } };
-      case "formula": return { id, title, type: "formula", payload: { latex: stringField("latex") } };
-      case "annotation": return { id, title, type: "annotation", payload: { text: stringField("text") } };
-      case "quiz": return { id, title, type: "quiz", payload: { questionId: stringField("questionId") } };
+      case "markdown": return { id, title, type: "markdown", payload: { markdown: stringField("markdown"), ...sourceRefsFromPayload(payload) } };
+      case "formula": return { id, title, type: "formula", payload: { latex: stringField("latex"), ...sourceRefsFromPayload(payload) } };
+      case "annotation": return { id, title, type: "annotation", payload: { text: stringField("text"), ...sourceRefsFromPayload(payload) } };
+      case "quiz": return { id, title, type: "quiz", payload: { questionId: stringField("questionId"), ...sourceRefsFromPayload(payload) } };
       case "hint": {
         if (typeof payload.level !== "number") throw new Error("章节服务返回了无效的提示级别");
-        return { id, title, type: "hint", payload: { level: payload.level, hint: stringField("hint"), ...(typeof payload.question === "string" ? { question: payload.question } : {}) } };
+        return { id, title, type: "hint", payload: { level: payload.level, hint: stringField("hint"), ...(typeof payload.question === "string" ? { question: payload.question } : {}), ...sourceRefsFromPayload(payload) } };
       }
       case "animation": return {
         id, title, type: "animation",
@@ -69,11 +87,12 @@ function normalizeLessonBlocks(blocks: components["schemas"]["LessonBlock"][]): 
           src: stringField("src"),
           ...(typeof payload.poster === "string" ? { poster: payload.poster } : {}),
           ...(typeof payload.caption === "string" ? { caption: payload.caption } : {}),
+          ...sourceRefsFromPayload(payload),
         },
       };
       case "diagram": {
         if (!isCanvasAction(payload.action)) throw new Error("章节服务返回了不支持的图形操作");
-        return { id, title, type: "diagram", payload: { renderer: "geometry", action: payload.action, text: stringField("text"), speechText: typeof payload.speechText === "string" ? payload.speechText : stringField("text") } };
+        return { id, title, type: "diagram", payload: { renderer: "geometry", action: payload.action, text: stringField("text"), speechText: typeof payload.speechText === "string" ? payload.speechText : stringField("text"), ...sourceRefsFromPayload(payload) } };
       }
     }
   });
@@ -132,15 +151,19 @@ function normalizeManagement(response: ApiManagement): ChapterManagement {
     const statusesForLesson = ["draft", "in_review", "approved", "needs_review", "published"] as const;
     if (!statusesForLesson.some((status) => status === lesson.status)) throw new Error("章节服务返回了未知课程状态");
     const question = lesson.questionPayload.question;
+    const questionReview = question as typeof question & { teacherVariants?: string[]; variantReviewStatus?: string };
     const normalizedQuestionKind = questionKind(question.questionKind);
     const answerMode: ChapterAuthorQuestion["answerMode"] = question.answerMode === "objective" || question.answerMode === "short_answer" ? question.answerMode : undefined;
     const authorQuestion = {
       ...questionTypeFields(question),
+      subject: response.subject,
       ...(Array.isArray(question.correctAnswers) ? { correctAnswers: question.correctAnswers } : {}),
       ...(typeof question.answerSpec?.expected === "string" ? { answerSpec: { expected: question.answerSpec.expected } } : {}),
       ...(normalizedQuestionKind ? { questionKind: normalizedQuestionKind } : {}),
       ...(answerMode ? { answerMode } : {}),
       ...(Array.isArray(question.acceptedAnswers) ? { acceptedAnswers: question.acceptedAnswers } : {}),
+      ...(Array.isArray(questionReview.teacherVariants) ? { teacherVariants: questionReview.teacherVariants } : {}),
+      ...(typeof questionReview.variantReviewStatus === "string" ? { variantReviewStatus: questionReview.variantReviewStatus } : {}),
       ...(Array.isArray(question.requiredEvidenceRefs) ? { requiredEvidenceRefs: question.requiredEvidenceRefs } : {}),
       ...(isRecord(question.rubric) ? { rubric: question.rubric } : {}),
     };
@@ -175,12 +198,20 @@ function normalizeManagement(response: ApiManagement): ChapterManagement {
     status: chapterStatus,
     version: response.version,
     recordVersion: response.recordVersion,
-    sourceRevisions: response.sourceRevisions,
+    sourceRevisions: response.sourceRevisions.map((revision) => ({
+      ...revision,
+      pages: revision.pages.map((page) => {
+        const previewUrl = (page as ApiChapterPageWithPreview).previewUrl;
+        return { ...page, previewUrl: typeof previewUrl === "string" && previewUrl.startsWith("/api/chapters/") ? previewUrl : null };
+      }),
+    })),
     lessons,
     currentLessonIds: response.currentLessonIds,
     reviewIssues: response.reviewIssues,
     publicationId: response.publicationId ?? null,
     publications: response.publications,
+    generationJobId: typeof (response as ApiManagement & { generationJobId?: unknown }).generationJobId === "string"
+      ? (response as ApiManagement & { generationJobId: string }).generationJobId : null,
   };
 }
 
@@ -268,6 +299,25 @@ export async function generateChapter(chapterId: string): Promise<ChapterManagem
     await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/generate`, { method: "POST" }),
   );
   return normalizeManagement(response);
+}
+
+/** Starts a source-bound AI draft job using the chapter's current record version. */
+export async function generateChapterAi(chapterId: string, expectedRecordVersion: number): Promise<BackgroundJob> {
+  return parse<BackgroundJob>(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/generate-ai`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedRecordVersion }),
+  }));
+}
+
+export async function loadChapterAiJob(jobId: string): Promise<BackgroundJob> {
+  return parse<BackgroundJob>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { cache: "no-store" }));
+}
+
+export async function retryChapterAiJob(jobId: string): Promise<BackgroundJob> {
+  return parse<BackgroundJob>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" }));
+}
+
+export async function cancelChapterAiJob(jobId: string): Promise<BackgroundJob> {
+  return parse<BackgroundJob>(await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }));
 }
 
 export async function editChapterLesson(chapterId: string, lessonId: string, request: ChapterLessonEditInput, expectedRecordVersion: number): Promise<ChapterManagement> {

@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from application import create_app
+from application.chapter_jobs import build_chapter_registry
 from application.job_registry import merge_registries
 from application.mistake_jobs import build_mistake_registry
 from application.services.assignment_planning import AssignmentPlanningService
@@ -117,7 +118,7 @@ app.include_router(build_publication_router(
     store=store,
     revision_service=publication_revision_service,
 ))
-chapter_course_service = ChapterCourseService(store)
+chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
 app.include_router(build_chapter_router(chapter_course_service))
 app.include_router(textbook_router)
 
@@ -152,7 +153,7 @@ mistake_job_registry = build_mistake_registry(
     recognize=mistake_recognizer,
     project_result=student_mistake_item,
 )
-job_registry = merge_registries(textbook_job_registry, mistake_job_registry)
+job_registry = merge_registries(textbook_job_registry, mistake_job_registry, build_chapter_registry(chapter_course_service))
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,

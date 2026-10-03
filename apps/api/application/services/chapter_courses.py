@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import re
 import time
 import uuid
@@ -11,7 +12,10 @@ from functools import wraps
 from typing import Any
 
 from answer_evaluator import evaluate_structured_answer
+from application.job_worker import CancellableJobResult
+from application.services.chapter_source_preview import file_hash, source_file
 from domain.chapters.english import evaluate_english_chapter_attempt
+from domain.chapters.quality import build_quality_draft, quality_draft_schema
 from domain.chapters.source import fingerprint, pages_from_ocr, sentences
 from domain.chapters.templates import build_chapter_lessons
 from domain.questions.student_view import student_question_payload
@@ -29,11 +33,24 @@ def _serialize_chapter_mutation(method):
 
 def _strip_answers(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: _strip_answers(item) for key, item in value.items()
-                if key not in {"answerSpec", "correctAnswer", "correctAnswers", "solution", "rubric"}}
+        projected = {key: _strip_answers(item) for key, item in value.items()
+                if key not in {"answerSpec", "correctAnswer", "correctAnswers", "acceptedAnswers", "teacherVariants",
+                               "proposedVariants", "answerDraft", "rubric", "rubricDraft", "solution"}}
+        if value.get("type") == "quiz" and isinstance(projected.get("payload"), dict):
+            projected["payload"] = {key: item for key, item in projected["payload"].items() if key in {"questionId", "prompt"}}
+        return projected
     if isinstance(value, list):
         return [_strip_answers(item) for item in value]
     return value
+
+
+def _safe_runtime_audit(run: dict[str, Any]) -> dict[str, Any]:
+    """Keep provider diagnostics without persisting prompt or credential-bearing data."""
+    return {
+        key: run[key]
+        for key in ("requestedProvider", "provider", "model", "promptChars", "maxOutputTokens", "durationMs", "usage", "providerAttempts", "schemaFallback")
+        if key in run
+    }
 
 
 def _evidence_options(source_revision_id: str | None, page_source: dict[str, Any]) -> list[dict[str, Any]]:
@@ -81,8 +98,177 @@ def _refs_resolve(references: list[dict[str, Any]], revision_id: str, pages: lis
 class ChapterCourseService:
     """Manage source revisions, human review, immutable publications and attempts."""
 
-    def __init__(self, store: Any) -> None:
+    def __init__(self, store: Any, jobs: Any = None, generation_runtime: Any = None) -> None:
         self.store = store
+        self.jobs = jobs
+        if generation_runtime is None:
+            from infrastructure.runtime.model_runtime import runtime
+            generation_runtime = runtime
+        self.generation_runtime = generation_runtime
+
+    def enqueue_ai_generation(
+        self, chapter_id: str, *, expected_record_version: int,
+        runtime_snapshot: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Queue one AI draft against an immutable chapter and source revision snapshot."""
+        if self.jobs is None:
+            raise RuntimeError("章节 AI 生成任务队列未装配")
+        chapter = self.store.load_chapter(chapter_id)
+        if not chapter:
+            raise LookupError("章节不存在")
+        if chapter.get("recordVersion") != expected_record_version:
+            raise ValueError("章节已被其他编辑更新，请刷新后重试")
+        if chapter.get("publications") and chapter.get("currentLessonIds"):
+            current_publication = next((item for item in chapter["publications"] if item.get("publicationId") == chapter.get("publicationId")), None)
+            if current_publication and current_publication.get("sourceRevisionId") == chapter["sourceRevisions"][-1]["sourceRevisionId"]:
+                raise ValueError("当前来源已有发布课程，请先创建来源修订")
+        current = {item["lessonId"]: item for item in chapter.get("lessons", []) if item.get("lessonId") in chapter.get("currentLessonIds", [])}
+        for item in current.values():
+            if item.get("status") not in {"in_review", "needs_review", "draft"} or item.get("reviews"):
+                raise ValueError("当前课程已进入审核，不能被 AI 草稿覆盖")
+        revision = chapter["sourceRevisions"][-1]
+        from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
+        payload = {
+            "chapterId": chapter_id,
+            "sourceRevisionId": revision["sourceRevisionId"],
+            "expectedRecordVersion": expected_record_version,
+            "runtimeSnapshot": runtime_snapshot or current_job_runtime_snapshot(),
+            "generationKey": f"chapter:{chapter_id}:revision:{revision['sourceRevisionId']}:record:{expected_record_version}:ai-v1",
+        }
+        idempotency_key = f"chapter:{chapter_id}:revision:{revision['sourceRevisionId']}:record:{expected_record_version}:ai-v1"
+        # Model calls can consume quota; a new attempt requires an explicit teacher retry.
+        return self.jobs.create_job("chapter.lesson.generate", payload, idempotency_key=idempotency_key, max_attempts=1)
+
+    def run_ai_generation(
+        self, payload: dict[str, Any], *, cancellation_check: Any = lambda: False,
+    ) -> dict[str, Any] | CancellableJobResult:
+        """Generate outside chapter locks, then compare-and-write the reviewed draft."""
+        from application.job_worker import (
+            JobCancelled,
+            RetryableJobError,
+            TerminalJobError,
+        )
+        from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
+        from infrastructure.runtime.model_runtime import ModelSelection
+
+        chapter_id = str(payload["chapterId"])
+        chapter = self.store.load_chapter(chapter_id)
+        if not chapter:
+            raise TerminalJobError("章节不存在")
+        revision_id = str(payload["sourceRevisionId"])
+        expected_version = payload.get("expectedRecordVersion")
+        if not isinstance(expected_version, int) or isinstance(expected_version, bool):
+            raise TerminalJobError("章节版本快照无效")
+        generation_key = str(payload.get("generationKey") or f"chapter:{chapter_id}:revision:{revision_id}:record:{expected_version}:ai-v1")
+        completed = (chapter.get("aiGenerationRuns") or {}).get(generation_key)
+        if isinstance(completed, dict):
+            result_payload = completed.get("result")
+            return result_payload if isinstance(result_payload, dict) else {str(key): value for key, value in completed.items()}
+        source = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == revision_id), None)
+        if source is None or chapter["sourceRevisions"][-1]["sourceRevisionId"] != revision_id:
+            raise TerminalJobError("来源已修订，请基于最新版本重新生成")
+        if chapter.get("recordVersion") != expected_version:
+            raise TerminalJobError("章节已编辑或审核，请刷新后重新发起生成")
+        if cancellation_check():
+            raise JobCancelled()
+        schema = quality_draft_schema(chapter["subject"])
+        prompt = (
+            "为教师编辑工作台生成中文课程草稿。只能依据 SOURCE_JSON，不得补造教材事实、数学条件或答案。每条 citations 必须含 sourceRevisionId/page/sentenceId/regionId/quote 五字段；无值填 null，sentenceId 或 regionId 至少有一个非空，quote 必须逐字摘录对应来源句。每段内容都必须提供 citations。所有输出只是待教师复核的草稿。\n"
+            "数学须提供 concept/conditions/example(prompt,answer,steps,citations)、恰好三级 hints(每项 text,citations)、check(prompt,answer,citations)。条件缺失或无法据来源作答时拒绝生成。\n"
+            "英语须提供四题 questions，kind 分别为 word_meaning/reference/explicit/inference，每项含 prompt、answer、citations、teacherVariants（建议答案变体）和 rubric（评分要点）；变体与rubric明确是待教师审核建议。推断题也须引用原文依据。\n"
+            f"CHAPTER_JSON={json.dumps({'subject': chapter['subject'], 'title': chapter['title']}, ensure_ascii=False)}\n"
+            f"SOURCE_JSON={json.dumps({'sourceRevisionId': revision_id, 'pages': source['pages']}, ensure_ascii=False)}"
+        )
+        schema_fingerprint = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        prompt_fingerprint = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        runtime_run: dict[str, Any] = {}
+        stage = "model_generation"
+        try:
+            selection_config = (payload.get("runtimeSnapshot") or {}).get("generation") or {}
+            provider = selection_config.get("provider")
+            if provider not in {"ollama", "codex", "mock"} or not selection_config.get("model"):
+                raise ValueError("后台任务 Runtime 选择快照无效")
+            with use_job_runtime_snapshot(payload):
+                draft, runtime_run = self.generation_runtime.generate_json(
+                    prompt, schema, max_tokens=2400, task="chapter_lesson_draft",
+                    selection=ModelSelection(provider, str(selection_config["model"])),
+                )
+            stage = "draft_validation"
+            documents, issues = build_quality_draft(chapter, source, draft)
+        except JobCancelled:
+            raise
+        except Exception as error:
+            safe_runtime = getattr(error, "runtime_run", None)
+            if isinstance(safe_runtime, dict):
+                runtime_run = safe_runtime
+            raise RetryableJobError("章节草稿生成或来源校验失败", details={
+                "stage": stage, "errorType": type(error).__name__,
+                "sourceFingerprint": source.get("fingerprint"), "promptSha256": prompt_fingerprint,
+                "schemaSha256": schema_fingerprint, "runtime": _safe_runtime_audit(runtime_run),
+            }) from error
+        if cancellation_check():
+            raise JobCancelled()
+        prior_ids: list[str] = []
+        prior_status = str(chapter.get("status") or "in_review")
+        prior_review_issues = copy.deepcopy(chapter.get("reviewIssues") or [])
+        persisted_version = int(expected_version)
+        with self.store.chapter_lock(chapter_id):
+            with self.store.atomic():
+                current_chapter = self.store.load_chapter(chapter_id)
+                if not current_chapter or current_chapter.get("recordVersion") != expected_version or current_chapter["sourceRevisions"][-1]["sourceRevisionId"] != revision_id:
+                    raise TerminalJobError("生成期间章节或来源已变化，草稿未写入")
+                current_items = [item for item in current_chapter.get("lessons", []) if item.get("lessonId") in current_chapter.get("currentLessonIds", [])]
+                if any(item.get("status") not in {"in_review", "needs_review", "draft"} or item.get("reviews") for item in current_items):
+                    raise TerminalJobError("生成期间教师已开始审核，草稿未覆盖现有课程")
+                new_ids = [doc["lessonId"] for doc in documents]
+                prior_ids = list(current_chapter.get("currentLessonIds", []))
+                prior_status = str(current_chapter.get("status") or "in_review")
+                prior_review_issues = copy.deepcopy(current_chapter.get("reviewIssues") or [])
+                for old in current_items:
+                    old["supersededByGeneration"] = True
+                for document in documents:
+                    self.store.save_lesson(document)
+                current_chapter["lessons"].extend({"lessonId": document["lessonId"], "sourceRevisionId": revision_id,
+                    "status": "in_review", "sourceLocator": document["sourceLocator"], "reviewIssues": document["reviewIssues"],
+                    "generationMethod": "ai_source_constrained", "reviews": []} for document in documents)
+                current_chapter["currentLessonIds"] = new_ids
+                current_chapter["reviewIssues"] = list(current_chapter.get("reviewIssues", [])) + issues
+                current_chapter["status"] = "in_review"
+                result = {"chapterId": chapter_id, "sourceRevisionId": revision_id, "lessonIds": new_ids,
+                          "status": "in_review", "humanReviewRequired": True}
+                current_chapter.setdefault("aiGenerationRuns", {})[generation_key] = {
+                    "result": result,
+                    "audit": {"sourceRevisionId": revision_id, "sourceFingerprint": source.get("fingerprint"),
+                              "promptSha256": prompt_fingerprint, "schemaSha256": schema_fingerprint,
+                              "runtime": _safe_runtime_audit(runtime_run), "createdAt": time.time()},
+                }
+                self.store.save_chapter(current_chapter)
+                persisted_version = int(current_chapter["recordVersion"])
+
+        def rollback_cancelled_generation() -> None:
+            """Compensate only while no teacher has touched this exact generation."""
+            with self.store.chapter_lock(chapter_id):
+                with self.store.atomic():
+                    latest = self.store.load_chapter(chapter_id)
+                    if (not latest or latest.get("recordVersion") != persisted_version
+                            or latest.get("currentLessonIds") != new_ids):
+                        return
+                    latest["lessons"] = [item for item in latest.get("lessons", []) if item.get("lessonId") not in new_ids]
+                    for item in latest.get("lessons", []):
+                        if item.get("lessonId") in prior_ids:
+                            item.pop("supersededByGeneration", None)
+                    latest["currentLessonIds"] = prior_ids
+                    latest["status"] = prior_status
+                    latest["reviewIssues"] = prior_review_issues
+                    latest.get("aiGenerationRuns", {}).pop(generation_key, None)
+                    self.store.save_chapter(latest)
+                    for document in documents:
+                        saved = self.store.load_lesson(document["lessonId"])
+                        if saved:
+                            saved["status"] = "archived"
+                            self.store.save_lesson(saved)
+
+        return CancellableJobResult(result, on_cancel=rollback_cancelled_generation)
 
     def _normalize_source(self, raw: dict[str, Any]) -> dict[str, Any]:
         source = dict(raw)
@@ -139,11 +325,14 @@ class ChapterCourseService:
                 "flags": list(page.get("flags") or []),
                 "sentences": [],
             })
+        original = source_file(self.store, job) if job is not None else None
+        original_hash = file_hash(original) if original is not None else None
         return {
+            "sourceFileSha256": original_hash,
             "uploadId": source.get("uploadId"), "sourceVersion": str(source.get("sourceVersion") or "1"),
             "license": source.get("license"),
             "pageStart": start, "pageEnd": end, "pages": normalized_pages,
-            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "pages": normalized_pages}),
+            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "pages": normalized_pages, "sourceFileSha256": original_hash}),
             "missingPages": missing,
         }
 
@@ -169,14 +358,30 @@ class ChapterCourseService:
         if not chapter:
             raise LookupError("章节不存在")
         result = copy.deepcopy(chapter)
+        result.pop("aiGenerationRuns", None)
+        lookup_job = getattr(self.jobs, "latest_for_payload", None)
+        latest_job = lookup_job("chapter.lesson.generate", "chapterId", chapter_id) if callable(lookup_job) else None
+        result["generationJobId"] = latest_job.get("jobId") if isinstance(latest_job, dict) else None
+        for revision in result["sourceRevisions"]:
+            for page in revision["pages"]:
+                page["previewUrl"] = (
+                    f"/api/chapters/{chapter_id}/sources/{revision['sourceRevisionId']}/pages/{page['page']}/preview"
+                    if revision.get("sourceFileSha256") else None
+                )
         merged = []
         for item in chapter.get("lessons", []):
             lesson = self.store.load_lesson(item["lessonId"]) or dict(item)
             lesson.update({key: value for key, value in item.items() if key in {"sourceRevisionId", "sourceLocator", "reviewIssues", "reviews"}})
             revision = next((rev for rev in chapter["sourceRevisions"] if rev["sourceRevisionId"] == lesson.get("sourceRevisionId")), None)
             locator = lesson.get("sourceLocator") or {}
-            page_source = next((page for page in (revision or {}).get("pages", []) if page["page"] == locator.get("page")), {})
-            lesson["evidenceOptions"] = _evidence_options(lesson.get("sourceRevisionId"), page_source)
+            question = (lesson.get("questionPayload") or {}).get("question") or {}
+            referenced_pages = {reference.get("page") for reference in question.get("requiredEvidenceRefs", []) if isinstance(reference, dict)}
+            referenced_pages.add(locator.get("page"))
+            source_pages = [page for page in (revision or {}).get("pages", []) if page.get("page") in referenced_pages]
+            lesson["evidenceOptions"] = [
+                option for page in source_pages
+                for option in _evidence_options(lesson.get("sourceRevisionId"), page)
+            ]
             merged.append(lesson)
         result["lessons"] = merged
         return result
@@ -271,6 +476,32 @@ class ChapterCourseService:
         lesson = self.store.load_lesson(lesson_id)
         if not lesson:
             raise LookupError("课程不存在")
+        payload = lesson.get("questionPayload") or {}
+        question = payload.get("question") or {}
+        quality = payload.get("quality") or {}
+        ai_review_pending = str(quality.get("reviewBasis") or "").startswith("ai_")
+        if decision == "approve" and ai_review_pending:
+            accepted = question.get("acceptedAnswers") or question.get("correctAnswers") or []
+            expected_answer = (question.get("answerSpec") or {}).get("expected")
+            if not accepted and expected_answer is not None and str(expected_answer).strip():
+                accepted = [str(expected_answer)]
+            if not question.get("prompt") or not accepted:
+                raise ValueError("请先核对并填写题目与候选答案")
+            revision = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == question.get("sourceRevisionId")), None)
+            pages = [{"sourceRevisionId": question.get("sourceRevisionId"), **page} for page in (revision or {}).get("pages", [])]
+            if not _refs_resolve(question.get("requiredEvidenceRefs") or [], str(question.get("sourceRevisionId") or ""), pages):
+                raise ValueError("请先核对答案引用是否属于对应来源页")
+            if chapter["subject"] == "english":
+                question["acceptedAnswers"] = list(dict.fromkeys(accepted))
+                question["correctAnswers"] = list(dict.fromkeys(accepted))
+                if question.get("variantReviewStatus") != "teacher_confirmed":
+                    question["teacherVariants"] = []
+                question["variantReviewStatus"] = "teacher_approved"
+                rubric = dict(question.get("rubric") or {})
+                rubric["supportStatus"] = "supported"
+                question["rubric"] = rubric
+            payload["quality"] = {"status": "ready", "errors": [], "reviewBasis": "teacher_approved_ai_draft", "reviewer": reviewer}
+            lesson["questionPayload"] = payload
         lesson.setdefault("reviews", []).append({"reviewer": reviewer, "decision": decision, "note": note, "createdAt": time.time()})
         lesson["status"] = "approved" if decision == "approve" else "needs_review"
         self.store.save_lesson(lesson)
@@ -318,9 +549,16 @@ class ChapterCourseService:
         question["subject"] = chapter["subject"]
         if chapter["subject"] == "english":
             accepted = request.get("acceptedAnswers") or [request["answer"]]
+            teacher_variants = request.get("teacherVariants")
+            if teacher_variants is not None:
+                if not isinstance(teacher_variants, list) or any(not isinstance(item, str) or not item.strip() for item in teacher_variants):
+                    raise ValueError("教师确认的英语答案变体格式无效")
+                accepted = list(dict.fromkeys([request["answer"], *[item.strip() for item in teacher_variants]]))
+                question["teacherVariants"] = [item.strip() for item in teacher_variants]
+                question["variantReviewStatus"] = "teacher_confirmed"
             question.update({
                 "questionKind": request["questionKind"], "answerMode": request["answerMode"],
-                "acceptedAnswers": accepted, "requiredEvidenceRefs": required_refs,
+                "acceptedAnswers": accepted, "correctAnswers": [request["answer"]], "requiredEvidenceRefs": required_refs,
                 "rubric": request.get("rubric") or {"supportStatus": "needs_review" if request["questionKind"] == "inference" else "supported"},
             })
         else:
@@ -333,23 +571,35 @@ class ChapterCourseService:
         else:
             question["questionType"] = "short-answer"
             question["evaluation"] = {"mode": "deterministic"}
-            question["correctAnswers"] = request.get("acceptedAnswers") or [request["answer"]]
+            question["correctAnswers"] = (question["acceptedAnswers"] if chapter["subject"] == "english"
+                                          else [request["answer"]])
             question.pop("answerSpec", None)
-        payload["quality"] = {"status": "ready", "errors": [], "reviewBasis": "teacher_authored"}
+        old_quality = payload.get("quality") or {}
+        if str(old_quality.get("reviewBasis") or "").startswith("ai_"):
+            payload["quality"] = {"status": "needs_review", "errors": ["教师已编辑，请确认检查题、提示和来源依据"], "reviewBasis": "ai_edited_pending_approval"}
+        else:
+            payload["quality"] = {"status": "ready", "errors": [], "reviewBasis": "teacher_authored"}
         lesson["questionPayload"] = payload
         lesson["sourceRevisionId"] = revision["sourceRevisionId"]
         lesson["sourceLocator"] = question["sourceLocator"]
         for block in lesson.get("blocks", []):
-            if block.get("type") == "markdown" and request.get("conceptMarkdown") is not None:
+            # English reading blocks are immutable excerpts, not authored explanations.
+            if chapter["subject"] == "math" and block.get("type") == "markdown" and request.get("conceptMarkdown") is not None:
                 block["payload"]["markdown"] = request["conceptMarkdown"]
                 block["payload"]["text"] = request["conceptMarkdown"]
             if block.get("type") == "annotation" and request.get("exampleText") is not None:
                 block["payload"]["text"] = request["exampleText"]
-            if block.get("type") == "hint" and request.get("hint") is not None:
-                block["payload"]["hint"] = request["hint"]
+            if block.get("type") == "hint":
+                level = int(block.get("payload", {}).get("level", 1))
+                reviewed_hints = request.get("hints")
+                if isinstance(reviewed_hints, list) and level <= len(reviewed_hints):
+                    block["payload"]["hint"] = reviewed_hints[level - 1]
+                elif request.get("hint") is not None and level == 1:
+                    block["payload"]["hint"] = request["hint"]
             block.setdefault("payload", {})["sourceLocator"] = question["sourceLocator"]
             if block.get("type") == "quiz":
                 block["payload"]["questionId"] = lesson_id
+                block["payload"]["prompt"] = request["prompt"]
         lesson["status"] = "in_review"
         lesson.pop("reviews", None)
         lesson["reviewIssues"] = []
@@ -435,7 +685,9 @@ class ChapterCourseService:
             question = (lesson.get("questionPayload") or {}).get("question") or {}
             source_revision = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == question.get("sourceRevisionId")), None)
             locator = question.get("sourceLocator") or {}
-            page_source = next((item for item in (source_revision or {}).get("pages", []) if item["page"] == locator.get("page")), {})
+            referenced_pages = {reference.get("page") for reference in question.get("requiredEvidenceRefs", []) if isinstance(reference, dict)}
+            referenced_pages.add(locator.get("page"))
+            source_pages = [item for item in (source_revision or {}).get("pages", []) if item.get("page") in referenced_pages]
             public = {
                 "lessonId": lesson["lessonId"], "title": lesson["title"], "version": lesson["version"],
                 "status": lesson["status"], "knowledgePoints": lesson["knowledgePoints"],
@@ -443,7 +695,10 @@ class ChapterCourseService:
                 "questionPayload": student_question_payload(lesson.get("questionPayload")),
                 "sourceRevisionId": question.get("sourceRevisionId"),
                 "sourceLocator": question.get("sourceLocator"),
-                "evidenceOptions": _evidence_options(question.get("sourceRevisionId"), page_source),
+                "evidenceOptions": [
+                    option for page in source_pages
+                    for option in _evidence_options(question.get("sourceRevisionId"), page)
+                ],
             }
             lessons.append(public)
         return {"chapterId": chapter_id, "subject": chapter["subject"], "title": chapter["title"],
