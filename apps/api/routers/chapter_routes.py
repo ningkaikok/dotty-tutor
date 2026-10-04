@@ -45,6 +45,12 @@ def build_chapter_router(service: Any) -> APIRouter:
     def list_chapters() -> dict[str, Any]:
         return service.list()
 
+    @router.post("/from-upload/{upload_id}", response_model=BackgroundJobSummary, status_code=202)
+    def create_courses_from_upload(upload_id: str) -> dict[str, Any]:
+        from application.services.material_courses import MaterialCourseService
+        from infrastructure.runtime.ocr_runtime import runtime
+        return call(MaterialCourseService(service, runtime).enqueue, upload_id)
+
     @router.get("/{chapter_id}", response_model=ChapterResponse)
     def get_chapter(chapter_id: str) -> dict[str, Any]:
         return call(service.get, chapter_id)

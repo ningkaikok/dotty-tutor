@@ -7,6 +7,7 @@ import { ChapterLessonReview } from "./ChapterLessonReview";
 import { ChapterAttemptReview } from "./ChapterAttemptReview";
 import { ChapterSourceForm } from "./ChapterSourceForm";
 import { ChapterSourceReview } from "./ChapterSourceReview";
+import { AutomaticCourseCreator } from "./AutomaticCourseCreator";
 import { useChapterStudio } from "./useChapterStudio";
 import { useChapterAttemptReview } from "./useChapterAttemptReview";
 import { useChapterStudioIndex } from "./useChapterStudioIndex";
@@ -14,6 +15,8 @@ import "./chapters.css";
 
 export function ChapterStudioApp() {
   const { chapterId } = useParams();
+  const [params] = useSearchParams();
+  if ((!chapterId || chapterId === "new") && params.get("uploadId")) return <AutomaticCourseCreator uploadId={params.get("uploadId")!} />;
   return chapterId && chapterId !== "new" ? <ChapterWorkspace chapterId={chapterId} /> : <ChapterCreator />;
 }
 

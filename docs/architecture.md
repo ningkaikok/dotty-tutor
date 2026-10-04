@@ -242,6 +242,13 @@ flowchart TB
 
 ## 来源关联章节课程与英语阅读
 
+上传入口统一为“上传试卷或教材”，通过首批 OCR 自动识别类型。教材不会先拆成考试题；原文件与 OCR
+保存后，可直接自动制作课程，不要求先填学科、页码、名称和版本。
+`MaterialCourseService` 优先读取 PDF 章节书签，再用已有页面 OCR 路由识别真实标题；最多创建前五章，
+以第六章起点确定第五章结尾。无书签时最多扫描前 80 页，每章最多 80 页；边界缺失或截断在结果中提示。
+准备任务及子章节生成任务共享现有持久化 Worker、运行选择快照、幂等与取消机制；重试复用来源记录。
+许可默认未确认，发布前仍需补齐授权依据并由教师复核；自动识别结果不代表教材质量或授权已审核。
+
 章节制作从统一“我的教材”入口进入；PDF 与课程分别持久化，前端合并导航及列表，使用 `domain/contracts/chapter.py`、
 `application/services/chapter_courses.py` 和 `persistence/chapter_store.py`。
 纯来源处理与有限模板构造分别在 `domain/chapters/source.py` 和 `templates.py`，沿用已有 OCR 页标记；

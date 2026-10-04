@@ -1,5 +1,6 @@
 import type { ImportQualityReport, PdfUploadTask, TextbookImportResult } from "../../../types/index";
 import type { UploadPhase } from "./useTextbookImport";
+import { Link } from "react-router";
 
 interface PipelinePanelProps {
   result: TextbookImportResult | null;
@@ -51,7 +52,7 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
   return (
     <aside className="pipeline-panel panel">
       <span className="eyebrow">处理链路</span>
-      <h2>{result ? (phase === "done" ? "教材已拆分并结构化" : "预览已完成，整本处理中") : "即将执行的处理链路"}</h2>
+      <h2>{result && !result.questionPayload ? "教材原文已识别" : result ? (phase === "done" ? "教材已拆分并结构化" : "预览已完成，整本处理中") : "即将执行的处理链路"}</h2>
       {hasActiveUpload && <p className="pipeline-active-file">当前显示：{activeFilename}</p>}
       <ol className="pipeline-list">
         {(result?.stages.map((stage) => stage.label) ?? pipeline).map((label, index) => {
@@ -66,23 +67,24 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
 
       {result ? (
         <div className="extraction-result">
-          <div className={`model-result ${result.modelRun.fallback ? "fallback" : "live"}`}>
+          {result.modelRun && <div className={`model-result ${result.modelRun.fallback ? "fallback" : "live"}`}>
             <small>实际生成</small>
             <strong>{result.modelRun.provider} · {result.modelRun.model}</strong>
             {result.modelRun.fallback && <span title={result.modelRun.error}>模型调用失败，已回退 Mock · {result.modelRun.error}</span>}
-          </div>
+          </div>}
+          {result.materialKind && <p>自动识别：{result.materialKind === "paper" ? "试卷" : result.materialKind === "textbook" ? "教材" : "课程来源（类型待核实）"} · {result.detectionReason}</p>}
           <div className={`model-result ${result.ocrRun.fallback ? "fallback" : "live"}`}>
             <small>教材解析</small>
             <strong>{result.ocrRun.provider} · {result.ocrRun.mode}</strong>
             {result.ocrRun.error && <span title={result.ocrRun.error}>{result.ocrRun.error}</span>}
           </div>
-          <div><small>识别章节</small><strong>{result.extraction.chapter}</strong></div>
-          <div><small>知识点</small><strong>{result.extraction.knowledgePoint}</strong></div>
+          {result.questionPayload && <><div><small>识别章节</small><strong>{result.extraction.chapter}</strong></div>
+          <div><small>知识点</small><strong>{result.extraction.knowledgePoint}</strong></div></>}
           <div className="metric-row">
             {result.extraction.pageCount ? <span><b>{result.extraction.pageCount}</b> 页</span> : null}
             {result.extraction.batchCount ? <span><b>{result.extraction.batchCount}</b> 个批次</span> : null}
-            <span><b>{result.extraction.questionCount}</b> 道题</span>
-            <span><b>{result.extraction.guideCardCount}</b> 张引导卡</span>
+            {result.questionPayload && <><span><b>{result.extraction.questionCount}</b> 道题</span>
+            <span><b>{result.extraction.guideCardCount}</b> 张引导卡</span></>}
           </div>
           {result.batches && (
             <div className="batch-list">
@@ -96,13 +98,13 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
             </div>
           )}
           {result.qualityReport && <QualityReport report={result.qualityReport} />}
-          <button
+          {!result.questionPayload && result.uploadId ? <Link className="continue-button" to={`/studio/chapters/new?uploadId=${encodeURIComponent(result.uploadId)}`}>自动制作课程（最多前 5 章） →</Link> : <button
             className="continue-button"
             disabled={!canContinue}
             onClick={() => canContinue && onContinue(result)}
           >
             {canContinue ? "进入动态教材 →" : "整本教材处理中…"}
-          </button>
+          </button>}
         </div>
       ) : hasActiveUpload ? (
         // 选中的文件还没有结果，和“一个文件都还没加入”是两种不同的空态。

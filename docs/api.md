@@ -335,7 +335,22 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 前端统一 `/studio` 入口并行读取 `/api/library` 与 `/api/chapters`，不新增合并接口，也不改变原记录、
 教师权限和学生安全投影。`/studio/import?uploadId=...` 通过既有教材详情接口恢复练习；
-`/studio/chapters/new?uploadId=...` 仅预选来源，保存仍调用既有章节创建接口。
+`/studio/chapters/new?uploadId=...` 直接调用自动章节制作接口，无需填写前置选项。
+
+统一上传页面在单页表单和 PDF 完成请求中传 `autoDetect=true`（旧客户端默认 `false` 保持题目流程）。
+首批 OCR 自动判断 `materialKind: paper | textbook | unknown`，附 `detectionReason`；教材或类型不明时
+保存原文件和 OCR，响应为来源预览，不含 `modelRun`/`questionPayload`，`questionPayloads=[]`，不执行整卷拆题。
+`GET /api/library` 也返回 `materialKind`，旧记录为 `unknown`。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/chapters/from-upload/{upload_id}` | 教师从完成上传自动制作前 5 章，返回 `202 BackgroundJobSummary`，无需请求体；按上传 ID 幂等 |
+
+该任务类型为 `material.courses.create`，沿用 `/api/jobs/{jobId}` 查询、取消和显式重试。结果包含
+`chapters[{chapterId,title,pageStart,pageEnd,boundaryDetected}]`、`chapterLimit=5`、`notices`、
+`requiresHumanReview=true`；完成代表章节来源已创建并安排独立 AI 草稿任务，生成进度仍在各章节查看。
+优先读取 PDF 章节书签，否则扫描前 80 页，找到第六章边界后停止；单章最多 80 页。没有可靠标题时
+只创建一个有提示的页段，不虚构五章。来源许可默认待核实，草稿复核与发布门禁继续生效。
 
 
 | 方法 | 路径 | 说明 |

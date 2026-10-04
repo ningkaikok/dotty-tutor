@@ -29,6 +29,7 @@ export async function importTextbook(file: File, sourceText = ""): Promise<Textb
   const body = new FormData();
   body.append("file", file);
   body.append("sourceText", sourceText);
+  body.append("autoDetect", "true");
   return parse<TextbookImportResult>(await fetch("/api/textbook/import", { method: "POST", body }));
 }
 
@@ -62,7 +63,7 @@ export async function loadPdfUploadStatus(uploadId: string): Promise<PdfUploadTa
 }
 
 export async function completePdfUpload(uploadId: string): Promise<BackgroundJob<TextbookImportResult>> {
-  return parse<BackgroundJob<TextbookImportResult>>(await fetch(`/api/uploads/${uploadId}/complete`, { method: "POST" }));
+  return parse<BackgroundJob<TextbookImportResult>>(await fetch(`/api/uploads/${uploadId}/complete?autoDetect=true`, { method: "POST" }));
 }
 
 export async function loadBackgroundJob<T = unknown>(jobId: string): Promise<BackgroundJob<T>> {

@@ -51,6 +51,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
             lambda: processing_service.complete_upload(
                 payload["uploadId"],
                 cancellation_check=cancellation_check,
+                **({"auto_detect": True} if payload.get("autoDetect") else {}),
                 question_limit=(
                     MAX_FULL_PAPER_QUESTIONS_PER_BATCH
                     if payload.get("generateFullPaper", False) else MAX_QUESTIONS_PER_BATCH
@@ -59,7 +60,7 @@ def build_textbook_registry(processing_service: Any) -> TaskRegistry:
             cancellation_check,
             payload,
         )
-        if not payload.get("generateFullPaper", False):
+        if not payload.get("generateFullPaper", False) or (isinstance(result, dict) and result.get("materialKind") in {"textbook", "unknown"}):
             return result
         full_paper = _run(
             lambda: processing_service.generate_full_paper(
