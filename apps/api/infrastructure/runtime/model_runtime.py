@@ -760,8 +760,7 @@ class ModelRuntime:
             with urllib.request.urlopen(request, timeout=240) as response:
                 response_payload = json.load(response)
         except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"DeepSeek 请求失败：{detail[:800]}") from error
+            raise RuntimeError(f"DeepSeek 请求失败：HTTP {error.code}") from error
         except (OSError, ValueError, urllib.error.URLError) as error:
             raise RuntimeError(f"无法连接 DeepSeek：{error}") from error
         if not isinstance(response_payload, dict):
@@ -770,11 +769,14 @@ class ModelRuntime:
         choices = response_payload.get("choices")
         if not isinstance(choices, list) or not choices:
             raise RuntimeError("DeepSeek 没有返回候选内容")
-        message = choices[0].get("message", {})
+        candidate = choices[0]
+        message = candidate.get("message", {}) if isinstance(candidate, dict) else {}
         response_text = message.get("content", "") if isinstance(message, dict) else ""
         if not isinstance(response_text, str) or not response_text:
             raise RuntimeError("DeepSeek 返回内容为空，可能被安全策略拦截")
-        response_usage = response_payload.get("usage", {})
+        response_usage = response_payload.get("usage")
+        if not isinstance(response_usage, dict):
+            response_usage = {}
         usage = {
             "prompt_tokens": response_usage.get("prompt_tokens"),
             "output_tokens": response_usage.get("completion_tokens"),

@@ -1,7 +1,17 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("API resource origin", () => {
-  afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); });
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.resetModules(); });
+  it("user configures a separate API When fetching a relative API path Then the response comes from that API origin", async () => {
+    vi.stubEnv("VITE_API_ORIGIN", "https://api.example.test/");
+    vi.stubGlobal("fetch", async (input: string) => new Response(JSON.stringify({ requestedUrl: input })));
+    vi.resetModules();
+    const { installApiOrigin } = await import("./client");
+    installApiOrigin();
+    expect(await (await window.fetch("/api/health")).json()).toEqual({ requestedUrl: "https://api.example.test/api/health" });
+    expect(await (await window.fetch("/public.json")).json()).toEqual({ requestedUrl: "/public.json" });
+  });
   it("user opens an original page from the Render static site then the image uses the API host", async () => {
     vi.stubEnv("VITE_API_ORIGIN", "https://api.example.test/");
     vi.resetModules();

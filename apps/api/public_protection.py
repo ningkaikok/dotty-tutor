@@ -81,7 +81,7 @@ class _SlidingWindow:
 class PublicProtection:
     """Apply bounded request, model-call, body-size and concurrency limits."""
 
-    # These paths can call DeepSeek directly or enqueue work that will call it.
+    # Mutating requests on these routes can call a model or enqueue model work.
     # Reads and health checks remain available while an abusive client is being
     # throttled.
     EXPENSIVE_PREFIXES = (
@@ -96,7 +96,7 @@ class PublicProtection:
     def __init__(
         self,
         *,
-        enabled: bool = True,
+        enabled: bool = False,
         request_limit: int = 120,
         request_window_seconds: int = 60,
         model_limit: int = 6,
@@ -118,7 +118,7 @@ class PublicProtection:
     @classmethod
     def from_env(cls) -> "PublicProtection":
         return cls(
-            enabled=_env_bool("PUBLIC_PROTECTION_ENABLED", True),
+            enabled=_env_bool("PUBLIC_PROTECTION_ENABLED", False),
             request_limit=_env_int("PUBLIC_RATE_LIMIT_REQUESTS", 120),
             request_window_seconds=_env_int("PUBLIC_RATE_LIMIT_WINDOW_SECONDS", 60),
             model_limit=_env_int("PUBLIC_MODEL_RATE_LIMIT_REQUESTS", 6),
@@ -145,18 +145,26 @@ class PublicProtection:
         chapter_generation = path.startswith("/api/chapters/") and path.endswith("/generate-ai")
         return chapter_generation or path.startswith(cls.EXPENSIVE_PREFIXES)
 
-    def check(self, request: Request) -> ProtectionDecision:
+    @classmethod
+    def is_expensive_request(cls, request: Request) -> bool:
+        """Only mutating routes consume the model-work quota."""
+        return request.method in {"POST", "PUT", "PATCH", "DELETE"} and cls.is_expensive_path(request.url.path)
+
+    def check(
+        self, request: Request, *, now: float | None = None, wall_now: float | None = None
+    ) -> ProtectionDecision:
         if not self.enabled or request.method == "OPTIONS":
             return ProtectionDecision(allowed=True, limit=0)
         path = request.url.path
         if path == "/api/health":
             return ProtectionDecision(allowed=True, limit=0)
 
-        now = time.monotonic()
+        now = time.monotonic() if now is None else now
+        wall_now = time.time() if wall_now is None else wall_now
         if now - self._last_prune > 60:
             self.requests.prune(now)
             self.model_requests.prune(now)
-            self.model_daily.prune(time.time())
+            self.model_daily.prune(wall_now)
             self._last_prune = now
 
         content_length = request.headers.get("content-length")
@@ -179,11 +187,11 @@ class PublicProtection:
         decision = self.requests.allow(key, now)
         if not decision.allowed:
             return decision
-        if self.is_expensive_path(path):
+        if self.is_expensive_request(request):
             decision = self.model_requests.allow(key, now)
             if not decision.allowed:
                 return decision
-            decision = self.model_daily.allow(key, time.time())
+            decision = self.model_daily.allow(key, wall_now)
             if not decision.allowed:
                 return ProtectionDecision(
                     allowed=False,

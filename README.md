@@ -73,7 +73,11 @@ Dotty Tutor 在内容生产工作台中将 PDF 或扫描教材转换为带来源
 本地开发推荐"本机服务 + Docker PostgreSQL"，可直接复用本机的 Codex 登录、MinerU 环境和
 Qwen3-TTS 缓存：
 
+下面的配置复制只适用于全新数据库。已有数据或切换 worktree 时，应复用原 checkout 的 `.env` 和 `.env.local`；
+PostgreSQL 初始化后，仅修改 `.env` 中的密码不会改变持久卷里已有的数据库密码。详情见[本地开发指南](docs/development.md)。
+
 ```bash
+# 仅全新本地数据库执行
 cp .env.docker.example .env
 cp .env.local.example .env.local
 # 将 .env.local 的 POSTGRES_PASSWORD 改成 .env 中相同的值
