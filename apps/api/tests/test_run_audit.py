@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from domain.contracts.audit import BatchProcessResponse
@@ -9,8 +10,31 @@ from infrastructure.runtime.model_runtime import runtime as model_runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 from persistence.textbook_store import TextbookStore
-from run_audit import RunAudit, build_run_config
+from run_audit import RunAudit, build_run_config, build_tutor_run_config
 from tests.postgres_test_support import PostgresTestCase
+
+
+class TutorRunConfigTests(unittest.TestCase):
+    def test_config_freezes_selection_without_student_content(self) -> None:
+        runtime = SimpleNamespace(
+            selection=SimpleNamespace(provider="codex", model="gpt-test")
+        )
+        config = build_tutor_run_config(
+            runtime=runtime,
+            operation_details={
+                "stage": "diagnose",
+                "mode": "help",
+                "hasInputEnvelope": False,
+            },
+        )
+
+        self.assertEqual(config["tutor"]["provider"], "codex")
+        self.assertEqual(config["tutor"]["model"], "gpt-test")
+        self.assertEqual(config["tutor"]["runtime"], "tutor")
+        self.assertEqual(config["promptVersion"], "tutor-help-v2")
+        self.assertEqual(len(config["schemaVersion"]), 16)
+        self.assertEqual(config["operation"]["stage"], "diagnose")
+        self.assertNotIn("student", str(config).lower())
 
 
 class RunAuditStoreTests(PostgresTestCase):

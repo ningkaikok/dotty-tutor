@@ -12,8 +12,10 @@ from domain.contracts.tutoring import TutorMessageRequest
 from domain.questions.contracts import TutorReply
 from infrastructure.runtime.contracts import PromptParts
 from persistence.mistake_store import MistakeStore
+from persistence.textbook_store import TextbookStore
 from persistence.tutoring_store import TutoringStore
 from routers.tutoring_routes import build_tutoring_router
+from run_audit import RunAudit
 from tests.postgres_test_support import PostgresTestCase
 
 GUIDE_CARD = {
@@ -83,6 +85,13 @@ class _ForgedEvidenceTutor:
             "summary": thread.get("summary", ""),
             "inputMode": "text",
         }
+
+
+class _FailingTutor:
+    runtime = SimpleNamespace(selection=SimpleNamespace(provider="codex", model="test-model"))
+
+    def reply(self, **_: object) -> dict:
+        raise RuntimeError("student answer must not enter audit storage")
 
 
 class StatefulTutoringTests(PostgresTestCase):
@@ -219,6 +228,106 @@ class StatefulTutoringTests(PostgresTestCase):
             "student", "assistant", "student", "assistant", "student", "assistant",
         ])
         self.assertIn("diagnose→explain", restored["summary"])
+
+    def test_user_retries_an_audited_turn_then_one_message_pair_and_one_snapshot_remain(self) -> None:
+        # Given a learner thread with durable auditing enabled
+        self._mistake()
+        audit_store = TextbookStore(
+            database_url=self.database_url,
+            data_root=self.data_root,
+        )
+        self.addCleanup(audit_store.close)
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=StatefulTutor(
+                runtime=SimpleNamespace(
+                    selection=SimpleNamespace(provider="mock", model="demo")
+                )
+            ),
+            run_audit=RunAudit(audit_store),
+        ))
+        client = TestClient(app)
+        self.addCleanup(client.close)
+
+        thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+        response = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
+            json={
+                "content": "我选择 B",
+                "mode": "answer",
+                "interactionResult": {"selectedOptions": ["B"]},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        # When the client repeats the same request after losing the response
+        replay = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
+            json={"content": "我选择 B", "mode": "answer", "interactionResult": {"selectedOptions": ["B"]}},
+        )
+        # Then the saved response is replayed without another turn or audit
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(replay.json(), response.json())
+        self.assertEqual(self.threads.get(thread_id)["messageCount"], 2)
+        self.assertEqual(len(audit_store.list_run_snapshots(limit=10)), 1)
+        conflict = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
+            json={"content": "我选择 A", "mode": "answer", "interactionResult": {"selectedOptions": ["A"]}},
+        )
+        self.assertEqual(conflict.status_code, 409)
+        self.assertNotIn("runId", response.json()["action"])
+        stored = self.threads.get(thread_id)
+        run_id = stored["messages"][-1]["action"]["runId"]
+        snapshot = audit_store.get_run_snapshot(run_id)
+        self.assertIsNotNone(snapshot)
+        assert snapshot is not None
+        self.assertEqual(snapshot["operation"], "tutor_turn")
+        self.assertEqual(snapshot["scope"], "tutor")
+        self.assertEqual(snapshot["status"], "succeeded")
+        self.assertEqual(snapshot["config"]["tutor"]["runtime"], "tutor")
+        self.assertEqual(snapshot["result"]["threadId"], thread_id)
+        self.assertEqual(snapshot["result"]["previousStage"], "diagnose")
+        self.assertEqual(snapshot["result"]["nextStage"], "explain")
+        serialized = str(snapshot)
+        self.assertNotIn("我选择 B", serialized)
+        self.assertNotIn("studentInput", serialized)
+
+    def test_failed_turn_snapshot_is_sanitized_and_thread_remains_unchanged(self) -> None:
+        self._mistake()
+        audit_store = TextbookStore(
+            database_url=self.database_url,
+            data_root=self.data_root,
+        )
+        self.addCleanup(audit_store.close)
+        app = FastAPI()
+        app.include_router(build_tutoring_router(
+            mistake_store=self.mistakes,
+            tutoring_store=self.threads,
+            tutor=_FailingTutor(),
+            run_audit=RunAudit(audit_store),
+        ))
+        client = TestClient(app, raise_server_exceptions=False)
+        self.addCleanup(client.close)
+
+        thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
+        response = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            json={"content": "我的私密作答", "mode": "help"},
+        )
+
+        self.assertEqual(response.status_code, 500)
+        snapshots = audit_store.list_run_snapshots(limit=10)
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]["status"], "failed")
+        self.assertEqual(snapshots[0]["error"]["type"], "RuntimeError")
+        self.assertEqual(snapshots[0]["error"]["message"], "RuntimeError")
+        self.assertNotIn("我的私密作答", str(snapshots[0]))
+        self.assertEqual(self.threads.get(thread_id)["messages"], [])
 
     def test_pending_mistake_must_be_confirmed(self) -> None:
         self._mistake(confirmed=False)

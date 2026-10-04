@@ -16,17 +16,64 @@ import time
 import uuid
 from typing import Any
 
-from domain.questions.contracts import LESSON_SCHEMA
+from domain.questions.contracts import HELP_SCHEMA, LESSON_SCHEMA
 from infrastructure.runtime.contracts import RuntimeConfigSnapshot
 from infrastructure.runtime.model_runtime import runtime as model_runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
 
 PROMPT_VERSION = "lesson-generation-v2"
+TUTOR_PROMPT_VERSION = "tutor-help-v2"
 VALIDATOR_VERSION = "p0-v4"
 SCHEMA_VERSION = hashlib.sha256(
     json.dumps(LESSON_SCHEMA, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
 ).hexdigest()[:16]
+
+
+def build_tutor_run_config(
+    *,
+    tutor_run: dict[str, Any] | None = None,
+    runtime: Any | None = None,
+    operation_details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a content-free snapshot for one stateful tutor turn.
+
+    The turn's prompt contains student input, so the audit stores only the
+    versioned prompt and schema digests.  When a provider result is available
+    its actual provider/model/fallback identity wins over the selected runtime;
+    deterministic and failed turns fall back to the selection frozen at start.
+    """
+    run = tutor_run if isinstance(tutor_run, dict) else {}
+    selection = getattr(runtime, "selection", None)
+    selected_provider = str(getattr(selection, "provider", None) or "unknown")
+    selected_model = str(getattr(selection, "model", None) or "unknown")
+    provider = str(run.get("provider") or run.get("requestedProvider") or selected_provider)
+    model = str(run.get("model") or run.get("requestedModel") or selected_model)
+    raw_config = run.get("config")
+    if isinstance(raw_config, dict):
+        snapshot = RuntimeConfigSnapshot.from_mapping(
+            {**raw_config, "runtime": "tutor"},
+            provider=provider,
+            model=model,
+        )
+    else:
+        snapshot = RuntimeConfigSnapshot.for_model(
+            provider,
+            model,
+            schema=HELP_SCHEMA,
+            prompt=TUTOR_PROMPT_VERSION,
+            runtime="tutor",
+            timeout=450.0,
+        )
+    identity = {**_run_identity(run), **snapshot.to_dict(), "config": snapshot.to_dict()}
+    return {
+        "tutor": identity,
+        "runtimeConfig": {"tutor": snapshot.to_dict()},
+        "promptVersion": TUTOR_PROMPT_VERSION,
+        "schemaVersion": snapshot.schema,
+        "validatorVersion": snapshot.validator,
+        "operation": operation_details or {},
+    }
 
 
 def _run_identity(run: dict[str, Any] | None) -> dict[str, Any]:
