@@ -11,6 +11,7 @@ const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) =
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
 const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
+const MaterialsApp = lazy(() => import("./apps/materials/MaterialsApp").then((module) => ({ default: module.MaterialsApp })));
 const TextbookApp = lazy(() => import("./apps/textbook/TextbookApp").then((module) => ({ default: module.TextbookApp })));
 const ModelMetricsApp = lazy(() => import("./apps/metrics/ModelMetricsApp").then((module) => ({ default: module.ModelMetricsApp })));
 const DependencyPreflightApp = lazy(() => import("./apps/metrics/DependencyPreflightApp").then((module) => ({ default: module.DependencyPreflightApp })));
@@ -23,7 +24,7 @@ function PageTitle() {
 
   useEffect(() => {
     document.title = pathname.startsWith("/studio")
-      ? "内容生产工作台 · Dotty Tutor"
+      ? "教材与课程 · Dotty Tutor"
       : pathname.startsWith("/learn")
         ? "学生学习空间 · Dotty Tutor"
       : pathname.startsWith("/mistakes")
@@ -48,13 +49,16 @@ function AppRoutes() {
           <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
-          <Route path="studio/chapters" element={<ChapterStudioApp />} />
+          <Route path="studio" element={<MaterialsApp />} />
+          <Route path="studio/import" element={<TextbookApp />} />
+          <Route path="studio/chapters" element={<Navigate to="/studio" replace />} />
+          <Route path="studio/chapters/new" element={<ChapterStudioApp />} />
           <Route path="studio/chapters/:chapterId" element={<ChapterStudioApp />} />
           <Route path="studio/prompts" element={<PromptManagerApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/dependency-preflight" element={<DependencyPreflightApp />} />
           <Route path="teacher/*" element={<TeacherClassroomApp />} />
-          <Route path="studio/*" element={<TextbookApp />} />
+          <Route path="studio/*" element={<Navigate to="/studio" replace />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

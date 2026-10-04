@@ -14,12 +14,15 @@ flowchart LR
   User["学生 / 教师"] --> Home["产品首页 /"]
   Home --> Student["学生学习空间 /learn"]
   Home --> Teacher["教师工作台 /teacher"]
-  Home --> Studio["内容生产工作台 /studio"]
+  Home --> Studio["我的教材 /studio"]
   Student --> Mistakes["AI 错题陪练 /mistakes"]
   Student --> Papers["已发布互动试卷"]
   Teacher --> Classroom["班级、作业与掌握度看板"]
   Teacher --> TeacherWeb["教师工作台 UI /teacher"]
-  Studio --> Web["React + Vite :59174"]
+  Studio --> Import["上传与练习编辑 /studio/import"]
+  Studio --> Chapters["课程编辑 /studio/chapters/:id"]
+  Import --> Web["React + Vite :59174"]
+  Chapters --> Web
   Student --> Web
   TeacherWeb --> Web
   Mistakes --> Web
@@ -153,13 +156,14 @@ flowchart TB
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
 | 学生学习会话 Hook | `apps/web/src/apps/student/usePublishedLearningSession.ts` | 恢复失效会话、持久化离线队列、批量补传和幂等重试 |
 | 学生作业队列 | `apps/web/src/apps/student/useStudentTodayQueue.ts` | 读取服务端作业指派，并把已发布试卷保留为自由练习 |
+| 统一教材页面与 Hook | `apps/web/src/apps/materials/MaterialsApp.tsx`、`useMaterials.ts` | 同页展示已有上传与数学/英语课程；独立加载失败提示、搜索、带来源创建课程；复用原 API 和数据 |
 | 内容生产编排 | `apps/web/src/apps/textbook/TextbookApp.tsx` | 教材、当前题目、发布状态和互动预览状态编排；预览不写学习记录 |
 | 试卷发布 Hook | `apps/web/src/apps/textbook/usePaperPublication.ts` | 保存课程、创建试卷并约束送审和发布请求 |
 | 错题陪练编排 | `apps/web/src/apps/mistake/MistakeCoachApp.tsx` | 错题本、录入、确认子路径和浏览器历史导航 |
 | 错题页面组件 | `apps/web/src/apps/mistake/components/` | 图片裁切、错题录入、确认表单和列表 |
 | TutorInput 交互 | `apps/web/src/apps/mistake/components/TutorInputComposer.tsx`、`TutorObservationReview.tsx`、`useTutorInput.ts` | 统一文字、结构化答案、题图/步骤图、公式候选和画布输入；低置信度观察确认 |
 | 判题证据展示 | `apps/web/src/components/EvaluationEvidence.tsx` | 复用在陪练、变式、复习和学生试卷反馈中的折叠证据视图；仅展示学生侧已知事实 |
-| 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 只组合运行时、教材库、上传和处理链路四个区域 |
+| 教材导入页面 | `apps/web/src/TextbookImport.tsx` | 组合上传和处理链路；运行时与旧教材恢复默认折叠 |
 | 教材导入状态机 | `apps/web/src/apps/textbook/import/useTextbookImport.ts` | 多文件队列、每项分块续传、独立轮询、并发上限、运行时切换及陪练模型配对评测轮询 |
 | 教材导入组件 | `apps/web/src/apps/textbook/import/` | 文件校验、运行时选择、教材库、队列进度和处理结果展示 |
 | 课程播放器 | `apps/web/src/lesson/LessonPlayer.tsx` | 播放、步骤导航、语音和画布动作 |
@@ -229,7 +233,7 @@ flowchart TB
 
 ## 来源关联章节课程与英语阅读
 
-章节是已有教材与课程能力的一个新编排入口，使用 `domain/contracts/chapter.py`、
+章节制作从统一“我的教材”入口进入；PDF 与课程分别持久化，前端合并导航及列表，使用 `domain/contracts/chapter.py`、
 `application/services/chapter_courses.py` 和 `persistence/chapter_store.py`。
 纯来源处理与有限模板构造分别在 `domain/chapters/source.py` 和 `templates.py`，沿用已有 OCR 页标记；
 来源保存页范围、页文本、归一化区域、版本与指纹；来源变更追加修订并要求重新审核，

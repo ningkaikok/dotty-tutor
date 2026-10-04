@@ -127,3 +127,18 @@
 .chapter-attempt-review button { border: 1px solid #c8d7cb; border-radius: 8px; padding: 9px 12px; background: white; color: #315d41; cursor: pointer; }
 .chapter-attempt-review-detail { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e4e9e2; }
 @media (max-width: 880px) { .chapter-creator-grid, .chapter-review-layout { grid-template-columns: 1fr; } .chapter-source-review { position: static; max-height: none; } }
+
+.chapter-creator-simple { grid-template-columns:minmax(0,760px); justify-content:center; }
+.chapter-advanced, .chapter-secondary-actions, .chapter-history { color:#536659; }
+.chapter-advanced > summary, .chapter-secondary-actions > summary, .chapter-history > summary { cursor:pointer; padding:12px 0; font-size:14px; }
+.chapter-advanced > div { display:grid; gap:14px; padding:12px 0; }
+.chapter-advanced label { display:grid; gap:7px; font-size:14px; }
+.chapter-advanced input, .chapter-advanced textarea { padding:9px; border:1px solid #cad8cf; border-radius:7px; font:inherit; }
+.chapter-secondary-actions > div { display:flex; flex-wrap:wrap; gap:10px; margin:8px 0; }
+.chapter-secondary-actions button, .chapter-source-toggle { border:1px solid #cbd9cf; border-radius:8px; padding:9px 12px; color:#2d6145; background:white; cursor:pointer; font:inherit; }
+.chapter-source-toggle { margin-bottom:14px; }
+.chapter-content-only { grid-template-columns:1fr; }
+.chapter-steps { display:flex; gap:12px; flex-wrap:wrap; list-style:none; padding:0; margin:20px 0 12px; }
+.chapter-steps li { padding:9px 14px; border-radius:8px; background:#e6ede5; color:#5a6f60; font-size:14px; }
+.chapter-steps li[aria-current="step"] { background:#267451; color:white; font-weight:700; }
+.chapter-history { margin-top:18px; }
