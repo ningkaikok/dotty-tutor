@@ -96,6 +96,20 @@ class CodexCommandTests(unittest.TestCase):
 
 
 class DeepSeekProviderTests(unittest.TestCase):
+    def test_user_calls_deepseek_then_gateway_keeps_provider_identity_and_usage(self) -> None:
+        # Given the existing cloud provider at the external model boundary
+        runtime = ModelRuntime()
+        with patch.object(runtime, "_deepseek_json", return_value=({"reply": "提示"}, {"prompt_tokens": 17, "output_tokens": 6})):
+            # When the shared gateway performs a structured call
+            result, run = runtime.generate_json_as("deepseek", "deepseek-flash", "private prompt", {"type": "object"})
+        # Then normalized metadata preserves the cloud identity and no content
+        self.assertEqual(result, {"reply": "提示"})
+        self.assertEqual(run["modelRequest"]["provider"], "deepseek")
+        self.assertEqual(run["modelResult"]["actualModel"], "deepseek-flash")
+        self.assertEqual(run["modelResult"]["usage"], {"promptTokens": 17, "outputTokens": 6})
+        self.assertFalse(run["modelRequest"]["allowFallback"])
+        self.assertNotIn("private prompt", str(run))
+
     def test_catalog_exposes_deepseek_only_when_key_is_configured(self) -> None:
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "secret"}, clear=True):
             providers = ModelRuntime().providers()

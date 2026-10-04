@@ -248,6 +248,11 @@ mastery-v2 对每个 `(publicationId, questionId)` 只取最新作答：正确�
 `runId`、题目 `revisionNumber`、实际模型/审核/OCR provider 及 Prompt/Schema/validator 版本或摘要；
 不会返回完整 Prompt、密钥或学生数据。运行配置创建后冻结，只允许从 `running` 终结为 `succeeded` 或 `failed`。
 
+模型调用的 `modelRun` 增加 `modelRequest` / `modelResult`，记录任务、请求及实际 Provider/Model、
+超时、显式回退策略、Schema 摘要、耗时、usage 和错误类型。保留既有顶层字段；契约摘要不复制 Prompt 或模型输出。
+每轮错题陪练以 `operation=tutor_turn`、`scope=tutor` 创建运行快照，记录阶段转换和工具决策计数。
+内部 action 关联 `runId`，学生响应仍过滤该字段；相同 `Idempotency-Key` 重试复用既有响应，不新增作答或快照。
+
 人工字段级编辑（PATCH）只接受题目内容字段（`prompt`、`options`、`correctAnswer`、`correctAnswers`、
 `guideCards`）以及教师明确选择的 `objectiveType`、`gateMode`、`policyVersion`；三项 policy 字段必须同时提供，
 否则仍保持 `unknown:legacy`，模型生成 payload 不能自动启用 typed policy。绝不接受 `sourceProvenance`、`modelRun`、`verification` 等溯源/审计字段——服务端按白名单

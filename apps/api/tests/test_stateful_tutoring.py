@@ -229,7 +229,8 @@ class StatefulTutoringTests(PostgresTestCase):
         ])
         self.assertIn("diagnose→explain", restored["summary"])
 
-    def test_turn_run_snapshot_links_persisted_action_without_exposing_run_id(self) -> None:
+    def test_user_retries_an_audited_turn_then_one_message_pair_and_one_snapshot_remain(self) -> None:
+        # Given a learner thread with durable auditing enabled
         self._mistake()
         audit_store = TextbookStore(
             database_url=self.database_url,
@@ -253,6 +254,7 @@ class StatefulTutoringTests(PostgresTestCase):
         thread_id = client.post("/api/mistakes/mistake-1/thread").json()["threadId"]
         response = client.post(
             f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
             json={
                 "content": "我选择 B",
                 "mode": "answer",
@@ -261,6 +263,23 @@ class StatefulTutoringTests(PostgresTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        # When the client repeats the same request after losing the response
+        replay = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
+            json={"content": "我选择 B", "mode": "answer", "interactionResult": {"selectedOptions": ["B"]}},
+        )
+        # Then the saved response is replayed without another turn or audit
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(replay.json(), response.json())
+        self.assertEqual(self.threads.get(thread_id)["messageCount"], 2)
+        self.assertEqual(len(audit_store.list_run_snapshots(limit=10)), 1)
+        conflict = client.post(
+            f"/api/tutor/threads/{thread_id}/messages",
+            headers={"Idempotency-Key": "audited-answer"},
+            json={"content": "我选择 A", "mode": "answer", "interactionResult": {"selectedOptions": ["A"]}},
+        )
+        self.assertEqual(conflict.status_code, 409)
         self.assertNotIn("runId", response.json()["action"])
         stored = self.threads.get(thread_id)
         run_id = stored["messages"][-1]["action"]["runId"]
