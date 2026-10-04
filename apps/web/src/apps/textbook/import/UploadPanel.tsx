@@ -86,7 +86,7 @@ export function UploadPanel({
 
       <button className="dropzone-button" onClick={() => inputRef.current?.click()}>
         <span className="upload-icon">↥</span>
-        <strong>拖入或选择多个教材 PDF</strong>
+        <strong>拖入或选择试卷、教材 PDF 或图片</strong>
         <small>支持同时加入多个文件 · PDF 最大 500 MB · 图片仍可单张识别</small>
       </button>
 
@@ -128,7 +128,7 @@ export function UploadPanel({
         </div>
       )}
 
-      <label className="source-text-field">
+      <details><summary>补充原文（可选）</summary><label className="source-text-field">
         <span>题目原文 <small>可选；会作为所有新任务的补充文本</small></span>
         <textarea
           value={sourceText}
@@ -136,7 +136,7 @@ export function UploadPanel({
           disabled={busy}
           placeholder="例如：已知 A、B 是两个定点，点 P 满足 PA = PB……"
         />
-      </label>
+      </label></details>
 
       <button className="import-button" disabled={!pendingCount || busy} onClick={onUpload}>
         {busy ? `正在处理 ${uploads.filter((item) => itemBusy(item)).length} 个任务…` : pendingCount < uploads.length ? `继续未完成的 ${pendingCount} 个文件` : `开始识别 ${pendingCount} 个文件`}

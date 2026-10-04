@@ -14,6 +14,7 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertTrue(PublicProtection.is_expensive_path("/api/help"))
         self.assertTrue(PublicProtection.is_expensive_path("/api/tutor/threads/t1/messages"))
         self.assertTrue(PublicProtection.is_expensive_path("/api/chapters/c1/generate-ai"))
+        self.assertTrue(PublicProtection.is_expensive_path("/api/chapters/from-upload/u1"))
         self.assertFalse(PublicProtection.is_expensive_path("/api/chapters/c1/lessons/l1/review"))
         self.assertFalse(PublicProtection.is_expensive_path("/api/health"))
 

@@ -143,7 +143,7 @@ class PublicProtection:
     @classmethod
     def is_expensive_path(cls, path: str) -> bool:
         chapter_generation = path.startswith("/api/chapters/") and path.endswith("/generate-ai")
-        return chapter_generation or path.startswith(cls.EXPENSIVE_PREFIXES)
+        return chapter_generation or path.startswith("/api/chapters/from-upload/") or path.startswith(cls.EXPENSIVE_PREFIXES)
 
     @classmethod
     def is_expensive_request(cls, request: Request) -> bool:

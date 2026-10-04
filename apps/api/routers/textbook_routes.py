@@ -33,6 +33,7 @@ from application.services.textbook_processing import (
     TextbookProcessingService,
 )
 from application.textbook_jobs import build_textbook_registry
+from domain.chapters.material import classify_material
 from domain.contracts.audit import (
     BackgroundJobSummary,
     QuestionEditResponse,
@@ -105,8 +106,9 @@ validate_pdf_envelope = upload_registry.validate_pdf_envelope
 async def import_textbook(
     file: UploadFile = File(...),
     sourceText: str = Form(default="", max_length=20_000),
+    autoDetect: bool = Form(default=False),
 ) -> dict:
-    """Read one page and return a lesson without persisting the source file."""
+    """Route a page automatically when requested, preserving course sources on disk."""
     filename = Path(file.filename or "textbook-page").name
     suffix = Path(filename).suffix.lower()
     content_type = (file.content_type or "").lower()
@@ -148,8 +150,14 @@ async def import_textbook(
     else:
         lesson_source, ocr_run = resolve_ocr_text(sourceText, extracted_text)
 
-    payload, guide_cards, model_run = generate_lesson(lesson_source)
     digest = hashlib.sha256(content).hexdigest()
+    detection = classify_material(filename, lesson_source) if autoDetect else None
+    if detection and detection["kind"] != "paper":
+        return processing_service.preserve_material_page(
+            filename=filename, content_type=content_type, content=content,
+            source=lesson_source, ocr_run=ocr_run, detection=detection,
+        )
+    payload, guide_cards, model_run = generate_lesson(lesson_source)
     log_event(
         "textbook.import.completed",
         filename=filename,
@@ -163,6 +171,7 @@ async def import_textbook(
         "contentType": content_type or "application/octet-stream",
         "size": len(content),
         "stored": False,
+        **({"materialKind": detection["kind"], "detectionReason": detection["reason"]} if detection else {}),
         "modelRun": model_run,
         "ocrRun": ocr_run,
         "stages": [
@@ -344,6 +353,7 @@ def retry_background_job(job_id: str, request: Request) -> dict[str, Any]:
 )
 def complete_pdf_upload(
     upload_id: str,
+    autoDetect: bool = False,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict[str, Any]:
     """注册合并/OCR/整本生成任务；全部长流程由独立 Worker 执行。"""
@@ -354,6 +364,7 @@ def complete_pdf_upload(
         {
             "uploadId": upload_id,
             "generateFullPaper": True,
+            "autoDetect": autoDetect,
             "runtimeSnapshot": current_job_runtime_snapshot(),
         },
         idempotency_key=key or f"textbook-upload-complete:{upload_id}",
