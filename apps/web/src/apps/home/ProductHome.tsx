@@ -45,11 +45,6 @@ export function ProductHome() {
     navigate("/teacher");
   };
 
-  const enterChapterStudio = () => {
-    rememberEntry("studio");
-    navigate("/studio/chapters");
-  };
-
   return (
     <main className="product-home">
       <header className="product-home-header">
@@ -63,7 +58,7 @@ export function ProductHome() {
 
       <section className="product-home-hero">
         <h1>选择你的使用入口</h1>
-        <p>学生直接完成已发布练习、订正错题和复习；教材上传、OCR 与互动内容生成集中在内容生产工作台。</p>
+        <p>学生进入学习空间完成练习与复习；教材和课程统一管理，复核后再发布给学生。</p>
       </section>
 
       <section className="product-entry-grid" aria-label="产品入口">
@@ -89,16 +84,15 @@ export function ProductHome() {
             <span className="entry-status">内容生产</span>
             {lastEntry === "studio" && <span className="entry-last-badge">上次从这里进入</span>}
           </div>
-          <h2>内容生产工作台</h2>
-          <p>上传教材页或整本 PDF，完成 OCR、题目生成、质量复核和互动内容预览。</p>
+          <h2>教材与课程</h2>
+          <p>数学教材与英语阅读统一管理。从一本教材开始，制作课程、复核内容，再交给学生。</p>
           <ul>
-            <li>PDF 与扫描教材结构化</li>
-            <li>生成模型和 OCR 运行时配置</li>
-            <li>多题型交互与分步讲解预览</li>
+            <li>数学与英语教材统一管理</li>
+            <li>按教材页制作课程</li>
+            <li>复核内容后分享给学生</li>
           </ul>
           <div className="producer-entry-actions">
-            <button onClick={enterStudio}>进入内容生产工作台</button>
-            <button className="secondary-entry-button" onClick={enterChapterStudio}>章节课程与英语阅读</button>
+            <button onClick={enterStudio}>打开我的教材</button>
           </div>
         </article>
         <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>

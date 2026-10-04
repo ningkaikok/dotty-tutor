@@ -33,6 +33,7 @@
 [测试说明](../apps/api/tests/README.md)。
 
 数学章节与英语阅读的批次、失败判据和验收边界见 [A/B 实施与验收计划](chapter-ab-implementation-plan.md)。
+2026-10-03 的入口合并与交互简化验证见 [教材与课程统一入口验收记录](materials-workflow-acceptance.md)。
 
 ## 同步规则
 

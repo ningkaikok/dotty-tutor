@@ -726,7 +726,7 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("navigation", { name: "学习导航" })
       .getByRole("link", { name: "错题" })).toHaveAttribute("aria-current", "page");
 
-    await page.goto("/studio");
+    await page.goto("/studio/import");
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await expect(page.getByText("内容生产工作台")).toBeVisible();
 
@@ -1181,7 +1181,7 @@ test.describe("产品入口", () => {
 test.describe("教材辅导核心交互", () => {
   test("内容生产端按来源顺序统一渲染公式、题干图和选项图", async ({ page }) => {
     await mockApi(page, renderingImportResult);
-    await page.goto("/studio");
+    await page.goto("/studio/import");
     await page.locator('input[type="file"]').setInputFiles({
       name: "rendering-fixture.png",
       mimeType: "image/png",
@@ -1238,7 +1238,7 @@ test.describe("教材辅导核心交互", () => {
 
   test("导入后可完成选择、判断、画线和 Help 流程", async ({ page }) => {
     await mockApi(page);
-    await page.goto("/studio");
+    await page.goto("/studio/import");
 
     await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({
@@ -1287,7 +1287,7 @@ test.describe("教材辅导核心交互", () => {
 
   test("第一优先级题型支持多选、填空和数值答案", async ({ page }) => {
     await mockApi(page, priorityImportResult);
-    await page.goto("/studio");
+    await page.goto("/studio/import");
     await page.locator('input[type="file"]').setInputFiles({
       name: "playwright-priority-fixture.png",
       mimeType: "image/png",

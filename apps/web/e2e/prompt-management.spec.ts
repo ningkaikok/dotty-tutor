@@ -11,7 +11,7 @@ test("user enters prompt management from content studio while teacher workspace 
     if (path === "/api/ocr") return route.fulfill({ json: { selected: "mock", providers: [] } });
     return route.fulfill({ json: { items: [] } });
   });
-  await page.goto("/studio");
+  await page.goto("/studio/import");
   await page.getByRole("link", { name: "教学策略 · 提示词管理" }).click();
   await expect(page).toHaveURL(/\/studio\/prompts/);
   await page.getByLabel("内容平台凭据").fill("test-editor");

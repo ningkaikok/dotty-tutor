@@ -5,6 +5,7 @@ import type { ChapterSource, ChapterSourceFlag, ChapterSubject } from "../../typ
 interface ChapterSourceFormProps {
   libraries: LibraryItem[];
   initialTitle?: string;
+  initialUploadId?: string;
   initialSubject?: ChapterSubject;
   busy?: boolean;
   submitLabel: string;
@@ -21,16 +22,18 @@ const sourceFlags: Array<[ChapterSourceFlag, string]> = [
 export function ChapterSourceForm({
   libraries,
   initialTitle = "",
+  initialUploadId = "",
   initialSubject = "math",
   busy = false,
   submitLabel,
   onSubmit,
 }: ChapterSourceFormProps) {
-  const [title, setTitle] = useState(initialTitle);
+  const selected = libraries.find((item) => item.uploadId === initialUploadId);
+  const [title, setTitle] = useState(initialTitle || selected?.filename.replace(/\.pdf$/i, "") || "");
   const [subject, setSubject] = useState<ChapterSubject>(initialSubject);
-  const [uploadId, setUploadId] = useState("");
-  const [pageStart, setPageStart] = useState("");
-  const [pageEnd, setPageEnd] = useState("");
+  const [uploadId, setUploadId] = useState(selected?.uploadId ?? "");
+  const [pageStart, setPageStart] = useState("1");
+  const [pageEnd, setPageEnd] = useState("1");
   const [sourceVersion, setSourceVersion] = useState("1");
   const [license, setLicense] = useState("");
   const [flagsPage, setFlagsPage] = useState("");
@@ -44,7 +47,7 @@ export function ChapterSourceForm({
     event.preventDefault();
     const start = Number(pageStart);
     const end = Number(pageEnd);
-    if (!title.trim()) return setValidationError("请填写章节名称");
+    if (!title.trim()) return setValidationError("请填写课程名称");
     if (!license.trim()) return setValidationError("请填写教材来源许可或待核实说明");
     if (!Number.isInteger(start) || start < 1 || !Number.isInteger(end) || end < start) {
       return setValidationError("请填写有效的起止页码");
@@ -96,7 +99,7 @@ export function ChapterSourceForm({
   return (
     <form className="chapter-source-form" onSubmit={submit} aria-label="章节来源">
       <label>
-        章节名称
+        课程名称
         <input value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={200} />
       </label>
       <label>
@@ -108,8 +111,13 @@ export function ChapterSourceForm({
       </label>
       <label>
         教材来源
-        <select value={uploadId} onChange={(event) => setUploadId(event.target.value)}>
-          <option value="">粘贴已有 OCR 原文</option>
+        <select value={uploadId} onChange={(event) => {
+          const item = libraries.find((entry) => entry.uploadId === event.target.value);
+          setUploadId(event.target.value);
+          setPageStart("1"); setPageEnd("1");
+          if (!title.trim() && item) setTitle(item.filename.replace(/\.pdf$/i, ""));
+        }}>
+          <option value="">粘贴教材原文</option>
           {libraries.map((item) => (
             <option value={item.uploadId} key={item.uploadId}>
               {item.filename}（{item.pageCount ?? "页数未知"} 页）
@@ -117,15 +125,23 @@ export function ChapterSourceForm({
           ))}
         </select>
       </label>
+      <p className="chapter-help">先选一页开始，需要跨页时再调整范围。</p>
       <div className="chapter-page-range">
-        <label>起始页<input type="number" min="1" max={pageEnd ? Number(pageEnd) + 79 : undefined} value={pageStart} onChange={(event) => setPageStart(event.target.value)} required /></label>
+        <label>起始页<input type="number" min="1" max={pageEnd ? Number(pageEnd) + 79 : undefined} value={pageStart} onChange={(event) => { if (pageEnd === pageStart) setPageEnd(event.target.value); setPageStart(event.target.value); }} required /></label>
         <label>结束页<input type="number" min="1" max={pageStart ? Number(pageStart) + 79 : undefined} value={pageEnd} onChange={(event) => setPageEnd(event.target.value)} required /></label>
       </div>
+      <label>来源许可说明<input value={license} onChange={(event) => setLicense(event.target.value)} maxLength={256} placeholder="例如：校内授权 / CC BY 4.0 / 待核实" required /></label>
+      {!uploadId && (
+        <label>
+          OCR 原文
+          <textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} placeholder="粘贴一页已识别的教材原文" />
+        </label>
+      )}
+      <details className="chapter-advanced"><summary>高级来源设置（可选）</summary><div>
       <label>
         来源版本
         <input value={sourceVersion} onChange={(event) => setSourceVersion(event.target.value)} maxLength={128} />
       </label>
-      <label>来源许可说明<input value={license} onChange={(event) => setLicense(event.target.value)} maxLength={256} placeholder="例如：校内授权 / CC BY 4.0 / 待核实" required /></label>
       <fieldset className="chapter-source-flags">
         <legend>来源问题标记（标记后会阻止发布）</legend>
         {uploadId && <label>问题标记页<input aria-label="问题标记页" type="number" min={pageStart || 1} max={pageEnd || undefined} value={flagsPage} onChange={(event) => setFlagsPage(event.target.value)} placeholder={`默认第 ${pageStart || "起始"} 页`} /></label>}
@@ -138,12 +154,7 @@ export function ChapterSourceForm({
         <label><input type="checkbox" checked={regionEnabled} onChange={(event) => setRegionEnabled(event.target.checked)} />标记原文所在区域</label>
         {regionEnabled && <div>{(["x", "y", "width", "height"] as const).map((key) => <label key={key}>{key}<input type="number" min={key === "width" || key === "height" ? "0.01" : "0"} max="1" step="0.01" value={region[key]} onChange={(event) => setRegion((current) => ({ ...current, [key]: event.target.value }))} /></label>)}</div>}
       </fieldset>}
-      {!uploadId && (
-        <label>
-          OCR 原文
-          <textarea value={ocrText} onChange={(event) => setOcrText(event.target.value)} rows={5} placeholder="粘贴一页已识别的教材原文" />
-        </label>
-      )}
+      </div></details>
       {validationError && <p role="alert">{validationError}</p>}
       <button type="submit" disabled={busy}>{busy ? "正在保存…" : submitLabel}</button>
     </form>
