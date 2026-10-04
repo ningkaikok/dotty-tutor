@@ -527,3 +527,15 @@ createdAt 和 acceptedAt。历史 `error_reason`、`ai_error_reason` 与置信�
 评分标准在此入口只读，Schema、判题和质量门禁不开放在线编辑。
 
 章节课程只经 `/api/chapters/{chapter_id}/published` 的安全投影读取（教师可预览）；旧 `/api/publications/{publication_id}` 与普通数学会话入口拒绝章节课程，避免绕过来源依据及复核边界。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。

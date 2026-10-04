@@ -605,3 +605,15 @@ DeepSeek 需选择 MODEL_PROVIDER=deepseek 和目录中的模型；陪练可独�
 TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。MinerU 在本机命令不可用且配置
 MINERU_API_KEY 时使用云端解析，上传的原文件及返回的 OCR 产物仍保存在现有数据目录。
 Compose 将同样的云端参数传给 API 和 Worker。测试使用外部服务替身，不证明真实模型/OCR质量。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
