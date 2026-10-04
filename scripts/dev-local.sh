@@ -96,15 +96,16 @@ worker_pid=$!
 ) &
 frontend_pid=$!
 
-if [[ "${QWEN_TTS_ENABLED:-1}" == "1" && -x "$ROOT_DIR/.qwen3-tts-venv/bin/python" ]]; then
+qwen_tts_python="${QWEN_TTS_PYTHON:-$ROOT_DIR/.qwen3-tts-venv/bin/python}"
+if [[ "${QWEN_TTS_ENABLED:-1}" == "1" && -x "$qwen_tts_python" ]]; then
   (
     cd "$ROOT_DIR/apps/api"
     # 使用真实模块入口启动 Qwen3-TTS，确保 8020 端口确实监听。
-    exec "$ROOT_DIR/.qwen3-tts-venv/bin/python" -m infrastructure.runtime.qwen_tts_service
+    exec "$qwen_tts_python" -m infrastructure.runtime.qwen_tts_service
   ) &
   qwen_pid=$!
 else
-  echo "Qwen3-TTS 未启动：设置 QWEN_TTS_ENABLED=1 且确保 .qwen3-tts-venv 存在。"
+  echo "Qwen3-TTS 未启动：设置 QWEN_TTS_ENABLED=1，并确认 QWEN_TTS_PYTHON 或 .qwen3-tts-venv/bin/python 可执行。"
 fi
 
 wait
