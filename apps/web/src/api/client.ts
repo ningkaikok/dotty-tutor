@@ -6,6 +6,28 @@ import type { operations } from "../types/generated/api";
  */
 export const DEMO_LEARNER_ID = "local-demo";
 
+const API_ORIGIN = (import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
+
+/**
+ * Route browser API calls to a separately deployed backend when configured.
+ * Local development keeps the existing same-origin `/api` and Vite proxy path.
+ */
+export function installApiOrigin(): void {
+  if (!API_ORIGIN || typeof window === "undefined") return;
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    if (typeof input === "string" && input.startsWith("/api/")) {
+      return nativeFetch(`${API_ORIGIN}${input}`, init);
+    }
+    return nativeFetch(input, init);
+  };
+}
+
+/** Resolve API-hosted images for the separate Render static-site origin. */
+export function apiResourceUrl(path: string): string {
+  return path.startsWith("/api/") ? `${API_ORIGIN}${path}` : path;
+}
+
 export class ApiRequestError extends Error {
   constructor(message: string, readonly status: number) {
     super(message);

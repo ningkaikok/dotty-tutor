@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { apiResourceUrl } from "../../api/client";
 import type { ChapterSourceLocator, ChapterSourceRevision } from "../../types/chapter";
 
 interface ChapterSourceReviewProps {
@@ -49,7 +50,7 @@ export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewP
                   <div className="chapter-page-preview-wrap">
                     <img
                       className="chapter-page-preview"
-                      src={page.previewUrl}
+                      src={apiResourceUrl(page.previewUrl)}
                       alt={`教材原页，第 ${page.page} 页`}
                       onError={() => setFailedPreviews((current) => new Set(current).add(page.previewUrl!))}
                     />
@@ -68,7 +69,7 @@ export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewP
                         ><span>{index + 1}</span></button>;
                       })}
                     </div> : null}
-                    <button type="button" className="chapter-preview-enlarge" onClick={() => setEnlarged({ url: page.previewUrl!, label: `教材原页，第 ${page.page} 页` })}>放大查看原页</button>
+                    <button type="button" className="chapter-preview-enlarge" onClick={() => setEnlarged({ url: apiResourceUrl(page.previewUrl!), label: `教材原页，第 ${page.page} 页` })}>放大查看原页</button>
                   </div>
                 ) : <p className="chapter-preview-unavailable" role="status">{page.previewUrl ? "原页图片加载失败，无法显示教材预览。" : "此来源没有可用的教材原页图片，当前仅供文字复核。"}</p>}
                 <p>{page.text || "（本页没有可识别原文）"}</p>

@@ -1,5 +1,7 @@
 # API 接口
 
+前端独立部署时可设置 `VITE_API_ORIGIN`；请求路径和响应契约不变，教材预览图片与 API 请求使用同一后端来源。未设置时使用同源 `/api`。此配置不包含密钥，不替代 Cookie/CORS 的身份验证配置。
+
 开发环境默认地址为 <http://127.0.0.1:8010>，前端通过同源 `/api` 路径调用。
 
 `/`、`/learn`、`/studio`、`/studio/metrics`、`/teacher`、`/mistakes` 是前端页面路径，不是 API。错题拍照确认使用独立的
