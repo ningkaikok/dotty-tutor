@@ -1,5 +1,5 @@
 .materials-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:32px 0 24px; }
-.materials-heading h1 { margin:8px 0; font-size:clamp(28px,4vw,40px); }
+.materials-heading h1 { margin:8px 0; font-size:clamp(26px,3vw,36px); letter-spacing:-.04em; }
 .materials-heading p { margin:0; line-height:1.6; color:#647568; }
 .materials-shell a { color:#285c43; text-decoration:none; }
 .materials-shell a:hover { text-decoration:underline; }
@@ -22,3 +22,43 @@
 .materials-tools nav { display:flex; flex-wrap:wrap; gap:20px; margin-top:15px; }
 @media(max-width:900px) { .materials-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media(max-width:600px) { .materials-heading { align-items:flex-start; flex-direction:column; } .materials-grid { grid-template-columns:1fr; } .materials-add > div { left:0; right:auto; } }
+
+.materials-header { flex-wrap:wrap; height:auto; min-height:64px; }
+.materials-header .route-back-button { display:inline-flex; align-items:center; }
+.materials-brand { min-width:0; }
+.materials-header-actions { margin-left:auto; }
+.materials-header button, .automatic-course-task button { min-height:44px; padding:10px 16px; border:1px solid #cdd6d0; border-radius:999px; background:#f1f3ef; color:#35463d; font:inherit; font-size:13px; font-weight:600; }
+.materials-header button:hover:not(:disabled), .automatic-course-task button:hover { border-color:#9fb6a9; background:#e8efe9; }
+.materials-header button:disabled { opacity:.55; }
+.materials-shell .chapter-panel { padding:28px; border-radius:24px; background:rgba(251,250,246,.94); border-color:rgba(34,57,47,.12); box-shadow:0 18px 50px rgba(45,55,48,.08); }
+.materials-shell .material-main-action { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:11px 18px; border:1px solid #183f31; border-radius:999px; background:#183f31; color:#fbfaf6; text-decoration:none; font-size:14px; font-weight:700; }
+.materials-shell .material-main-action:hover { background:#20543d; border-color:#20543d; text-decoration:none; }
+.materials-shell .route-back-button:hover { text-decoration:none; }
+.automatic-course-task { display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.materials-shell .automatic-course-task h2 { margin:16px 0 8px; }
+.automatic-course-task p { margin:0; color:#647568; line-height:1.6; }
+.automatic-course-task button { flex-shrink:0; }
+.automatic-course-list { display:grid; gap:10px; margin:24px 0 0; padding:0; list-style:none; }
+.automatic-course-list a { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 18px; border:1px solid #d5dfd8; border-radius:14px; background:#f1f5ef; }
+.automatic-course-list a:hover { background:#e8efe9; border-color:#9fb6a9; text-decoration:none; }
+.automatic-course-list strong { overflow-wrap:anywhere; }
+.automatic-course-list span { flex-shrink:0; color:#647568; font-size:13px; }
+@media(max-width:600px) {
+  .materials-shell .chapter-panel { padding:20px; border-radius:20px; }
+  .materials-header { gap:10px; }
+  .materials-header .brand-mark { width:36px; height:36px; flex-shrink:0; }
+  .automatic-course-task { align-items:flex-start; flex-direction:column; gap:18px; }
+  .automatic-course-list a { align-items:flex-start; flex-direction:column; gap:8px; }
+}
+
+.materials-filters { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 24px; }
+.materials-filters button, .material-delete button { min-height:40px; padding:8px 14px; border:1px solid #cdd6d0; border-radius:999px; background:#f1f3ef; color:#35463d; font:inherit; font-size:13px; cursor:pointer; }
+.materials-filters button[aria-pressed="true"] { background:#183f31; color:#fbfaf6; border-color:#183f31; }
+.material-delete { align-self:stretch; margin-top:8px; border-top:1px solid #dce2da; padding-top:12px; }
+.material-delete > button { color:#8c4439; background:transparent; }
+.material-delete p { font-size:13px; line-height:1.6; margin:0 0 10px; }
+.material-delete > div { display:flex; flex-wrap:wrap; gap:8px; }
+.material-delete button:disabled { cursor:wait; opacity:.6; }
+.material-delete [role="alert"] { color:#9f3027; margin-top:10px; }
+.materials-filters button:focus-visible, .material-delete button:focus-visible, .materials-header button:focus-visible, .automatic-course-task button:focus-visible { outline:3px solid #8ebda3; outline-offset:3px; }
+.automatic-course-task progress { display:block; width:min(320px,100%); margin-top:16px; accent-color:#183f31; }

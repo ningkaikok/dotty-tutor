@@ -64,6 +64,14 @@ class ChapterQualityDraftBehaviorTests(unittest.TestCase):
         self.assertTrue(all(block["payload"].get("sourceRefs") for block in lesson["blocks"][:2]))
         self.assertTrue(all(block["payload"].get("sourceRefs") for block in lesson["blocks"][2:5]))
 
+    def test_user_receives_sentence_ids_without_retyped_quotes_then_evidence_contains_the_exact_stored_text(self):
+        draft = math_draft()
+        draft["concept"]["citations"][0]["quote"] = None
+        chapter = {"chapterId": "c1", "title": "一次函数", "subject": "math", "version": 1}
+        lessons, _ = build_quality_draft(chapter, MATH, draft)
+        reference = lessons[0]["blocks"][0]["payload"]["sourceRefs"][0]
+        self.assertEqual(reference["quote"], MATH["pages"][0]["sentences"][0]["text"])
+
     def test_user_receives_forged_source_quote_then_generation_is_rejected(self) -> None:
         # Given an otherwise valid draft whose cited sentence exists
         chapter = {"chapterId": "c1", "title": "一次函数", "subject": "math", "version": 1}
@@ -313,3 +321,29 @@ class _FakeChapterRuntime:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceExcerptTests(unittest.TestCase):
+    def test_user_prepares_a_long_chapter_then_the_model_excerpt_is_bounded_and_keeps_original_citation_ids(self):
+        from domain.chapters.quality import draft_source_excerpt
+        source = {"sourceRevisionId": "revision", "pages": [
+            {"page": page, "text": "abc def", "sentences": [
+                {"sentenceId": f"p{page}-s1", "text": "abc"}, {"sentenceId": f"p{page}-s2", "text": "def"}], "regions": []}
+            for page in range(10, 13)
+        ]}
+        excerpt = draft_source_excerpt(source, text_budget=9)
+        self.assertEqual([p["page"] for p in excerpt["pages"]], [10, 11])
+        self.assertEqual(excerpt["pages"][-1]["sentences"][0]["sentenceId"], "p11-s1")
+        self.assertEqual(sum(len(s["text"]) for p in excerpt["pages"] for s in p["sentences"]), 9)
+        self.assertEqual(len(source["pages"]), 3)
+
+    def test_user_generates_from_an_excerpt_then_schema_pins_each_sentence_to_its_original_page_and_revision(self):
+        from domain.chapters.quality import quality_draft_schema
+        source = {"sourceRevisionId": "actual-revision", "pages": [
+            {"page": 42, "sentences": [{"sentenceId": "original-s1", "text": "Original."}]}]}
+        schema = quality_draft_schema("english", source=source)
+        citation = schema["properties"]["questions"]["items"]["properties"]["citations"]["items"]["anyOf"][0]["properties"]
+        self.assertEqual(citation["sourceRevisionId"]["enum"], ["actual-revision"])
+        self.assertEqual(citation["page"]["enum"], [42])
+        self.assertEqual(citation["sentenceId"]["enum"], ["original-s1"])
+        self.assertEqual(citation["quote"]["type"], "null")

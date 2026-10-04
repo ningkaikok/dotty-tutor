@@ -120,7 +120,8 @@ export interface paths {
         get: operations["get_chapter_api_chapters__chapter_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Chapter */
+        delete: operations["delete_chapter_api_chapters__chapter_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4019,6 +4020,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChapterResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chapter_api_chapters__chapter_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
                 };
             };
             /** @description Validation Error */

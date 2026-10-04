@@ -32,7 +32,7 @@ def headings(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def classify_material(filename: str, text: str) -> dict[str, str]:
     """Prefer explicit exam evidence over incidental textbook exercise headings."""
     sample = text[:40_000]
-    if PAPER_SIGNAL.search(sample) or PAPER_SIGNAL.search(filename) or re.search(r"\b(?:exam|test paper|question paper)\b", filename, re.I):
+    if PAPER_SIGNAL.search(sample) or PAPER_SIGNAL.search(filename) or re.search(r"中考|高考|真题|模拟卷", filename) or re.search(r"\b(?:exam|test paper|question paper)\b", filename, re.I):
         return {"kind": "paper", "reason": "识别到试卷标题或考试信息"}
     if BOOK_SIGNAL.search(sample) or BOOK_SIGNAL.search(filename) or headings([{"page": 1, "text": sample}]):
         return {"kind": "textbook", "reason": "识别到教材、目录或章节标题"}
