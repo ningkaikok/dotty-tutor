@@ -86,6 +86,7 @@ interface UploadController {
 }
 
 interface UseTextbookImportOptions {
+  initialUploadId?: string;
   onOpenLibraryItem: (result: TextbookImportResult) => void;
 }
 
@@ -119,7 +120,7 @@ function uploadIdFor(file: File): string {
  * 每个 PDF 都有独立的控制器、轮询器和结果。界面只消费 uploads 列表，因此新增第二个
  * 文件不会覆盖第一个文件的进度；最多三个任务同时运行，避免本地 MinerU/模型进程被瞬间压垮。
  */
-export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOptions) {
+export function useTextbookImport({ onOpenLibraryItem, initialUploadId = "" }: UseTextbookImportOptions) {
   const [uploads, setUploads] = useState<TextbookUploadItem[]>([]);
   const uploadsRef = useRef<TextbookUploadItem[]>([]);
   const controllers = useRef(new Map<string, UploadController>());
@@ -459,6 +460,17 @@ export function useTextbookImport({ onOpenLibraryItem }: UseTextbookImportOption
       setGlobalError("教材内容加载失败，请稍后重试");
     } finally { setLibraryLoadingId(""); }
   };
+  const onOpenRef = useRef(onOpenLibraryItem);
+  useEffect(() => { onOpenRef.current = onOpenLibraryItem; }, [onOpenLibraryItem]);
+  useEffect(() => {
+    if (!initialUploadId) return;
+    let active = true;
+    setLibraryLoadingId(initialUploadId);
+    loadLibraryItem(initialUploadId).then((result) => { if (active) onOpenRef.current(result); })
+      .catch(() => { if (active) setGlobalError("教材内容加载失败，请从教材列表重试"); })
+      .finally(() => { if (active) setLibraryLoadingId(""); });
+    return () => { active = false; };
+  }, [initialUploadId]);
   const removeLibraryItem = async (item: LibraryItem) => {
     if (!window.confirm(`确定从教材库移除「${item.filename}」吗？\n题目和学习记录会保留在库中，之后可以恢复。`)) return;
     setDeletingId(item.uploadId);

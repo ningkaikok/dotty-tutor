@@ -136,6 +136,7 @@ test("user Given a chapter page backed by an uploaded source When a teacher open
   Object.assign(fixture.source.pages[0], { previewUrl: "/api/chapters/chapter-1/sources/source-revision-1/pages/12/preview" });
   fixture.source.pages[0].text = "来源页含有需要逐段核对的公式、条件和例题文字。".repeat(80);
   await page.goto("/studio/chapters/chapter-1");
+  await page.getByRole("button", { name: "查看教材原文与页码" }).click();
   await expect(page.getByRole("img", { name: "教材原页，第 12 页" })).toHaveAttribute("src", /\/preview$/);
   await expect(page.getByRole("group", { name: "第 12 页原图区域定位" })).toBeVisible();
   const region = page.getByRole("button", { name: "回看第 12 页原图区域 1" });
@@ -160,15 +161,18 @@ test("user Given a chapter page backed by an uploaded source When a teacher open
 test("user Given a math chapter source When a teacher reviews and publishes it Then the student can answer with evidence and restore the attempt after refresh", async ({ page }) => {
   await routeChapterApi(page, "math");
   await page.goto("/");
-  await page.getByRole("button", { name: "章节课程与英语阅读" }).click();
-  await expect(page.getByRole("heading", { name: "从来源页制作互动章节" })).toBeVisible();
-  await page.getByLabel("章节名称").fill("函数代入");
+  await page.getByRole("button", { name: "打开我的教材" }).click();
+  await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
+  await page.getByRole("link", { name: "粘贴原文，制作第一节课 →" }).click();
+  await expect(page.getByRole("heading", { name: "制作一节课程" })).toBeVisible();
+  await page.getByLabel("课程名称").fill("函数代入");
   await page.getByLabel("起始页").fill("12");
   await page.getByLabel("结束页").fill("12");
   await page.getByLabel("来源许可说明").fill("校内授权");
   await page.getByRole("textbox", { name: "OCR 原文" }).fill("函数 y=2x+1 中，当 x=1 时，y=3。");
-  await page.getByRole("button", { name: "创建章节草稿" }).click();
-  await page.getByRole("button", { name: "生成课程草稿" }).click();
+  await page.getByRole("button", { name: "保存并继续" }).click();
+  await page.getByText("其他制作方式与来源设置", { exact: true }).click();
+  await page.getByRole("button", { name: "模板生成课程草稿" }).click();
   await expect(page.getByText("函数 y=2x+1，当 x=1 时 y 等于多少？")).toBeVisible();
   await page.screenshot({ path: "/tmp/dotty-chapter-workbench.png", fullPage: true });
   await page.getByRole("button", { name: "确认已复核" }).click();
@@ -196,4 +200,32 @@ test("user Given an English answer cites the wrong sentence When it is submitted
   await expect(page.getByText("待教师复核")).toBeVisible();
   await expect(page.getByText("答案或原文依据需要教师复核。")).toBeVisible();
   await expect(page.getByText("与题目要求不匹配")).toBeVisible();
+});
+
+
+test("user Given a PDF and an English course When using the unified library Then both appear and PDF course creation carries its source without exposing advanced fields", async ({ page }) => {
+  const fixture = await routeChapterApi(page, "english");
+  const uploads = [{ uploadId: "pdf-1", filename: "数学教材.pdf", pageCount: 12, questionCount: 4, status: "complete" }];
+  await page.route("**/api/library", (route) => route.fulfill({ json: { items: uploads } }));
+  await page.route("**/api/chapters", (route) => route.fulfill({ json: { items: [{ ...fixture.chapter, currentLessonIds: ["lesson-1"], status: "in_review" }] } }));
+  await page.goto("/studio");
+  await expect(page.getByRole("heading", { name: "A day outdoors" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: "A day outdoors" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "/tmp/dotty-materials-mobile.png", fullPage: true });
+  await page.getByText("＋ 添加教材", { exact: true }).press("Enter");
+  await expect(page.getByRole("link", { name: "上传 PDF 或图片" })).toBeVisible();
+  await page.getByRole("link", { name: "选取页码，制作课程" }).click();
+  await expect(page.getByLabel("教材来源")).toHaveValue("pdf-1");
+  await expect(page.getByLabel("课程名称")).toHaveValue("数学教材");
+  await expect(page.getByLabel("起始页")).toHaveValue("1");
+  await expect(page.getByLabel("来源版本")).not.toBeVisible();
+  await page.getByLabel("起始页").fill("7");
+  await expect(page.getByLabel("结束页")).toHaveValue("7");
+  await page.getByText("高级来源设置（可选）", { exact: true }).click();
+  await expect(page.getByLabel("来源版本")).toBeVisible();
+  await page.goto("/studio/chapters");
+  await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
 });

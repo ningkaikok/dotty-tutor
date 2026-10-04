@@ -1,4 +1,5 @@
-import { Link } from "react-router";
+import "./apps/chapters/chapters.css";
+import { Link, useSearchParams } from "react-router";
 import { PipelinePanel } from "./apps/textbook/import/PipelinePanel";
 import { RuntimeSettings } from "./apps/textbook/import/RuntimeSettings";
 import { TextbookLibrary } from "./apps/textbook/import/TextbookLibrary";
@@ -17,12 +18,13 @@ interface TextbookImportProps {
  * useTextbookImport; each visual section is independently replaceable.
  */
 export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
-  const state = useTextbookImport({ onOpenLibraryItem: onContinue });
+  const [params] = useSearchParams();
+  const state = useTextbookImport({ onOpenLibraryItem: onContinue, initialUploadId: params.get("uploadId") ?? "" });
 
   return (
     <main className="import-shell">
       <header className="import-header">
-        {onExit && <button className="route-back-button" onClick={onExit}>← 返回入口</button>}
+        {onExit && <button className="route-back-button" onClick={onExit}>← 我的教材</button>}
         <div className="brand-mark">D</div>
         <div>
           <strong>Dotty</strong>
@@ -45,6 +47,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
         <p>此处面向内容生产者。可同时加入多个 PDF；每个文件独立断点上传、识别和展示进度，最多并行处理 3 个任务。</p>
       </section>
 
+      <details className="chapter-advanced"><summary>识别与模型设置</summary>
       <RuntimeSettings
         models={state.models}
         tutorModels={state.tutorModels}
@@ -62,6 +65,9 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
         onSelectOcr={(provider) => void state.selectOcr(provider)}
       />
 
+      </details>
+
+      <details className="chapter-advanced"><summary>查看已有教材与恢复任务</summary>
       <TextbookLibrary
         items={state.library}
         loadingId={state.libraryLoadingId}
@@ -69,6 +75,8 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
         onOpen={(item) => void state.openLibraryItem(item)}
         onDelete={(item) => void state.removeLibraryItem(item)}
       />
+
+      </details>
 
       <section className="import-grid">
         <UploadPanel
