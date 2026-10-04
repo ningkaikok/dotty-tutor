@@ -61,7 +61,9 @@ export interface TextbookImportResult {
   contentType: string;
   size: number;
   stored: boolean;
-  modelRun: ModelRun;
+  modelRun?: ModelRun;
+  materialKind?: "paper" | "textbook" | "unknown";
+  detectionReason?: string;
   ocrRun: OcrRun;
   reviewRun?: ReviewRun;
   stages: ImportStage[];
@@ -89,7 +91,7 @@ export interface TextbookImportResult {
     error?: string;
   }>;
   qualityReport?: ImportQualityReport;
-  questionPayload: QuestionPayload;
+  questionPayload?: QuestionPayload;
   questionPayloads?: QuestionPayload[];
   fullPaper?: FullPaperSummary;
 }
@@ -156,6 +158,7 @@ export interface FullPaperResult {
 }
 
 export interface LibraryItem {
+  materialKind?: "paper" | "textbook" | "unknown";
   uploadId: string;
   importId: string;
   filename: string;

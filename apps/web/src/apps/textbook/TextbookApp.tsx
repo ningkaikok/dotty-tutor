@@ -366,9 +366,13 @@ export function TextbookApp() {
       <TextbookImport
         onExit={onExit}
         onContinue={(result) => {
+          if (!result.questionPayload && !result.questionPayloads?.length) {
+            if (result.uploadId) navigate(`/studio/chapters/new?uploadId=${encodeURIComponent(result.uploadId)}`);
+            return;
+          }
           resetLearningState();
           const hasFullPaper = Boolean(result.fullPaper && (result.questionPayloads?.length || 0) > QUICK_QUESTION_LIMIT);
-          const importedBank = (result.questionPayloads?.length ? result.questionPayloads : [result.questionPayload])
+          const importedBank = (result.questionPayloads?.length ? result.questionPayloads : (result.questionPayload ? [result.questionPayload] : []))
             .slice(0, hasFullPaper ? FULL_PAPER_QUESTION_LIMIT : QUICK_QUESTION_LIMIT);
           setTextbookImport({
             ...result,

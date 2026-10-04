@@ -330,6 +330,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chapters/from-upload/{upload_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Courses From Upload */
+        post: operations["create_courses_from_upload_api_chapters_from_upload__upload_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/classes": {
         parameters: {
             query?: never;
@@ -1446,7 +1463,7 @@ export interface paths {
         put?: never;
         /**
          * Import Textbook
-         * @description Read one page and return a lesson without persisting the source file.
+         * @description Route a page automatically when requested, preserving course sources on disk.
          */
         post: operations["import_textbook_api_textbook_import_post"];
         delete?: never;
@@ -2185,6 +2202,11 @@ export interface components {
         };
         /** Body_import_textbook_api_textbook_import_post */
         Body_import_textbook_api_textbook_import_post: {
+            /**
+             * Autodetect
+             * @default false
+             */
+            autoDetect: boolean;
             /** File */
             file: string;
             /**
@@ -4403,6 +4425,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_courses_from_upload_api_chapters_from_upload__upload_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -7216,7 +7269,9 @@ export interface operations {
     };
     complete_pdf_upload_api_uploads__upload_id__complete_post: {
         parameters: {
-            query?: never;
+            query?: {
+                autoDetect?: boolean;
+            };
             header?: {
                 "Idempotency-Key"?: string | null;
             };

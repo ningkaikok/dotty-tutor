@@ -56,6 +56,7 @@ class ChapterAuthAcceptanceTests(PostgresTestCase):
         # Then teacher-only endpoints are blocked before any source/model work
         self.assertEqual(self.alpha.get(preview).status_code, 403)
         self.assertEqual(self.alpha.post(generation, json={"expectedRecordVersion": chapter["recordVersion"]}).status_code, 403)
+        self.assertEqual(self.alpha.post("/api/chapters/from-upload/original").status_code, 403)
         self.assertEqual(self.teacher.get(preview).status_code, 404)
 
     def test_user_student_identity_is_bound_and_teacher_can_review_without_student_credentials(self) -> None:

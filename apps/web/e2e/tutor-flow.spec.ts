@@ -715,7 +715,7 @@ test.describe("产品入口", () => {
     await expect(page.getByRole("heading", { name: "今天没有待办任务" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "练习", exact: true })).toBeVisible();
     await expect(page.getByText("老师还没有发布新的练习，练习任务会自动出现在这里。")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "上传试卷或教材" })).toHaveCount(0);
 
     // 持久导航取代了随上下文变化的“返回 XX”按钮，并且当前项要能被读屏识别。
     const nav = page.getByRole("navigation", { name: "学习导航" });
@@ -727,7 +727,7 @@ test.describe("产品入口", () => {
       .getByRole("link", { name: "错题" })).toHaveAttribute("aria-current", "page");
 
     await page.goto("/studio/import");
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "上传试卷或教材" })).toBeVisible();
     await expect(page.getByText("内容生产工作台")).toBeVisible();
 
   });
@@ -1240,7 +1240,7 @@ test.describe("教材辅导核心交互", () => {
     await mockApi(page);
     await page.goto("/studio/import");
 
-    await expect(page.getByRole("heading", { name: "上传教材页或整本 PDF" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "上传试卷或教材" })).toBeVisible();
     await page.locator('input[type="file"]').setInputFiles({
       name: "playwright-fixture.png",
       mimeType: "image/png",

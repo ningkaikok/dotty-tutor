@@ -1,5 +1,43 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test("user Given a textbook PDF When uploading from the single entry Then type detection and first-five course preparation require no options", async ({ page }) => {
+  const result = { uploadId: "automatic-source", importId: "book", filename: "English textbook.pdf", contentType: "application/pdf", size: 20, stored: true,
+    materialKind: "textbook", detectionReason: "识别到教材标题", stages: [{ id: "ocr", label: "识别教材原文", status: "done" }],
+    ocrRun: { requestedProvider: "pypdf", provider: "pypdf", mode: "text", fallback: false, output: "Unit 1 Hello" },
+    questionPayloads: [], extraction: { chapter: "教材课程", knowledgePoint: "自动识别章节", pageCount: 20, questionCount: 0, formulaCount: 0, guideCardCount: 0, confidence: 0, mode: "source-only" } };
+  const chapters = Array.from({ length: 5 }, (_, index) => ({ chapterId: `course-${index + 1}`, title: `Unit ${index + 1}`, pageStart: index * 3 + 1, pageEnd: index * 3 + 3 }));
+  const task = { uploadId: "automatic-source", filename: result.filename, size: 20, chunkSize: 5242880, totalChunks: 1, uploadedChunks: [], status: "uploading", progress: 0, message: "上传中", elapsedSeconds: 0 };
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    if (url.pathname === "/api/auth/config") return route.fulfill({ json: { protected: false } });
+    if (url.pathname === "/api/models" || url.pathname === "/api/tutor-models") return route.fulfill({ json: { selected: { provider: "mock", model: "fixture" }, providers: [] } });
+    if (url.pathname === "/api/review-models") return route.fulfill({ json: { selected: { provider: "mock", model: "fixture" }, providers: [] } });
+    if (url.pathname === "/api/ocr") return route.fulfill({ json: { selected: "pypdf", effective: "pypdf", providers: [] } });
+    if (url.pathname === "/api/uploads/init") return route.fulfill({ json: task });
+    if (url.pathname.endsWith("/chunks/0")) return route.fulfill({ json: { ...task, uploadedChunks: [0] } });
+    if (url.pathname.endsWith("/complete")) {
+      expect(url.searchParams.get("autoDetect")).toBe("true");
+      return route.fulfill({ status: 202, json: { jobId: "upload", status: "succeeded", result } });
+    }
+    if (url.pathname === "/api/chapters/from-upload/automatic-source") return route.fulfill({ status: 202, json: { jobId: "prepare", status: "queued", message: "正在识别章节" } });
+    if (url.pathname === "/api/jobs/prepare") return route.fulfill({ json: { jobId: "prepare", status: "succeeded", result: { chapters, notices: [], chapterLimit: 5 } } });
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/studio");
+  await page.getByRole("link", { name: "＋ 上传试卷或教材" }).click();
+  await expect(page.getByRole("heading", { name: "上传试卷或教材" })).toBeVisible();
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await page.locator('input[type="file"]').setInputFiles({ name: result.filename, mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\n%%EOF\n") });
+  await page.getByRole("button", { name: "开始识别 1 个文件" }).click();
+  await expect(page.getByText(/自动识别：教材/)).toBeVisible();
+  await page.getByRole("link", { name: "自动制作课程（最多前 5 章） →" }).click();
+  await expect(page.getByRole("heading", { name: "已安排 5 章课程草稿" })).toBeVisible();
+  await expect(page.getByLabel("课程名称")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Unit 5/ })).toHaveAttribute("href", "/studio/chapters/course-5");
+  await page.screenshot({ path: "/tmp/dotty-unified-upload-courses.png", fullPage: true });
+});
+
 function chapterFixture(subject: "math" | "english", chapterId = "chapter-1") {
   const sourceRevisionId = "source-revision-1";
   const page = subject === "math"
@@ -163,7 +201,7 @@ test("user Given a math chapter source When a teacher reviews and publishes it T
   await page.goto("/");
   await page.getByRole("button", { name: "打开我的教材" }).click();
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
-  await page.getByRole("link", { name: "粘贴原文，制作第一节课 →" }).click();
+  await page.goto("/studio/chapters/new");
   await expect(page.getByRole("heading", { name: "制作一节课程" })).toBeVisible();
   await page.getByLabel("课程名称").fill("函数代入");
   await page.getByLabel("起始页").fill("12");
@@ -215,17 +253,18 @@ test("user Given a PDF and an English course When using the unified library Then
   await expect(page.getByRole("heading", { name: "A day outdoors" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: "/tmp/dotty-materials-mobile.png", fullPage: true });
-  await page.getByText("＋ 添加教材", { exact: true }).press("Enter");
-  await expect(page.getByRole("link", { name: "上传 PDF 或图片" })).toBeVisible();
-  await page.getByRole("link", { name: "选取页码，制作课程" }).click();
-  await expect(page.getByLabel("教材来源")).toHaveValue("pdf-1");
-  await expect(page.getByLabel("课程名称")).toHaveValue("数学教材");
-  await expect(page.getByLabel("起始页")).toHaveValue("1");
-  await expect(page.getByLabel("来源版本")).not.toBeVisible();
-  await page.getByLabel("起始页").fill("7");
-  await expect(page.getByLabel("结束页")).toHaveValue("7");
-  await page.getByText("高级来源设置（可选）", { exact: true }).click();
-  await expect(page.getByLabel("来源版本")).toBeVisible();
+
+  await expect(page.getByRole("link", { name: "＋ 上传试卷或教材" })).toBeVisible();
+  const courses = Array.from({ length: 5 }, (_, index) => ({ chapterId: `automatic-${index + 1}`, title: `Unit ${index + 1}`, pageStart: index * 2 + 1, pageEnd: index * 2 + 2 }));
+  await page.route("**/api/chapters/from-upload/pdf-1", (route) => route.fulfill({ status: 202, json: { jobId: "automatic-job", status: "succeeded", result: { chapters: courses, notices: [], chapterLimit: 5 } } }));
+  await page.getByRole("link", { name: "自动制作课程" }).click();
+  await expect(page.getByRole("heading", { name: "自动制作教材课程" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "已安排 5 章课程草稿" })).toBeVisible();
+  await expect(page.getByLabel("起始页")).toHaveCount(0);
+  await expect(page.getByLabel("课程名称")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Unit 5/ })).toHaveAttribute("href", "/studio/chapters/automatic-5");
+  await expect(page.getByRole("link", { name: /Unit 6/ })).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/dotty-automatic-courses-mobile.png", fullPage: true });
   await page.goto("/studio/chapters");
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
 });
