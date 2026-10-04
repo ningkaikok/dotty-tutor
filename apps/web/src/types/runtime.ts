@@ -1,4 +1,6 @@
-export type ModelProvider = "ollama" | "codex" | "mock";
+import type { components } from "./generated/api";
+
+export type ModelProvider = components["schemas"]["ModelSelectionRequest"]["provider"];
 
 export interface PromptIdentity { id: string; version: string; contentHash: string }
 

@@ -2,6 +2,13 @@
 
 `apps/web/src/api/client.ts` 同时承载可选的 API 来源地址装配及 API 图片地址解析，`src/main.tsx` 仅装配这一传输配置；章节来源组件复用解析函数，不自行拼接部署域名。
 
+可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
+DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
+启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
+现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
+
+
 完整文档分类与维护职责见 [文档索引](README.md)。本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
 哪些能力直接复用开源实现，以及新增功能时应在哪个边界修改。
 
@@ -199,7 +206,7 @@ flowchart LR
   Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
-  Runtime --> External["MinerU / Ollama / Codex / Azure / Qwen TTS"]
+  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / Azure / Qwen TTS"]
 ```
 
 依赖只能向右。Runtime、Store 和领域函数不得导入 `app.py`，否则会产生循环依赖并让单元测试必须启动
@@ -212,8 +219,8 @@ flowchart LR
 `scripts/dev-local.sh` 启动的 API。Docker API 运行在 Linux 容器中，不能执行宿主机 macOS
 虚拟环境，也不会自动继承宿主机安装的模型。容器没有 Linux MinerU 或独立 OCR 服务时，
 `/api/ocr` 必须把 MinerU 标记为不可用，前端保留“自动选择”和“PDF 文字层”，避免选择后静默
-回退导致用户误以为扫描图已经被识别。若要在 Docker 中启用 MinerU，应新增 Linux OCR 镜像或
-独立服务，并在 Runtime 适配器中显式注册其健康检查、版本和资源边界。
+回退导致用户误以为扫描图已经被识别。Docker 中可配置 MinerU 云端密钥；也可使用 Linux OCR 镜像或独立服务。
+未配置云端密钥且没有本机 MinerU 时仍明确报告不可用。
 
 ### `app.py` 为什么保持很小
 
