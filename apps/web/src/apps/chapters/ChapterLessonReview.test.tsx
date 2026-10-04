@@ -74,6 +74,7 @@ it("user Given AI answer variants, a rubric and three cited hints When the teach
   expect(screen.getByText("标准答案候选：Mina left.")).toBeInTheDocument();
   expect(screen.getByText(/尚未纳入自动判分/)).toBeInTheDocument();
   expect(screen.getByText("评分依据 · 需教师审核")).toBeInTheDocument();
+  expect(screen.queryByText(/评分依据 JSON/)).not.toBeInTheDocument();
   expect(screen.getByText(/生成内容引用（4 项）/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "编辑检查题" }));
   expect(screen.queryByLabelText("概念讲解")).not.toBeInTheDocument();
@@ -84,11 +85,12 @@ it("user Given AI answer variants, a rubric and three cited hints When the teach
   expect(screen.getByLabelText("第 3 级提示")).toHaveValue("结合上下文");
   fireEvent.click(screen.getByLabelText("确认接受：Mina went away."));
   fireEvent.change(screen.getByLabelText("第 2 级提示"), { target: { value: "先对比两个情节" } });
+  fireEvent.change(screen.getByLabelText("评分要点（每行一条）"), { target: { value: "符合原文\n答案与引文一致" } });
   fireEvent.click(screen.getByRole("button", { name: "保存题目" }));
 
   await waitFor(() => expect(saved?.hints).toEqual(["先找线索", "先对比两个情节", "结合上下文"]));
   expect(saved?.acceptedAnswers).toContain("Mina went away.");
   expect(saved?.teacherVariants).toEqual(["Mina went away."]);
-  expect(saved?.rubric).toEqual({ supportStatus: "needs_review", criteria: ["符合原文"] });
+  expect(saved?.rubric).toEqual({ supportStatus: "needs_review", criteria: ["符合原文", "答案与引文一致"] });
   expect(saved?.conceptMarkdown).toBeUndefined();
 });

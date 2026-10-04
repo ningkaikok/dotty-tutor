@@ -124,6 +124,7 @@ dotty-tutor/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
 │   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
 │   │   │   ├── apps/home/      # 角色入口选择
+│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程，独立错误及搜索
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
 │   │   │   ├── apps/chapters/  # 章节工作台、来源/课程编辑及学生作答/教师复核 Hook
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
@@ -259,7 +260,16 @@ Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。
 `QuestionIR`/OCR 为准，模型不能通过提示词改变题目边界或凭空补题。最终 `modelRun.stages` 保留每次调用的
 provider、model 和回退状态；前端继续消费原有的 `questionPayload` 契约。
 
-### 章节课程与英语阅读链路
+### 统一教材入口与课程链路
+
+内容生产统一从 `/studio` 的 `MaterialsApp` 进入。`useMaterials` 分别读取既有 `/api/library` 与
+`/api/chapters`，合并展示而不搬迁数据；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
+或带 `uploadId` 进入 `/studio/chapters/new`，自动填写名称与来源。上传及旧练习编辑位于
+`/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
+
+课程创建默认单页，来源版本、问题标记和区域坐标按需展开。课程编辑按生成、复核、发布组织，
+原文、历史和学生答案复核折叠；评分要点使用文字列表，保留后台原有审核状态及其他 rubric 字段。
+
 
 ```text
 已有上传/OCR产物或人工提供的页段文本

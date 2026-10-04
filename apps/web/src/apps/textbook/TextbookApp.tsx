@@ -35,7 +35,7 @@ export function TextbookApp() {
   // 本路由是内容生产工作台的编排边界。这里的答题只用于质量预览；真实学生学习记录只允许
   // PublishedPaperApp 创建，避免编辑者试做污染掌握度。
   const navigate = useNavigate();
-  const onExit = () => navigate("/");
+  const onExit = () => navigate("/studio");
   const [payload, setPayload] = useState<QuestionPayload | null>(null);
   const [questionBank, setQuestionBank] = useState<QuestionPayload[]>([]);
   const [questionIndex, setQuestionIndex] = useState(0);
@@ -115,6 +115,7 @@ export function TextbookApp() {
     setFullPaperSummary(null);
     setFullPaperError("");
     resetPublication();
+    navigate("/studio");
   };
 
   const askTutor = async (mode: "answer" | "help") => {

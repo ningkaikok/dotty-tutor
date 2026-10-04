@@ -324,6 +324,11 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 ## 资源与教材库
 
+前端统一 `/studio` 入口并行读取 `/api/library` 与 `/api/chapters`，不新增合并接口，也不改变原记录、
+教师权限和学生安全投影。`/studio/import?uploadId=...` 通过既有教材详情接口恢复练习；
+`/studio/chapters/new?uploadId=...` 仅预选来源，保存仍调用既有章节创建接口。
+
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/uploads/{uploadId}/assets/{batchId}/{filename}` | 读取持久化题图 |

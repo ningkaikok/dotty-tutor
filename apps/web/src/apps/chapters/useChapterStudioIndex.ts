@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { createChapter, listChapters } from "../../api/chapters";
 import type { ChapterManagement, ChapterSummary, ChapterSubject, ChapterSource } from "../../types/chapter";
 
-export function useChapterStudioIndex() {
+export function useChapterStudioIndex(loadList = true) {
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
-  const [loadingChapters, setLoadingChapters] = useState(true);
+  const [loadingChapters, setLoadingChapters] = useState(loadList);
   const [chapterListError, setChapterListError] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -21,7 +21,7 @@ export function useChapterStudioIndex() {
     }
   }, []);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => { if (loadList) void reload(); }, [reload, loadList]);
 
   const create = async (value: { title: string; subject: ChapterSubject; source: ChapterSource }): Promise<ChapterManagement | null> => {
     setCreating(true);
