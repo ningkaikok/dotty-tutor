@@ -16,7 +16,20 @@ Qwen3-TTS 和 Azure Speech。
 只使用 Docker 提供 PostgreSQL。这样可以直接复用本机登录态、模型缓存和 Apple Silicon
 MPS，不需要把凭据或虚拟环境复制进 API 容器。
 
+下面的复制步骤只适用于**首次创建全新本地数据库**。已有数据库或切换到新 worktree 时，不要重新生成数据库密码：
+Compose 默认项目 `dotty-tutor` 会复用 `dotty-tutor_postgres_data` 命名卷，而 PostgreSQL 初始化后保存的角色密码不会因修改 `.env` 自动变化。
+请从正在使用的 checkout 复制被 Git 忽略的配置，保留数据库凭据和模型路径：
+
 ```bash
+cp /path/to/existing-checkout/.env .env
+cp /path/to/existing-checkout/.env.local .env.local
+```
+
+如果原来的 checkout 不可用，至少要从 PostgreSQL 初始化时的配置恢复原密码；仅让 `.env` 和 `.env.local` 两边的新密码相同，
+仍可能无法登录已有数据库。只有确实要新建独立空数据库时才重新生成密码，并为它使用单独的 Compose 项目名/数据卷。
+
+```bash
+# 仅全新本地数据库执行以下初始化
 cp .env.docker.example .env
 # 确保 .env 中 POSTGRES_PASSWORD 已填写
 cp .env.local.example .env.local
@@ -36,6 +49,18 @@ scripts/check-node-version.sh
 
 检查通过后，脚本会启动 Docker PostgreSQL、本机 FastAPI、本机 `background_jobs` Worker、本机 Vite 和 Qwen3-TTS。打开
 <http://localhost:59174>；按 `Ctrl-C` 会停止本机进程，但保留 PostgreSQL 数据卷。
+
+`.env.local` 是每个 checkout 独立的本机配置，不会随代码同步。MinerU 若安装在当前仓库根目录
+`.mineru-venv` 或已加入 `PATH`，`MINERU_COMMAND` 可以留空；若安装在其他 checkout（例如主工作副本），
+请在当前 checkout 的 `.env.local` 中填写 MinerU 可执行文件的绝对路径。`scripts/dev-local.sh` 每次启动都会读取该文件，
+因此不要把示例路径原样用于不同 worktree，也不要只在临时终端执行 `export MINERU_COMMAND=...` 后期待下次启动仍保留。
+Qwen3-TTS 同理：如果其独立环境或模型存放在其他 checkout，在 `.env.local` 中分别设置
+`QWEN_TTS_PYTHON` 和 `QWEN_TTS_MODEL` 的绝对路径；启动脚本会使用该 Python 启动本机 TTS 服务。
+数据库与上传文件也由本机配置分别定位：`.env.local` 的 PostgreSQL 连接项和 `.env` 中的密码必须匹配目标数据库；
+默认 Compose 项目名 `dotty-tutor` 使用其既有 PostgreSQL 命名卷；更改 `COMPOSE_PROJECT_NAME` 会创建另一套卷和空库。
+`POSTGRES_HOST_PORT` 只改变 Docker 的宿主机映射，`.env.local` 的 `POSTGRES_PORT` 必须指向实际目标实例，改端口不会迁移或合并数据。
+`DOTTY_DATA_DIR` 默认是当前 checkout 的 `data/`，如需沿用其他 checkout 的上传文件，也要在 `.env.local` 中设为原文件目录。
+数据库和文件目录都不会因启动脚本自动迁移或合并。
 
 前端单元测试使用 Vitest（`pnpm test`，纯函数模块优先，组件测试按需引入 jsdom）。
 本地提交前检查可选用 [pre-commit](https://pre-commit.com/)：`pip install pre-commit && pre-commit install`，
@@ -375,22 +400,11 @@ backup → preflight → upgrade → verify → deploy/restart
 | `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
-| `TRUST_PROXY_HEADERS` | `false` | 是否信任反向代理提供的客户端 IP 头；Render 部署设为 `true` |
-| `PUBLIC_PROTECTION_ENABLED` | `true` | 是否启用公网 Demo 限流和请求体保护 |
-| `PUBLIC_RATE_LIMIT_REQUESTS` | `120` | 单 IP 在窗口内允许的普通请求数 |
-| `PUBLIC_RATE_LIMIT_WINDOW_SECONDS` | `60` | 普通请求限流窗口 |
-| `PUBLIC_MODEL_RATE_LIMIT_REQUESTS` | `6` | 单 IP 在窗口内允许的模型/教材请求数 |
-| `PUBLIC_MODEL_RATE_LIMIT_WINDOW_SECONDS` | `60` | 模型请求限流窗口 |
-| `PUBLIC_MODEL_DAILY_LIMIT` | `60` | 单 IP 每日模型/教材请求上限 |
-| `PUBLIC_MODEL_CONCURRENCY` | `2` | API 进程同时处理的高成本请求数 |
-| `PUBLIC_MAX_REQUEST_BYTES` | `12582912` | 公网请求体上限，默认 12 MiB |
-| `MODEL_PROVIDER` | `codex` | `ollama`、`codex`、`deepseek` 或 `mock` |
+| `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |
 | `MODEL_NAME` | `default` | 生成模型名称 |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama 地址 |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek OpenAI 兼容 API 地址 |
-| `DEEPSEEK_API_KEY` | 空 | DeepSeek 后端密钥；只能放在服务器 Secret 中 |
-| `DEEPSEEK_MODELS` | `deepseek-flash` | DeepSeek 模型目录 |
-| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径；本机脚本会优先注入仓库根目录 `.mineru-venv/bin/mineru` |
+| `MINERU_COMMAND` | 自动探测 | MinerU 可执行文件路径；默认探测仓库根目录 `.mineru-venv`、`/opt/mineru/bin/mineru` 和 `PATH`；安装在其他 checkout 时应将绝对路径写入该 checkout 的 `.env.local`，以便每次启动都生效 |
+| `QWEN_TTS_PYTHON` | 仓库根目录 `.qwen3-tts-venv/bin/python` | Qwen3-TTS 独立 Python；可指向其他 checkout 的环境 |
 | `REVIEW_PROVIDER` | `codex` | 统一文字与图片审校 provider |
 | `REVIEW_MODEL` | `gpt-5.6-sol` | 统一文字与图片审校模型 |
 | `CODEX_MODELS` | 内置常用订阅模型 | 可选；控制 Codex 下拉框模型列表 |
@@ -431,6 +445,8 @@ export MINERU_COMMAND="$PWD/.mineru-venv/bin/mineru"
 如果上传页仍显示“MinerU OCR · 未安装”，先确认浏览器连接的是本机后端 `8010`，而不是
 Docker 的 `8080` 网关：`curl http://127.0.0.1:8010/api/ocr` 返回的 `providers` 中，`id=mineru`
 的 `available` 应为 `true`。
+本机启动时若仍显示未安装，检查当前 checkout 的 `.env.local` 中 `MINERU_COMMAND` 是否指向真实可执行文件
+（`test -x /绝对路径/mineru`）；改完后重启 `scripts/dev-local.sh`，再查看 `/api/ocr` 的 `effective` 和 `available`。
 Docker 基础镜像只包含 FastAPI 和 pypdf，不会自动看到宿主机的 `.mineru-venv`（尤其不能把
 macOS 虚拟环境挂进 Linux 容器）。此时下拉框禁用 MinerU 是正确的安全行为，避免选择后任务
 悄悄回退到 PDF 文字层；需要 Docker 使用 MinerU 时，应提供 Linux MinerU 镜像或独立 OCR
@@ -463,6 +479,10 @@ python3.12 -m venv .qwen3-tts-venv
 cd apps/api
 ../.qwen3-tts-venv/bin/python infrastructure/runtime/qwen_tts_service.py
 ```
+
+`scripts/dev-local.sh` 默认查找当前仓库根目录 `.qwen3-tts-venv/bin/python`。如果环境装在其他位置，
+将 `QWEN_TTS_PYTHON` 和 `QWEN_TTS_MODEL` 的绝对路径保存在 `.env.local` 中；否则脚本会跳过 Qwen3-TTS，
+前端退回浏览器语音。启动后可通过 `http://127.0.0.1:8020/health` 检查本机服务是否 ready。
 
 首次启动可能会下载 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice`。默认音色为 `Serena`，可以通过
 `QWEN_TTS_MODEL`、`QWEN_TTS_SPEAKER` 和 `QWEN_TTS_DEVICE` 修改。
@@ -577,3 +597,23 @@ gh secret set FEISHU_WEBHOOK_SECRET
 
 分支、提交格式、PR 与 CHANGELOG 分类及发布步骤统一维护在 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 代理的授权与检查约束见 [AGENTS.md](../AGENTS.md)，不在开发指南复制第二套规则。
+
+### 可选云端模型与 OCR
+
+三份环境模板均列出 DeepSeek 和 MinerU 云端参数，默认密钥为空，不会自动切换本机模型。
+DeepSeek 需选择 MODEL_PROVIDER=deepseek 和目录中的模型；陪练可独立设置
+TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。MinerU 在本机命令不可用且配置
+MINERU_API_KEY 时使用云端解析，上传的原文件及返回的 OCR 产物仍保存在现有数据目录。
+Compose 将同样的云端参数传给 API 和 Worker。测试使用外部服务替身，不证明真实模型/OCR质量。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。

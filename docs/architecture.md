@@ -1,5 +1,14 @@
 # 系统架构与调用流程
 
+前端可通过 `VITE_API_ORIGIN` 指向独立后端：`api/client.ts` 在入口装配请求地址，教材原页图片也通过同一地址解析。未设置时保留 `/api` 同源请求和本地 Vite 代理；跨域受保护会话仍需另行验证 Cookie 与 CORS，配置地址不代表完成身份部署。
+
+可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
+DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
+启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
+现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
+
+
 本文描述 Dotty Tutor 当前 MVP 的组件边界、核心调用链、持久化方式和运行限制。产品按角色拆为学生学习
 空间、教师工作台和内容生产工作台；AI 错题陪练属于学生空间。各流程共用 OCR、题目生成和数据库基础设施，但保持页面、
 路由和业务存储分离。
@@ -202,7 +211,7 @@ flowchart TB
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
 | 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 从 50 条用户确认的合成案例中选 42 条文本案例，显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；8 条图像案例待实际传图后再纳入，调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
-| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
+| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、DeepSeek、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
@@ -815,3 +824,15 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 上下文裁剪、JSON Schema、来源保真、确定性判题和发布质量门禁继续由业务代码维护。
 在线变量预览不持久化变量或学生输入；正文应仅保存通用教学模板。审核、变式、个性化作业、
 旧单阶段生成及评测专用讲解模板暂未迁移。维护与启用说明见 `apps/api/prompts/README.md`。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。

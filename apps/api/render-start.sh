@@ -2,7 +2,7 @@
 set -eu
 
 python -m persistence.migration_cli upgrade
-python -m worker --registry routers.textbook_routes:textbook_job_registry &
+python -m worker --registry app:job_registry &
 worker_pid=$!
 
 cleanup() {

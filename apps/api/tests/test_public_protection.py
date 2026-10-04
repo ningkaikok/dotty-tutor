@@ -18,7 +18,7 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertFalse(PublicProtection.is_expensive_path("/api/health"))
 
     def test_rate_limit_is_scoped_to_client(self) -> None:
-        protection = PublicProtection(request_limit=1, request_window_seconds=60)
+        protection = PublicProtection(enabled=True, request_limit=1, request_window_seconds=60)
         first = protection.requests.allow("client-a", 1.0)
         second = protection.requests.allow("client-a", 1.1)
         other = protection.requests.allow("client-b", 1.1)
@@ -27,7 +27,7 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertTrue(other.allowed)
 
     def test_request_body_limit_returns_413(self) -> None:
-        with environment({"PUBLIC_MAX_REQUEST_BYTES": "10"}):
+        with environment({"PUBLIC_PROTECTION_ENABLED": "true", "PUBLIC_MAX_REQUEST_BYTES": "10"}):
             app = create_app()
 
         @app.post("/api/test-body")
@@ -45,6 +45,7 @@ class PublicProtectionUnitTests(unittest.TestCase):
     def test_rate_limit_returns_retryable_problem(self) -> None:
         with environment(
             {
+                "PUBLIC_PROTECTION_ENABLED": "true",
                 "PUBLIC_RATE_LIMIT_REQUESTS": "1",
                 "PUBLIC_RATE_LIMIT_WINDOW_SECONDS": "60",
             },
@@ -61,3 +62,54 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json()["errorCode"], "PUBLIC_RATE_LIMITED")
         self.assertEqual(response.headers["Retry-After"], "60")
+
+
+    def test_user_reads_do_not_consume_model_quota_and_window_recovers(self) -> None:
+        # Given a one-request model window, ordinary reads remain available.
+        from starlette.requests import Request
+
+        def request(method: str) -> Request:
+            return Request({"type": "http", "method": method, "path": "/api/classes/c1",
+                            "headers": [], "client": ("client-a", 80)})
+
+        protection = PublicProtection(enabled=True, model_limit=1, model_window_seconds=60)
+        # When the user reads twice then requests model work.
+        self.assertTrue(protection.check(request("GET"), now=100, wall_now=100).allowed)
+        self.assertTrue(protection.check(request("GET"), now=101, wall_now=101).allowed)
+        self.assertTrue(protection.check(request("POST"), now=102, wall_now=102).allowed)
+        blocked = protection.check(request("POST"), now=103, wall_now=103)
+        # Then another model request is blocked until the window expires.
+        self.assertFalse(blocked.allowed)
+        self.assertEqual(blocked.retry_after, 59)
+        self.assertTrue(protection.check(request("GET"), now=104, wall_now=104).allowed)
+        self.assertTrue(protection.check(request("POST"), now=162, wall_now=162).allowed)
+
+    def test_user_default_configuration_keeps_existing_requests_available(self) -> None:
+        # Given an unset opt-in flag, even configured limits are inactive.
+        with environment({"PUBLIC_PROTECTION_ENABLED": "", "PUBLIC_MAX_REQUEST_BYTES": "1"}):
+            app = create_app()
+
+        @app.post("/api/classes/test-default")
+        async def user_request() -> dict[str, bool]:
+            return {"ok": True}
+
+        client = TestClient(app)
+        # When the user submits several requests, then all reach the route.
+        for _ in range(4):
+            response = client.post("/api/classes/test-default", content=b"longer than one byte")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"ok": True})
+        self.assertFalse(PublicProtection().enabled)
+
+
+class PublicProtectionConcurrencyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_user_can_retry_after_other_model_work_finishes(self) -> None:
+        # Given one available model slot.
+        protection = PublicProtection(enabled=True, model_concurrency=1)
+        self.assertTrue(await protection.acquire_model_slot())
+        # When a second request arrives, then it is rejected without queueing.
+        self.assertFalse(await protection.acquire_model_slot())
+        # When the first finishes, then the retry can start.
+        protection.release_model_slot()
+        self.assertTrue(await protection.acquire_model_slot())
+        protection.release_model_slot()

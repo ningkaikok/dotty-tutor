@@ -1,5 +1,14 @@
 # 代码结构、复用决策与扩展指南
 
+`apps/web/src/api/client.ts` 同时承载可选的 API 来源地址装配及 API 图片地址解析，`src/main.tsx` 仅装配这一传输配置；章节来源组件复用解析函数，不自行拼接部署域名。
+
+可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
+DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
+启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
+现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
+
+
 完整文档分类与维护职责见 [文档索引](README.md)。本文面向第一次阅读或继续维护 Dotty Tutor 的开发者，回答四个问题：代码放在哪里、一次请求如何流动、
 哪些能力直接复用开源实现，以及新增功能时应在哪个边界修改。
 
@@ -65,6 +74,7 @@ dotty-tutor/
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
 │   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
 │   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要（检查内容）
+│   │   ├── public_protection.py # 显式启用的进程内请求/模型配额与并发保护
 │   │   ├── dependency_preflight.py # 运行环境依赖自检：MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL（检查环境，与 ocr_preflight 不合并）
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
@@ -197,7 +207,7 @@ flowchart LR
   Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
-  Runtime --> External["MinerU / Ollama / Codex / Azure / Qwen TTS"]
+  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / Azure / Qwen TTS"]
 ```
 
 依赖只能向右。Runtime、Store 和领域函数不得导入 `app.py`，否则会产生循环依赖并让单元测试必须启动
@@ -210,8 +220,8 @@ flowchart LR
 `scripts/dev-local.sh` 启动的 API。Docker API 运行在 Linux 容器中，不能执行宿主机 macOS
 虚拟环境，也不会自动继承宿主机安装的模型。容器没有 Linux MinerU 或独立 OCR 服务时，
 `/api/ocr` 必须把 MinerU 标记为不可用，前端保留“自动选择”和“PDF 文字层”，避免选择后静默
-回退导致用户误以为扫描图已经被识别。若要在 Docker 中启用 MinerU，应新增 Linux OCR 镜像或
-独立服务，并在 Runtime 适配器中显式注册其健康检查、版本和资源边界。
+回退导致用户误以为扫描图已经被识别。Docker 中可配置 MinerU 云端密钥；也可使用 Linux OCR 镜像或独立服务。
+未配置云端密钥且没有本机 MinerU 时仍明确报告不可用。
 
 ### `app.py` 为什么保持很小
 
@@ -540,3 +550,15 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 新增或修改模板时检查声明变量、递增版本，并运行模板保真和相关业务测试。
 模板不能承载 Python 表达式；上下文选择、输入裁剪和质量门禁留在领域/应用服务。
 详见 [提示词维护说明](../apps/api/prompts/README.md)。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。

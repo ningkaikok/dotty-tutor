@@ -110,3 +110,23 @@ class DeepSeekProviderTests(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Bearer secret")
         request_payload = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request_payload["thinking"], {"type": "disabled"})
+
+
+    def test_provider_http_error_does_not_expose_response_body(self) -> None:
+        import io
+        import urllib.error
+
+        error = urllib.error.HTTPError(
+            "https://api.deepseek.com/chat/completions", 401, "unauthorized", {}, io.BytesIO(b"secret and student text")
+        )
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "secret"}, clear=True), \
+                patch("urllib.request.urlopen", side_effect=error):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 401") as caught:
+                ModelRuntime()._deepseek_json("deepseek-flash", "prompt", {"type": "object"}, 80)
+        self.assertNotIn("student text", str(caught.exception))
+        self.assertNotIn("secret", str(caught.exception))
+
+    def test_missing_key_is_reported_before_request(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "DEEPSEEK_API_KEY"):
+                ModelRuntime()._deepseek_json("deepseek-flash", "prompt", {"type": "object"}, 80)

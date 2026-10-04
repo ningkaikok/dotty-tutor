@@ -240,7 +240,7 @@ def create_app() -> FastAPI:
                         "X-RateLimit-Limit": str(decision.limit),
                     },
                 )
-            if public_protection.is_expensive_path(request.url.path):
+            if public_protection.enabled and public_protection.is_expensive_request(request):
                 model_slot_acquired = await public_protection.acquire_model_slot()
                 if not model_slot_acquired:
                     return reject(

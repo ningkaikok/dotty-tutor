@@ -16,8 +16,9 @@ Supabase 的 PostgreSQL URI，应用会自动规范化为 `postgresql+psycopg://
 `render.yaml` 或 Git。若 Render 因名称冲突给服务追加了后缀，需要同步修改 `CORS_ORIGINS`、
 `TRUSTED_HOSTS` 和 `VITE_API_ORIGIN` 三个值。
 
-Blueprint 默认启用公网 Demo 保护：单 IP 每分钟最多 120 个请求，模型/教材相关接口每分钟最多
-6 个请求、每天最多 60 个请求，同时最多处理 2 个模型请求，单个请求体不能超过 12 MiB。计数器
+Blueprint 默认启用公网 Demo 保护：单 IP 每分钟最多 120 个请求，相关写入路由每分钟最多
+6 个请求、每天最多 60 个请求，同时最多处理 2 个模型路由请求；普通 GET 读取不占模型额度。
+Content-Length 超过 12 MiB 的请求会被拒绝，无该头的流式请求应由网关限制。计数器
 保存在 API 进程内存中，服务重启后会清空；它用于降低滥用和 DeepSeek 费用风险，不等同于用户认证。
 正式公开发布仍应增加登录、边缘限流和用量告警。Render 代理的客户端 IP 由
 `TRUST_PROXY_HEADERS=true` 读取；若改为直连或更换代理，应同步调整该配置。
@@ -484,3 +485,17 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 - 在独立 `dotty-dcaa-quality` Docker 项目执行 `docker compose config --quiet`、`docker compose up --build --detach`；Web `/healthz` 返回 `ok`，`/api/health` 返回 `status=ok/database=postgresql/schema=current`，API/数据库/Web 健康，Worker 运行。采用 59237/59238 隔离端口替代默认 8080/15432；验收后 `docker compose down --volumes` 清理任务专用容器与临时卷。
 
 未执行生产 Supabase 迁移、Render 上线核验或真实 DeepSeek/MinerU 质量评测；真实材料 18 个案例仍待人工复核。已有库部署前须完成 `0016_chapter_courses` 的正式升级与验证。
+
+
+### 2026-10-04 通用适配回合并后同步
+
+main 已接收可选 API 来源、DeepSeek/MinerU 云端适配及显式启用的公网保护。
+发布分支的通用应用、测试、配置模板、本机启动脚本和文档采用 main 版本，
+仅保留 Render 模板、启动脚本、部署说明及 Render 专属修复记录。
+Render Blueprint 继续明确设置域名、云端模型默认值、PUBLIC_PROTECTION_ENABLED=true
+及可信代理头；main 的本机默认配置不自动启用公网保护。
+
+Render 启动脚本使用 app:job_registry，包含教材、章节生成和错题后台任务。
+本次在独立容器中验证迁移至既有 0016_chapter_courses、启动完整 Worker/API、
+健康接口与注册表，组合代码完整后端 725 项、前端 134 项及浏览器 21 项通过。
+此次分支同步没有新增迁移和版本号；CI/本地验证不代表 Render 已重部署或真实云端质量评测。
