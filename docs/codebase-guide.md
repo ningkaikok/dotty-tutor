@@ -100,7 +100,7 @@ dotty-tutor/
 │   │   │                       # 管理契约：domain/prompts/contracts.py
 │   │   │                       # 管理路由：routers/prompt_routes.py
 │   │   ├── infrastructure/     # Runtime、文件和外部 Provider 适配器
-│   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider
+│   │   │   ├── runtime/        # 模型、OCR、审校和 TTS Provider；contracts.py 统一 ModelRequest/ModelResult
 │   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
@@ -215,6 +215,10 @@ flowchart LR
 整个 Web 应用。
 
 ### 本机与 Docker 的 Runtime 边界
+
+模型生成、审核和 Tutor 共用 `infrastructure/runtime/contracts.py` 的 `ModelRequest` / `ModelResult`：
+前者冻结任务、请求模型、超时、回退许可和 Schema 摘要，后者记录实际模型、耗时、错误和 usage。
+两个契约都不持有 Prompt；兼容层生成的 `modelRun` 也只嵌入不含 output 的结果元数据。
 
 运行时下拉框展示的是后端进程的能力，不是浏览器本身的能力。开发脚本会优先探测仓库根目录
 `.mineru-venv/bin/mineru`；因此本机后端（`8010`）能选择 MinerU 时，浏览器应使用
@@ -529,7 +533,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 | 试卷如何安全发布新版 | `usePaperPublication.ts` → `apps/api/routers/publication_routes.py` → `publication_revision.py` → `persistence/learning_store.py` | 显式状态机、不可变版本、事务写入顺序 |
 | 学生作答如何离线同步 | `PublishedPaperApp.tsx` → `usePublishedLearningSession.ts` → `apps/api/routers/learning_routes.py` → `persistence/learning_store.py` → `domain/learning/mastery.py` | 服务端按发布题目解析 knowledgePointId、幂等 attemptId、多小问可判性和最新不同题证据掌握度投影 |
 | 教师如何生成并指派个性化作业 | `TeacherClassroomApp.tsx` → `useAssignmentPlanning.ts` → `apps/api/routers/classroom_routes.py` → `application/services/assignment_planning.py` → `persistence/assignment_planning_store.py` | 脱敏班级证据、确定性回退、教师审阅、确认式幂等指派 |
-| 错题如何多轮陪练 | `useMistakeTutor.ts` → `apps/api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py` | 有限上下文、确定性判题、状态转换权限 |
+| 错题如何多轮陪练 | `useMistakeTutor.ts` → `apps/api/routers/tutoring_routes.py` → `application/services/stateful_tutor.py` → `persistence/tutoring_store.py`；每轮另写 `run_snapshots` | 有限上下文、确定性判题、状态转换权限；同一 `runId` 串联启动、工具策略、完成/失败事件且不保存学生原文 |
 | 内容工作台如何评测后切换陪练模型 | `RuntimeSettings.tsx` → `useTextbookImport.ts` → `POST /api/tutor-model-evaluations` → `application/services/tutor_model_evaluation.py` → `GET /api/tutor-model-evaluations/{run_id}`；确认应用后调用 `POST /api/tutor-models/select` | 当前/候选模型显式配对调用，不影响学生当前模型；50 条已确认合成案例中仅 42 条文本进入预览，图像未传入模型前排除；学生请求不传模型偏好 |
 
 最后运行对应测试，把一个断言临时改坏再恢复，观察哪条业务约束在保护流程。推荐只跟踪一条请求，不要从最长

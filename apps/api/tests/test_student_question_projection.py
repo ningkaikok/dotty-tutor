@@ -142,6 +142,7 @@ class StudentQuestionProjectionTests(unittest.TestCase):
     def test_student_tutor_projections_remove_model_metadata_at_every_level(self) -> None:
         action = {
             "assessment": "partial",
+            "runId": "internal-run-id",
             "modelRun": {"provider": "secret"},
             "tutorTurnPlan": {
                 "teachingAction": "complete-step",
@@ -157,11 +158,13 @@ class StudentQuestionProjectionTests(unittest.TestCase):
         reply = student_tutor_reply({"reply": "继续", "source": "answer-check", "modelRun": {"provider": "secret"}})
         self.assertNotIn("modelRun", thread["messages"][0])
         self.assertNotIn("modelRun", thread["messages"][0]["action"])
+        self.assertNotIn("runId", thread["messages"][0]["action"])
         self.assertNotIn("verification", thread["messages"][0]["action"]["tutorTurnPlan"])
         self.assertNotIn("cacheKey", thread["messages"][0]["action"]["tutorTurnPlan"]["nested"])
         self.assertNotIn("modelRun", thread["messages"][0]["action"]["deduplication"])
         self.assertNotIn("modelRun", reply)
         self.assertNotIn("modelRun", student_tutor_action(action))
+        self.assertNotIn("runId", student_tutor_action(action))
 
 
 class PublicLessonTests(unittest.TestCase):

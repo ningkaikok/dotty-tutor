@@ -1,6 +1,6 @@
 # AI 运行治理与后台任务演进计划
 
-> 状态：G1～G4 第一版已落地，G5 仍在规划中。本文维护运行治理的专题设计与验收标准；当前开发顺序统一见 [工程路线图](engineering-roadmap.md)。
+> 状态：G1～G5 第一版与陪练全链路事件已落地。本文维护运行治理的专题设计与验收标准；当前开发顺序统一见 [工程路线图](engineering-roadmap.md)。
 
 Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL 持久化等基础能力。下一步的重点不是
 引入更多代理框架，而是让一次 AI 处理过程可以被复现、观察、取消和评测。本计划参考通用 Agent Platform
@@ -26,7 +26,7 @@ Dotty Tutor 已经拥有模型、OCR、审校、TTS、状态机和 PostgreSQL �
 | 模型调用 | `infrastructure/runtime/model_runtime.py` 统一适配 Ollama、Codex 和 Mock；运行摘要记录耗时、token、Provider 尝试次数和 Schema 降级 | 继续按真实运行补齐跨任务成本分析 |
 | OCR | 页面路由、局部升级、质量门禁、内容寻址缓存，以及由 PostgreSQL Job Store + Worker 执行的 PDF/批次流程 | 已实现整卷系统性失败熔断、部分成功汇总及依赖自检；继续按真实故障扩充回归 |
 | 状态 | `upload_jobs` 保存教材进度，`background_jobs` 保存后台执行状态 | 为整套重新审核等后续长任务复用同一 Job Store |
-| 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情 | 将 `run_id` 继续贯穿陪练与后续 Worker 任务 |
+| 可观测性 | JSON 日志、请求 ID、运行快照、任务租约和失败详情；陪练每轮已有独立 `run_id` | 将 `run_id` 继续贯穿后续 Worker 任务 |
 | 质量 | 单元测试、Playwright、结构质量门禁、脱敏离线语料、Badcase 回放和 Judge 报告 | 用真实运行持续扩充样本并建立学习效果报告 |
 
 ```mermaid
@@ -49,7 +49,7 @@ flowchart LR
 
 ## G1：不可变运行快照（已落地）
 
-教材内容生产的单题修复、刷新 OCR、批次重生成和整套重新审核已经创建 `RunSnapshot`，至少记录：
+教材内容生产的单题修复、刷新 OCR、批次重生成、整套重新审核和每轮错题陪练已经创建 `RunSnapshot`，至少记录：
 
 - `runId`、`taskType` 和创建时间；
 - 生成模型、审核模型和 OCR Provider；
@@ -58,6 +58,10 @@ flowchart LR
 
 运行开始时从当前 Runtime 的实际选择冻结配置；用户切换模型只影响下一次运行，避免同一批题目前后使用不同配置。
 题目、审校记录和日志只保存 `runId` 引用，详细配置由运行快照统一解释。
+
+陪练使用 `operation=tutor_turn`、`scope=tutor`；内部消息 action 保存 `runId`，学生响应投影移除该字段。
+成功摘要只保留阶段转换、assessment、输入模式、回复来源、Provider/Model、回退标记和工具决策计数；
+失败摘要只保留异常类型，不把学生输入、模型回复或 Provider 原始错误写入快照。
 
 `run_snapshots` 只允许 `running → succeeded/failed` 一次状态收敛，配置字段不可更新；`question_revisions`
 为追加写入，旧 payload 不被覆盖。当前 `batch_questions` 物化视图与 revision 证据通过同一事务写入，失败时保留
@@ -70,7 +74,7 @@ flowchart LR
 - 服务重启后仍能查询该运行使用的实际模型与版本；
 - Mock、Ollama 和 Codex 路径均有契约测试。
 
-## G2：稳定的运行事件（内容生产链路已落地）
+## G2：稳定的运行事件（内容生产与陪练链路已落地）
 
 在现有 JSON 日志上统一事件名和公共字段，不立即新建事件平台。建议的最小事件集合：
 
@@ -84,15 +88,19 @@ question.quarantined
 publication.created
 run.completed
 run.failed
+tutor.turn.started
+tutor.tool.policy
+tutor.turn.completed
+tutor.turn.failed
 ```
 
 公共字段为 `run_id`、`upload_id`、`question_id`、`stage`、`provider`、`duration_ms` 和 `status`。敏感
 文本、学生答案、模型密钥和原始教材内容不能进入日志。
 
 验收标准：给定一个 `run_id`，能够仅通过结构化日志还原执行顺序、耗时、Provider、重试和最终状态。
-内容生产已经将运行摘要另存 `run_snapshots`，并通过 `GET /api/runs/{runId}` 查询；其余日志仍保持 JSON 输出，
+内容生产与陪练已经将运行摘要另存 `run_snapshots`，并通过 `GET /api/runs/{runId}` 查询；其余日志仍保持 JSON 输出，
 避免重复建设事件平台。内容生产的 `run_id` 已出现在生成、质量修复/隔离、批次 OCR 结果摘要、发布和
-API 返回中；陪练与整套重新审核等后续长任务的全链路事件仍按技术路线图逐步补齐。
+API 返回中；陪练用内部 action 和结构化事件关联同一 `run_id`，学生 API 不暴露内部运行标识。
 
 ## G3：PostgreSQL Job Store 与单 Worker（已落地）
 
@@ -155,7 +163,7 @@ Provider/Model/Prompt 版本；比较器只有在这些比较条件一致时才�
 已知缺陷特征变化时该 job 非零退出，让必需检查 `backend` 变红、阻止合并。Judge/Leaderboard
 仍然只能按需手动运行，不进入这条链路。
 
-## G5：轻量 Model Gateway 契约
+## G5：轻量 Model Gateway 契约（已落地）
 
 当运行快照和事件稳定后，再把当前 Runtime 收敛为两个数据契约：
 
@@ -169,6 +177,12 @@ ModelResult
 
 Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显式允许，并在结果、日志和界面中展示；审核任务
 不能在无提示的情况下回退到明显能力不足的模型。
+
+当前 `infrastructure/runtime/contracts.py` 已提供内容无关的 `ModelRequest` / `ModelResult` 值对象；
+`ModelRuntime.generate_json` 与 `generate_json_as` 在调用边界统一构造二者，再适配为兼容的 `modelRun`。
+运行记录同时保留 requested 与 actual Provider/Model、`allowFallback`、Schema 摘要、耗时、错误和 usage，
+但不复制 Prompt 或模型 output。现阶段没有自动跨 Provider 回退：所有模型请求默认 `allowFallback=false`；
+Tutor、审核和业务层已有的确定性降级仍由各自策略显式执行并单独标记，不能伪装成 Gateway 成功。
 
 ## 暂不引入的能力
 
@@ -185,6 +199,6 @@ Gateway 仍然是后端模块，不单独部署。回退必须由任务策略显
 
 ## 后续范围
 
-G1～G4 第一版已经落地，不再按旧分支名重复排期。G5、陪练全链路事件和整套重新审核后台化仍是后续项，
+G1～G5 第一版已经落地，不再按旧分支名重复排期。陪练全链路事件已落地，整套重新审核后台化仍是后续项，
 是否推进由 [工程路线图](engineering-roadmap.md) 的当前批次需求决定。
 修改专题设计时同步架构和 API 描述，并保留取消、租约、幂等、失败预算与不可变证据的回归。

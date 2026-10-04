@@ -112,6 +112,166 @@ class RuntimeConfigSnapshot:
         }
 
 
+@dataclass(frozen=True)
+class ModelRequest:
+    """Provider-independent policy for one structured model call.
+
+    The request intentionally contains no prompt or source content.  It is safe
+    to attach to logs and run snapshots while the provider adapter receives the
+    prompt and JSON Schema separately.
+    """
+
+    task: str
+    provider: str
+    model: str
+    timeout: float
+    allow_fallback: bool
+    schema_version: str
+    runtime: str = "generation"
+
+    def __post_init__(self) -> None:
+        for field_name in ("task", "provider", "model", "schema_version", "runtime"):
+            if not str(getattr(self, field_name)).strip():
+                raise ValueError(f"ModelRequest.{field_name} 不能为空")
+        if self.timeout <= 0:
+            raise ValueError("ModelRequest.timeout 必须大于 0")
+        if not isinstance(self.allow_fallback, bool):
+            raise ValueError("ModelRequest.allow_fallback 必须是布尔值")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "task": self.task,
+            "provider": self.provider,
+            "model": self.model,
+            "timeout": self.timeout,
+            "allowFallback": self.allow_fallback,
+            "schemaVersion": self.schema_version,
+            "runtime": self.runtime,
+        }
+
+
+@dataclass(frozen=True)
+class ModelResult:
+    """Normalized result metadata for one structured model call.
+
+    ``output`` stays available to the immediate caller but is deliberately
+    omitted from ``to_run`` so model responses are not duplicated into audit
+    records.  ``actual_provider`` and ``actual_model`` make any future fallback
+    visible instead of letting callers infer it from the requested values.
+    """
+
+    output: dict[str, Any] | None
+    actual_provider: str
+    actual_model: str
+    duration_ms: float
+    error: dict[str, str] | None
+    usage: dict[str, int | None]
+    fallback: bool = False
+    fallback_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.actual_provider.strip() or not self.actual_model.strip():
+            raise ValueError("ModelResult 必须记录实际 Provider 和 Model")
+        if self.duration_ms < 0:
+            raise ValueError("ModelResult.duration_ms 不能小于 0")
+        if (self.output is None) == (self.error is None):
+            raise ValueError("ModelResult 必须且只能包含 output 或 error")
+        if self.fallback and not str(self.fallback_reason or "").strip():
+            raise ValueError("ModelResult 回退时必须记录 fallback_reason")
+
+    @classmethod
+    def succeeded(
+        cls,
+        output: dict[str, Any],
+        *,
+        actual_provider: str,
+        actual_model: str,
+        duration_ms: float,
+        usage: Mapping[str, int | None] | None = None,
+        fallback: bool = False,
+        fallback_reason: str | None = None,
+    ) -> "ModelResult":
+        return cls(
+            output=output,
+            actual_provider=actual_provider,
+            actual_model=actual_model,
+            duration_ms=duration_ms,
+            error=None,
+            usage=dict(usage or {}),
+            fallback=fallback,
+            fallback_reason=fallback_reason,
+        )
+
+    @classmethod
+    def failed(
+        cls,
+        error: Exception,
+        *,
+        actual_provider: str,
+        actual_model: str,
+        duration_ms: float,
+        fallback: bool = False,
+        fallback_reason: str | None = None,
+    ) -> "ModelResult":
+        return cls(
+            output=None,
+            actual_provider=actual_provider,
+            actual_model=actual_model,
+            duration_ms=duration_ms,
+            error={"type": type(error).__name__, "message": str(error)[:500]},
+            usage={},
+            fallback=fallback,
+            fallback_reason=fallback_reason,
+        )
+
+    def metadata(self) -> dict[str, Any]:
+        """Return the content-free portion that may be persisted or logged."""
+        return {
+            "actualProvider": self.actual_provider,
+            "actualModel": self.actual_model,
+            "durationMs": self.duration_ms,
+            "error": dict(self.error) if self.error else None,
+            "usage": dict(self.usage),
+            "fallback": self.fallback,
+            "fallbackReason": self.fallback_reason,
+        }
+
+    def to_run(
+        self,
+        request: ModelRequest,
+        *,
+        prompt_chars: int,
+        max_output_tokens: int,
+        provider_attempts: int,
+        schema_fallback: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        """Adapt the contracts to the existing ``modelRun`` response shape."""
+        metadata = self.metadata()
+        run = {
+            "requestedProvider": request.provider,
+            "requestedModel": request.model,
+            "provider": self.actual_provider,
+            "model": self.actual_model,
+            "actualProvider": self.actual_provider,
+            "actualModel": self.actual_model,
+            "fallback": self.fallback,
+            "fallbackReason": self.fallback_reason,
+            "promptChars": prompt_chars,
+            "maxOutputTokens": max_output_tokens,
+            "durationMs": self.duration_ms,
+            "usage": dict(self.usage),
+            "providerAttempts": provider_attempts,
+            "schemaFallback": dict(schema_fallback),
+            "modelRequest": request.to_dict(),
+            "modelResult": metadata,
+        }
+        if self.error:
+            # Preserve the legacy top-level string while the nested contract
+            # exposes a structured type/message pair.
+            run["error"] = self.error["message"]
+        return run
+
+
 class RuntimeExecutionError(RuntimeError):
     """模型/OCR 执行失败，同时携带冻结的配置快照。"""
 
@@ -139,6 +299,8 @@ def attach_runtime_config(run: dict[str, Any], snapshot: RuntimeConfigSnapshot) 
 
 
 __all__ = [
+    "ModelRequest",
+    "ModelResult",
     "PromptParts",
     "RuntimeConfigSnapshot",
     "RuntimeExecutionError",
