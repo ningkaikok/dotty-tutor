@@ -824,3 +824,15 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 上下文裁剪、JSON Schema、来源保真、确定性判题和发布质量门禁继续由业务代码维护。
 在线变量预览不持久化变量或学生输入；正文应仅保存通用教学模板。审核、变式、个性化作业、
 旧单阶段生成及评测专用讲解模板暂未迁移。维护与启用说明见 `apps/api/prompts/README.md`。
+
+
+### 可选公网请求保护
+
+app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTION_ENABLED 默认 false；
+不替代角色、资源归属和会话验证。启用时，每客户端默认 120 次/60 秒普通请求，
+6 次/60 秒及 60 次/24 小时模型工作请求，同时最多 2 个模型路由请求。
+健康检查与 OPTIONS 豁免，普通 GET 读取不占模型工作额度。计数进程内保存，重启重置，
+多副本与后台 Worker 不共享该并发限制。TRUST_PROXY_HEADERS 默认 false，仅可信代理后才启用。
+Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
+无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
+429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
