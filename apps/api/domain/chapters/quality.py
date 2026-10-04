@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -11,7 +12,29 @@ from domain.contracts.lesson import lesson_document_from_payload
 ENGLISH_KINDS = {"word_meaning", "reference", "explicit", "inference"}
 
 
-def quality_draft_schema(subject: str) -> dict[str, Any]:
+def draft_source_excerpt(source: Mapping[str, Any], *, text_budget: int = 12_000) -> dict[str, Any]:
+    """Bound a teaching draft to original sentence evidence, retaining IDs and page numbers."""
+    pages: list[dict[str, Any]] = []
+    remaining = text_budget
+    for page in source.get("pages", []):
+        selected = []
+        for sentence in page.get("sentences", []):
+            size = len(sentence["text"])
+            if size > remaining:
+                break
+            selected.append(sentence)
+            remaining -= size
+        if selected:
+            pages.append({"page": page["page"], "text": "\n".join(s["text"] for s in selected),
+                          "sentences": selected, "regions": page.get("regions", [])})
+        if len(selected) < len(page.get("sentences", [])) or remaining <= 0:
+            break
+    if not pages:
+        raise ChapterDraftValidationError("来源没有可用于草稿的句子证据，请复核原文")
+    return {"sourceRevisionId": source["sourceRevisionId"], "pages": pages}
+
+
+def quality_draft_schema(subject: str, *, source: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Return a strict JSON schema accepted by ModelRuntime structured output."""
     citation = {
         "type": "object", "additionalProperties": False,
@@ -24,6 +47,18 @@ def quality_draft_schema(subject: str) -> dict[str, Any]:
         },
         "required": ["sourceRevisionId", "page", "sentenceId", "regionId", "quote"],
     }
+    if source is not None:
+        variants = []
+        for page in source["pages"]:
+            option = copy.deepcopy(citation)
+            properties = option["properties"]
+            properties["sourceRevisionId"]["enum"] = [source["sourceRevisionId"]]
+            properties["page"]["enum"] = [page["page"]]
+            properties["sentenceId"] = {"type": "string", "enum": [sentence["sentenceId"] for sentence in page["sentences"]]}
+            properties["regionId"] = {"type": "null"}
+            properties["quote"] = {"type": "null"}
+            variants.append(option)
+        citation = {"anyOf": variants}
     citations = {"type": "array", "minItems": 1, "maxItems": 20, "items": citation}
 
     def section(properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
@@ -83,7 +118,11 @@ def _citations(value: Any, source: Mapping[str, Any]) -> list[dict[str, Any]]:
         if quote is not None:
             if not isinstance(quote, str) or not quote.strip() or not sentence or (quote.strip() != sentence.get("text", "").strip() and quote.strip() not in sentence.get("text", "")):
                 raise ChapterDraftValidationError("引用文本与来源句子不一致")
-        result.append({key: raw[key] for key in ("sourceRevisionId", "page", "sentenceId", "regionId", "quote") if key in raw})
+        reference = {key: raw[key] for key in ("sourceRevisionId", "page", "sentenceId", "regionId", "quote") if key in raw}
+        if quote is None and sentence:
+            # Resolve verbatim text from the validated ID; never ask the model to retype OCR.
+            reference["quote"] = sentence["text"]
+        result.append(reference)
     return result
 
 

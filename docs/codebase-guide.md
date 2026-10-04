@@ -135,7 +135,7 @@ dotty-tutor/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
 │   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
 │   │   │   ├── apps/home/      # 角色入口选择
-│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程，独立错误及搜索
+│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程、独立错误及搜索；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
 │   │   │   ├── apps/chapters/  # 章节工作台、来源/课程编辑及学生作答/教师复核 Hook
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
@@ -283,7 +283,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 
 ### 统一教材入口与课程链路
 
-内容生产统一从 `/studio` 的 `MaterialsApp` 进入。`useMaterials` 分别读取既有 `/api/library` 与
+内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
 `/api/chapters`，合并展示而不搬迁数据；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
 或带 `uploadId` 进入 `/studio/chapters/new`，自动填写名称与来源。上传及旧练习编辑位于
 `/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
@@ -299,7 +299,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
   → domain/chapters/source.py / templates.py（来源定位与有限课程纯构造）
   → application/services/chapter_courses.py（复核、修订、发布与作答编排）
   → AI：application/chapter_jobs.py → 既有 Job Store/Worker → ModelRuntime
-       → domain/chapters/quality.py → 比较来源/记录版本后保存待审草稿
+       → domain/chapters/quality.py（有界原句节选、引用定位及原文回填）→ 比较来源/记录版本后保存待审草稿
   → persistence/chapter_store.py（章节草稿及来源版本）
   → persistence/learning_store.py（已有课程与不可变发布快照）
   → 数学：已有确定性判题、exercise_attempts 与掌握度派生

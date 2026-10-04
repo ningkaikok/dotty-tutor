@@ -38,7 +38,8 @@ def build_chapter_registry(service: Any) -> TaskRegistry:
         from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
         from infrastructure.runtime.ocr_runtime import runtime
         try:
-            with use_job_runtime_snapshot(payload):
+            # Automatic course preparation uses page routing even for legacy queued snapshots.
+            with use_job_runtime_snapshot(payload), runtime.use_selection("auto"):
                 return MaterialCourseService(service, runtime).run(payload["uploadId"], cancellation_check)
         except (ValueError, LookupError) as error:
             raise TerminalJobError(str(error)) from error

@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from observability import log_event
 
 
-def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict[str, Any]) -> APIRouter:
+def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict[str, Any], job_store: Any = None) -> APIRouter:
     """Build the library adapter without importing the ASGI composition root."""
     router = APIRouter(tags=["textbook-library"])
 
@@ -25,6 +25,10 @@ def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict
         job = upload_registry.get(upload_id)
         if not store.soft_delete_import(upload_id):
             raise HTTPException(status_code=404, detail="教材不存在或已删除")
+        if job_store is not None:
+            preparation = job_store.latest_for_payload("material.courses.create", "uploadId", upload_id)
+            if preparation and preparation["status"] in {"queued", "running"}:
+                job_store.request_cancel(preparation["jobId"])
         # 先更新持久化行，再清理进程内缓存，避免数据库失败时页面状态已被提前删除。
         # 源文件与数据库记录仍保留，后续可以增加恢复入口。
         for payload in job.get("batchPayloads", {}).values():

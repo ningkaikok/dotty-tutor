@@ -57,6 +57,7 @@ pnpm check:api     # 只校验，过期时返回非零状态
 | --- | --- | --- |
 | `POST` | `/api/chapters` | 创建数学或英语章节来源草稿 |
 | `GET` | `/api/chapters` | 教师列出章节工作台摘要，草稿不属于学生目录 |
+| `DELETE` | `/api/chapters/{chapter_id}` | 教师软删除课程，取消当前生成任务，保留来源、发布及作答记录；已删除课程返回 `404` |
 | `GET` | `/api/chapters/{chapter_id}` | 教师读取来源修订、当前课程与复核项 |
 | `POST` | `/api/chapters/{chapter_id}/revisions` | 追加来源修订，保留历史发布版本与作答 |
 | `POST` | `/api/chapters/{chapter_id}/generate` | 从当前来源生成有限课程模板；不调用新 OCR，不自动发布 |
@@ -345,7 +346,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 统一上传页面在单页表单和 PDF 完成请求中传 `autoDetect=true`（旧客户端默认 `false` 保持题目流程）。
 首批 OCR 自动判断 `materialKind: paper | textbook | unknown`，附 `detectionReason`；教材或类型不明时
 保存原文件和 OCR，响应为来源预览，不含 `modelRun`/`questionPayload`，`questionPayloads=[]`，不执行整卷拆题。
-`GET /api/library` 也返回 `materialKind`，旧记录为 `unknown`。
+`GET /api/library` 也返回 `materialKind`，旧记录缺少类型时按已有文件名与持久化原文补充识别；依据不足仍为 `unknown`。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -559,3 +560,7 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+
+自动课程任务优先采用 PDF 实际章节目录；仅在缺目录时扫描前 80 页。OCR 使用任务内自动路由，不改变上传的全局选择；任务消息包含当前章及物理页码，失败前已读取文本保存以供重试。列表删除仅隐藏记录，删除课程不会删除来源 PDF 或历史发布。
+
+长章节的单次 AI 草稿使用最多 12000 字符的原句节选，并在课程里标明教学范围；完整来源修订不被截断。模型提交引用句子 ID，服务端核验所属页及修订后回填逐字原句；若模型自行提供伪造引文仍会拒绝。

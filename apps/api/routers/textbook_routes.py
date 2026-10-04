@@ -666,6 +666,7 @@ def get_pdf_artifact(upload_id: str, batch_id: str, filename: str) -> FileRespon
 
 
 router.include_router(build_library_router(
+    job_store=job_store,
     store=store,
     upload_registry=upload_registry,
     lesson_store=lesson_store,
