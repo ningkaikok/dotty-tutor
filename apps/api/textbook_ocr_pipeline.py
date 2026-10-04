@@ -205,6 +205,7 @@ def resolve_routed_ocr_source(
     cache_dir: Path,
     content_hash: str,
     refresh: bool = False,
+    reader: PdfReader | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """按页解析 PDF，并返回当前契约的 ``ocrRun`` 审计记录。
 
@@ -227,7 +228,7 @@ def resolve_routed_ocr_source(
             "questionSegmentationVersion": QUESTION_SEGMENTATION_VERSION,
         }, provider="manual", prompt="pasted-text")
 
-    reader = PdfReader(str(source_path))
+    reader = reader if reader is not None else PdfReader(str(source_path))
     requested = runtime.selection.provider
     mineru_available = bool(runtime.mineru_command())
     routes: list[dict[str, Any]] = []

@@ -29,3 +29,32 @@ it("user Given upload records cannot be fetched When opening the library Then En
   expect(screen.getByRole("alert")).toHaveTextContent("已上传教材暂时无法读取");
   expect(screen.queryByText("从一本教材开始")).not.toBeInTheDocument();
 });
+
+it("user Given a textbook and paper When filtering and deleting the paper Then only the confirmed paper disappears", async () => {
+  const paper = { ...upload, uploadId: "exam", filename: "中考试卷.pdf", materialKind: "paper" };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(init?.method === "DELETE" ? { status: "deleted" } : { items: String(url).endsWith("/api/library") ? [{ ...upload, materialKind: "textbook" }, paper] : [course] }), { headers: { "Content-Type": "application/json" } }));
+  render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
+  await screen.findByRole("heading", { name: paper.filename });
+  fireEvent.click(screen.getByRole("button", { name: "试卷" }));
+  expect(screen.queryByRole("heading", { name: upload.filename })).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "自动制作课程" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: `删除 ${paper.filename}` }));
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
+  expect(screen.getByRole("heading", { name: paper.filename })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: `删除 ${paper.filename}` }));
+  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+  await screen.findByRole("heading", { name: "没有找到匹配的材料" });
+  fireEvent.click(screen.getByRole("button", { name: "教材与课程" }));
+  expect(screen.getByRole("heading", { name: upload.filename })).toBeVisible();
+  expect(screen.getByRole("heading", { name: course.title })).toBeVisible();
+});
+it("user Given course deletion fails When confirming deletion Then the course remains with a retryable error", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(init?.method === "DELETE" ? { detail: "暂时无法删除" } : { items: String(url).endsWith("/api/library") ? [upload] : [course] }), { status: init?.method === "DELETE" ? 503 : 200, headers: { "Content-Type": "application/json" } }));
+  render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
+  await screen.findByRole("heading", { name: course.title });
+  fireEvent.click(screen.getByRole("button", { name: `删除 ${course.title}` }));
+  fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法删除");
+  expect(screen.getByRole("heading", { name: course.title })).toBeVisible();
+  expect(screen.getByRole("button", { name: "确认删除" })).toBeEnabled();
+});

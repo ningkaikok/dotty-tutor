@@ -27,6 +27,8 @@ from typing import Any, Literal
 from infrastructure.runtime import selection_store
 from infrastructure.runtime.capabilities import HEALTH_BOOK
 from infrastructure.runtime.contracts import (
+    ModelRequest,
+    ModelResult,
     PromptParts,
     RuntimeConfigSnapshot,
     RuntimeExecutionError,
@@ -287,6 +289,7 @@ class ModelRuntime:
         *,
         selection: ModelSelection | None = None,
         task: str | None = None,
+        allow_fallback: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """用当前或显式指定的模型返回满足 Schema 的对象及可追踪运行记录。
 
@@ -309,12 +312,24 @@ class ModelRuntime:
             prompt=prompt,
             runtime_name=self.runtime_name,
         )
+        model_request = ModelRequest(
+            task=task_name,
+            provider=selection.provider,
+            model=selection.model,
+            timeout=float(snapshot.timeout or 240.0),
+            allow_fallback=allow_fallback,
+            schema_version=str(snapshot.schema or "unknown"),
+            runtime=self.runtime_name,
+        )
         started = time.perf_counter()
         prompt_chars = len(prompt)
         log_event(
             "model.request.started",
             provider=selection.provider,
             model=selection.model,
+            task=model_request.task,
+            allow_fallback=model_request.allow_fallback,
+            schema_version=model_request.schema_version,
             prompt_chars=prompt_chars,
             max_output_tokens=max_tokens,
         )
@@ -329,14 +344,16 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型调用失败：{error}", snapshot=snapshot, cause=error
             )
-            failed_run = self._build_run(
-                requested_provider=selection.provider,
-                provider=selection.provider,
-                model=selection.model,
-                started=started,
+            model_result = ModelResult.failed(
+                execution_error,
+                actual_provider=selection.provider,
+                actual_model=selection.model,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
+            failed_run = model_result.to_run(
+                model_request,
                 prompt_chars=prompt_chars,
-                max_tokens=max_tokens,
-                usage=None,
+                max_output_tokens=max_tokens,
                 provider_attempts=self._provider_attempts(error),
                 schema_fallback=self._schema_fallback(error),
             )
@@ -364,6 +381,11 @@ class ModelRuntime:
                 level=40,
                 provider=selection.provider,
                 model=selection.model,
+                actual_provider=model_result.actual_provider,
+                actual_model=model_result.actual_model,
+                fallback=model_result.fallback,
+                task=model_request.task,
+                allow_fallback=model_request.allow_fallback,
                 duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 error_type=type(execution_error).__name__,
                 error=str(execution_error)[:300],
@@ -389,21 +411,32 @@ class ModelRuntime:
             "model.request.completed",
             provider=selection.provider,
             model=selection.model,
+            actual_provider=selection.provider,
+            actual_model=selection.model,
+            fallback=False,
+            task=model_request.task,
+            allow_fallback=model_request.allow_fallback,
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        run = self._build_run(
-            requested_provider=selection.provider,
-            provider=selection.provider,
-            model=selection.model,
-            started=started,
+        model_result = ModelResult.succeeded(
+            result,
+            actual_provider=selection.provider,
+            actual_model=selection.model,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            usage={
+                "promptTokens": usage.get("prompt_tokens") if usage else None,
+                "outputTokens": usage.get("output_tokens") if usage else None,
+            },
+        )
+        run = model_result.to_run(
+            model_request,
             prompt_chars=prompt_chars,
-            max_tokens=max_tokens,
-            usage=usage,
+            max_output_tokens=max_tokens,
             provider_attempts=self._provider_attempts_from_usage(usage),
             schema_fallback=self._schema_fallback_from_usage(usage),
         )
         attach_runtime_config(run, snapshot)
-        return result, run
+        return model_result.output or {}, run
 
     def generate_json_as(
         self,
@@ -413,6 +446,8 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int = 1200,
         image_paths: list[Path] | None = None,
+        *,
+        allow_fallback: bool = False,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """用显式 provider/model 调用模型，供独立审核流程使用。
 
@@ -428,12 +463,24 @@ class ModelRuntime:
             prompt=prompt,
             runtime_name="review",
         )
+        model_request = ModelRequest(
+            task="review",
+            provider=provider,
+            model=model,
+            timeout=float(snapshot.timeout or 240.0),
+            allow_fallback=allow_fallback,
+            schema_version=str(snapshot.schema or "unknown"),
+            runtime="review",
+        )
         started = time.perf_counter()
         prompt_chars = len(prompt)
         log_event(
             "model.review.started",
             provider=provider,
             model=model,
+            task=model_request.task,
+            allow_fallback=model_request.allow_fallback,
+            schema_version=model_request.schema_version,
             image_count=len(images),
             prompt_chars=prompt_chars,
             max_output_tokens=max_tokens,
@@ -449,14 +496,16 @@ class ModelRuntime:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
             )
-            failed_run = self._build_run(
-                requested_provider=provider,
-                provider=provider,
-                model=model,
-                started=started,
+            model_result = ModelResult.failed(
+                execution_error,
+                actual_provider=provider,
+                actual_model=model,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
+            failed_run = model_result.to_run(
+                model_request,
                 prompt_chars=prompt_chars,
-                max_tokens=max_tokens,
-                usage=None,
+                max_output_tokens=max_tokens,
                 provider_attempts=self._provider_attempts(error),
                 schema_fallback=self._schema_fallback(error),
             )
@@ -480,6 +529,11 @@ class ModelRuntime:
                 level=30,
                 provider=provider,
                 model=model,
+                actual_provider=model_result.actual_provider,
+                actual_model=model_result.actual_model,
+                fallback=model_result.fallback,
+                task=model_request.task,
+                allow_fallback=model_request.allow_fallback,
                 image_count=len(images),
                 duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 error_type=type(execution_error).__name__,
@@ -504,22 +558,33 @@ class ModelRuntime:
             "model.review.completed",
             provider=provider,
             model=model,
+            actual_provider=provider,
+            actual_model=model,
+            fallback=False,
+            task=model_request.task,
+            allow_fallback=model_request.allow_fallback,
             image_count=len(images),
             duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        run = self._build_run(
-            requested_provider=provider,
-            provider=provider,
-            model=model,
-            started=started,
+        model_result = ModelResult.succeeded(
+            result,
+            actual_provider=provider,
+            actual_model=model,
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            usage={
+                "promptTokens": usage.get("prompt_tokens") if usage else None,
+                "outputTokens": usage.get("output_tokens") if usage else None,
+            },
+        )
+        run = model_result.to_run(
+            model_request,
             prompt_chars=prompt_chars,
-            max_tokens=max_tokens,
-            usage=usage,
+            max_output_tokens=max_tokens,
             provider_attempts=self._provider_attempts_from_usage(usage),
             schema_fallback=self._schema_fallback_from_usage(usage),
         )
         attach_runtime_config(run, snapshot)
-        return result, run
+        return model_result.output or {}, run
 
     @staticmethod
     def _provider_attempts_from_usage(usage: dict[str, Any] | None) -> int:
@@ -560,36 +625,6 @@ class ModelRuntime:
         # by the caller; these attributes carry only safe execution metadata.
         error.provider_attempts = provider_attempts  # type: ignore[attr-defined]
         error.schema_fallback = {"used": used, "reason": reason}  # type: ignore[attr-defined]
-
-    @staticmethod
-    def _build_run(
-        *,
-        requested_provider: str,
-        provider: str,
-        model: str,
-        started: float,
-        prompt_chars: int,
-        max_tokens: int,
-        usage: dict[str, Any] | None,
-        provider_attempts: int,
-        schema_fallback: dict[str, Any],
-    ) -> dict[str, Any]:
-        usage = usage or {}
-        return {
-            "requestedProvider": requested_provider,
-            "provider": provider,
-            "model": model,
-            "fallback": False,
-            "promptChars": prompt_chars,
-            "maxOutputTokens": max_tokens,
-            "durationMs": round((time.perf_counter() - started) * 1000, 1),
-            "usage": {
-                "promptTokens": usage.get("prompt_tokens"),
-                "outputTokens": usage.get("output_tokens"),
-            },
-            "providerAttempts": provider_attempts,
-            "schemaFallback": schema_fallback,
-        }
 
     def _ollama_json(
         self,

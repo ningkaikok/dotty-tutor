@@ -51,6 +51,10 @@ def build_chapter_router(service: Any) -> APIRouter:
         from infrastructure.runtime.ocr_runtime import runtime
         return call(MaterialCourseService(service, runtime).enqueue, upload_id)
 
+    @router.delete("/{chapter_id}")
+    def delete_chapter(chapter_id: str) -> dict[str, str]:
+        return call(service.delete, chapter_id)
+
     @router.get("/{chapter_id}", response_model=ChapterResponse)
     def get_chapter(chapter_id: str) -> dict[str, Any]:
         return call(service.get, chapter_id)

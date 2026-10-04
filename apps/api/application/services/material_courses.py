@@ -33,9 +33,11 @@ class MaterialCourseService:
         if self.jobs is None:
             raise ValueError("课程生成队列尚未就绪")
         from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
+        snapshot = current_job_runtime_snapshot()
+        snapshot["ocr"] = {"provider": "auto"}
         return self.jobs.create_job(
             "material.courses.create",
-            {"uploadId": upload_id, "runtimeSnapshot": current_job_runtime_snapshot()},
+            {"uploadId": upload_id, "runtimeSnapshot": snapshot},
             idempotency_key=f"material:{upload_id}:first-five-v1", max_attempts=1,
         )
 
@@ -43,20 +45,19 @@ class MaterialCourseService:
     def _outline(reader: PdfReader) -> list[dict[str, Any]]:
         found: list[dict[str, Any]] = []
         def walk(entries: list[Any]) -> None:
-            parent_matched = False
             for entry in entries:
                 if isinstance(entry, list):
-                    if not parent_matched:
-                        walk(entry)
+                    walk(entry)
                 elif CHAPTER_HEADING.fullmatch(str(entry.get("/Title", "")).strip()):
                     number = reader.get_destination_page_number(entry)
                     if number is not None:
                         found.append({"title": str(entry["/Title"]), "page": number + 1})
-                    parent_matched = True
-                else:
-                    parent_matched = False
         walk(reader.outline)
-        return headings([{"page": item["page"], "text": item["title"]} for item in found])
+        # Books may nest actual chapters under large units; prefer the chapter level.
+        chapters = [item for item in found if re.match(r"^(?:chapter\s*\d|第[一二三四五六七八九十百零〇0-9]+章)", item["title"], re.I)]
+        units = [item for item in found if re.match(r"^(?:unit|module)\s*\d|^第[一二三四五六七八九十百零〇0-9]+单元", item["title"], re.I)]
+        selected = chapters or units or found
+        return headings([{"page": item["page"], "text": item["title"]} for item in selected])
 
     def run(self, upload_id: str, cancellation_check: Any) -> dict[str, Any]:
         job = self.store.load_job(upload_id)
@@ -66,6 +67,11 @@ class MaterialCourseService:
         fingerprint = file_hash(path) if path else ""
         pages = {int(p["page"]): p for p in pages_from_ocr(str(job.get("sourceText") or ""))}
         notices: list[str] = []
+        def report(message: str, progress: int) -> None:
+            current = self.jobs.latest_for_payload("material.courses.create", "uploadId", upload_id) if self.jobs else None
+            if current and current["status"] == "running":
+                self.jobs.update_progress(current["jobId"], progress=progress, message=message, worker_id=current["leaseOwner"])
+
         if path:
             reader = PdfReader(path)
             total = len(reader.pages)
@@ -77,7 +83,8 @@ class MaterialCourseService:
             if not starts:
                 # Scan physical pages in order; stop at the sixth boundary, never invent five chunks.
                 for page in range(1, min(total, SCAN_PAGE_LIMIT) + 1):
-                    self._read_page(job, path, fingerprint, page, pages, cancellation_check)
+                    report(f"正在识别章节目录：第 {page} 页（最多扫描 {min(total, SCAN_PAGE_LIMIT)} 页）", 20)
+                    self._read_page(job, path, fingerprint, page, pages, cancellation_check, reader)
                     starts = headings(list(pages.values()))
                     if len(starts) >= 6:
                         break
@@ -87,9 +94,10 @@ class MaterialCourseService:
             else:
                 last_page = total
             ranges = chapter_ranges(starts, last_page, Path(job["filename"]).stem)
-            for chapter in ranges:
+            for index, chapter in enumerate(ranges, start=1):
                 for page in range(chapter["pageStart"], chapter["pageEnd"] + 1):
-                    self._read_page(job, path, fingerprint, page, pages, cancellation_check)
+                    report(f"正在读取第 {index}/{len(ranges)} 章：第 {page} 页（本章 {chapter['pageStart']}–{chapter['pageEnd']} 页）", 50)
+                    self._read_page(job, path, fingerprint, page, pages, cancellation_check, reader)
             if file_hash(path) != fingerprint:
                 raise ValueError("教材原文件发生变化，请重新上传")
         else:
@@ -101,13 +109,19 @@ class MaterialCourseService:
         if any(item["pageEnd"] - item["pageStart"] + 1 == 80 for item in ranges):
             notices.append("单章最多读取 80 页；达到上限的章节页段请复核")
         selected = {page for chapter in ranges for page in range(chapter["pageStart"], chapter["pageEnd"] + 1)}
-        if not all(pages.get(page, {}).get("text", "").strip() for page in selected):
+        if not all(pages.get(page, {}).get("text", "").strip() or "blank" in pages.get(page, {}).get("flags", []) for page in selected):
             raise ValueError("所选章节有页面未识别，原文件已保留，请重试识别")
+        blank_pages = sorted(page for page in selected if "blank" in pages[page].get("flags", []))
+        if blank_pages:
+            notices.append("已保留经预检确认的空白页：" + "、".join(map(str, blank_pages)))
         # Source text remains a page-addressed snapshot; existing published revisions are untouched.
         existing = {int(p["page"]): p for p in pages_from_ocr(str(job.get("sourceText") or ""))}
         existing.update(pages)
         job["sourceText"] = "\n\n".join(f"<!-- page {page} -->\n{existing[page]['text']}" for page in sorted(existing))
+        if any(item["boundaryDetected"] for item in ranges):
+            job["result"] = {**(job.get("result") or {}), "materialKind": "textbook", "detectionReason": "识别到教材章节目录"}
         self.store.save_job(job)
+        report("章节来源已保存，正在安排课程草稿", 85)
         sample = job["filename"] + " " + " ".join(pages[p]["text"] for p in sorted(selected))[:10_000]
         clean_sample = re.sub(r"!\[[^\]]*\]\([^)]*\)|https?://\S+", "", sample)
         latin = len(re.findall(r"[A-Za-z]", clean_sample))
@@ -120,7 +134,7 @@ class MaterialCourseService:
                 raise JobCancelled()
             with self.store.chapter_lock(f"auto:{upload_id}"):
                 chapter = next((c for c in self.store.list_chapters()
-                                if c["title"] == item["title"] and c["sourceRevisions"][0].get("uploadId") == upload_id
+                                if not c.get("deletedAt") and c["title"] == item["title"] and c["sourceRevisions"][0].get("uploadId") == upload_id
                                 and c["sourceRevisions"][0].get("pageStart") == item["pageStart"]
                                 and c["sourceRevisions"][0].get("pageEnd") == item["pageEnd"]), None)
                 if chapter is None:
@@ -135,17 +149,24 @@ class MaterialCourseService:
 
     def _read_page(
         self, job: dict[str, Any], path: Path, fingerprint: str, page: int,
-        pages: dict[int, dict[str, Any]], cancellation_check: Any,
+        pages: dict[int, dict[str, Any]], cancellation_check: Any, reader: PdfReader | None = None,
     ) -> None:
         if cancellation_check():
             raise JobCancelled()
         if pages.get(page, {}).get("text", "").strip():
             return
-        text, _ = resolve_routed_ocr_source(
-            runtime=self.ocr, source_text="", source_path=path, start_page=page - 1, end_page=page - 1,
+        text, audit = resolve_routed_ocr_source(
+            runtime=self.ocr, source_text="", source_path=path, reader=reader, start_page=page - 1, end_page=page - 1,
             asset_dir=Path(job["directory"]) / "assets" / f"chapter-page-{page}",
             asset_url_prefix=f"/api/uploads/{job['uploadId']}/assets/chapter-page-{page}",
             cache_dir=Path(job["directory"]) / "ocr-cache", content_hash=fingerprint,
         )
         resolved = pages_from_ocr(text)
         pages[page] = next((p for p in resolved if p["page"] == page), {"page": page, "text": text.strip()})
+        if not pages[page]["text"].strip() and any(
+            route.get("preflight", {}).get("category") == "blank" for route in audit.get("pageRoutes", [])
+        ):
+            pages[page]["flags"] = ["blank"]
+        # Keep completed OCR across a later failure or cancellation, avoiding paid rereads.
+        job["sourceText"] = "\n\n".join(f"<!-- page {number} -->\n{pages[number]['text']}" for number in sorted(pages))
+        self.store.save_job(job)

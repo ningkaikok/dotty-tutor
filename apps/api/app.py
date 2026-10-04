@@ -54,6 +54,7 @@ from routers.textbook_routes import router as textbook_router
 from routers.tutor_input_routes import build_tutor_input_router
 from routers.tutor_search_routes import build_tutor_search_router
 from routers.tutoring_routes import build_tutoring_router
+from run_audit import RunAudit
 from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
 
@@ -159,6 +160,7 @@ app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
     tutoring_store=tutoring_store,
     tutor=stateful_tutor,
+    run_audit=RunAudit(store),
 ))
 app.include_router(build_tutor_input_router(
     tutoring_store=tutoring_store,

@@ -44,6 +44,25 @@ class MaterialRecognitionTests(unittest.TestCase):
         result = chapter_ranges([{"title": f"Unit {i}", "page": 2 * i - 1} for i in range(1, 8)], 14, "Book")
         self.assertEqual([(r["pageStart"], r["pageEnd"]) for r in result], [(1, 2), (3, 4), (5, 6), (7, 8), (9, 10)])
 
+    def test_user_opens_a_book_with_units_and_nested_chapters_then_actual_chapters_define_the_first_five(self):
+        import io
+
+        from pypdf import PdfReader
+        writer = PdfWriter()
+        for _ in range(20):
+            writer.add_blank_page(width=200, height=300)
+        for unit in range(2):
+            parent = writer.add_outline_item(f"Unit {unit + 1} Writing", unit * 10)
+            for chapter in range(3):
+                writer.add_outline_item(f"Chapter {unit * 3 + chapter + 1} Reading", unit * 10 + chapter * 3, parent=parent)
+        stream = io.BytesIO()
+        writer.write(stream)
+        stream.seek(0)
+        starts = MaterialCourseService._outline(PdfReader(stream))
+        ranges = chapter_ranges(starts, 20, "Book")
+        self.assertEqual([item["title"] for item in ranges], [f"Chapter {i} Reading" for i in range(1, 6)])
+        self.assertEqual(ranges[-1]["pageEnd"], 16)
+
 
 class AutomaticCourseAcceptanceTests(PostgresTestCase):
     def setUp(self):
@@ -77,6 +96,7 @@ class AutomaticCourseAcceptanceTests(PostgresTestCase):
         self.assertEqual(result["chapters"], repeated["chapters"])
         chapters = self.store.list_chapters()
         self.assertEqual(len(chapters), 5)
+        self.assertEqual(self.store.list_imports()[0]["materialKind"], "textbook")
         self.assertEqual(len(self.jobs.list_jobs()), 5)
         self.assertEqual(sorted(c["sourceRevisions"][0]["pageEnd"] for c in chapters), [2, 4, 6, 8, 10])
         for chapter in chapters:
@@ -144,3 +164,42 @@ class AutomaticCourseAcceptanceTests(PostgresTestCase):
             self.service.run("automatic-book", lambda: True)
         self.assertEqual(self.store.list_chapters(), [])
         self.assertIsNotNone(self.store.load_job("automatic-book"))
+
+    def test_user_deletes_a_course_then_it_disappears_but_sources_and_queued_job_history_remain(self):
+        result = self.service.run("automatic-book", lambda: False)
+        chapter_id = result["chapters"][0]["chapterId"]
+        job = self.jobs.latest_for_payload("chapter.lesson.generate", "chapterId", chapter_id)
+        app = FastAPI()
+        app.include_router(build_chapter_router(self.chapters))
+        with TestClient(app) as client:
+            response = client.delete(f"/api/chapters/{chapter_id}")
+            self.assertEqual(response.status_code, 200)
+            self.assertNotIn(chapter_id, [c["chapterId"] for c in client.get("/api/chapters").json()["items"]])
+            self.assertEqual(client.get(f"/api/chapters/{chapter_id}").status_code, 404)
+            self.assertEqual(client.delete(f"/api/chapters/{chapter_id}").status_code, 404)
+        archived = self.store.load_chapter(chapter_id)
+        self.assertTrue(archived["deletedAt"])
+        self.assertTrue(archived["sourceRevisions"])
+        self.assertEqual(self.jobs.get_job(job["jobId"])["status"], "cancelled")
+        self.assertTrue((self.store.upload_root / "automatic-book" / "source.pdf").is_file())
+
+    def test_user_views_legacy_exam_upload_then_existing_title_evidence_classifies_it_as_a_paper(self):
+        job = self.store.load_job("automatic-book")
+        job["filename"] = "初中数学浙江中考数学真题.pdf"
+        job["result"] = {"extraction": {"questionCount": 24}}
+        self.store.save_job(job)
+        self.assertEqual(self.store.list_imports()[0]["materialKind"], "paper")
+
+    def test_user_makes_courses_with_mineru_selected_then_the_task_uses_auto_without_changing_upload_selection(self):
+        with runtime.use_selection("mineru"):
+            job = self.service.enqueue("automatic-book")
+            self.assertEqual(job["payload"]["runtimeSnapshot"]["ocr"]["provider"], "auto")
+            self.assertEqual(runtime.selection.provider, "mineru")
+
+    def test_user_deletes_an_upload_during_preparation_then_a_stale_ocr_save_cannot_restore_it(self):
+        job = self.store.load_job("automatic-book")
+        self.assertTrue(self.store.soft_delete_import("automatic-book"))
+        self.store.save_job(job)
+        self.assertEqual(self.store.load_job("automatic-book")["status"], "deleted")
+        self.assertEqual(self.store.list_imports(), [])
+        self.assertTrue((job["directory"] / "source.pdf").exists())

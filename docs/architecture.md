@@ -242,10 +242,12 @@ flowchart TB
 
 ## 来源关联章节课程与英语阅读
 
+我的教材与自动制作课程页共用 `MaterialsHeader`，沿用工作台的品牌导航和返回按钮；材料卡片、任务状态和课程列表在 `materials.css` 维护一致的布局与移动端样式。`MaterialDeleteAction` 提供就地确认与失败重试，`useMaterials` 在接口成功后移除对应卡片；试卷、教材课程与待识别材料可筛选。章节软删除写入现有 JSON 中的删除时间，保留发布与作答记录并取消当前生成任务。
+
 上传入口统一为“上传试卷或教材”，通过首批 OCR 自动识别类型。教材不会先拆成考试题；原文件与 OCR
 保存后，可直接自动制作课程，不要求先填学科、页码、名称和版本。
 `MaterialCourseService` 优先读取 PDF 章节书签，再用已有页面 OCR 路由识别真实标题；最多创建前五章，
-以第六章起点确定第五章结尾。无书签时最多扫描前 80 页，每章最多 80 页；边界缺失或截断在结果中提示。
+以第六章起点确定第五章结尾。嵌套目录优先选择章而不是大单元，读取时复用同一个 PDF 解析器；任务内自动 OCR 优先使用文本层，逐页保存来源并报告章与页码，经预检确认的空白页保留且提示复核。无书签时最多扫描前 80 页，每章最多 80 页；边界缺失或截断在结果中提示。
 准备任务及子章节生成任务共享现有持久化 Worker、运行选择快照、幂等与取消机制；重试复用来源记录。
 许可默认未确认，发布前仍需补齐授权依据并由教师复核；自动识别结果不代表教材质量或授权已审核。
 
@@ -258,7 +260,7 @@ flowchart TB
 确定性课程模板按来源页构造概念、原文例式、提示和检查题：数学只识别有限关系式，英语只自动构造有限地点明示题。
 另有来源约束的 AI 草稿路径：`application/chapter_jobs.py` 装配既有 Worker，服务在锁外调用 ModelRuntime，
 `domain/chapters/quality.py` 校验来源版本、页与句/区域引用，再在事务内比较章节版本后写入待审草稿。
-数学输出概念、条件、例题、三级提示与检查题；英语输出四类阅读题及待审变体/rubric。定位通过不代表内容正确，
+模型单次只接收不超过 12000 字符的原句节选，保留原句 ID 与物理页码，输出契约将引用版本、页码及句子 ID 限定为当前节选中的真实值，引用原句由服务端按校验后的 ID 回填，避免模型抄写 OCR 时改变文字；长章的草稿明确展示本次教学范围，不声称覆盖整章，完整来源快照保持不变。数学输出概念、条件、例题、三级提示与检查题；英语输出四类阅读题及待审变体/rubric。定位通过不代表内容正确，
 必须教师审核；未知改写仍进入人工复核。AI 调用只执行一次，失败后人工重试追加预算，避免自动重复消费。
 任务持久化来源指纹、Prompt/Schema 哈希及安全 Runtime 诊断；取消与版本冲突不能覆盖教师编辑或历史发布。
 课程使用既有 `LessonBlock`；前端 `LessonPlayer` 可直接消费课程文档，同时兼容旧题目 payload。
@@ -314,18 +316,21 @@ sequenceDiagram
   participant API as Tutoring Router
   participant Check as Deterministic Evaluator
   participant Tutor as StatefulTutor
+  participant Audit as RunSnapshot
   participant DB as PostgreSQL
 
   UI->>API: 创建或恢复 mistake thread
   API->>DB: 读取阶段、摘要和有限消息
   UI->>API: 提交文字或结构化答案
   API->>Tutor: 当前线程 + 错题快照 + 最近消息
+  API->>Audit: 冻结 Tutor 配置并记录 runId
   Tutor->>Check: 复用 TutorEngine 确定性判题
   Check-->>Tutor: correct / partial / incorrect
   Tutor->>Tutor: 生成解释并计算下一阶段
   Tutor-->>API: 归一化 misconception（含门禁结果）
   API->>DB: 仅持久化通过门禁的 AI 归因
   Tutor->>DB: 同一事务保存学生和助手消息
+  API->>Audit: 收敛 succeeded/failed 与无内容摘要
   DB-->>UI: 新阶段、回复和结构化 action
 ```
 
@@ -455,8 +460,10 @@ optional}` 失败记录而不是向上抛出；整体 `ok` 只看非 optional �
   Judge 报告固定记录语料版本、样本哈希、审核模型/Prompt 版本、每样本成功率/耗时/逻辑调用数/Provider
   实际尝试数/token/Schema 降级，以及聚合 `judgeMetrics`。`evaluation.compare` 对确定性报告做结构回归，
   对 Judge 报告只比较配置一致时的共同成功样本配对评分；评分变化不自动阻断。测试不依赖真实模型调用。
-- **轻量 Model Gateway**：在现有 Runtime 上统一请求与结果字段，显式记录实际 Provider、Model、回退和
-  错误，而不是新增独立服务。
+- **轻量 Model Gateway（已完成）**：现有 Runtime 在每次结构化调用前构造内容无关的 `ModelRequest`
+  （任务、请求 Provider/Model、超时、回退许可和 Schema 摘要），并用 `ModelResult` 统一实际
+  Provider/Model、耗时、错误和 usage；随后适配为兼容的 `modelRun`。Prompt 与模型 output 不进入这两个
+  持久化元数据块，也没有新增独立服务或隐式跨 Provider 回退。
 
 完整阶段、验收标准和何时升级 Redis、OpenTelemetry、LangGraph 或 MCP，见
 [AI 运行治理与后台任务演进计划](runtime-governance-plan.md)。
@@ -748,7 +755,10 @@ POST /api/tts
   历史列通过确定性主键只回填一次；`MistakeStore.confirm` 与 `update_ai_error_reason` 在同一事务内同时更新
   旧列和新表，读取旧 API 仍保持不变。
 - `tutor_threads` 保存每道错题的当前阶段、摘要、提示层级和消息计数。
-- `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录。
+- `tutor_messages` 保存学生/助手消息、确定性判定、结构化动作和模型运行记录；内部 action 的 `runId`
+  关联每轮 `tutor_turn` 运行快照，学生投影不返回该字段。
+- `run_snapshots` 对陪练只保存版本化 Tutor 配置、阶段转换、判定、模型身份、工具决策计数和失败类型，
+  不保存学生输入、模型回复或 Provider 原始错误。
 - `variation_exercises` 保存验证题和最新答案状态；`variation_attempts` 追加保存每次验证作答、`EvaluationEvidence`、判定和时间，网络重试按 `attempt_id` 幂等。
 - JSON 文档在 PostgreSQL 中使用 JSONB。
 - `data/uploads/{uploadId}/source.pdf` 保存合并后的原 PDF。

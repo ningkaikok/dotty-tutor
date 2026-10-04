@@ -5,6 +5,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+from infrastructure.runtime.contracts import RuntimeExecutionError
 from infrastructure.runtime.model_runtime import (
     ModelRuntime,
     codex_command,
@@ -63,9 +64,52 @@ class CodexCommandTests(unittest.TestCase):
         self.assertEqual(run["usage"], {"promptTokens": 12, "outputTokens": 7})
         self.assertEqual(run["schemaFallback"]["used"], True)
         self.assertGreaterEqual(run["durationMs"], 0)
+        self.assertEqual(run["modelRequest"]["task"], "review")
+        self.assertEqual(run["modelRequest"]["schemaVersion"], run["config"]["schema"])
+        self.assertFalse(run["modelRequest"]["allowFallback"])
+        self.assertEqual(run["modelResult"]["actualProvider"], "ollama")
+        self.assertEqual(run["modelResult"]["actualModel"], "qwen")
+        self.assertIsNone(run["modelResult"]["error"])
+
+    def test_generation_failure_carries_normalized_contract_metadata(self) -> None:
+        runtime = ModelRuntime()
+        runtime.selection.provider = "ollama"
+        runtime.selection.model = "qwen"
+        with patch.object(runtime, "_ollama_json", side_effect=RuntimeError("offline")):
+            with self.assertRaises(RuntimeExecutionError) as context:
+                runtime.generate_json(
+                    "prompt",
+                    {"type": "object"},
+                    task="tutoring",
+                    allow_fallback=False,
+                )
+
+        run = context.exception.runtime_run
+        self.assertIsNotNone(run)
+        assert run is not None
+        self.assertEqual(run["modelRequest"]["task"], "tutoring")
+        self.assertFalse(run["modelRequest"]["allowFallback"])
+        self.assertEqual(run["modelResult"]["actualProvider"], "ollama")
+        self.assertEqual(run["modelResult"]["error"]["type"], "RuntimeExecutionError")
+        self.assertIsInstance(run["error"], str)
+        self.assertNotIn("prompt", str(run["modelRequest"]).lower())
 
 
 class DeepSeekProviderTests(unittest.TestCase):
+    def test_user_calls_deepseek_then_gateway_keeps_provider_identity_and_usage(self) -> None:
+        # Given the existing cloud provider at the external model boundary
+        runtime = ModelRuntime()
+        with patch.object(runtime, "_deepseek_json", return_value=({"reply": "提示"}, {"prompt_tokens": 17, "output_tokens": 6})):
+            # When the shared gateway performs a structured call
+            result, run = runtime.generate_json_as("deepseek", "deepseek-flash", "private prompt", {"type": "object"})
+        # Then normalized metadata preserves the cloud identity and no content
+        self.assertEqual(result, {"reply": "提示"})
+        self.assertEqual(run["modelRequest"]["provider"], "deepseek")
+        self.assertEqual(run["modelResult"]["actualModel"], "deepseek-flash")
+        self.assertEqual(run["modelResult"]["usage"], {"promptTokens": 17, "outputTokens": 6})
+        self.assertFalse(run["modelRequest"]["allowFallback"])
+        self.assertNotIn("private prompt", str(run))
+
     def test_catalog_exposes_deepseek_only_when_key_is_configured(self) -> None:
         with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "secret"}, clear=True):
             providers = ModelRuntime().providers()

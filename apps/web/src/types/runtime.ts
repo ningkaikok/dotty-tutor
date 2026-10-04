@@ -7,10 +7,32 @@ export interface PromptIdentity { id: string; version: string; contentHash: stri
 export interface ModelRun {
   promptTemplates?: PromptIdentity[];
   requestedProvider: string;
+  requestedModel?: string;
   provider: string;
   model: string;
+  actualProvider?: string;
+  actualModel?: string;
   fallback: boolean;
+  fallbackReason?: string | null;
   error?: string;
+  modelRequest?: {
+    task: string;
+    provider: string;
+    model: string;
+    timeout: number;
+    allowFallback: boolean;
+    schemaVersion: string;
+    runtime: string;
+  };
+  modelResult?: {
+    actualProvider: string;
+    actualModel: string;
+    durationMs: number;
+    error: { type: string; message: string } | null;
+    usage: { promptTokens?: number | null; outputTokens?: number | null };
+    fallback: boolean;
+    fallbackReason: string | null;
+  };
   stages?: Array<{
     name: string;
     promptTemplates?: PromptIdentity[];

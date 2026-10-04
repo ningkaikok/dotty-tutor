@@ -402,7 +402,10 @@
    Judge 报告单独记录 `judgeMetrics`，每样本保留真实耗时、token、逻辑调用和 Provider 尝试次数；报告带
    唯一 `runId`，且配置或样本不一致时只报告不可比原因，不计算虚假分差。
 3. [x] 创建不可变 `RunSnapshot`，记录模型、Prompt、Schema、OCR Provider 和校验器版本。
-4. [ ] 将内容生产和后台任务已经具备的运行快照继续扩展到陪练的全部结构化日志。
+4. [x] 将内容生产和后台任务已有的运行快照扩展到陪练全链路：每轮创建 `tutor_turn` `RunSnapshot`，
+   冻结 Tutor Provider/Model、Prompt/Schema/validator 版本，并用同一 `runId` 串联
+   `tutor.turn.started`、工具策略、`completed`/`failed`；结果只保存阶段转换、判定、模型身份和工具决策摘要，
+   不保存学生输入或模型回复原文。内部 action 保留 `runId` 供排障，学生投影继续移除该字段。
 5. [x] 使用确定性指标评估答案/结构，使用独立审核模型评估讲解质量，并记录评分依据和置信度。
    **第一版基建与真实运行已完成**（`evaluation/judge.py` + `judge_cli.py`）：固定 rubric
    （clarity/targeting/factual，1-5 分）+ 版本化提示词 + 输出校验门禁（分值越界/缺依据/置信度越界一律拒绝）+

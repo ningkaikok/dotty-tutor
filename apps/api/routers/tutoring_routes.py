@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -19,6 +21,7 @@ from domain.tutoring.tools import TOOL_POLICY_VERSION, validate_tool_proposal
 from domain.tutoring.turn_plan import ERROR_STRATEGIES
 from observability import log_event
 from persistence.tutoring_store import ConcurrentTurnError
+from run_audit import build_tutor_run_config
 
 
 def has_meaningful_answer(content: str, interaction_result: dict[str, Any]) -> bool:
@@ -74,7 +77,161 @@ def _evidence_registry(
     return registry
 
 
-def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any) -> APIRouter:
+def _persist_tutor_turn(
+    *,
+    thread_id: str,
+    request: TutorMessageRequest,
+    thread: dict[str, Any],
+    mistake: dict[str, Any],
+    input_item: dict[str, Any] | None,
+    mistake_store: Any,
+    tutoring_store: Any,
+    tutor: Any,
+    run_id: str,
+    request_key: str | None,
+    request_hash: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Execute and persist one turn, returning a content-free audit summary."""
+    result = tutor.reply(
+        mistake=mistake,
+        thread=thread,
+        recent_messages=tutoring_store.recent_messages(thread_id),
+        request=request,
+    )
+    proposals = result["reply"].toolProposals
+    policy_decisions: list[dict[str, Any]] = []
+    evidence_registry = _evidence_registry(
+        thread=thread,
+        mistake=mistake,
+        input_item=input_item,
+    )
+    for proposal in proposals:
+        decision = validate_tool_proposal(
+            proposal,
+            stage=thread["stage"],
+            input_item=input_item,
+            action=result["action"],
+            evidence_registry=evidence_registry,
+            evidence_owner=thread["learnerId"],
+        )
+        policy_decisions.append(decision.model_dump())
+        key_source = json.dumps(
+            {"thread": thread_id, "input": request.inputId, "proposal": proposal, "stage": thread["stage"]},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        tutoring_store.append_tool_event(
+            thread_id=thread_id,
+            input_id=request.inputId,
+            learner_id=thread["learnerId"],
+            tool_name=str(proposal.get("name") or "unknown"),
+            proposal=proposal,
+            policy_version=TOOL_POLICY_VERSION,
+            decision=decision.decision,
+            reason=decision.reason,
+            execution_status="shadow",
+            idempotency_key=hashlib.sha256(key_source.encode("utf-8")).hexdigest(),
+        )
+        log_event(
+            "tutor.tool.policy",
+            run_id=run_id,
+            thread_id=thread_id,
+            tool_name=decision.name,
+            decision=decision.decision,
+            policy_version=decision.policyVersion,
+            execution_status="shadow",
+        )
+    result["action"]["toolPolicy"] = policy_decisions
+    result["action"]["runId"] = run_id
+    plan = result["action"].get("tutorTurnPlan")
+    diagnosis = plan.get("misconception") if isinstance(plan, dict) else None
+    # AI attribution is written only after the same evidence/confidence gate
+    # used by the tutor plan. An unconfirmed hypothesis must never overwrite
+    # the latest trusted value, and this boundary keeps StatefulTutor store-free.
+    category = diagnosis.get("category") if isinstance(diagnosis, dict) else None
+    confidence = diagnosis.get("confidence") if isinstance(diagnosis, dict) else None
+    diagnosis_update = None
+    if (
+        isinstance(diagnosis, dict)
+        and diagnosis.get("needsConfirmation") is False
+        and category in ERROR_STRATEGIES
+        and category != "unknown"
+        and confidence is not None
+    ):
+        diagnosis_update = {
+            "mistake_id": thread["mistakeId"],
+            "category": category,
+            "confidence": confidence,
+            "evidence": {
+                "text": diagnosis.get("evidence", ""),
+                "matched": diagnosis.get("evidenceMatched", False),
+            },
+            "model_version": (
+                result["reply"].modelRun.get("model")
+                if isinstance(result["reply"].modelRun, dict)
+                else None
+            ),
+        }
+    saved = tutoring_store.append_turn(
+        thread_id,
+        student_content=request.content.strip() or "请求下一步提示",
+        input_mode=result["inputMode"],
+        assistant_content=result["reply"].reply,
+        assessment=result["action"]["assessment"],
+        action=result["action"],
+        model_run=result["reply"].modelRun,
+        stage=result["stage"],
+        hint_level=result["reply"].nextHintLevel,
+        summary=result["summary"],
+        input_id=request.inputId,
+        expected_message_count=int(thread.get("messageCount", 0)),
+        request_key=request_key,
+        request_hash=request_hash if request_key else None,
+        replay_response={
+            "reply": result["reply"].model_dump(),
+            "action": result["action"],
+        } if request_key else None,
+    )
+    if saved is None:
+        raise HTTPException(status_code=404, detail="辅导线程不存在")
+    if diagnosis_update:
+        mistake_store.update_ai_error_reason(**diagnosis_update)
+    model_run = result["reply"].modelRun if isinstance(result["reply"].modelRun, dict) else {}
+    decision_counts = {
+        decision: sum(item.get("decision") == decision for item in policy_decisions)
+        for decision in ("allow", "deny", "confirm")
+    }
+    audit_summary = {
+        "threadId": thread_id,
+        "mistakeId": thread["mistakeId"],
+        "inputId": request.inputId,
+        "previousStage": thread["stage"],
+        "nextStage": result["stage"],
+        "assessment": result["action"]["assessment"],
+        "inputMode": result["inputMode"],
+        "source": result["reply"].source,
+        "provider": model_run.get("provider"),
+        "model": model_run.get("model"),
+        "fallback": bool(model_run.get("fallback", False)),
+        "toolProposalCount": len(proposals),
+        "toolDecisions": decision_counts,
+        "deduplication": {
+            key: result["action"].get("deduplication", {}).get(key)
+            for key in ("status", "retryCount", "fallbackUsed")
+            if key in result["action"].get("deduplication", {})
+        },
+    }
+    response = {
+        "thread": student_tutor_thread(saved),
+        "reply": student_tutor_reply(result["reply"].model_dump()),
+        "action": student_tutor_action(result["action"]),
+    }
+    return response, audit_summary
+
+
+def build_tutoring_router(
+    *, mistake_store: Any, tutoring_store: Any, tutor: Any, run_audit: Any | None = None,
+) -> APIRouter:
     """Build the tutoring HTTP adapter from replaceable domain dependencies.
 
     The demo uses ``local-demo`` as its single learner identity.  This ownership
@@ -157,6 +314,7 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         if not mistake:
             raise HTTPException(status_code=404, detail="原错题不存在")
         require_owner(http_request, mistake["learnerId"])
+        input_item: dict[str, Any] | None = None
         if request.inputId:
             input_item = tutoring_store.get_input(request.inputId)
             if not input_item or input_item["threadId"] != thread_id:
@@ -188,127 +346,111 @@ def build_tutoring_router(*, mistake_store: Any, tutoring_store: Any, tutor: Any
         ):
             raise HTTPException(status_code=422, detail="请先输入或选择答案")
 
-        result = tutor.reply(
-            mistake=mistake,
-            thread=thread,
-            recent_messages=tutoring_store.recent_messages(thread_id),
-            request=request,
-        )
-        proposals = result["reply"].toolProposals
-        policy_decisions: list[dict[str, Any]] = []
-        evidence_registry = _evidence_registry(
-            thread=thread,
-            mistake=mistake,
-            input_item=input_item if request.inputId else None,
-        )
-        for proposal in proposals:
-            decision = validate_tool_proposal(
-                proposal,
-                stage=thread["stage"],
-                input_item=input_item if request.inputId else None,
-                action=result["action"],
-                evidence_registry=evidence_registry,
-                evidence_owner=thread["learnerId"],
-            )
-            policy_decisions.append(decision.model_dump())
-            key_source = json.dumps(
-                {"thread": thread_id, "input": request.inputId, "proposal": proposal, "stage": thread["stage"]},
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            tutoring_store.append_tool_event(
-                thread_id=thread_id,
-                input_id=request.inputId,
-                learner_id=thread["learnerId"],
-                tool_name=str(proposal.get("name") or "unknown"),
-                proposal=proposal,
-                policy_version=TOOL_POLICY_VERSION,
-                decision=decision.decision,
-                reason=decision.reason,
-                execution_status="shadow",
-                idempotency_key=hashlib.sha256(key_source.encode("utf-8")).hexdigest(),
-            )
-            log_event(
-                "tutor.tool.policy",
-                thread_id=thread_id,
-                tool_name=decision.name,
-                decision=decision.decision,
-                policy_version=decision.policyVersion,
-                execution_status="shadow",
-            )
-        result["action"]["toolPolicy"] = policy_decisions
-        plan = result["action"].get("tutorTurnPlan")
-        diagnosis = plan.get("misconception") if isinstance(plan, dict) else None
-        # AI attribution is written only after the same evidence/confidence gate
-        # used by the tutor plan. An unconfirmed hypothesis must never overwrite
-        # the latest trusted value, and this boundary keeps StatefulTutor store-free.
-        category = diagnosis.get("category") if isinstance(diagnosis, dict) else None
-        confidence = diagnosis.get("confidence") if isinstance(diagnosis, dict) else None
-        diagnosis_update = None
-        if (
-            isinstance(diagnosis, dict)
-            and diagnosis.get("needsConfirmation") is False
-            and category in ERROR_STRATEGIES
-            and category != "unknown"
-            and confidence is not None
-        ):
-            diagnosis_update = {
-                "mistake_id": thread["mistakeId"],
-                "category": category,
-                "confidence": confidence,
-                "evidence": {
-                    "text": diagnosis.get("evidence", ""),
-                    "matched": diagnosis.get("evidenceMatched", False),
-                },
-                "model_version": (
-                    result["reply"].modelRun.get("model")
-                    if isinstance(result["reply"].modelRun, dict)
-                    else None
-                ),
-            }
+        run_id = uuid.uuid4().hex
+        started = time.perf_counter()
+        audit_started = False
         try:
-            saved = tutoring_store.append_turn(
-                thread_id,
-                student_content=request.content.strip() or "请求下一步提示",
-                input_mode=result["inputMode"],
-                assistant_content=result["reply"].reply,
-                assessment=result["action"]["assessment"],
-                action=result["action"],
-                model_run=result["reply"].modelRun,
-                stage=result["stage"],
-                hint_level=result["reply"].nextHintLevel,
-                summary=result["summary"],
-                input_id=request.inputId,
-                expected_message_count=int(thread.get("messageCount", 0)),
-                request_key=request_key,
-                request_hash=request_hash if request_key else None,
-                replay_response={
-                    "reply": result["reply"].model_dump(),
-                    "action": result["action"],
-                } if request_key else None,
+            if run_audit is not None:
+                run_audit.start(
+                    "tutor_turn",
+                    "tutor",
+                    run_id=run_id,
+                    config=build_tutor_run_config(
+                        runtime=getattr(tutor, "runtime", None),
+                        operation_details={
+                            "stage": thread["stage"],
+                            "mode": request.mode,
+                            "hintLevel": request.hintLevel,
+                            "hasInputEnvelope": request.inputId is not None,
+                        },
+                    ),
+                )
+                audit_started = True
+            log_event(
+                "tutor.turn.started",
+                run_id=run_id,
+                thread_id=thread_id,
+                mistake_id=thread["mistakeId"],
+                stage=thread["stage"],
+                mode=request.mode,
+                status="running",
             )
-        except ConcurrentTurnError as error:
-            replay = replay_existing()
-            if replay:
-                return replay
-            raise HTTPException(status_code=409, detail=str(error)) from error
-        if saved is None:
-            raise HTTPException(status_code=404, detail="辅导线程不存在")
-        if diagnosis_update:
-            mistake_store.update_ai_error_reason(**diagnosis_update)
+            response, audit_summary = _persist_tutor_turn(
+                thread_id=thread_id,
+                request=request,
+                thread=thread,
+                mistake=mistake,
+                input_item=input_item,
+                mistake_store=mistake_store,
+                tutoring_store=tutoring_store,
+                tutor=tutor,
+                run_id=run_id,
+                request_key=request_key,
+                request_hash=request_hash,
+            )
+            if run_audit is not None:
+                try:
+                    run_audit.finish(run_id, result=audit_summary)
+                except Exception as audit_error:
+                    # The learner turn is already durable.  Audit storage is an
+                    # observability boundary and must not turn that success into
+                    # a retryable 500 that could duplicate the learning turn.
+                    log_event(
+                        "tutor.audit.failed",
+                        level=40,
+                        run_id=run_id,
+                        thread_id=thread_id,
+                        error_type=type(audit_error).__name__,
+                    )
+        except Exception as error:
+            if run_audit is not None and audit_started:
+                try:
+                    run_audit.fail(
+                        run_id,
+                        RuntimeError(type(error).__name__),
+                        stage="tutor-turn",
+                    )
+                except Exception as audit_error:
+                    log_event(
+                        "tutor.audit.failed",
+                        level=40,
+                        run_id=run_id,
+                        thread_id=thread_id,
+                        error_type=type(audit_error).__name__,
+                    )
+            log_event(
+                "tutor.turn.failed",
+                level=40,
+                run_id=run_id,
+                thread_id=thread_id,
+                mistake_id=thread["mistakeId"],
+                stage=thread["stage"],
+                status="failed",
+                error_type=type(error).__name__,
+                duration_ms=round((time.perf_counter() - started) * 1000, 1),
+            )
+            if isinstance(error, ConcurrentTurnError):
+                replay = replay_existing()
+                if replay:
+                    return replay
+                raise HTTPException(status_code=409, detail=str(error)) from error
+            raise
         log_event(
             "tutor.turn.completed",
+            run_id=run_id,
             thread_id=thread_id,
             mistake_id=thread["mistakeId"],
-            stage=result["stage"],
-            assessment=result["action"]["assessment"],
-            source=result["reply"].source,
+            stage=audit_summary["nextStage"],
+            assessment=audit_summary["assessment"],
+            source=audit_summary["source"],
+            provider=audit_summary["provider"],
+            model=audit_summary["model"],
+            fallback=audit_summary["fallback"],
+            tool_proposal_count=audit_summary["toolProposalCount"],
+            status="succeeded",
+            duration_ms=round((time.perf_counter() - started) * 1000, 1),
         )
-        return {
-            "thread": student_tutor_thread(saved),
-            "reply": student_tutor_reply(result["reply"].model_dump()),
-            "action": student_tutor_action(result["action"]),
-        }
+        return response
 
     @router.get("/api/tutor/threads/{thread_id}/tool-events")
     def list_tool_events(request: Request, thread_id: str) -> list[dict[str, Any]]:
