@@ -69,6 +69,10 @@ services:
     runtime: static
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
     staticPublishPath: ./apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: 22.22.2

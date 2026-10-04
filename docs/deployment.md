@@ -4,6 +4,8 @@
 
 ## Render + Supabase 在线 Demo
 
+React Router 的 `/studio`、课程详情和学生链接需要单页应用回退。`render.yaml` 为 Static Site 声明 `/*` 到 `/index.html` 的 Rewrite（重写），Render 控制台的 Redirects/Rewrites 也须同步；不能配置成会改变地址的 Redirect（重定向）。上线验收同时检查首页和这些深层路径返回 HTTP 200，再检查浏览器内容，避免首页可用但刷新课程返回 404。[配置语义见 Render 官方说明](https://render.com/docs/redirects-rewrites)。
+
 仓库根目录的 `render.yaml` 提供一个低成本 Demo 部署方案：Render 免费 Web Service
 运行 FastAPI、后台 Worker 和迁移命令，Render 免费 Static Site 托管 React 前端，Supabase
 免费 PostgreSQL 提供 `DATABASE_URL`。Render 的免费服务会休眠，文件目录是临时的，因此
