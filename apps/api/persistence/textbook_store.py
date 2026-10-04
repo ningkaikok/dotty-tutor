@@ -179,6 +179,7 @@ class TextbookStore(DatabaseStore):
                 "size": row["size"],
                 "status": row["status"],
                 "questionCount": extraction.get("questionCount", 0),
+                "materialKind": result.get("materialKind", "unknown"),
                 "pageCount": extraction.get("pageCount"),
                 "chapter": extraction.get("chapter", "教材练习"),
                 "updatedAt": row["updated_at"],

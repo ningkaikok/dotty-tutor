@@ -17,7 +17,7 @@ it("user Given an uploaded PDF and an English course When opening my materials T
   expect(await screen.findByRole("heading", { name: "A day outdoors" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
   expect(screen.getByRole("link", { name: "继续复核 →" })).toHaveAttribute("href", "/studio/chapters/en-1");
-  expect(screen.getByRole("link", { name: "选取页码，制作课程" })).toHaveAttribute("href", "/studio/chapters/new?uploadId=pdf-1");
+  expect(screen.getByRole("link", { name: "自动制作课程" })).toHaveAttribute("href", "/studio/chapters/new?uploadId=pdf-1");
   expect(screen.getByRole("link", { name: "查看练习 →" })).toHaveAttribute("href", "/studio/import?uploadId=pdf-1");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "英语" } });
   expect(screen.queryByRole("heading", { name: "数学教材.pdf" })).not.toBeInTheDocument();

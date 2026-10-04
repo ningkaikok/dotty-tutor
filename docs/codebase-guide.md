@@ -57,6 +57,7 @@ dotty-tutor/
 │   │   │   ├── dependency_preflight_routes.py # GET /api/system/dependency-preflight（环境依赖自检只读端点）
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
+│   │   │   ├── material_courses.py # 自动章节识别、前五章页段与生成队列编排
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
@@ -79,7 +80,7 @@ dotty-tutor/
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
-│   │   │   ├── chapters/       # source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
+│   │   │   ├── chapters/       # material.py 文档分类与章节边界；source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -235,6 +236,12 @@ flowchart LR
 上传、模型调用、SQL 或响应拼装都不应重新写入该文件。
 
 ### 教材链路
+
+统一上传通过 `domain/chapters/material.py` 自动分流：试卷继续题目流水线，教材或类型不明的来源保存 OCR。
+`ChapterStudioApp` 的上传来源分支由 `AutomaticCourseCreator` 与 `useAutomaticCourses` 展示无前置表单的流程。
+`POST /api/chapters/from-upload/{upload_id}` → `application/chapter_jobs.py` 的 `material.courses.create`
+→ `application/services/material_courses.py`（目录/逐页标题、最多前五章）→ 既有 `ChapterCourseService`
+与 `chapter.lesson.generate`；原 PDF、逐页 OCR、来源指纹及教师复核门禁继续保留。
 
 ```text
 apps/api/routers/textbook_routes.py（HTTP、上传状态）

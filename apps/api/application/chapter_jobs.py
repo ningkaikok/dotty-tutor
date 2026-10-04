@@ -32,4 +32,15 @@ def build_chapter_registry(service: Any) -> TaskRegistry:
         except Exception as error:
             raise RetryableJobError(f"章节草稿生成失败：{error}") from error
 
+    @registry.decorator("material.courses.create")
+    def create_material_courses(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> dict[str, Any]:
+        from application.services.material_courses import MaterialCourseService
+        from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
+        from infrastructure.runtime.ocr_runtime import runtime
+        try:
+            with use_job_runtime_snapshot(payload):
+                return MaterialCourseService(service, runtime).run(payload["uploadId"], cancellation_check)
+        except (ValueError, LookupError) as error:
+            raise TerminalJobError(str(error)) from error
+
     return registry

@@ -32,6 +32,7 @@ from application.services.question_processing import (
     process_question_sources,
 )
 from application.services.staged_question_generation import normalize_stage
+from domain.chapters.material import classify_material, material_preview
 from domain.contracts.lesson import lesson_document_from_payload
 from domain.questions.exam_ir import build_exam_ir
 from domain.questions.pipeline import apply_question_quality_gate
@@ -134,6 +135,37 @@ class TextbookProcessingService:
         self.upload_registry = upload_registry
         self.ocr_runtime = ocr_runtime
         self.audit = RunAudit(store)
+
+    def preserve_material_page(
+        self, *, filename: str, content_type: str, content: bytes,
+        source: str, ocr_run: dict[str, Any], detection: dict[str, str],
+    ) -> dict[str, Any]:
+        """Keep original page uploads and OCR for the same source-bound chapter pipeline."""
+        upload_id = uuid.uuid4().hex
+        directory = self.store.upload_root / upload_id
+        directory.mkdir(parents=True, exist_ok=False)
+        suffix = os.path.splitext(filename)[1].lower()
+        is_pdf = suffix == ".pdf" or content_type == "application/pdf"
+        original = directory / ("source.pdf" if is_pdf else "original" + suffix)
+        original.write_bytes(content)
+        page_count = 1
+        if is_pdf:
+            reader = PdfReader(original)
+            page_count = len(reader.pages)
+            # The legacy page endpoint concatenates PDF text. Never pin that aggregate to page 1.
+            source = "\n\n".join(f"<!-- page {index + 1} -->\n{page.extract_text() or ''}" for index, page in enumerate(reader.pages))
+        else:
+            source = f"<!-- page 1 -->\n{source}"
+        now = time.time()
+        job = {"uploadId": upload_id, "importId": f"page-{hashlib.sha256(content).hexdigest()[:12]}",
+               "filename": filename, "contentType": content_type or "application/octet-stream",
+               "size": len(content), "directory": directory, "chunkSize": len(content), "totalChunks": 1,
+               "status": "complete", "progress": 100, "message": "教材原文已识别",
+               "startedAt": now, "updatedAt": now, "completedAt": now, "sourceText": source}
+        job["result"] = material_preview(job, source, ocr_run, detection, page_count)
+        self.store.save_job(job)
+        self.upload_registry.uploads[upload_id] = job
+        return job["result"]
 
     def _persist_lessons(
         self,
@@ -378,6 +410,7 @@ class TextbookProcessingService:
         *,
         cancellation_check: Any = None,
         question_limit: int = MAX_QUESTIONS_PER_BATCH,
+        auto_detect: bool = False,
     ) -> dict[str, Any]:
         """合并全部分块、验证 PDF，并处理首个页面批次。
 
@@ -505,6 +538,15 @@ class TextbookProcessingService:
             cache_dir=job["directory"] / "ocr-cache",
             content_hash=source_fingerprint,
         )
+        detection = classify_material(job["filename"], lesson_source) if auto_detect else None
+        if detection and detection["kind"] != "paper":
+            job["importId"] = content_import_id
+            job["sourceText"] = lesson_source
+            job["result"] = material_preview(job, lesson_source, ocr_run, detection, page_count)
+            job["result"]["sourceFingerprint"] = source_fingerprint
+            job["completedAt"] = time.time()
+            self.upload_registry.update(job, "complete", 100, "教材原文已保存，可直接制作前 5 个章节")
+            return job["result"]
         self._check_cancel(cancellation_check)
         self.upload_registry.update(
             job,
@@ -561,6 +603,7 @@ class TextbookProcessingService:
             "uploadId": upload_id,
             "importId": content_import_id,
             "sourceFingerprint": source_fingerprint,
+            **({"materialKind": detection["kind"], "detectionReason": detection["reason"]} if detection else {}),
             "filename": job["filename"],
             "contentType": "application/pdf",
             "size": job["size"],
