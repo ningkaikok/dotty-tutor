@@ -3046,7 +3046,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "ollama" | "codex" | "mock";
+            provider: "ollama" | "codex" | "deepseek" | "mock";
         };
         /** OcrSelectionRequest */
         OcrSelectionRequest: {

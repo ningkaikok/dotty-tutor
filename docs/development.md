@@ -597,3 +597,11 @@ gh secret set FEISHU_WEBHOOK_SECRET
 
 分支、提交格式、PR 与 CHANGELOG 分类及发布步骤统一维护在 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 代理的授权与检查约束见 [AGENTS.md](../AGENTS.md)，不在开发指南复制第二套规则。
+
+### 可选云端模型与 OCR
+
+三份环境模板均列出 DeepSeek 和 MinerU 云端参数，默认密钥为空，不会自动切换本机模型。
+DeepSeek 需选择 MODEL_PROVIDER=deepseek 和目录中的模型；陪练可独立设置
+TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。MinerU 在本机命令不可用且配置
+MINERU_API_KEY 时使用云端解析，上传的原文件及返回的 OCR 产物仍保存在现有数据目录。
+Compose 将同样的云端参数传给 API 和 Worker。测试使用外部服务替身，不证明真实模型/OCR质量。

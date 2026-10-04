@@ -2,6 +2,13 @@
 
 前端独立部署时可设置 `VITE_API_ORIGIN`；请求路径和响应契约不变，教材预览图片与 API 请求使用同一后端来源。未设置时使用同源 `/api`。此配置不包含密钥，不替代 Cookie/CORS 的身份验证配置。
 
+可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
+DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
+启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
+现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
+
+
 开发环境默认地址为 <http://127.0.0.1:8010>，前端通过同源 `/api` 路径调用。
 
 `/`、`/learn`、`/studio`、`/studio/metrics`、`/teacher`、`/mistakes` 是前端页面路径，不是 API。错题拍照确认使用独立的
@@ -85,7 +92,7 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 | --- | --- | --- |
 | `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，details 会列出缺失表/列/索引/外键及 orphan count，并以 `autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项，不会等业务查询触发缺列 `500` |
 | `GET` | `/api/system/dependency-preflight` | 环境依赖自检（MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL）：`response_model=DependencyPreflightReport`，返回 `{ok, checks: [{key, label, ok, detail, optional}]}`；任何一项检查内部失败都会被收敛成 `ok: false` 的记录而不是异常响应，整体 `ok` 只看非 optional 项（当前只有 `pypdf`、`postgresql` 是必需项）。前端页面见 `/studio/dependency-preflight` |
-| `GET` | `/api/models` | 返回可用 Ollama、Codex 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
+| `GET` | `/api/models` | 返回可用 Ollama、Codex、DeepSeek 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |

@@ -186,7 +186,7 @@ class ChapterCourseService:
         try:
             selection_config = (payload.get("runtimeSnapshot") or {}).get("generation") or {}
             provider = selection_config.get("provider")
-            if provider not in {"ollama", "codex", "mock"} or not selection_config.get("model"):
+            if provider not in {"ollama", "codex", "deepseek", "mock"} or not selection_config.get("model"):
                 raise ValueError("后台任务 Runtime 选择快照无效")
             with use_job_runtime_snapshot(payload):
                 draft, runtime_run = self.generation_runtime.generate_json(

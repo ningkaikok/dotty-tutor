@@ -168,6 +168,25 @@ class ChapterQualityDraftBehaviorTests(unittest.TestCase):
         self.assertEqual(approved["lessons"][0]["questionPayload"]["quality"]["status"], "ready")
         self.assertEqual(approved["lessons"][0]["questionPayload"]["quality"]["reviewBasis"], "teacher_approved_ai_draft")
 
+    def test_user_generates_with_deepseek_then_the_pinned_draft_can_be_reviewed(self) -> None:
+        # Given a deployment job pinned to DeepSeek at the external model boundary
+        chapter = {"chapterId": "c1", "title": "一次函数", "subject": "math", "version": 1, "recordVersion": 3,
+                   "sourceRevisions": [{**MATH, "issues": []}], "lessons": [], "currentLessonIds": [],
+                   "reviewIssues": [], "publications": [], "publicationId": None}
+        store = _FakeChapterStore(chapter)
+        runtime = _FakeChapterRuntime(store, math_draft())
+        service = ChapterCourseService(store, generation_runtime=runtime)
+        payload = {"chapterId": "c1", "sourceRevisionId": REV, "expectedRecordVersion": 3,
+                   "runtimeSnapshot": {"version": 1, "generation": {"provider": "deepseek", "model": "deepseek-flash"},
+                                       "ocr": {"provider": "mineru"}, "review": {"provider": "deepseek", "model": "deepseek-flash"}}}
+        # When the worker produces a source-bound draft
+        result = service.run_ai_generation(payload).value
+        # Then it remains reviewable and keeps its deployment provider identity
+        self.assertTrue(result["humanReviewRequired"])
+        self.assertTrue(store.chapter["currentLessonIds"])
+        audit = next(iter(store.chapter["aiGenerationRuns"].values()))["audit"]
+        self.assertEqual(audit["runtime"]["provider"], "deepseek")
+
     def test_user_cancels_after_generation_write_then_only_that_unreviewed_result_is_compensated(self) -> None:
         # Given a completed model result whose Worker has not converged yet
         chapter = {"chapterId": "c1", "title": "一次函数", "subject": "math", "version": 1, "recordVersion": 3,
