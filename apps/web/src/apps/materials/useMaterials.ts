@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadLibrary } from "../../api/textbooks";
-import { listChapters } from "../../api/chapters";
+import { loadLibrary, deleteLibraryItem } from "../../api/textbooks";
+import { listChapters, deleteChapter } from "../../api/chapters";
 import type { LibraryItem } from "../../types/textbook";
 import type { ChapterSummary } from "../../types/chapter";
 
@@ -25,5 +25,13 @@ export function useMaterials() {
     setLoading(false);
   }, []);
   useEffect(() => { const tracker = request.current; void reload(); return () => { tracker.version++; }; }, [reload]);
-  return { uploads, chapters, errors, loading, reload };
+  const remove = async (kind: "upload" | "course", id: string) => {
+    if (kind === "upload") await deleteLibraryItem(id);
+    else await deleteChapter(id);
+    request.current.version++;
+    setLoading(false);
+    if (kind === "upload") setUploads((items) => items.filter((item) => item.uploadId !== id));
+    else setChapters((items) => items.filter((item) => item.chapterId !== id));
+  };
+  return { uploads, chapters, errors, loading, reload, remove };
 }

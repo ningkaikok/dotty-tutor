@@ -46,6 +46,12 @@ class TextbookStore(DatabaseStore):
             "completed_at": job.get("completedAt"),
         }
         with self.engine.begin() as connection:
+            # A stale OCR checkpoint must not resurrect a source removed from the library.
+            status = connection.execute(select(upload_jobs.c.status).where(
+                upload_jobs.c.upload_id == job["uploadId"]
+            ).with_for_update()).scalar_one_or_none()
+            if status == "deleted":
+                return
             self._upsert(
                 connection,
                 upload_jobs,
@@ -159,6 +165,7 @@ class TextbookStore(DatabaseStore):
                     upload_jobs.c.size,
                     upload_jobs.c.status,
                     upload_jobs.c.result_json,
+                    upload_jobs.c.source_text,
                     upload_jobs.c.started_at,
                     upload_jobs.c.updated_at,
                 )
@@ -172,6 +179,10 @@ class TextbookStore(DatabaseStore):
         for row in rows:
             result = decode_json(row["result_json"])
             extraction = result.get("extraction", {})
+            from domain.chapters.material import classify_material
+            kind = result.get("materialKind", "unknown")
+            if kind == "unknown":
+                kind = classify_material(row["filename"], row["source_text"] or "")["kind"]
             items.append({
                 "uploadId": row["upload_id"],
                 "importId": row["import_id"],
@@ -179,7 +190,7 @@ class TextbookStore(DatabaseStore):
                 "size": row["size"],
                 "status": row["status"],
                 "questionCount": extraction.get("questionCount", 0),
-                "materialKind": result.get("materialKind", "unknown"),
+                "materialKind": kind,
                 "pageCount": extraction.get("pageCount"),
                 "chapter": extraction.get("chapter", "教材练习"),
                 "updatedAt": row["updated_at"],

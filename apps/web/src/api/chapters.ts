@@ -398,3 +398,8 @@ export async function reviewChapterAttempt(chapterId: string, attemptId: string,
   ));
   return normalizeAttempt(response);
 }
+
+/** Remove a course from the studio without deleting its source or history. */
+export async function deleteChapter(chapterId: string): Promise<void> {
+  await parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}`, { method: "DELETE" }));
+}

@@ -15,7 +15,12 @@ from answer_evaluator import evaluate_structured_answer
 from application.job_worker import CancellableJobResult
 from application.services.chapter_source_preview import file_hash, source_file
 from domain.chapters.english import evaluate_english_chapter_attempt
-from domain.chapters.quality import build_quality_draft, quality_draft_schema
+from domain.chapters.quality import (
+    ChapterDraftValidationError,
+    build_quality_draft,
+    draft_source_excerpt,
+    quality_draft_schema,
+)
 from domain.chapters.source import fingerprint, pages_from_ocr, sentences
 from domain.chapters.templates import build_chapter_lessons
 from domain.questions.student_view import student_question_payload
@@ -114,7 +119,7 @@ class ChapterCourseService:
         if self.jobs is None:
             raise RuntimeError("章节 AI 生成任务队列未装配")
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         if chapter.get("recordVersion") != expected_record_version:
             raise ValueError("章节已被其他编辑更新，请刷新后重试")
@@ -153,7 +158,7 @@ class ChapterCourseService:
 
         chapter_id = str(payload["chapterId"])
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise TerminalJobError("章节不存在")
         revision_id = str(payload["sourceRevisionId"])
         expected_version = payload.get("expectedRecordVersion")
@@ -171,13 +176,14 @@ class ChapterCourseService:
             raise TerminalJobError("章节已编辑或审核，请刷新后重新发起生成")
         if cancellation_check():
             raise JobCancelled()
-        schema = quality_draft_schema(chapter["subject"])
+        excerpt = draft_source_excerpt(source)
+        schema = quality_draft_schema(chapter["subject"], source=excerpt)
         prompt = (
-            "为教师编辑工作台生成中文课程草稿。只能依据 SOURCE_JSON，不得补造教材事实、数学条件或答案。每条 citations 必须含 sourceRevisionId/page/sentenceId/regionId/quote 五字段；无值填 null，sentenceId 或 regionId 至少有一个非空，quote 必须逐字摘录对应来源句。每段内容都必须提供 citations。所有输出只是待教师复核的草稿。\n"
+            "为教师编辑工作台生成中文课程草稿。只能依据 SOURCE_JSON，不得补造教材事实、数学条件或答案。引用必须使用 SOURCE_JSON 中现有的 sentenceId，不得自行编造或重新编号。每条 citations 必须含 sourceRevisionId/page/sentenceId/regionId/quote 五字段；无值填 null，sentenceId 或 regionId 至少有一个非空，quote 固定填 null，服务端会按有效句子 ID 填入原文；不要重新抄写或改写 OCR 引文。每段内容都必须提供 citations。所有输出只是待教师复核的草稿。\n"
             "数学须提供 concept/conditions/example(prompt,answer,steps,citations)、恰好三级 hints(每项 text,citations)、check(prompt,answer,citations)。条件缺失或无法据来源作答时拒绝生成。\n"
             "英语须提供四题 questions，kind 分别为 word_meaning/reference/explicit/inference，每项含 prompt、answer、citations、teacherVariants（建议答案变体）和 rubric（评分要点）；变体与rubric明确是待教师审核建议。推断题也须引用原文依据。\n"
             f"CHAPTER_JSON={json.dumps({'subject': chapter['subject'], 'title': chapter['title']}, ensure_ascii=False)}\n"
-            f"SOURCE_JSON={json.dumps({'sourceRevisionId': revision_id, 'pages': source['pages']}, ensure_ascii=False)}"
+            f"SOURCE_JSON={json.dumps(excerpt, ensure_ascii=False)}"
         )
         schema_fingerprint = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         prompt_fingerprint = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -195,13 +201,20 @@ class ChapterCourseService:
                 )
             stage = "draft_validation"
             documents, issues = build_quality_draft(chapter, source, draft)
+            excerpt_pages = [page["page"] for page in excerpt["pages"]]
+            if sum(len(page.get("sentences", [])) for page in excerpt["pages"]) < sum(len(page.get("sentences", [])) for page in source["pages"]):
+                for document in documents:
+                    document["blocks"].insert(0, {"id": f"{document['lessonId']}-scope", "type": "markdown", "title": "本次教学范围",
+                        "payload": {"markdown": f"本草稿使用第 {excerpt_pages[0]}–{excerpt_pages[-1]} 页的起始段落节选，尚未覆盖整章。完整章节原文已保留，请教师复核后发布。"}})
+
         except JobCancelled:
             raise
         except Exception as error:
             safe_runtime = getattr(error, "runtime_run", None)
             if isinstance(safe_runtime, dict):
                 runtime_run = safe_runtime
-            raise RetryableJobError("章节草稿生成或来源校验失败", details={
+            message = f"章节草稿来源校验失败：{error}" if isinstance(error, ChapterDraftValidationError) else "章节草稿生成或来源校验失败"
+            raise RetryableJobError(message, details={
                 "stage": stage, "errorType": type(error).__name__,
                 "sourceFingerprint": source.get("fingerprint"), "promptSha256": prompt_fingerprint,
                 "schemaSha256": schema_fingerprint, "runtime": _safe_runtime_audit(runtime_run),
@@ -353,9 +366,23 @@ class ChapterCourseService:
         self.store.create_chapter(chapter)
         return chapter
 
+    @_serialize_chapter_mutation
+    def delete(self, chapter_id: str) -> dict[str, str]:
+        """Hide a course while retaining sources, publications and learner history."""
+        chapter = self.store.load_chapter(chapter_id)
+        if not chapter or chapter.get("deletedAt"):
+            raise LookupError("课程不存在或已删除")
+        lookup = getattr(self.jobs, "latest_for_payload", None)
+        current = lookup("chapter.lesson.generate", "chapterId", chapter_id) if callable(lookup) else None
+        if isinstance(current, dict) and current["status"] in {"queued", "running"}:
+            self.jobs.request_cancel(current["jobId"])
+        chapter["deletedAt"] = time.time()
+        self.store.save_chapter(chapter)
+        return {"status": "deleted", "chapterId": chapter_id}
+
     def get(self, chapter_id: str) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         result = copy.deepcopy(chapter)
         result.pop("aiGenerationRuns", None)
@@ -389,7 +416,7 @@ class ChapterCourseService:
     @_serialize_chapter_mutation
     def revise(self, chapter_id: str, request: dict[str, Any]) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         if request.get("expectedRecordVersion") is not None and request["expectedRecordVersion"] != chapter["recordVersion"]:
             raise ValueError("章节已被其他编辑更新，请刷新后重试")
@@ -440,7 +467,7 @@ class ChapterCourseService:
     @_serialize_chapter_mutation
     def generate(self, chapter_id: str) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         source = chapter["sourceRevisions"][-1]
         if chapter.get("currentLessonIds"):
@@ -467,7 +494,7 @@ class ChapterCourseService:
     @_serialize_chapter_mutation
     def review(self, chapter_id: str, lesson_id: str, decision: str, reviewer: str, note: str = "", expected_record_version: int | None = None) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         if expected_record_version is not None and expected_record_version != chapter["recordVersion"]:
             raise ValueError("章节已被其他编辑更新，请刷新后重试")
@@ -616,7 +643,7 @@ class ChapterCourseService:
     @_serialize_chapter_mutation
     def publish(self, chapter_id: str) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         source = chapter["sourceRevisions"][-1]
         if chapter.get("publicationId") and chapter.get("status") == "published" and chapter["currentLessonIds"]:
@@ -672,7 +699,7 @@ class ChapterCourseService:
 
     def get_published(self, chapter_id: str, publication_id: str | None = None) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter or not chapter.get("publicationId"):
+        if not chapter or chapter.get("deletedAt") or not chapter.get("publicationId"):
             raise LookupError("已发布章节不存在")
         publication_id = publication_id or chapter["publicationId"]
         if publication_id not in {item["publicationId"] for item in chapter.get("publications", [])}:
@@ -707,7 +734,7 @@ class ChapterCourseService:
 
     def attempt(self, chapter_id: str, request: dict[str, Any]) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         publication_id = request.get("publicationId") or chapter.get("publicationId")
         if publication_id not in {item["publicationId"] for item in chapter.get("publications", [])}:
@@ -838,12 +865,12 @@ class ChapterCourseService:
         return self._resolved_english_attempt(reviewed)
 
     def list(self) -> dict[str, Any]:
-        chapters = self.store.list_chapters()
+        chapters = [chapter for chapter in self.store.list_chapters() if not chapter.get("deletedAt")]
         return {"items": [{key: value for key, value in item.items() if key not in {"sourceRevisions", "lessons", "publications"}} for item in chapters]}
 
     def get_attempt(self, chapter_id: str, attempt_id: str, learner_id: str) -> dict[str, Any]:
         chapter = self.store.load_chapter(chapter_id)
-        if not chapter:
+        if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
         result = self.store.get_chapter_attempt(attempt_id)
         if not result or result.get("learnerId") != learner_id or result.get("publicationId") not in {item["publicationId"] for item in chapter.get("publications", [])}:
