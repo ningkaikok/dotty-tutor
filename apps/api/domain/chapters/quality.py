@@ -34,7 +34,7 @@ def draft_source_excerpt(source: Mapping[str, Any], *, text_budget: int = 12_000
     return {"sourceRevisionId": source["sourceRevisionId"], "pages": pages}
 
 
-def quality_draft_schema(subject: str, *, source: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def quality_draft_schema(subject: str, *, source: Mapping[str, Any] | None = None, teaching_mode: str = "practice") -> dict[str, Any]:
     """Return a strict JSON schema accepted by ModelRuntime structured output."""
     citation = {
         "type": "object", "additionalProperties": False,
@@ -65,6 +65,11 @@ def quality_draft_schema(subject: str, *, source: Mapping[str, Any] | None = Non
         return {"type": "object", "additionalProperties": False, "properties": properties, "required": required}
 
     text = {"type": "string", "minLength": 1, "maxLength": 2000}
+    if teaching_mode == "tutorial":
+        item = section({"kind": {"type": "string", "enum": ["objectives", "explanation", "example", "summary"]},
+                        "title": {"type": "string", "minLength": 1, "maxLength": 160},
+                        "text": text, "citations": citations}, ["kind", "title", "text", "citations"])
+        return section({"sections": {"type": "array", "minItems": 4, "maxItems": 4, "items": item}}, ["sections"])
     if subject == "math":
         cited_text = section({"text": text, "citations": citations}, ["text", "citations"])
         example = section({"prompt": text, "answer": text, "steps": {"type": "array", "minItems": 1, "maxItems": 8, "items": text}, "citations": citations}, ["prompt", "answer", "steps", "citations"])
@@ -157,6 +162,31 @@ def build_quality_draft(
     """Reject unsupported model claims and return only explicitly unapproved lessons."""
     if not isinstance(draft, dict) or not source.get("pages"):
         raise ChapterDraftValidationError("生成结果或来源页无效")
+    if chapter.get("teachingMode") == "tutorial":
+        tutorial_sections = draft.get("sections")
+        kinds = ["objectives", "explanation", "example", "summary"]
+        if not isinstance(tutorial_sections, list) or len(tutorial_sections) != 4:
+            raise ChapterDraftValidationError("教程须包含学习目标、讲解、示例与总结")
+        by_kind = {}
+        for raw in tutorial_sections:
+            section, refs = _cited_section(raw, "教程内容", source)
+            kind = section.get("kind")
+            if kind not in kinds or kind in by_kind:
+                raise ChapterDraftValidationError("教程环节缺失或重复")
+            by_kind[kind] = {"title": _text(section.get("title"), "环节标题", limit=160),
+                             "text": _text(section.get("text"), "教程讲解"), "refs": refs}
+        lesson_id = lesson_id_factory()
+        first_ref = by_kind["objectives"]["refs"][0]
+        page = next(page for page in source["pages"] if page["page"] == first_ref["page"])
+        return [{"lessonId": lesson_id, "title": str(chapter["title"]), "version": chapter.get("version", 1),
+                 "status": "in_review", "sourceUploadId": source.get("uploadId"),
+                 "knowledgePoints": [str(chapter["title"])],
+                 "sourceRevisionId": source["sourceRevisionId"],
+                 "sourceLocator": {"sourceRevisionId": source["sourceRevisionId"], "page": page["page"], "regions": page.get("regions", [])},
+                 "blocks": [{"id": f"{lesson_id}-{kind}", "type": "markdown", "title": by_kind[kind]["title"],
+                             "payload": {"markdown": by_kind[kind]["text"], "sourceRefs": by_kind[kind]["refs"]}} for kind in kinds],
+                 "questionPayload": {"quality": {"status": "needs_review", "reviewBasis": "ai_tutorial", "errors": ["教程讲解与引用待教师复核"]}},
+                 "reviewIssues": []}], []
     if chapter.get("subject") == "math":
         sections: dict[str, Any] = {}
         references: dict[str, list[dict[str, Any]]] = {}

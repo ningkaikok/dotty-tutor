@@ -49,6 +49,7 @@ export interface ChapterLesson extends Omit<LessonDocument, "blocks" | "question
 }
 
 export interface ChapterManagement {
+  teachingMode?: "practice" | "tutorial";
   chapterId: string;
   subject: ChapterSubject;
   title: string;
@@ -74,6 +75,7 @@ export interface ChapterLessonEditInput extends Omit<components["schemas"]["Chap
 }
 
 export interface PublishedChapter {
+  teachingMode?: "practice" | "tutorial";
   chapterId: string;
   subject: ChapterSubject;
   title: string;

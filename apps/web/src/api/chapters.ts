@@ -151,6 +151,14 @@ function normalizeManagement(response: ApiManagement): ChapterManagement {
     const statusesForLesson = ["draft", "in_review", "approved", "needs_review", "published"] as const;
     if (!statusesForLesson.some((status) => status === lesson.status)) throw new Error("章节服务返回了未知课程状态");
     const question = lesson.questionPayload.question;
+    if (!question) {
+      if (response.teachingMode !== "tutorial") throw new Error("练习课程缺少检查题");
+      const lessonStatus = statusesForLesson.find((status) => status === lesson.status)!;
+      return { lessonId: lesson.lessonId, title: lesson.title, version: lesson.version, status: lessonStatus,
+        knowledgePoints: lesson.knowledgePoints ?? [], blocks: normalizeLessonBlocks(lesson.blocks),
+        sourceRevisionId: lesson.sourceRevisionId, sourceLocator: { ...lesson.sourceLocator, regions: lesson.sourceLocator.regions ?? [] },
+        evidenceOptions: lesson.evidenceOptions ?? [], reviewIssues: lesson.reviewIssues ?? [] };
+    }
     const questionReview = question as typeof question & { teacherVariants?: string[]; variantReviewStatus?: string };
     const normalizedQuestionKind = questionKind(question.questionKind);
     const answerMode: ChapterAuthorQuestion["answerMode"] = question.answerMode === "objective" || question.answerMode === "short_answer" ? question.answerMode : undefined;
@@ -194,6 +202,7 @@ function normalizeManagement(response: ApiManagement): ChapterManagement {
   return {
     chapterId: response.chapterId,
     subject: response.subject,
+    teachingMode: response.teachingMode ?? "practice",
     title: response.title,
     status: chapterStatus,
     version: response.version,
@@ -231,12 +240,13 @@ function normalizePublishedChapter(response: ApiPublicChapter): PublishedChapter
       sourceLocator: { ...lesson.sourceLocator, regions: lesson.sourceLocator.regions ?? [] },
       evidenceOptions: lesson.evidenceOptions ?? [],
       reviewIssues: [],
-      questionPayload: { question: questionTypeFields(question) },
+      ...(question ? { questionPayload: { question: questionTypeFields(question) } } : {}),
     };
   });
   return {
     chapterId: response.chapterId,
     subject: response.subject,
+    teachingMode: response.teachingMode ?? "practice",
     title: response.title,
     publicationId: response.publicationId,
     version: response.version,
@@ -272,7 +282,7 @@ export async function listChapters(): Promise<ChapterSummary[]> {
 }
 
 export async function createChapter(request: { subject: ChapterSubject; title: string; source: ChapterSource }): Promise<ChapterManagement> {
-  const body: CreateRequest = request;
+  const body: CreateRequest = { ...request, teachingMode: "practice" };
   const response: JsonResponse<"create_chapter_api_chapters_post", 201> = await parse(
     await fetch("/api/chapters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   );

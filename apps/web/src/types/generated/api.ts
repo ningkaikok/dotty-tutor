@@ -2373,7 +2373,7 @@ export interface components {
             quality?: {
                 [key: string]: unknown;
             };
-            question: components["schemas"]["ChapterAuthorQuestion"];
+            question?: components["schemas"]["ChapterAuthorQuestion"] | null;
         };
         /** ChapterCreate */
         ChapterCreate: {
@@ -2383,6 +2383,12 @@ export interface components {
              * @enum {string}
              */
             subject: "math" | "english";
+            /**
+             * Teachingmode
+             * @default practice
+             * @enum {string}
+             */
+            teachingMode: "practice" | "tutorial";
             /** Title */
             title: string;
         };
@@ -2580,7 +2586,7 @@ export interface components {
             lessonSteps?: {
                 [key: string]: unknown;
             }[];
-            question: components["schemas"]["ChapterPublicQuestion"];
+            question?: components["schemas"]["ChapterPublicQuestion"] | null;
         };
         /** ChapterPublishedResponse */
         ChapterPublishedResponse: {
@@ -2600,6 +2606,12 @@ export interface components {
              * @enum {string}
              */
             subject: "math" | "english";
+            /**
+             * Teachingmode
+             * @default practice
+             * @enum {string}
+             */
+            teachingMode: "practice" | "tutorial";
             /** Title */
             title: string;
             /** Version */
@@ -2661,6 +2673,12 @@ export interface components {
              * @enum {string}
              */
             subject: "math" | "english";
+            /**
+             * Teachingmode
+             * @default practice
+             * @enum {string}
+             */
+            teachingMode: "practice" | "tutorial";
             /** Title */
             title: string;
             /** Version */
@@ -2793,6 +2811,8 @@ export interface components {
             chapterId: string;
             /** Currentlessonids */
             currentLessonIds: string[];
+            /** Pagestart */
+            pageStart?: number | null;
             /** Publicationid */
             publicationId?: string | null;
             /** Recordversion */
@@ -2806,8 +2826,16 @@ export interface components {
              * @enum {string}
              */
             subject: "math" | "english";
+            /**
+             * Teachingmode
+             * @default practice
+             * @enum {string}
+             */
+            teachingMode: "practice" | "tutorial";
             /** Title */
             title: string;
+            /** Uploadid */
+            uploadId?: string | null;
             /** Version */
             version: number;
         };

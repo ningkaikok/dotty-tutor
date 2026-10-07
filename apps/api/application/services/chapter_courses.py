@@ -100,6 +100,20 @@ def _refs_resolve(references: list[dict[str, Any]], revision_id: str, pages: lis
     return True
 
 
+def _validate_tutorial(lesson: dict[str, Any], source: dict[str, Any]) -> None:
+    """Tutorial approval still requires every teaching block to resolve to its source."""
+    blocks = lesson.get("blocks") or []
+    teaching = [block for block in blocks if not block["id"].endswith("-scope")]
+    if len(teaching) != 4 or (lesson.get("questionPayload") or {}).get("question"):
+        raise ValueError("教程内容结构无效，请重新生成讲解草稿")
+    for block in teaching:
+        payload = block.get("payload") or {}
+        if block.get("type") != "markdown" or not payload.get("markdown") or not _refs_resolve(
+            payload.get("sourceRefs") or [], source["sourceRevisionId"], source["pages"],
+        ):
+            raise ValueError("教程讲解引用无法定位到当前来源，请重新生成")
+
+
 class ChapterCourseService:
     """Manage source revisions, human review, immutable publications and attempts."""
 
@@ -177,7 +191,7 @@ class ChapterCourseService:
         if cancellation_check():
             raise JobCancelled()
         excerpt = draft_source_excerpt(source)
-        schema = quality_draft_schema(chapter["subject"], source=excerpt)
+        schema = quality_draft_schema(chapter["subject"], source=excerpt, teaching_mode=chapter.get("teachingMode", "practice"))
         prompt = (
             "为教师编辑工作台生成中文课程草稿。只能依据 SOURCE_JSON，不得补造教材事实、数学条件或答案。引用必须使用 SOURCE_JSON 中现有的 sentenceId，不得自行编造或重新编号。每条 citations 必须含 sourceRevisionId/page/sentenceId/regionId/quote 五字段；无值填 null，sentenceId 或 regionId 至少有一个非空，quote 固定填 null，服务端会按有效句子 ID 填入原文；不要重新抄写或改写 OCR 引文。每段内容都必须提供 citations。所有输出只是待教师复核的草稿。\n"
             "数学须提供 concept/conditions/example(prompt,answer,steps,citations)、恰好三级 hints(每项 text,citations)、check(prompt,answer,citations)。条件缺失或无法据来源作答时拒绝生成。\n"
@@ -185,6 +199,17 @@ class ChapterCourseService:
             f"CHAPTER_JSON={json.dumps({'subject': chapter['subject'], 'title': chapter['title']}, ensure_ascii=False)}\n"
             f"SOURCE_JSON={json.dumps(excerpt, ensure_ascii=False)}"
         )
+        if chapter.get("teachingMode") == "tutorial":
+            prompt = (
+                "依据 SOURCE_JSON 为教师生成一个连贯的中文教程章节，不出题、不生成答案或评分标准。"
+                "先规划学习目标，再依次讲解概念或方法、用教材中的示例示范，最后总结。"
+                "输出 sections，恰好四项，kind 依次为 objectives/explanation/example/summary，"
+                "每项含 title/text/citations。每项内容须由来源支持，不得编造事实或例子。"
+                "citations 使用已有 sourceRevisionId/page/sentenceId，regionId 和 quote 填 null。"
+                "只生成待教师复核的草稿。\n"
+                f"CHAPTER_JSON={json.dumps({'subject': chapter['subject'], 'title': chapter['title']}, ensure_ascii=False)}\n"
+                f"SOURCE_JSON={json.dumps(excerpt, ensure_ascii=False)}"
+            )
         schema_fingerprint = hashlib.sha256(json.dumps(schema, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         prompt_fingerprint = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         runtime_run: dict[str, Any] = {}
@@ -358,6 +383,7 @@ class ChapterCourseService:
         issues = self._source_issues(source)
         chapter = {
             "chapterId": chapter_id, "subject": request["subject"], "title": request["title"],
+            "teachingMode": request.get("teachingMode", "practice"),
             "status": "needs_review" if issues else "draft", "version": 1, "recordVersion": 1,
             "sourceRevisions": [{"sourceRevisionId": revision_id, **source, "issues": issues, "createdAt": time.time()}],
             "lessons": [], "currentLessonIds": [], "reviewIssues": issues,
@@ -403,6 +429,7 @@ class ChapterCourseService:
             locator = lesson.get("sourceLocator") or {}
             question = (lesson.get("questionPayload") or {}).get("question") or {}
             referenced_pages = {reference.get("page") for reference in question.get("requiredEvidenceRefs", []) if isinstance(reference, dict)}
+            referenced_pages.update(ref.get("page") for block in lesson.get("blocks", []) for ref in block.get("payload", {}).get("sourceRefs", []))
             referenced_pages.add(locator.get("page"))
             source_pages = [page for page in (revision or {}).get("pages", []) if page.get("page") in referenced_pages]
             lesson["evidenceOptions"] = [
@@ -472,6 +499,8 @@ class ChapterCourseService:
         source = chapter["sourceRevisions"][-1]
         if chapter.get("currentLessonIds"):
             return self.get(chapter_id)
+        if chapter.get("teachingMode") == "tutorial":
+            raise ValueError("教程请使用 AI 讲解生成，模板出题不适用于教程")
         documents, issues = build_chapter_lessons(chapter, source)
         revision_id = source["sourceRevisionId"]
         lesson_ids = [document["lessonId"] for document in documents]
@@ -507,7 +536,11 @@ class ChapterCourseService:
         question = payload.get("question") or {}
         quality = payload.get("quality") or {}
         ai_review_pending = str(quality.get("reviewBasis") or "").startswith("ai_")
-        if decision == "approve" and ai_review_pending:
+        if decision == "approve" and chapter.get("teachingMode") == "tutorial":
+            _validate_tutorial(lesson, chapter["sourceRevisions"][-1])
+            payload["quality"] = {"status": "ready", "errors": [], "reviewBasis": "teacher_approved_tutorial", "reviewer": reviewer}
+            lesson["questionPayload"] = payload
+        if decision == "approve" and ai_review_pending and chapter.get("teachingMode") != "tutorial":
             accepted = question.get("acceptedAnswers") or question.get("correctAnswers") or []
             expected_answer = (question.get("answerSpec") or {}).get("expected")
             if not accepted and expected_answer is not None and str(expected_answer).strip():
@@ -548,6 +581,8 @@ class ChapterCourseService:
             raise LookupError("当前修订中找不到该课程")
         if request.get("expectedRecordVersion") is not None and request["expectedRecordVersion"] != chapter["recordVersion"]:
             raise ValueError("章节已被其他编辑更新，请刷新后重试")
+        if chapter.get("teachingMode") == "tutorial":
+            raise ValueError("教程没有检查题，请重新生成讲解草稿")
         revision = chapter["sourceRevisions"][-1]
         if request["sourceRevisionId"] != revision["sourceRevisionId"] or not any(
             page["page"] == request["page"] for page in revision["pages"]
@@ -658,13 +693,16 @@ class ChapterCourseService:
         if any((lesson.get("questionPayload") or {}).get("quality", {}).get("status") != "ready" for lesson in lessons):
             raise ValueError("存在缺少客观答案的检查题，请教师补充后再发布")
         for lesson in lessons:
+            if chapter.get("teachingMode") == "tutorial":
+                _validate_tutorial(lesson, source)
+                continue
             question = (lesson.get("questionPayload") or {}).get("question") or {}
             revision = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == question.get("sourceRevisionId")), None)
             pages = [{"sourceRevisionId": question.get("sourceRevisionId"), **page} for page in (revision or {}).get("pages", [])]
             revision_id = question.get("sourceRevisionId")
             if not isinstance(revision_id, str) or not _refs_resolve(question.get("requiredEvidenceRefs") or [], revision_id, pages):
                 raise ValueError(f"课程 {lesson['lessonId']} 的答案依据无法定位到当前来源")
-        if chapter["subject"] == "english":
+        if chapter["subject"] == "english" and chapter.get("teachingMode") != "tutorial":
             for lesson in lessons:
                 question = (lesson.get("questionPayload") or {}).get("question") or {}
                 revision = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == question.get("sourceRevisionId")), None)
@@ -710,6 +748,10 @@ class ChapterCourseService:
         lessons = []
         for lesson in publication["lessons"]:
             question = (lesson.get("questionPayload") or {}).get("question") or {}
+            if chapter.get("teachingMode") == "tutorial":
+                refs = [ref for block in lesson["blocks"] for ref in block.get("payload", {}).get("sourceRefs", [])]
+                first = refs[0]
+                question = {"sourceRevisionId": first["sourceRevisionId"], "sourceLocator": {"sourceRevisionId": first["sourceRevisionId"], "page": first["page"], "regions": []}, "requiredEvidenceRefs": refs}
             source_revision = next((item for item in chapter["sourceRevisions"] if item["sourceRevisionId"] == question.get("sourceRevisionId")), None)
             locator = question.get("sourceLocator") or {}
             referenced_pages = {reference.get("page") for reference in question.get("requiredEvidenceRefs", []) if isinstance(reference, dict)}
@@ -719,7 +761,7 @@ class ChapterCourseService:
                 "lessonId": lesson["lessonId"], "title": lesson["title"], "version": lesson["version"],
                 "status": lesson["status"], "knowledgePoints": lesson["knowledgePoints"],
                 "blocks": _strip_answers(lesson["blocks"]),
-                "questionPayload": student_question_payload(lesson.get("questionPayload")),
+                "questionPayload": ({"question": None} if chapter.get("teachingMode") == "tutorial" else student_question_payload(lesson.get("questionPayload"))),
                 "sourceRevisionId": question.get("sourceRevisionId"),
                 "sourceLocator": question.get("sourceLocator"),
                 "evidenceOptions": [
@@ -728,7 +770,7 @@ class ChapterCourseService:
                 ],
             }
             lessons.append(public)
-        return {"chapterId": chapter_id, "subject": chapter["subject"], "title": chapter["title"],
+        return {"chapterId": chapter_id, "subject": chapter["subject"], "title": chapter["title"], "teachingMode": chapter.get("teachingMode", "practice"),
                 "publicationId": publication["publicationId"], "version": publication["version"],
                 "status": "published", "lessons": lessons}
 
@@ -736,6 +778,8 @@ class ChapterCourseService:
         chapter = self.store.load_chapter(chapter_id)
         if not chapter or chapter.get("deletedAt"):
             raise LookupError("章节不存在")
+        if chapter.get("teachingMode") == "tutorial":
+            raise ValueError("教程没有检查题，无需提交作答")
         publication_id = request.get("publicationId") or chapter.get("publicationId")
         if publication_id not in {item["publicationId"] for item in chapter.get("publications", [])}:
             raise LookupError("该发布版本不属于此章节")
@@ -866,6 +910,10 @@ class ChapterCourseService:
 
     def list(self) -> dict[str, Any]:
         chapters = [chapter for chapter in self.store.list_chapters() if not chapter.get("deletedAt")]
+        for chapter in chapters:
+            origin = chapter["sourceRevisions"][0]
+            chapter["uploadId"] = origin.get("uploadId")
+            chapter["pageStart"] = origin.get("pageStart")
         return {"items": [{key: value for key, value in item.items() if key not in {"sourceRevisions", "lessons", "publications"}} for item in chapters]}
 
     def get_attempt(self, chapter_id: str, attempt_id: str, learner_id: str) -> dict[str, Any]:

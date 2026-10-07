@@ -258,7 +258,7 @@ test("user Given a PDF and an English course When using the unified library Then
   const courses = Array.from({ length: 5 }, (_, index) => ({ chapterId: `automatic-${index + 1}`, title: `Unit ${index + 1}`, pageStart: index * 2 + 1, pageEnd: index * 2 + 2 }));
   await page.route("**/api/chapters/from-upload/pdf-1", (route) => route.fulfill({ status: 202, json: { jobId: "automatic-job", status: "succeeded", result: { chapters: courses, notices: [], chapterLimit: 5 } } }));
   await page.getByRole("link", { name: "自动制作课程" }).click();
-  await expect(page.getByRole("heading", { name: "自动制作教材课程" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "自动制作教材教程" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "已安排 5 章课程草稿" })).toBeVisible();
   await expect(page.getByLabel("起始页")).toHaveCount(0);
   await expect(page.getByLabel("课程名称")).toHaveCount(0);
@@ -267,4 +267,35 @@ test("user Given a PDF and an English course When using the unified library Then
   await page.screenshot({ path: "/tmp/dotty-automatic-courses-mobile.png", fullPage: true });
   await page.goto("/studio/chapters");
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
+});
+
+test("user Given a textbook tutorial When opening its directory and published chapter Then teaching plays without reading questions", async ({ page }) => {
+  const chapter = { chapterId: "tutorial", title: "Chapter 1 Writing", uploadId: "writing-book", pageStart: 1, subject: "english", teachingMode: "tutorial", status: "published", version: 1, recordVersion: 2, currentLessonIds: ["teaching"], reviewIssues: [], publicationId: "tutorial-publication" };
+  const lesson = { lessonId: "teaching", title: "Writing a story", version: 1, status: "published", knowledgePoints: ["Writing"], sourceRevisionId: "source", sourceLocator: { sourceRevisionId: "source", page: 1, regions: [] }, evidenceOptions: [], questionPayload: { question: null }, blocks: [{ id: "explanation", type: "markdown", title: "讲解", payload: { markdown: "用具体细节描述人物。" } }] };
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (!path.startsWith("/api/")) return route.continue();
+    if (path === "/api/auth/config") return route.fulfill({ json: { protected: false } });
+    if (path === "/api/library") return route.fulfill({ json: { items: [{ uploadId: "writing-book", filename: "Writing Tutorial.pdf", materialKind: "textbook", questionCount: 0, pageCount: 10 }] } });
+    if (path === "/api/chapters") return route.fulfill({ json: { items: [chapter] } });
+    if (path === "/api/chapters/tutorial") return route.fulfill({ json: { ...chapter, status: "in_review", sourceRevisions: [], publications: [], lessons: [{ ...lesson, status: "in_review", reviewIssues: [] }] } });
+    if (path === "/api/chapters/tutorial/published") return route.fulfill({ json: { ...chapter, lessons: [lesson] } });
+    return route.fulfill({ json: { items: [] } });
+  });
+  await page.goto("/studio");
+  await expect(page.getByRole("heading", { name: "Writing Tutorial.pdf" })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await page.getByText("查看教程目录").click();
+  await page.getByRole("link", { name: "Chapter 1 Writing", exact: true }).click();
+  await expect(page.getByRole("button", { name: "确认已复核" })).toBeEnabled();
+  await expect(page.getByText("确认教程讲解与引用已经人工复核后，发布按钮才会启用。")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "检查题", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "← 我的教材" }).click();
+  await page.getByText("查看教程目录").click();
+  await page.getByRole("link", { name: "学习本章" }).click();
+  await expect(page.getByRole("heading", { name: "Chapter 1 Writing" })).toBeVisible();
+  await expect(page.getByRole("article").getByText("用具体细节描述人物。")).toBeVisible();
+  await expect(page.getByRole("button", { name: /提交/ })).toHaveCount(0);
+  await expect(page.getByText("英语阅读")).toHaveCount(0);
+  await page.screenshot({ path: "/tmp/dotty-a199-tutorial-player.png", fullPage: true });
 });
