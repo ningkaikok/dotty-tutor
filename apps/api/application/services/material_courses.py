@@ -38,7 +38,7 @@ class MaterialCourseService:
         return self.jobs.create_job(
             "material.courses.create",
             {"uploadId": upload_id, "runtimeSnapshot": snapshot},
-            idempotency_key=f"material:{upload_id}:first-five-v1", max_attempts=1,
+            idempotency_key=f"material:{upload_id}:first-five-tutorial-v2", max_attempts=1,
         )
 
     @staticmethod
@@ -134,11 +134,11 @@ class MaterialCourseService:
                 raise JobCancelled()
             with self.store.chapter_lock(f"auto:{upload_id}"):
                 chapter = next((c for c in self.store.list_chapters()
-                                if not c.get("deletedAt") and c["title"] == item["title"] and c["sourceRevisions"][0].get("uploadId") == upload_id
+                                if not c.get("deletedAt") and c.get("teachingMode") == "tutorial" and c["title"] == item["title"] and c["sourceRevisions"][0].get("uploadId") == upload_id
                                 and c["sourceRevisions"][0].get("pageStart") == item["pageStart"]
                                 and c["sourceRevisions"][0].get("pageEnd") == item["pageEnd"]), None)
                 if chapter is None:
-                    chapter = self.chapters.create({"title": item["title"], "subject": subject, "source": {
+                    chapter = self.chapters.create({"title": item["title"], "subject": subject, "teachingMode": "tutorial", "source": {
                         "uploadId": upload_id, "sourceVersion": fingerprint or "1",
                         "pageStart": item["pageStart"], "pageEnd": item["pageEnd"], "license": None,
                     }})

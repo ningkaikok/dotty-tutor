@@ -32,6 +32,28 @@ def math_draft() -> dict[str, object]:
 
 
 class ChapterQualityDraftBehaviorTests(unittest.TestCase):
+    def test_user_uploads_tutorial_then_receives_one_cited_teaching_lesson_without_questions(self):
+        # Given a textbook chapter with verifiable sentence evidence
+        chapter = {"title": "函数教程", "subject": "math", "teachingMode": "tutorial"}
+        draft = {"sections": [{"kind": kind, "title": kind, "text": "讲解函数关系。",
+                              "citations": [ref("s1", "一次函数 y=2x+1。")]} for kind in
+                             ("objectives", "explanation", "example", "summary")]}
+        # When generating a tutorial rather than practice
+        lessons, issues = build_quality_draft(chapter, MATH, draft)
+        # Then the lesson is unapproved teaching with exact source references and no quiz
+        self.assertEqual(len(lessons), 1)
+        self.assertEqual(issues, [])
+        self.assertEqual(lessons[0]["status"], "in_review")
+        self.assertNotIn("question", lessons[0]["questionPayload"])
+        self.assertEqual(lessons[0]["questionPayload"]["quality"]["status"], "needs_review")
+        self.assertEqual([block["type"] for block in lessons[0]["blocks"]], ["markdown"] * 4)
+        self.assertTrue(all(block["payload"]["sourceRefs"] for block in lessons[0]["blocks"]))
+        self.assertEqual(quality_draft_schema("english", teaching_mode="tutorial")["required"], ["sections"])
+        # Forged evidence and missing teaching stages are rejected
+        draft["sections"][0]["citations"][0]["sentenceId"] = "invented"
+        with self.assertRaises(ChapterDraftValidationError):
+            build_quality_draft(chapter, MATH, draft)
+
     def test_user_checks_the_generation_contract_then_model_must_return_complete_strict_shapes(self) -> None:
         # Given a subject-specific model generation contract
         math_schema = quality_draft_schema("math")

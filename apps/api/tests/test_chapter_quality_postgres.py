@@ -31,6 +31,9 @@ class SourceDraftRuntime:
         first = page["sentences"][0]
         reference = {"sourceRevisionId": source["sourceRevisionId"], "page": page["page"],
                      "sentenceId": first["sentenceId"], "quote": first["text"]}
+        if "sections" in schema.get("properties", {}):
+            return {"sections": [{"kind": kind, "title": kind, "text": first["text"], "citations": [reference]}
+                                 for kind in ("objectives", "explanation", "example", "summary")]}, {"provider": "fixture"}
         if '"subject": "english"' in prompt:
             references = [{"sourceRevisionId": source["sourceRevisionId"], "page": item["page"],
                            "sentenceId": item["sentences"][0]["sentenceId"], "quote": item["sentences"][0]["text"]}
@@ -71,6 +74,34 @@ class ChapterQualityPostgresTests(PostgresTestCase):
         })
         self.assertEqual(response.status_code, 202, response.text)
         return response.json()
+
+    def test_user_generates_a_tutorial_then_teacher_approval_publishes_teaching_without_an_answer_requirement(self):
+        # Given an English writing tutorial, not a reading exercise
+        self.chapter = self.service.create({"subject": "english", "title": "Writing a story", "teachingMode": "tutorial",
+                                            "source": {"license": "Original test fixture", "pages": [{"page": 1, "text": "Describe a character using concrete details."}]}})
+        chapter_id = self.chapter["chapterId"]
+        self._queue()
+        # When the real Worker stores a source-cited tutorial
+        finished = self.worker.run_once()
+        self.assertEqual(finished["status"], "succeeded", finished.get("lastError"))
+        managed = self.client.get(f"/api/chapters/{chapter_id}").json()
+        lesson = managed["lessons"][0]
+        self.assertIsNone(lesson["questionPayload"]["question"])
+        self.assertEqual(len(lesson["blocks"]), 4)
+        self.assertEqual(self.client.post(f"/api/chapters/{chapter_id}/publish").status_code, 409)
+        reviewed = self.client.patch(f"/api/chapters/{chapter_id}/lessons/{lesson['lessonId']}/review", json={
+            "expectedRecordVersion": managed["recordVersion"], "decision": "approve", "reviewer": "teacher"})
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        # Then explicit approval allows publication without inventing questions or answers
+        response = self.client.post(f"/api/chapters/{chapter_id}/publish")
+        self.assertEqual(response.status_code, 201, response.text)
+        public = self.client.get(f"/api/chapters/{chapter_id}/published")
+        self.assertEqual(public.status_code, 200, public.text)
+        self.assertEqual(public.json()["teachingMode"], "tutorial")
+        self.assertIsNone(public.json()["lessons"][0]["questionPayload"]["question"])
+        self.assertTrue(public.json()["lessons"][0]["evidenceOptions"])
+        self.assertEqual(self.client.post(f"/api/chapters/{chapter_id}/attempts", json={
+            "attemptId": "unneeded", "lessonId": lesson["lessonId"], "questionId": lesson["lessonId"], "answer": {}}).status_code, 409)
 
     def test_user_generates_and_refreshes_then_one_unapproved_draft_can_be_reviewed_and_published_safely(self) -> None:
         # Given a chapter with source evidence and a queued model generation
