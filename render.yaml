@@ -1,0 +1,80 @@
+services:
+  - type: web
+    name: dotty-tutor-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    dockerCommand: /bin/sh /app/apps/api/render-start.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: MINERU_API_KEY
+        sync: false
+      - key: MINERU_API_URL
+        value: https://mineru.net
+      - key: MINERU_API_MODEL
+        value: vlm
+      - key: MINERU_API_TIMEOUT_SECONDS
+        value: "900"
+      - key: MINERU_API_POLL_INTERVAL_SECONDS
+        value: "3"
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com
+      - key: DEEPSEEK_MODELS
+        value: deepseek-flash
+      - key: MODEL_PROVIDER
+        value: deepseek
+      - key: MODEL_NAME
+        value: deepseek-flash
+      - key: REVIEW_PROVIDER
+        value: deepseek
+      - key: REVIEW_MODEL
+        value: deepseek-flash
+      - key: DOTTY_DATA_DIR
+        value: /tmp/dotty-tutor-data
+      - key: CORS_ORIGINS
+        value: https://dotty-tutor-web.onrender.com
+      - key: TRUSTED_HOSTS
+        value: dotty-tutor-api.onrender.com
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: PUBLIC_PROTECTION_ENABLED
+        value: "true"
+      - key: PUBLIC_RATE_LIMIT_REQUESTS
+        value: "120"
+      - key: PUBLIC_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: PUBLIC_MODEL_RATE_LIMIT_REQUESTS
+        value: "6"
+      - key: PUBLIC_MODEL_RATE_LIMIT_WINDOW_SECONDS
+        value: "60"
+      - key: PUBLIC_MODEL_DAILY_LIMIT
+        value: "60"
+      - key: PUBLIC_MODEL_CONCURRENCY
+        value: "2"
+      - key: PUBLIC_MAX_REQUEST_BYTES
+        value: "12582912"
+      - key: TTS_PROVIDER
+        value: auto
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: dotty-tutor-web
+    runtime: static
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter dotty-tutor-web run build
+    staticPublishPath: ./apps/web/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 22.22.2
+      - key: VITE_API_ORIGIN
+        value: https://dotty-tutor-api.onrender.com

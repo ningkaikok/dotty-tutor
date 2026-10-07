@@ -2,6 +2,27 @@
 
 本文提供当前单机 MVP 的部署方法，并说明升级为公网生产架构前必须补齐的能力。
 
+## Render + Supabase 在线 Demo
+
+React Router 的 `/studio`、课程详情和学生链接需要单页应用回退。`render.yaml` 为 Static Site 声明 `/*` 到 `/index.html` 的 Rewrite（重写），Render 控制台的 Redirects/Rewrites 也须同步；不能配置成会改变地址的 Redirect（重定向）。上线验收同时检查首页和这些深层路径返回 HTTP 200，再检查浏览器内容，避免首页可用但刷新课程返回 404。[配置语义见 Render 官方说明](https://render.com/docs/redirects-rewrites)。
+
+仓库根目录的 `render.yaml` 提供一个低成本 Demo 部署方案：Render 免费 Web Service
+运行 FastAPI、后台 Worker 和迁移命令，Render 免费 Static Site 托管 React 前端，Supabase
+免费 PostgreSQL 提供 `DATABASE_URL`。Render 的免费服务会休眠，文件目录是临时的，因此
+适合演示而不是生产数据。
+
+在 Render Blueprint 初次创建时填写 `DATABASE_URL` 和 `DEEPSEEK_API_KEY`；数据库连接串应使用
+Supabase 的 PostgreSQL URI，应用会自动规范化为 `postgresql+psycopg://`。不要把这两个值写入
+`render.yaml` 或 Git。若 Render 因名称冲突给服务追加了后缀，需要同步修改 `CORS_ORIGINS`、
+`TRUSTED_HOSTS` 和 `VITE_API_ORIGIN` 三个值。
+
+Blueprint 默认启用公网 Demo 保护：单 IP 每分钟最多 120 个请求，相关写入路由每分钟最多
+6 个请求、每天最多 60 个请求，同时最多处理 2 个模型路由请求；普通 GET 读取不占模型额度。
+Content-Length 超过 12 MiB 的请求会被拒绝，无该头的流式请求应由网关限制。计数器
+保存在 API 进程内存中，服务重启后会清空；它用于降低滥用和 DeepSeek 费用风险，不等同于用户认证。
+正式公开发布仍应增加登录、边缘限流和用量告警。Render 代理的客户端 IP 由
+`TRUST_PROXY_HEADERS=true` 读取；若改为直连或更换代理，应同步调整该配置。
+
 ## 部署边界
 
 GitHub 负责保存源码和运行 CI，不会直接运行 FastAPI、PostgreSQL、MinerU 或 Qwen3-TTS。
@@ -74,6 +95,12 @@ TRUSTED_HOSTS=tutor.example.com
 MODEL_PROVIDER=codex
 MODEL_NAME=default
 OLLAMA_BASE_URL=http://127.0.0.1:11434
+# 可选：在线 Demo 使用 DeepSeek；密钥只放在服务器 Secret，不要提交到 Git。
+# MODEL_PROVIDER=deepseek
+# MODEL_NAME=deepseek-flash
+# DEEPSEEK_BASE_URL=https://api.deepseek.com
+# DEEPSEEK_API_KEY=replace-with-secret
+# DEEPSEEK_MODELS=deepseek-flash
 MINERU_COMMAND=/opt/dotty-tutor/.mineru-venv/bin/mineru
 
 REVIEW_PROVIDER=codex
@@ -364,6 +391,9 @@ TTS_PROVIDER=qwen
 QWEN_TTS_URL=http://host.docker.internal:8020
 ```
 
+如果使用 DeepSeek 在线 API，则不需要在宿主机安装模型，只需把 `MODEL_PROVIDER`、
+`MODEL_NAME` 和 `DEEPSEEK_API_KEY` 写入部署平台的后端 Secret；浏览器前端不应直接持有该密钥。
+
 Compose 已把 `host.docker.internal` 映射到宿主机。Ollama 和 Qwen3-TTS 必须监听 Docker
 可访问的地址，并通过主机防火墙限制访问。基础 API 镜像不包含 MinerU、Qwen 权重或 Codex
 CLI；这些重型运行时应部署为独立服务或通过专用镜像接入。
@@ -439,3 +469,45 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。
+
+### v0.33.0 发布分支同步
+
+`deploy/render-supabase` 保留 Render 启动脚本、公网限流与 MinerU 云端配置，并同步 main 的提示词管理修复、章节课程与来源约束 AI 草稿。章节生成使用任务冻结的 DeepSeek 配置，计入昂贵请求限额；普通审核不占用模型请求额度。原页图片使用 `VITE_API_ORIGIN` 指向独立 API 域名。已有库须升级至 `0016_chapter_courses`，不能只替换应用镜像。Static Site 的 Node 固定为 22.22.2，满足前端依赖要求。当前 Render 配置仍为公开合成数据演示；启用 protected 模式前必须使用同源 HTTPS 代理，并配置教师密钥与安全 Cookie，不能直接将分离的 Static Site/API 域名视为已验收的会话部署。数据库迁移仍按 backup → preflight → upgrade → verify 执行。分支同步不代表生产迁移或服务上线已验证。
+
+
+### 2026-10-03 章节同步验收
+
+同步 main 的提示词管理/题图修复、章节课程和来源约束草稿后，发布分支本地执行并通过：
+
+- `apps/api`：`uv run ruff check .`、`uv run pyright`、`uv run python -m unittest discover -s tests -p 'test_*.py'`，720 项测试通过；由隔离 PostgreSQL 包装器创建并迁移 runtime 库后执行原命令，没有跳过数据库验收。
+- `apps/web`：`pnpm lint`、`pnpm vitest run`（131 项）、`pnpm check:api`、`pnpm exec tsc --noEmit`、`pnpm run build`、`DOTTY_WEB_PORT=59236 pnpm run test:e2e`（20 项）通过。
+- 根目录测试纪律检查（94 文件）及 `git diff --check` 通过。
+- 在独立 `dotty-dcaa-quality` Docker 项目执行 `docker compose config --quiet`、`docker compose up --build --detach`；Web `/healthz` 返回 `ok`，`/api/health` 返回 `status=ok/database=postgresql/schema=current`，API/数据库/Web 健康，Worker 运行。采用 59237/59238 隔离端口替代默认 8080/15432；验收后 `docker compose down --volumes` 清理任务专用容器与临时卷。
+
+未执行生产 Supabase 迁移、Render 上线核验或真实 DeepSeek/MinerU 质量评测；真实材料 18 个案例仍待人工复核。已有库部署前须完成 `0016_chapter_courses` 的正式升级与验证。
+
+
+### 2026-10-04 通用适配回合并后同步
+
+main 已接收可选 API 来源、DeepSeek/MinerU 云端适配及显式启用的公网保护。
+发布分支的通用应用、测试、配置模板、本机启动脚本和文档采用 main 版本，
+仅保留 Render 模板、启动脚本、部署说明及 Render 专属修复记录。
+Render Blueprint 继续明确设置域名、云端模型默认值、PUBLIC_PROTECTION_ENABLED=true
+及可信代理头；main 的本机默认配置不自动启用公网保护。
+
+Render 启动脚本使用 app:job_registry，包含教材、章节生成和错题后台任务。
+本次在独立容器中验证迁移至既有 0016_chapter_courses、启动完整 Worker/API、
+健康接口与注册表，组合代码完整后端 725 项、前端 134 项及浏览器 21 项通过。
+此次分支同步没有新增迁移和版本号；CI/本地验证不代表 Render 已重部署或真实云端质量评测。
+
+
+### 2026-10-07 教材讲解教程同步
+
+部署分支同步 main 的教材讲解教程：一本上传教材对应一个教程及内部章节目录，
+自动制作默认生成学习目标、讲解、示例和总结，不强制出题。旧练习草稿与历史发布保留；
+已有新教程时，旧练习折叠为历史，不计入当前教程章节数。当前仍最多制作前 5 章，
+长章节使用明确标注范围的原文节选，来源引用和教程内容仍需教师复核后发布。
+
+本次没有新增 Alembic 迁移；Render 启动脚本、云端模型/OCR 配置与公网保护保持原设置。
+部署后分别核对 API 和 Static Site 的实际部署提交、API 健康状态、OpenAPI 教程契约以及
+`/studio` 深层页面。仅同步分支或通过 CI 不能证明 Render 已上线。
