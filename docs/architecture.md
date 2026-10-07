@@ -853,3 +853,18 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+
+### 教材教程与练习分流
+
+教材上传沿用 OCR 和 `material.courses.create`，在章节 JSON 中保存 `teachingMode=tutorial`，
+无需新增数据库或 Store。章节仍是来源修订、任务重试与审核的边界；`MaterialsApp` 使用章节摘要的
+`uploadId/pageStart` 将同一本教材展示为一个教程，内部目录按原页码排序。旧版阅读练习保持 `practice`，
+归并展示时保留旧草稿和发布版本，并提供显式制作讲解教程的入口。
+
+借鉴 [OpenMAIC 的课程规划与生成思路](https://github.com/THU-MAIC/OpenMAIC/tree/main)，
+当前复用 ModelRuntime 结构化生成与 LessonPlayer，教程按学习目标、讲解、教材示例、总结组织，
+每环节保留原句引用，默认不生成 Quiz。教程不使用答案判分，发布要求人工批准及内容引用校验；
+试卷与单独创建的练习课程继续使用原出题流程。当前不包含 OpenMAIC 的多角色课堂、幻灯片编辑或互动场景生成。
+
+处理范围仍为前 5 章、单章最多 80 页；模型使用有界原句节选，超过节选预算时必须显示教学范围提示，
+不把有限草稿称为整本教材的完整教程。原文件、任务恢复、来源许可门禁与历史发布快照继续复用。

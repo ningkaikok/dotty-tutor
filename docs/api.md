@@ -72,6 +72,13 @@ pnpm check:api     # 只校验，过期时返回非零状态
 | `GET` | `/api/chapters/{chapter_id}/review-attempts/{attempt_id}` | 教师按作答编号读取英语提交，用于人工复核；学生不能访问 |
 | `PATCH` | `/api/chapters/{chapter_id}/attempts/{attempt_id}/review` | 教师追加英语待复核简答的审核决策，保留原始作答与判定，不写数学掌握度 |
 
+章节创建请求及章节/发布/列表响应含 `teachingMode: practice | tutorial`，默认 `practice` 兼容旧课程；
+自动教材制作使用 `tutorial`。教程 AI 草稿包含学习目标、讲解、教材示例和总结四个带来源引用的内容块，
+不含检查题；作者与学生响应中的 `questionPayload.question` 为 `null`，前端隐藏作答面板。
+教程复核与发布校验内容块引用，并要求教师批准，不要求虚构答案；模板出题、题目编辑及作答接口对教程返回 `409`。
+`GET /api/chapters` 摘要新增 `uploadId`（最初来源上传）和 `pageStart`（最初章节起页），供列表按一本教材归并及目录排序。
+旧版阅读草稿保留，归入原教材目录；教师可显式重新制作讲解教程，不自动覆盖旧草稿或发布版本。
+
 来源修订、课程编辑及审核请求必须携带当前 `expectedRecordVersion`，陈旧页面返回 `409` 并要求刷新重审。学生作答省略 `learnerId` 时由会话解析；显式传入其他身份会被拒绝。章节发布使用现有课程存储，但旧数学试卷目录和学习会话不能绕过章节依据判定，学生使用 `/learn/chapters/{chapterId}?publicationId=...` 分享链接。
 
 教师管理响应增加 `generationJobId`，刷新后用既有 `/api/jobs/{jobId}` 恢复状态；来源页增加由服务端生成的
@@ -350,7 +357,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/chapters/from-upload/{upload_id}` | 教师从完成上传自动制作前 5 章，返回 `202 BackgroundJobSummary`，无需请求体；按上传 ID 幂等 |
+| `POST` | `/api/chapters/from-upload/{upload_id}` | 教师从完成上传制作一个教材教程的前 5 章，章节在教程目录内管理，默认不出题；返回 `202 BackgroundJobSummary`，无需请求体；按上传 ID 幂等 |
 
 该任务类型为 `material.courses.create`，沿用 `/api/jobs/{jobId}` 查询、取消和显式重试。结果包含
 `chapters[{chapterId,title,pageStart,pageEnd,boundaryDetected}]`、`chapterLimit=5`、`notices`、

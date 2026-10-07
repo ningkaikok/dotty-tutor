@@ -7,7 +7,7 @@ from typing import Any
 
 CHAPTER_HEADING = re.compile(r"^(?P<label>第[一二三四五六七八九十百零〇0-9]+(?:章|节|单元)|(?:unit|chapter|module)\s*\d+)[^\n]{0,120}$", re.I)
 PAPER_SIGNAL = re.compile(r"试卷|考试|测试卷|答题卡|满分\s*[:：]?\s*\d|考试时间|姓名.{0,12}班级", re.I)
-BOOK_SIGNAL = re.compile(r"教材|教科书|课本|textbook|student.?s?\s+book|目录|contents|ISBN", re.I)
+BOOK_SIGNAL = re.compile(r"教材|教程|教科书|课本|tutorial|textbook|student.?s?\s+book|目录|contents|ISBN", re.I)
 
 
 def headings(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:

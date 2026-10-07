@@ -24,6 +24,7 @@ from tests.postgres_test_support import PostgresTestCase
 
 class MaterialRecognitionTests(unittest.TestCase):
     def test_user_uploads_material_then_exam_evidence_and_book_headings_route_automatically(self):
+        self.assertEqual(classify_material("写作教程.pdf", "1. Introduction")["kind"], "textbook")
         self.assertEqual(classify_material("测试卷.pdf", "Unit 1 Numbers")['kind'], "paper")
         self.assertEqual(classify_material("English textbook.pdf", "1. What is it?")['kind'], "textbook")
         self.assertEqual(classify_material("page.png", "Unit 2 Our school")['kind'], "textbook")
@@ -101,6 +102,7 @@ class AutomaticCourseAcceptanceTests(PostgresTestCase):
         self.assertEqual(sorted(c["sourceRevisions"][0]["pageEnd"] for c in chapters), [2, 4, 6, 8, 10])
         for chapter in chapters:
             self.assertEqual(chapter["subject"], "english")
+            self.assertEqual(chapter["teachingMode"], "tutorial")
             self.assertEqual(chapter["currentLessonIds"], [])
             source = chapter["sourceRevisions"][0]
             self.assertTrue(source["sourceFileSha256"])

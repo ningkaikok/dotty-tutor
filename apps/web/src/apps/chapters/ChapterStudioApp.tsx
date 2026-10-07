@@ -105,7 +105,7 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
         <button type="button" onClick={() => void reload()} disabled={loading}>刷新</button>
       </header>
       <section className="chapter-page-heading">
-        <span className="eyebrow">{chapter.subject === "math" ? "数学章节" : "英语阅读"} · 版本 {chapter.version}</span>
+        <span className="eyebrow">{chapter.teachingMode === "tutorial" ? "教程章节" : chapter.subject === "math" ? "数学章节" : "英语阅读"} · 版本 {chapter.version}</span>
         <h1>{chapter.title}</h1>
         <p>状态：{({ draft: "草稿", needs_review: "需复核", in_review: "审核中", published: "已发布" } as const)[chapter.status]} · 来源修订 {chapter.sourceRevisions.length} 个 · 发布历史 {chapter.publications.length} 个</p>
         <ol className="chapter-steps" aria-label="课程制作进度">
@@ -113,15 +113,15 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
           <li aria-current={currentLessons.length && !canPublish && chapter.status !== "published" ? "step" : undefined}>2 复核内容</li>
           <li aria-current={canPublish || chapter.status === "published" ? "step" : undefined}>3 发布课程</li>
         </ol>
-        <p className="chapter-help">{!currentLessons.length ? "先生成草稿，再逐节检查题目与答案。" : canPublish ? "内容已复核，可以发布给学生。" : "核对题目、答案和原文依据，确认后再发布。"}</p>
+        <p className="chapter-help">{chapter.teachingMode === "tutorial" ? "核对学习目标、讲解、示例、总结和原文引用，确认后发布。" : !currentLessons.length ? "先生成草稿，再逐节检查题目与答案。" : canPublish ? "内容已复核，可以发布给学生。" : "核对题目、答案和原文依据，确认后再发布。"}</p>
         <div className="chapter-toolbar">
 
           <button type="button" disabled={Boolean(busy) || aiJobActive} onClick={() => void startAiGeneration()} className="primary">{currentLessons.length ? "重新生成 AI 草稿" : "生成 AI 草稿"}</button>
-          <button type="button" className="primary" disabled={Boolean(busy) || aiJobActive || !canPublish} title={canPublish ? "发布经审核课程" : "请解决来源/课程复核项并审核所有检查题"} onClick={() => void publish()}>{busy === "publish" ? "发布中…" : "发布课程"}</button>
+          <button type="button" className="primary" disabled={Boolean(busy) || aiJobActive || !canPublish} title={canPublish ? "发布经审核课程" : chapter.teachingMode === "tutorial" ? "请完成来源与教程内容复核" : "请解决来源/课程复核项并审核所有检查题"} onClick={() => void publish()}>{busy === "publish" ? "发布中…" : "发布课程"}</button>
           {chapter.publicationId && <button type="button" onClick={() => navigate(`/learn/chapters/${chapter.chapterId}`)}>学生端预览</button>}
         </div>
         <details className="chapter-secondary-actions"><summary>其他制作方式与来源设置</summary><div>
-          <button type="button" disabled={Boolean(busy) || aiJobActive || Boolean(chapter.currentLessonIds.length)} onClick={() => void generate()}>{busy === "generate" ? "生成中…" : "模板生成课程草稿"}</button>
+          <button type="button" disabled={Boolean(busy) || aiJobActive || Boolean(chapter.currentLessonIds.length) || chapter.teachingMode === "tutorial"} onClick={() => void generate()}>{busy === "generate" ? "生成中…" : "模板生成课程草稿"}</button>
           <button type="button" disabled={Boolean(busy) || aiJobActive} onClick={() => setShowRevision((value) => !value)}>修订来源</button>
         </div></details>
         {aiJob && <div className="chapter-ai-job" role="status">
@@ -147,11 +147,11 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
         />
       </div>
       {!!blockers.length && <section className="chapter-panel chapter-blockers"><h2>发布前待处理</h2><ul>{blockers.map((item, index) => <li key={`${item.code}-${item.lessonId ?? "chapter"}-${index}`}>{item.message}</li>)}</ul></section>}
-      {!canPublish && currentLessons.length > 0 && blockers.length === 0 && <p className="chapter-help">逐一打开检查题并确认人工复核后，发布按钮才会启用。</p>}
+      {!canPublish && currentLessons.length > 0 && blockers.length === 0 && <p className="chapter-help">{chapter.teachingMode === "tutorial" ? "确认教程讲解与引用已经人工复核后，发布按钮才会启用。" : "逐一打开检查题并确认人工复核后，发布按钮才会启用。"}</p>}
       {chapter.publications.length > 0 && <details className="chapter-panel chapter-history"><summary>查看发布历史</summary><ul>{chapter.publications.map((item) => <li key={item.publicationId}>
         <button type="button" onClick={() => navigate(`/learn/chapters/${chapter.chapterId}?publicationId=${encodeURIComponent(item.publicationId)}`)}>学生端查看版本 {item.version}</button>
       </li>)}</ul></details>}
-      {chapter.subject === "english" && <details className="chapter-panel chapter-history"><summary>学生阅读答案复核</summary><ChapterAttemptReview busy={attemptReview.busy} error={attemptReview.error} result={attemptReview.result} onLoad={attemptReview.read} onReview={attemptReview.review} /></details>}
+      {chapter.subject === "english" && chapter.teachingMode !== "tutorial" && <details className="chapter-panel chapter-history"><summary>学生阅读答案复核</summary><ChapterAttemptReview busy={attemptReview.busy} error={attemptReview.error} result={attemptReview.result} onLoad={attemptReview.read} onReview={attemptReview.review} /></details>}
     </main>
   );
 }

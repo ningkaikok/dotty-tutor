@@ -54,6 +54,7 @@ class ChapterSource(BaseModel):
 
 
 class ChapterCreate(BaseModel):
+    teachingMode: Literal["practice", "tutorial"] = "practice"
     subject: Literal["math", "english"]
     title: str = Field(min_length=1, max_length=200)
     source: ChapterSource
@@ -106,6 +107,7 @@ class ChapterAttempt(BaseModel):
 
 
 class ChapterResponse(BaseModel):
+    teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
     subject: Literal["math", "english"]
     title: str
@@ -143,6 +145,7 @@ class ChapterAttemptResponse(BaseModel):
 
 
 class ChapterPublishedResponse(BaseModel):
+    teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
     subject: Literal["math", "english"]
     title: str
@@ -216,6 +219,9 @@ class ChapterPublicationView(BaseModel):
 
 
 class ChapterSummaryView(BaseModel):
+    uploadId: str | None = None
+    pageStart: int | None = None
+    teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
     subject: Literal["math", "english"]
     title: str
@@ -267,7 +273,7 @@ class ChapterAuthorQuestion(BaseModel):
 
 
 class ChapterAuthorQuestionPayload(BaseModel):
-    question: ChapterAuthorQuestion
+    question: ChapterAuthorQuestion | None = None
     lessonSteps: list[dict[str, Any]] = Field(default_factory=list)
     quality: dict[str, Any] = Field(default_factory=dict)
 
@@ -284,7 +290,7 @@ class ChapterPublicQuestion(BaseModel):
 
 
 class ChapterPublicQuestionPayload(BaseModel):
-    question: ChapterPublicQuestion
+    question: ChapterPublicQuestion | None = None
     lessonSteps: list[dict[str, Any]] = Field(default_factory=list)
 
 

@@ -58,3 +58,18 @@ it("user Given course deletion fails When confirming deletion Then the course re
   expect(screen.getByRole("heading", { name: course.title })).toBeVisible();
   expect(screen.getByRole("button", { name: "确认删除" })).toBeEnabled();
 });
+
+it("user Given one textbook and multiple generated chapters When opening my materials Then one tutorial contains its ordered directory and no independent reading cards", async () => {
+  const book = { ...upload, materialKind: "textbook", filename: "English Writing.pdf", questionCount: 0 };
+  const contents = [{ ...course, chapterId: "second", title: "Chapter 2 Writing", uploadId: book.uploadId, pageStart: 8, teachingMode: "tutorial" }, { ...course, chapterId: "first", title: "Chapter 1 Writing", uploadId: book.uploadId, pageStart: 2, teachingMode: "tutorial" }];
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify({ items: String(url).endsWith("/api/library") ? [book] : contents }), { headers: { "Content-Type": "application/json" } }));
+  render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
+  expect(await screen.findByRole("heading", { name: book.filename })).toBeVisible();
+  expect(screen.getAllByRole("article")).toHaveLength(1);
+  expect(screen.queryByText("英语阅读")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText("查看教程目录"));
+  expect(screen.getByRole("link", { name: "Chapter 1 Writing" })).toHaveAttribute("href", "/studio/chapters/first");
+  expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Chapter 1 Writing");
+  fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Chapter 2" } });
+  expect(screen.getByRole("heading", { name: book.filename })).toBeVisible();
+});

@@ -54,7 +54,7 @@ function PublishedChapterLearning({ chapter, onBack }: { chapter: PublishedChapt
   return (
     <main className="chapter-shell chapter-student-shell">
       <header className="chapter-topbar"><button type="button" onClick={onBack}>← 学生学习空间</button><strong>Dotty · 已发布章节</strong><span>版本 {chapter.version}</span></header>
-      <section className="chapter-page-heading"><span className="eyebrow">{chapter.subject === "math" ? "数学" : "英语阅读"} · 已审核发布</span><h1>{chapter.title}</h1><p>第 {lessonIndex + 1}/{lessonCount} 课 · 发布版本 {chapter.publicationId}</p></section>
+      <section className="chapter-page-heading"><span className="eyebrow">{chapter.teachingMode === "tutorial" ? "讲解教程" : chapter.subject === "math" ? "数学" : "英语阅读"} · 已审核发布</span><h1>{chapter.title}</h1><p>第 {lessonIndex + 1}/{lessonCount} 课 · 发布版本 {chapter.publicationId}</p></section>
       <div className="chapter-student-nav" aria-label="课程导航">
         {chapter.lessons.map((item, index) => <button type="button" className={index === lessonIndex ? "active" : ""} key={item.lessonId} onClick={() => selectLesson(index)}>第 {index + 1} 课</button>)}
       </div>
@@ -65,7 +65,7 @@ function PublishedChapterLearning({ chapter, onBack }: { chapter: PublishedChapt
           : <p key={`${option.page}-${option.regionId ?? option.label}`}>第 {option.page} 页 · {option.label || `原文区域 ${option.regionId ?? "未命名"}`}</p>)}
       </section>
       <section className="chapter-student-player"><div className="chapter-lesson-generated-label">审核后发布的课程内容</div><div className="chapter-course-player"><LessonPlayer document={playerDocument} studentMode /></div></section>
-      <ChapterAttemptPanel
+      {lesson.questionPayload?.question && <ChapterAttemptPanel
         lesson={lesson}
         subject={chapter.subject}
         answer={draft.answer}
@@ -76,7 +76,7 @@ function PublishedChapterLearning({ chapter, onBack }: { chapter: PublishedChapt
         onAnswerChange={changeAnswer}
         onEvidenceChange={changeEvidence}
         onSubmit={() => void submit()}
-      />
+      />}
       <footer className="chapter-student-footer">
         <button type="button" disabled={lessonIndex === 0} onClick={() => selectLesson(lessonIndex - 1)}>上一课</button>
         <button type="button" disabled={lessonIndex >= lessonCount - 1} onClick={() => selectLesson(lessonIndex + 1)}>下一课</button>

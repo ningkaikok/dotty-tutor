@@ -284,8 +284,8 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 ### 统一教材入口与课程链路
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
-`/api/chapters`，合并展示而不搬迁数据；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
-或带 `uploadId` 进入 `/studio/chapters/new`，自动填写名称与来源。上传及旧练习编辑位于
+`/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
+或带 `uploadId` 进入 `/studio/chapters/new`，自动识别目录并制作教程。上传及旧练习编辑位于
 `/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
 
 课程创建默认单页，来源版本、问题标记和区域坐标按需展开。课程编辑按生成、复核、发布组织，
@@ -296,13 +296,15 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 已有上传/OCR产物或人工提供的页段文本
   → domain/contracts/chapter.py（学科、页码/区域、修订及作答请求）
   → routers/chapter_routes.py
-  → domain/chapters/source.py / templates.py（来源定位与有限课程纯构造）
+  → application/services/material_courses.py（教材 OCR/目录 → 前 5 章 tutorial，一本教材目录聚合）
+  → domain/chapters/source.py / templates.py（来源定位与 practice 课程纯构造）
   → application/services/chapter_courses.py（复核、修订、发布与作答编排）
   → AI：application/chapter_jobs.py → 既有 Job Store/Worker → ModelRuntime
-       → domain/chapters/quality.py（有界原句节选、引用定位及原文回填）→ 比较来源/记录版本后保存待审草稿
+       → domain/chapters/quality.py（有界原句节选、引用定位及原文回填；tutorial 生成目标/讲解/示例/总结，practice 生成检查题）→ 比较来源/记录版本后保存待审草稿
   → persistence/chapter_store.py（章节草稿及来源版本）
   → persistence/learning_store.py（已有课程与不可变发布快照）
-  → 数学：已有确定性判题、exercise_attempts 与掌握度派生
+  → tutorial：无检查题，内容引用校验与人工批准 → LessonPlayer 播放
+  → practice 数学：已有确定性判题、exercise_attempts 与掌握度派生
   → 英语：答案与依据分别记录，存疑结果待复核，不写数学掌握度
 ```
 

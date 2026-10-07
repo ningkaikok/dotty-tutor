@@ -100,6 +100,7 @@ function ChapterLessonCard({
       {lesson.reviewIssues.map((issue) => <p className="chapter-issue blocking" role="status" key={`${issue.code}-${issue.message}`}>{issue.message}</p>)}
       <div className="chapter-lesson-generated-label">课程草稿 · 审核前不会进入学生端</div>
       <LessonPlayer document={previewDocument} studentMode />
+      {!question && <><p>请核对教程讲解与各环节的原文引用，确认后批准。</p><details><summary>教程原文引用</summary><ul>{sourceCitations.map(({ title, reference }, index) => <li key={index}>{title} · 第 {reference.page} 页 · {reference.quote}</li>)}</ul></details></>}
       {question && (
         <section className="chapter-check-question" aria-label={`检查题：${lesson.title}`}>
           <h4>检查题</h4>
@@ -158,7 +159,7 @@ function ChapterLessonCard({
       )}
       <div className="chapter-review-actions">
         <button type="button" disabled={Boolean(busy)} onClick={() => onReview(lesson, "request_changes")}>{busy === "review" ? "保存中…" : "标记待修改"}</button>
-        <button type="button" className="primary" disabled={Boolean(busy) || !question?.prompt || !(question.answerSpec?.expected || question.correctAnswers?.length || question.acceptedAnswers?.length)} onClick={() => onReview(lesson, "approve")}>{busy === "review" ? "保存中…" : "确认已复核"}</button>
+        <button type="button" className="primary" disabled={Boolean(busy) || (Boolean(question) && (!question?.prompt || !(question.answerSpec?.expected || question.correctAnswers?.length || question.acceptedAnswers?.length)))} onClick={() => onReview(lesson, "approve")}>{busy === "review" ? "保存中…" : "确认已复核"}</button>
       </div>
     </article>
   );
