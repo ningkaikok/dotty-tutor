@@ -284,7 +284,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 ### 统一教材入口与课程链路
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
-`/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
+`/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；新教程生成后旧练习进入历史区，教程数量不包含历史草稿；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
 或带 `uploadId` 进入 `/studio/chapters/new`，自动识别目录并制作教程。上传及旧练习编辑位于
 `/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
 

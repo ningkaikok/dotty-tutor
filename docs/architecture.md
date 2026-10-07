@@ -859,7 +859,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 教材上传沿用 OCR 和 `material.courses.create`，在章节 JSON 中保存 `teachingMode=tutorial`，
 无需新增数据库或 Store。章节仍是来源修订、任务重试与审核的边界；`MaterialsApp` 使用章节摘要的
 `uploadId/pageStart` 将同一本教材展示为一个教程，内部目录按原页码排序。旧版阅读练习保持 `practice`，
-归并展示时保留旧草稿和发布版本，并提供显式制作讲解教程的入口。
+归并展示时保留旧草稿和发布版本；生成新教程后，旧草稿进入折叠历史区，不计入教程章节数量。只有旧练习时提供显式制作讲解教程的入口。
 
 借鉴 [OpenMAIC 的课程规划与生成思路](https://github.com/THU-MAIC/OpenMAIC/tree/main)，
 当前复用 ModelRuntime 结构化生成与 LessonPlayer，教程按学习目标、讲解、教材示例、总结组织，
