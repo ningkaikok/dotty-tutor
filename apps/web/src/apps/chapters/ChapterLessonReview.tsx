@@ -20,7 +20,7 @@ function criteriaText(rubric?: Record<string, unknown>): string {
 export function ChapterLessonReview({ lessons, busyLessonId, busyAction, onEdit, onReview, onFocusSource }: ChapterLessonReviewProps) {
   return (
     <section className="chapter-lesson-review" aria-label="课程内容审核">
-      <header><div><span className="eyebrow">课程草稿 · 教师复核</span><h2>概念、例式、提示与检查题</h2></div></header>
+      <header><div><span className="eyebrow">课程草稿 · 教师复核</span><h2>{lessons.length > 0 && lessons.every((lesson) => !lesson.questionPayload?.question) ? "学习目标、讲解、示例与总结" : "概念、例式、提示与检查题"}</h2></div></header>
       {lessons.map((lesson) => <ChapterLessonCard
         key={lesson.lessonId}
         lesson={lesson}
