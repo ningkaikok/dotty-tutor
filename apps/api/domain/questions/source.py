@@ -26,6 +26,34 @@ QUESTION_START_PATTERN = re.compile(
     r"(?m)^\s*(?:[【\[]\s*)?(?:第\s*)?(?P<number>\d{1,3})"
     r"(?P<sep>(?:\s*题\s*(?:[:：]|\s))|[.．、，,]|[】\]])\s*"
 )
+# OpenStax instructional pages label authored problems with ``EXAMPLE 2.2`` and
+# ``TRY IT 2.3`` rather than the standalone numeric headings used by exam papers.
+# Keep this grammar narrow and line-anchored so ordinary prose references to an
+# example never become new question boundaries.
+OPENSTAX_ACTIVITY_PATTERN = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:"
+    r"(?P<example>EXAMPLE\s+(?P<example_number>\d{1,3}\.\d{1,3}))"
+    r"|(?P<try_it>TRY\s*IT\s*[:：\s]*(?P<try_it_number>\d{1,3}\.\d{1,3}))"
+    r")\b"
+)
+OPENSTAX_EXERCISE_SECTION_PATTERN = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?(?:\d{1,2}\.\d{1,2}\s+EXERCISES\b|In\s+the\s+following\s+exercises\b)"
+)
+OPENSTAX_EXERCISE_SUBSECTION_PATTERN = re.compile(
+    r"(?im)^\s*(?:Everyday\s+Math|Writing\s+Exercises|Technology|Critical\s+Thinking|"
+    r"Translate\s+to\s+an\s+Equation\s+and\s+Solve|Translate\s+and\s+Solve\s+Applications)\s*$"
+)
+OPENSTAX_TAIL_SECTION_PATTERN = re.compile(
+    r"(?im)^\s*(?:Self\s+Check|(?:\d{1,3}\s+)?Chapter\s+\d+\s+[^\n]+|"
+    r"This\s+OpenStax\s+book\s+is\s+available\s+for\s+free\s+at\s+[^\n]+)\s*$"
+)
+# OpenStax's PDF text layer often puts two or three numbered exercises on one
+# visual line. This pattern is used only on pages that identify themselves as
+# exercise material; a consecutive-number gate below rejects equation fragments
+# such as a numerator and denominator that PDF extraction accidentally joins.
+OPENSTAX_EXERCISE_ITEM_PATTERN = re.compile(
+    r"(?<![\w.])(?P<number>\d{1,3})\.\s+(?=\S)"
+)
 # 枚举标记：一个顿号/逗号候选题号只有在前文以这些字符收尾时才被判为续行举例。
 # 不采用更宽的"非句末标点即续行"方案：真实语料里既有以公式（$…$）或数字收尾的
 # 合法题目，也存在合法的"、"风格题号（见 test_stops_a_question_at_inline_answer_…
@@ -67,7 +95,7 @@ MAX_FULL_PAPER_QUESTIONS_PER_BATCH = 20
 # 题目切分规则会影响送给模型的题源，因此必须像 OCR Provider 一样有版本号；
 # 不同规则版本的产物不能静默混用，重新 OCR/生成时会写入新的版本证据。
 # v4：兼容 OCR 常见的全角逗号题号（如“1，”“17，”），并继续隔离顿号/逗号枚举续行。
-QUESTION_SEGMENTATION_VERSION = "question-segmentation-v4"
+QUESTION_SEGMENTATION_VERSION = "question-segmentation-v5"
 
 ANSWER_SECTION_PATTERN = re.compile(
     r"(?im)^\s*(?:#{1,6}\s*)?(?:参考答案与解析|答案与解析|参考答案|答案|解答|解析)\s*$"
@@ -177,6 +205,52 @@ def _question_area(source: str) -> str:
     # 章节标题可能被 OCR 拆散或落在上一页，使用语义分类作为保底；普通教材没有
     # 考试说明时保持原行为，不改变已有的无章节题号切分。
     return _trim_leading_exam_instructions(area) if _has_any_marker(area, EXAM_INSTRUCTION_MARKERS) else area
+
+
+def _openstax_question_starts(source: str) -> list[tuple[int, str]]:
+    """Locate OpenStax examples, try-its, and numbered end-of-section exercises.
+
+    PDF text extraction preserves the activity headings but may flatten several
+    exercise items onto one line. Numbered items are therefore considered only
+    when an OpenStax exercise heading is present, then accepted as a consecutive
+    sequence. This prevents unrelated equation numbers from creating questions.
+    """
+    starts: list[tuple[int, str]] = []
+    for match in OPENSTAX_ACTIVITY_PATTERN.finditer(source):
+        example_number = match.group("example_number")
+        if example_number:
+            label = f"EXAMPLE {example_number}"
+        else:
+            label = f"TRY IT {match.group('try_it_number')}"
+        starts.append((match.start(), label))
+
+    exercise_scopes = [match.end() for match in OPENSTAX_EXERCISE_SECTION_PATTERN.finditer(source)]
+    exercise_scopes.extend(
+        match.start() for match in OPENSTAX_EXERCISE_SUBSECTION_PATTERN.finditer(source)
+    )
+
+    if exercise_scopes:
+        scope_starts = sorted(set(exercise_scopes))
+        matches = list(OPENSTAX_EXERCISE_ITEM_PATTERN.finditer(source))
+        accepted: dict[int, str] = {}
+        for scope_index, scope_start in enumerate(scope_starts):
+            scope_end = scope_starts[scope_index + 1] if scope_index + 1 < len(scope_starts) else len(source)
+            expected_number: int | None = None
+            for match in matches:
+                if match.start() < scope_start or match.start() >= scope_end:
+                    continue
+                number = int(match.group("number"))
+                if expected_number is None:
+                    # The explicit section header is the proof that numbered
+                    # items below this point are exercises rather than equations.
+                    expected_number = number
+                if number != expected_number:
+                    continue
+                accepted[match.start()] = str(number)
+                expected_number += 1
+        starts.extend(accepted.items())
+
+    return sorted(starts)
 
 
 def safe_text(value: Any, fallback: str, limit: int = 600) -> str:
@@ -393,6 +467,31 @@ def split_question_sources(
     """
     source = _reconstruct_question_line_breaks(source, asset_dir)
     question_area = _question_area(source)
+    openstax_starts = _openstax_question_starts(question_area)
+    if openstax_starts:
+        blocks: list[tuple[str, str, list[str]]] = []
+        for index, (start, number) in enumerate(openstax_starts):
+            end = openstax_starts[index + 1][0] if index + 1 < len(openstax_starts) else len(question_area)
+            chunk = question_area[start:end]
+            section_breaks = [
+                match.start()
+                for pattern in (OPENSTAX_EXERCISE_SUBSECTION_PATTERN, OPENSTAX_TAIL_SECTION_PATTERN)
+                if (match := pattern.search(chunk)) is not None
+            ]
+            if section_breaks:
+                chunk = chunk[:min(section_breaks)]
+            block = chunk.strip()
+            if len(block) >= 4:
+                blocks.append((number, block, MARKDOWN_IMAGE_PATTERN.findall(block)))
+        if blocks:
+            structured_captions = _structured_caption_attributions(asset_dir)
+            blocks = _apply_bbox_image_attribution(blocks, asset_dir, attribution_audit)
+            return _apply_caption_image_attribution(
+                blocks,
+                question_area,
+                structured_captions=structured_captions,
+                attribution_audit=attribution_audit,
+            )
     matches = list(QUESTION_START_PATTERN.finditer(question_area))
     # 分页 OCR 可能把下一卷的注意事项带进当前批次；这些编号不是题目边界。
     # 只按候选块首行做语义过滤，避免说明后的真正题干被误删。

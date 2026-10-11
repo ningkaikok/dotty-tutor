@@ -15,8 +15,25 @@ class PublicProtectionUnitTests(unittest.TestCase):
         self.assertTrue(PublicProtection.is_expensive_path("/api/tutor/threads/t1/messages"))
         self.assertTrue(PublicProtection.is_expensive_path("/api/chapters/c1/generate-ai"))
         self.assertTrue(PublicProtection.is_expensive_path("/api/chapters/from-upload/u1"))
+        self.assertTrue(PublicProtection.is_expensive_path("/api/quality-review-runs"))
+        self.assertFalse(PublicProtection.is_expensive_path("/api/quality-review-runs/models"))
+        self.assertFalse(PublicProtection.is_expensive_path("/api/quality-review-runs/run-1/ratings"))
         self.assertFalse(PublicProtection.is_expensive_path("/api/chapters/c1/lessons/l1/review"))
         self.assertFalse(PublicProtection.is_expensive_path("/api/health"))
+
+    def test_quality_review_and_voice_cancel_do_not_consume_model_work_quota(self) -> None:
+        from starlette.requests import Request
+
+        def request(path: str, method: str = "POST") -> Request:
+            return Request({"type": "http", "method": method, "path": path,
+                            "headers": [], "client": ("client-a", 80)})
+
+        self.assertFalse(PublicProtection.is_expensive_request(request("/api/quality-reviews/packages")))
+        self.assertTrue(PublicProtection.is_expensive_request(request("/api/quality-review-runs")))
+        self.assertFalse(PublicProtection.is_expensive_request(request("/api/quality-review-runs/run-1/ratings")))
+        self.assertFalse(PublicProtection.is_expensive_request(request("/api/quality-review-runs/run-1/cancel")))
+        self.assertTrue(PublicProtection.is_expensive_request(request("/api/voice/sessions/s1/respond")))
+        self.assertFalse(PublicProtection.is_expensive_request(request("/api/voice/sessions/s1/cancel")))
 
     def test_rate_limit_is_scoped_to_client(self) -> None:
         protection = PublicProtection(enabled=True, request_limit=1, request_window_seconds=60)
@@ -114,3 +131,21 @@ class PublicProtectionConcurrencyTests(unittest.IsolatedAsyncioTestCase):
         protection.release_model_slot()
         self.assertTrue(await protection.acquire_model_slot())
         protection.release_model_slot()
+
+
+class VoiceCorsPreflightTests(unittest.TestCase):
+    def test_user_voice_session_headers_are_allowed_by_preflight(self) -> None:
+        with environment({"AUTH_MODE": "demo", "CORS_ORIGINS": "https://review.example"}):
+            app = create_app()
+        response = TestClient(app).options(
+            "/api/voice/sessions",
+            headers={
+                "Origin": "https://review.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "x-learner-id,x-voice-session-token",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        allowed = response.headers.get("access-control-allow-headers", "").lower()
+        self.assertIn("x-learner-id", allowed)
+        self.assertIn("x-voice-session-token", allowed)

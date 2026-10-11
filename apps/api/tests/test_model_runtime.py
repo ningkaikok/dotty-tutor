@@ -96,6 +96,63 @@ class CodexCommandTests(unittest.TestCase):
 
 
 class DeepSeekProviderTests(unittest.TestCase):
+    def test_user_sets_a_bounded_review_timeout_and_gateway_passes_it_to_adapter(self) -> None:
+        # Given an explicitly selected model and a 2.5 second comparison cap
+        runtime = ModelRuntime()
+        with patch.object(runtime, "_ollama_json", return_value=({"ok": True}, {})) as adapter:
+            # When the structured runtime issues that model request
+            _result, run = runtime.generate_json_as(
+                "ollama", "qwen", "prompt", {"type": "object"}, timeout_seconds=2.5
+            )
+        # Then both the audited request and actual transport adapter receive the cap
+        self.assertEqual(run["modelRequest"]["timeout"], 2.5)
+        self.assertEqual(adapter.call_args.kwargs["timeout_seconds"], 2.5)
+
+    def test_user_limits_deepseek_http_transport_timeout(self) -> None:
+        # Given a real HTTP adapter call with a finite per-call budget
+        response_payload = {"choices": [{"message": {"content": '{"reply":"ok"}'}}]}
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+            def read(self, *_: object) -> bytes:
+                return json.dumps(response_payload).encode()
+
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test-key"}, clear=True), patch(
+            "urllib.request.urlopen", return_value=FakeResponse()
+        ) as urlopen:
+            # When the adapter performs its HTTP request
+            ModelRuntime()._deepseek_json(
+                "deepseek-flash", "prompt", {"type": "object"}, max_tokens=100, timeout_seconds=3.25
+            )
+        # Then urllib's actual socket timeout is set to the run budget
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], 3.25)
+
+    def test_user_limits_codex_subprocess_timeout(self) -> None:
+        # Given the command-line provider and a bounded review call
+        import subprocess
+
+        def complete(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            output_path = command[command.index("--output-last-message") + 1]
+            from pathlib import Path
+
+            Path(output_path).write_text('{"reply":"ok"}', encoding="utf-8")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with patch.dict(os.environ, {"CODEX_COMMAND": "/bin/echo"}, clear=True), patch(
+            "subprocess.run", side_effect=complete
+        ) as run:
+            # When the adapter starts Codex
+            ModelRuntime()._codex_json(
+                "default", "prompt", {"type": "object"}, timeout_seconds=4.5
+            )
+        # Then subprocess.run enforces the timeout instead of a detached future timer
+        self.assertEqual(run.call_args.kwargs["timeout"], 4.5)
+
     def test_user_calls_deepseek_then_gateway_keeps_provider_identity_and_usage(self) -> None:
         # Given the existing cloud provider at the external model boundary
         runtime = ModelRuntime()

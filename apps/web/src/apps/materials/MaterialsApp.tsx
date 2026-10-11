@@ -24,6 +24,7 @@ export function MaterialsApp() {
     <MaterialsHeader backTo="/" backLabel="返回首页" subtitle="教材与课程" actions={<button type="button" disabled={loading} onClick={() => void reload()}>刷新</button>} />
     <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>上传试卷或教材，自动识别类型；一本教材制作一个讲解教程，章节在教程内管理。当前最多处理前 5 章。</p></div>
       <Link className="material-main-action" to="/studio/import">＋ 上传试卷或教材</Link>
+      <Link className="material-main-action" to="/studio/quality-review">打开质量复核工作台</Link>
     </section>
     <label className="materials-search">查找教材或课程<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入名称、数学或英语" /></label>
     <nav className="materials-filters" aria-label="材料类型">{[["all", "全部"], ["books", "教材与课程"], ["papers", "试卷"], ["unknown", "待识别材料"]].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}</nav>

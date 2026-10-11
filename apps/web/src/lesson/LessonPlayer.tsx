@@ -7,13 +7,14 @@ import { renderLessonBlock } from "./rendererRegistry";
 
 type LessonPlayerProps = ({ payload: QuestionPayload; document?: never } | { document: LessonDocument; payload?: never }) & {
   onActionChange?: (action: CanvasAction) => void;
+  onStepChange?: (block: LessonBlock) => void;
   studentMode?: boolean;
 };
 
 const ignoreCanvasAction = () => undefined;
 
 export function LessonPlayer(props: LessonPlayerProps) {
-  const { onActionChange = ignoreCanvasAction, studentMode = false } = props;
+  const { onActionChange = ignoreCanvasAction, onStepChange, studentMode = false } = props;
   const document = useMemo(
     () => {
       if (props.document) return props.document;
@@ -60,6 +61,10 @@ export function LessonPlayer(props: LessonPlayerProps) {
     // 不应打断正在进行的讲解。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [document?.lessonId]);
+
+  useEffect(() => {
+    if (current) onStepChange?.(current);
+  }, [current, onStepChange]);
 
   useEffect(() => {
     if (!playing || !current) return;

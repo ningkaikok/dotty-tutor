@@ -91,6 +91,7 @@ class PublicProtection:
         "/api/tutor/",
         "/api/variations/",
         "/api/classes/",
+        "/api/voice",
     )
 
     def __init__(
@@ -143,12 +144,22 @@ class PublicProtection:
     @classmethod
     def is_expensive_path(cls, path: str) -> bool:
         chapter_generation = path.startswith("/api/chapters/") and path.endswith("/generate-ai")
-        return chapter_generation or path.startswith("/api/chapters/from-upload/") or path.startswith(cls.EXPENSIVE_PREFIXES)
+        media_render = path.startswith("/api/lesson-media/") and path.endswith("/render")
+        quality_review_run = path == "/api/quality-review-runs"
+        return chapter_generation or media_render or quality_review_run or path.startswith("/api/chapters/from-upload/") or path.startswith(cls.EXPENSIVE_PREFIXES)
 
     @classmethod
     def is_expensive_request(cls, request: Request) -> bool:
         """Only mutating routes consume the model-work quota."""
-        return request.method in {"POST", "PUT", "PATCH", "DELETE"} and cls.is_expensive_path(request.url.path)
+        path = request.url.path
+        if path.startswith("/api/voice/sessions/") and path.endswith("/cancel"):
+            # Cancellation must remain responsive while the model semaphore is
+            # saturated by the work it is trying to stop.
+            return False
+        if path.startswith("/api/lesson-media/") and path.endswith("/render") and request.method != "POST":
+            # Cancelling an in-flight render is a control action, not new model work.
+            return False
+        return request.method in {"POST", "PUT", "PATCH", "DELETE"} and cls.is_expensive_path(path)
 
     def check(
         self, request: Request, *, now: float | None = None, wall_now: float | None = None

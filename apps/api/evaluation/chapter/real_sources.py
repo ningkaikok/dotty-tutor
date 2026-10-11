@@ -212,16 +212,22 @@ def prepare(source_pack: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(supplied.get("providedEvidenceQuote", ""), str):
                 raise ValueError(f"{case['id']}: English input.providedEvidenceQuote must be a string")
             if expected["questionKind"] == "inference" and (
-                not isinstance(expected.get("rubric"), dict) or expected["rubric"].get("supportStatus") != "supported"
+                not isinstance(expected.get("rubric"), dict)
+                or expected["rubric"].get("supportStatus") not in {"supported", "pending_human_calibration"}
             ):
-                raise ValueError(f"{case['id']}: inference requires a human-calibrated rubric with supportStatus=supported")
+                raise ValueError(
+                    f"{case['id']}: inference rubric must be calibrated or explicitly pending human calibration"
+                )
         page_text, image_count = _page(source, page)
         if quote not in page_text:
             raise ValueError(f"{case['id']}: source locator quote was not found on PDF page {page}")
         content_hash = _sha256(Path(source["file"]))
+        if source.get("contentSha256") is not None and source["contentSha256"] != content_hash:
+            raise ValueError(f"{case['id']}: declared source SHA-256 does not match the PDF")
         if subject == "english" and len(page_text) > 20_000:
             raise ValueError(f"{case['id']}: cited PDF page exceeds the English evaluator's 20,000-character limit")
         actual = _observe(case, page_text, image_count, content_hash)
+        actual["expectedCalibrationStatus"] = "pending_human_calibration"
         actual["textSource"] = "pypdf_text_layer" if subject == "math" and "ocrText" not in case.get("input", {}) else actual.get("textSource")
         records.append({
             **case,

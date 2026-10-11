@@ -10,6 +10,7 @@ import time
 import uuid
 from functools import wraps
 from typing import Any
+from urllib.parse import urlparse
 
 from answer_evaluator import evaluate_structured_answer
 from application.job_worker import CancellableJobResult
@@ -365,12 +366,22 @@ class ChapterCourseService:
             })
         original = source_file(self.store, job) if job is not None else None
         original_hash = file_hash(original) if original is not None else None
+        source_url = str(raw.get("sourceUrl") or "").strip() or None
+        if source_url:
+            parsed_url = urlparse(source_url)
+            if parsed_url.scheme != "https" or not parsed_url.netloc:
+                raise ValueError("教材来源 URL 必须使用 HTTPS")
+        source_title = str(raw.get("sourceTitle") or "").strip() or None
+        attribution_text = str(raw.get("attributionText") or "").strip() or None
         return {
             "sourceFileSha256": original_hash,
             "uploadId": source.get("uploadId"), "sourceVersion": str(source.get("sourceVersion") or "1"),
             "license": source.get("license"),
+            "sourceTitle": source_title,
+            "sourceUrl": source_url,
+            "attributionText": attribution_text,
             "pageStart": start, "pageEnd": end, "pages": normalized_pages,
-            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "pages": normalized_pages, "sourceFileSha256": original_hash}),
+            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "sourceTitle": source_title, "sourceUrl": source_url, "attributionText": attribution_text, "pages": normalized_pages, "sourceFileSha256": original_hash}),
             "missingPages": missing,
         }
 

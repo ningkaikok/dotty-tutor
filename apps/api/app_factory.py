@@ -44,6 +44,7 @@ def create_app() -> FastAPI:
     with Path(__file__).with_name("pyproject.toml").open("rb") as project_file:
         project_version = tomllib.load(project_file)["project"]["version"]
     app = FastAPI(title="Dotty Tutor", version=project_version)
+    app.state.auth_mode = auth_mode
     public_protection = PublicProtection.from_env()
 
     def current_request_id(request: Request) -> str:
@@ -175,7 +176,7 @@ def create_app() -> FastAPI:
             "http://localhost:59174,http://127.0.0.1:59174",
         ),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-Request-ID", "Idempotency-Key"],
+        allow_headers=["Content-Type", "Authorization", "X-Request-ID", "Idempotency-Key", "X-Learner-ID", "X-Voice-Session-Token"],
     )
     trusted_hosts = _csv_env("TRUSTED_HOSTS", "")
     if trusted_hosts:
@@ -373,6 +374,17 @@ def create_app() -> FastAPI:
             # This exact bounded-text synthesis operation is part of student tutoring;
             # provider diagnostics and every other TTS path remain teacher-only.
             student_only = True
+        if path == "/api/voice/status" and method == "GET":
+            # Capability availability has no learner data and is safe for either role.
+            teacher_only = False
+            student_only = False
+        elif path == "/api/voice" or path.startswith("/api/voice/"):
+            # Voice sessions and their private transcripts are student scoped.
+            teacher_only = False
+            student_only = True
+            learner_header = request.headers.get("X-Learner-ID")
+            if not learner_header or learner_header != actor.get("learnerId"):
+                return JSONResponse(status_code=403, content={"detail": "请求身份与当前学生会话不匹配"})
         if student_only:
             teacher_only = False
         if path == "/api/assignments":
@@ -388,7 +400,14 @@ def create_app() -> FastAPI:
         elif chapter_student_match and "/attempts" in path and method in {"GET", "POST"}:
             teacher_only = False
             student_only = True
-        if path.startswith("/api/chapters/") and not chapter_student_match:
+        chapter_media_match = re.fullmatch(
+            r"/api/chapters/[^/]+/media/published(?:/[^/]+/(?:asset|captions))?",
+            path,
+        )
+        if chapter_media_match and method == "GET":
+            teacher_only = False
+            student_only = False
+        if path.startswith("/api/chapters/") and not chapter_student_match and not chapter_media_match:
             teacher_only = True
             student_only = False
         if path.startswith("/api/publications"):

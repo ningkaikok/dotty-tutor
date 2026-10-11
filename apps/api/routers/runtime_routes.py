@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import os
 import time
 import urllib.error
@@ -24,6 +23,7 @@ from domain.questions.contracts import (
 from infrastructure.runtime.model_runtime import ModelSelection, runtime
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from infrastructure.runtime.review_runtime import runtime_reviewer
+from infrastructure.runtime.tts_runtime import TtsRuntime, TtsRuntimeError
 from observability import log_event
 
 
@@ -41,6 +41,7 @@ def build_runtime_router(
     azure_speech_key = os.getenv("AZURE_SPEECH_KEY", "")
     azure_speech_region = os.getenv("AZURE_SPEECH_REGION", "")
     azure_speech_voice = os.getenv("AZURE_SPEECH_VOICE", "zh-CN-XiaoxiaoNeural")
+    tts_boundary = TtsRuntime()
 
     def require_ready_schema() -> None:
         """Reject database-backed metrics queries before schema drift becomes a 500."""
@@ -108,63 +109,28 @@ def build_runtime_router(
             log_event("tts.health.failed", level=30, provider="qwen3-tts")
             return {"provider": "browser", "available": False, "detail": "Qwen3-TTS 服务未启动，前端将回退到浏览器语音"}
 
-    def synthesize_azure_tts(request: TtsRequest) -> Response:
-        ssml = (
-            '<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" '
-            'xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="zh-CN">'
-            f'<voice name="{html.escape(azure_speech_voice, quote=True)}">'
-            f'<prosody rate="-5%">{html.escape(request.text)}</prosody>'
-            "</voice></speak>"
-        ).encode("utf-8")
-        azure_request = urllib.request.Request(
-            f"https://{azure_speech_region}.tts.speech.microsoft.com/cognitiveservices/v1",
-            data=ssml,
-            headers={
-                "Ocp-Apim-Subscription-Key": azure_speech_key,
-                "Content-Type": "application/ssml+xml",
-                "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
-                "User-Agent": "dotty-tutor",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(azure_request, timeout=30) as response:
-                audio = response.read()
-        except (OSError, urllib.error.URLError) as error:
-            raise HTTPException(status_code=503, detail=f"Azure Speech 调用失败：{error}") from error
-        return Response(content=audio, media_type="audio/mpeg")
-
     @router.post("/api/tts")
     def synthesize_tts(request: TtsRequest) -> Response:
-        if tts_provider in {"auto", "azure"} and azure_speech_key and azure_speech_region:
-            return synthesize_azure_tts(request)
-        if tts_provider == "azure":
-            raise HTTPException(status_code=503, detail="Azure Speech 未配置，请设置 AZURE_SPEECH_KEY 和 AZURE_SPEECH_REGION")
-        import json
-
-        body = json.dumps({"text": request.text, "speaker": request.speaker, "instruct": request.instruct}, ensure_ascii=False).encode("utf-8")
-        proxy_request = urllib.request.Request(
-            f"{qwen_tts_url}/tts",
-            data=body,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(proxy_request, timeout=180) as response:
-                audio = response.read()
-        except (OSError, urllib.error.URLError) as error:
+            result = tts_boundary.synthesize(
+                request.text,
+                language=request.language,
+                speaker=request.speaker,
+                instruct=request.instruct,
+            )
+        except TtsRuntimeError as error:
             log_event(
                 "tts.request.failed",
                 level=40,
-                provider="qwen3-tts",
+                provider=tts_provider,
                 text_length=len(request.text),
                 error_type=type(error).__name__,
-                error=str(error)[:300],
+                error=str(error),
                 exc_info=True,
             )
-            raise HTTPException(status_code=503, detail=f"Qwen3-TTS 暂不可用：{error}") from error
-        log_event("tts.request.completed", provider="qwen3-tts", text_length=len(request.text), audio_bytes=len(audio))
-        return Response(content=audio, media_type="audio/wav")
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        log_event("tts.request.completed", provider=result.provider, text_length=len(request.text), audio_bytes=len(result.audio))
+        return Response(content=result.audio, media_type=result.media_type)
 
     @router.get("/api/models")
     def get_models() -> dict[str, Any]:

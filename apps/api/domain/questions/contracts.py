@@ -371,6 +371,7 @@ class HelpRequest(BaseModel):
 
 class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2_000)
+    language: Literal["Chinese", "English"] = "Chinese"
     speaker: str = Field(default="Serena", max_length=40)
     instruct: str = Field(
         default="用耐心、清晰、自然的中文老师语气朗读，语速稍慢，重点处有轻微停顿。",

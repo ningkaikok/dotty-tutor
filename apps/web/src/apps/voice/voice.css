@@ -1,0 +1,151 @@
+.voice-tutor {
+  display: grid;
+  gap: 14px;
+  margin: 20px 0;
+  padding: 20px;
+}
+
+.voice-tutor-heading,
+.voice-tutor-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.voice-tutor-heading h2 {
+  margin: 4px 0 0;
+  font-size: 1.1rem;
+}
+
+.voice-tutor-context,
+.voice-tutor-note,
+.voice-tutor-confidence,
+.voice-tutor-empty,
+.voice-tutor-footer > span {
+  color: var(--muted, #657084);
+  font-size: 0.9rem;
+}
+
+.voice-tutor-context {
+  text-align: right;
+}
+
+.voice-tutor-history {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voice-tutor-history li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface, #fff) 88%, #8097bd 12%);
+}
+
+.voice-tutor-history p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.voice-tutor-history b,
+.voice-tutor-transcript > span {
+  font-size: 0.82rem;
+}
+
+.voice-tutor-audio {
+  width: 100%;
+}
+
+.voice-tutor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-tutor-controls button,
+.voice-tutor-footer button,
+.voice-tutor-upload {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #d8deea);
+  border-radius: 10px;
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.voice-tutor-controls button:disabled,
+.voice-tutor-footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.voice-tutor-controls button.danger,
+.voice-tutor-footer button.danger {
+  border-color: #efb6ae;
+  color: #9b3024;
+}
+
+.voice-tutor-upload input {
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.voice-tutor-transcript {
+  display: grid;
+  gap: 6px;
+}
+
+.voice-tutor-transcript textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d8deea);
+  border-radius: 10px;
+  font: inherit;
+}
+
+.voice-tutor-error {
+  margin: 0;
+  color: #a62c22;
+}
+
+.voice-tutor-note,
+.voice-tutor-confidence,
+.voice-tutor-empty {
+  margin: 0;
+}
+
+.voice-tutor-footer {
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  .voice-tutor {
+    padding: 14px;
+  }
+
+  .voice-tutor-heading,
+  .voice-tutor-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .voice-tutor-context {
+    text-align: left;
+  }
+}

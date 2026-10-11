@@ -197,7 +197,7 @@
 - [DSPy metrics and evaluation](https://github.com/stanfordnlp/dspy/blob/main/docs/docs/diving-deeper/metrics-and-evaluation.md)：
   借鉴“指标先行、再做 Prompt 优化”的离线循环；不把 Prompt 优化器直接放进生产陪练路径。
 
-以上路线用于 AI 工程学习和可复现实验，不改变登录鉴权、多租户、公网高可用等部署边界。
+以上路线用于 AI 工程学习和可复现实验，不改变多租户、个人教师账号、公网高可用等部署边界；现有可选受保护模式与配额见当前 API。
 
 ## AI 前沿实验线（2026-09-14）
 
@@ -616,3 +616,12 @@ tests 后 pyright 组合分析存在挂起问题（>10min 两次复现），独�
 不再按已完成分支名维护第二份执行清单。每次 PR 保持单一主题、相关测试、文档同步和独立回滚边界；
 新的坏样本进入现有语料，按实际失败占比决定补充修复，不重复建设评测平台。
 Redis、OpenTelemetry、LangGraph 与 MCP 均不是当前章节/英语计划的前置依赖。
+
+## 六项收尾与系统内复核（2026-10-11）
+
+本轮实现教材原页复核与不可变修订、OpenStax 题号边界、受限模型对照和匿名人工评分、
+60～120 秒来源关联教学媒体、当前步骤录音转写确认与可取消追问，并同步当前鉴权/配额描述。
+模型对照与视频复用现有 JobStore/Worker；个人审核者身份不足时人工金标准导出保持关闭。
+真实 MinerU、Whisper、Qwen 配音与 Luna 已执行有界技术验收，发现的 OCR 公式错误仍保留待审。
+18 个教材案例由用户在系统内复核；50+ 独立双审人工金标准、真人语音质量与正式跨模型排名继续待完成。
+完整批次与失败判据见[交付计划](quality-media-voice-delivery-plan.md)，实际门禁见[验收记录](quality-media-voice-acceptance.md)。
