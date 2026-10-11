@@ -82,11 +82,14 @@ app.state.background_job_store = background_job_store
 app.include_router(build_auth_router(session_store=auth_session_store))
 app.include_router(build_dependency_preflight_router())
 quality_review_store = QualityReviewStore(engine=store.engine, data_root=str(store.root))
+lesson_media_store = LessonMediaStore(database_url=store.database_url, data_root=str(store.root))
 quality_review_service = QualityReviewService(
     quality_review_store,
     auth_mode=os.getenv("AUTH_MODE", "demo").strip().lower(),
     source_root=Path(os.getenv("DOTTY_QUALITY_REVIEW_SOURCE_DIR", str(store.root / "quality-review" / "sources"))),
     source_store=store,
+    chapter_store=store,
+    media_store=lesson_media_store,
 )
 app.include_router(build_quality_review_router(quality_review_service))
 prompt_store = PromptStore(engine=store.engine)
@@ -157,7 +160,6 @@ app.include_router(textbook_router)
 
 # Media and voice reuse the published source service while keeping their durable
 # revisions and learner conversations in separate PostgreSQL domains.
-lesson_media_store = LessonMediaStore(database_url=store.database_url, data_root=str(store.root))
 lesson_media_service = LessonMediaService(
     chapter_service=chapter_course_service,
     media_store=lesson_media_store,

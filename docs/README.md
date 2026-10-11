@@ -39,6 +39,7 @@
 2026-10-03 的入口合并与交互简化验证见 [教材与课程统一入口验收记录](materials-workflow-acceptance.md)。
 2026-10-11 的六项交付、系统内质量复核和人工验收边界见 [质量复核、视频与语音交付计划](quality-media-voice-delivery-plan.md)。
 实际执行结果持续记录在 [质量复核、视频与语音验收记录](quality-media-voice-acceptance.md)。
+日常教材复核嵌入现有入口的批次与验收见[教材复核工作台集成](material-review-integration.md)。
 
 ## 同步规则
 

@@ -29,6 +29,42 @@ export interface QualityReviewCaseSummary {
   counted: boolean;
 }
 
+export interface QualityReviewInboxItem extends QualityReviewCaseSummary {
+  sourceKey: string;
+  sourceTitle: string;
+  uploadId: string | null;
+  chapterIds: string[];
+}
+
+export interface QualityReviewInboxMediaTask {
+  mediaId: string;
+  chapterId: string;
+  publicationId: string;
+  lessonId: string;
+  version: number;
+  title: string;
+  status: string;
+  sourceKey: string;
+  uploadId: string | null;
+  sourceRevisionId: string;
+}
+
+export interface QualityReviewInbox {
+  items: QualityReviewInboxItem[];
+  total: number;
+  pendingCount: number;
+  reviewedCount: number;
+  unlinkedCount: number;
+  mediaTasks: QualityReviewInboxMediaTask[];
+  mediaPendingCount: number;
+}
+
+export interface QualityReviewInboxFilters {
+  chapterId?: string;
+  uploadId?: string;
+  includeReviewed?: boolean;
+}
+
 export interface QualityReviewDecision {
   reviewId: string;
   reviewedRecordVersion: number;
@@ -74,6 +110,27 @@ export interface QualityReviewCase extends QualityReviewCaseSummary {
 export async function listQualityReviewPackages(): Promise<QualityReviewPackage[]> {
   const payload = await parse<{ items?: QualityReviewPackage[] }>(await fetch("/api/quality-reviews/packages", { cache: "no-store" }));
   return Array.isArray(payload.items) ? payload.items : [];
+}
+
+/** Read server-linked review cases; chapter and upload filters are combined by the server. */
+export async function listQualityReviewInbox(
+  filters: QualityReviewInboxFilters = {},
+  signal?: AbortSignal,
+): Promise<QualityReviewInbox> {
+  const query = new URLSearchParams();
+  if (filters.chapterId) query.set("chapterId", filters.chapterId);
+  if (filters.uploadId) query.set("uploadId", filters.uploadId);
+  if (filters.includeReviewed) query.set("includeReviewed", "true");
+  const suffix = query.size ? `?${query.toString()}` : "";
+  const result = await parse<QualityReviewInbox>(await fetch(`/api/quality-reviews/inbox${suffix}`, {
+    cache: "no-store",
+    signal,
+  }));
+  if (!Array.isArray(result.items) || !Array.isArray(result.mediaTasks)
+    || ![result.total, result.pendingCount, result.reviewedCount, result.unlinkedCount, result.mediaPendingCount].every(Number.isFinite)) {
+    throw new Error("来源复核列表格式无效，请重试。");
+  }
+  return result;
 }
 
 export async function listQualityReviewCases(packageId: string): Promise<QualityReviewCaseSummary[]> {

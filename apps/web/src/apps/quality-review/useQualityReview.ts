@@ -1,208 +1,210 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getQualityReviewCase,
-  importQualityReviewManifest,
-  listQualityReviewCases,
-  listQualityReviewPackages,
   recordQualityReviewDecision,
   reviseQualityReviewCase,
   type QualityReviewCase,
-  type QualityReviewCaseSummary,
-  type QualityReviewPackage,
+  type QualityReviewInboxItem,
 } from "../../api/qualityReviews";
+import { useQualityReviewInbox } from "./useQualityReviewInbox";
 
 type Decision = "accepted" | "rejected" | "needs_changes";
+type Context = {
+  packageId?: string;
+  caseId?: string;
+  chapterId?: string;
+  uploadId?: string;
+  onCaseSelected?: (item: QualityReviewInboxItem) => void;
+};
 
-/** Own package/case navigation and API transitions so stale requests cannot restore old review state. */
-export function useQualityReview() {
-  const [packages, setPackages] = useState<QualityReviewPackage[]>([]);
-  const [selectedPackageId, setSelectedPackageId] = useState("");
-  const [cases, setCases] = useState<QualityReviewCaseSummary[]>([]);
-  const [selectedCaseId, setSelectedCaseId] = useState("");
-  const [detail, setDetail] = useState<QualityReviewCase | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [decision, setDecision] = useState<Decision>("accepted");
-  const [rationale, setRationale] = useState("");
-  const [verifiedQuote, setVerifiedQuote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [transitioning, setTransitioning] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const selection = useRef({ packageId: "", caseId: "" });
-  const selectionRevision = useRef(0);
-  const packageRequest = useRef(0);
+type ReviewState = {
+  contextKey: string;
+  selectedCaseId: string;
+  detail: QualityReviewCase | null;
+  displayName: string;
+  decision: Decision;
+  rationale: string;
+  verifiedQuote: string;
+  busy: boolean;
+  transitioning: boolean;
+  error: string;
+  notice: string;
+};
 
-  const clearDraft = useCallback(() => {
-    setRationale("");
-    setVerifiedQuote("");
-    setNotice("");
+function emptyState(contextKey: string): ReviewState {
+  return {
+    contextKey, selectedCaseId: "", detail: null, displayName: "", decision: "accepted",
+    rationale: "", verifiedQuote: "", busy: false, transitioning: false, error: "", notice: "",
+  };
+}
+
+/** Share case navigation and review mutations across the library, chapter workspace, and legacy route. */
+export function useQualityReview({ packageId, caseId, chapterId, uploadId, onCaseSelected }: Context = {}) {
+  const contextKey = JSON.stringify([chapterId ?? "", uploadId ?? "", packageId ?? ""]);
+  const inbox = useQualityReviewInbox({
+    ...(chapterId ? { chapterId } : {}),
+    ...(uploadId ? { uploadId } : {}),
+    includeReviewed: true,
+  });
+  const refreshInbox = inbox.refresh;
+  const cases = useMemo(() => packageId ? inbox.items.filter((item) => item.packageId === packageId) : inbox.items, [inbox.items, packageId]);
+  const contextRef = useRef(contextKey);
+  const requestSequence = useRef(0);
+  const autoOpenedRef = useRef("");
+  const [state, setState] = useState<ReviewState>(() => emptyState(""));
+  const visible = state.contextKey === contextKey ? state : emptyState(contextKey);
+
+  useLayoutEffect(() => {
+    contextRef.current = contextKey;
+    requestSequence.current += 1;
+    setState(emptyState(contextKey));
+  }, [contextKey]);
+
+  const update = useCallback((key: string, transform: (current: ReviewState) => ReviewState) => {
+    if (contextRef.current !== key) return;
+    setState((current) => current.contextKey === key ? transform(current) : current);
   }, []);
 
-  const loadCase = useCallback(async (caseId: string, revision: number) => {
-    const current = await getQualityReviewCase(caseId);
-    if (selectionRevision.current === revision && selection.current.caseId === caseId) setDetail(current);
-  }, []);
-
-  const selectPackage = useCallback(async (packageId: string) => {
-    const revision = ++selectionRevision.current;
-    selection.current = { packageId, caseId: "" };
-    setSelectedPackageId(packageId);
-    setCases([]);
-    setSelectedCaseId("");
-    setDetail(null);
-    clearDraft();
-    setError("");
-    setTransitioning(true);
-    if (!packageId) {
-      setTransitioning(false);
-      return;
-    }
+  const openCase = useCallback(async (nextCaseId: string) => {
+    const item = cases.find((candidate) => candidate.caseId === nextCaseId);
+    if (!item) return false;
+    const key = contextKey;
+    const request = ++requestSequence.current;
+    onCaseSelected?.(item);
+    update(key, (current) => ({
+      ...current, selectedCaseId: nextCaseId, detail: null, rationale: "", verifiedQuote: "",
+      busy: false, transitioning: true, error: "", notice: "",
+    }));
     try {
-      const rows = await listQualityReviewCases(packageId);
-      if (selectionRevision.current !== revision || selection.current.packageId !== packageId) return;
-      setCases(rows);
-      const nextCaseId = rows[0]?.caseId ?? "";
-      selection.current = { packageId, caseId: nextCaseId };
-      setSelectedCaseId(nextCaseId);
-      if (nextCaseId) await loadCase(nextCaseId, revision);
-    } catch (cause) {
-      if (selectionRevision.current === revision) setError(cause instanceof Error ? cause.message : "案例列表读取失败");
-    } finally {
-      if (selectionRevision.current === revision) setTransitioning(false);
-    }
-  }, [clearDraft, loadCase]);
-
-  const refreshPackages = useCallback(async (preferredId?: string) => {
-    const request = ++packageRequest.current;
-    const revisionAtStart = selectionRevision.current;
-    setError("");
-    try {
-      const items = await listQualityReviewPackages();
-      if (packageRequest.current !== request) return;
-      setPackages(items);
-      // A package refresh may finish after the reviewer has navigated. Keep the new list,
-      // but never let that stale snapshot select a package or case for them.
-      if (selectionRevision.current !== revisionAtStart) return;
-      const currentId = preferredId ?? selection.current.packageId;
-      const nextId = items.some((item) => item.packageId === currentId) ? currentId : items[0]?.packageId ?? "";
-      await selectPackage(nextId);
-    } catch (cause) {
-      if (packageRequest.current === request) setError(cause instanceof Error ? cause.message : "复核包读取失败");
-    } finally {
-      if (packageRequest.current === request) setLoading(false);
-    }
-  }, [selectPackage]);
-
-  const openCase = useCallback(async (caseId: string) => {
-    const revision = ++selectionRevision.current;
-    selection.current = { ...selection.current, caseId };
-    setSelectedCaseId(caseId);
-    setDetail(null);
-    clearDraft();
-    setError("");
-    setTransitioning(true);
-    try {
-      await loadCase(caseId, revision);
-    } catch (cause) {
-      if (selectionRevision.current === revision) setError(cause instanceof Error ? cause.message : "案例读取失败");
-    } finally {
-      if (selectionRevision.current === revision) setTransitioning(false);
-    }
-  }, [clearDraft, loadCase]);
-
-  const refreshPackageSummaries = useCallback(async (revision: number) => {
-    const items = await listQualityReviewPackages();
-    if (selectionRevision.current === revision) setPackages(items);
-  }, []);
-
-  const importPacket = useCallback(async (manifest: unknown) => {
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const created = await importQualityReviewManifest(manifest);
-      await refreshPackages(created.packageId);
-      const verified = created.source.assetVerification === "server_hash_verified";
-      setNotice(verified
-        ? `已导入“${created.title}”。受管教材 PDF 指纹和每案原文定位已由服务端核验；所有案例仍待你逐案人工复核。`
-        : `已导入“${created.title}”。部分或全部教材原页尚未完成受管核验；未核验前只能保存临时意见。`);
+      const detail = await getQualityReviewCase(nextCaseId);
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({ ...current, detail, transitioning: false }));
+      }
       return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "导入失败");
+    } catch (requestError) {
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({
+          ...current, transitioning: false,
+          error: requestError instanceof Error ? requestError.message : "案例读取失败",
+        }));
+      }
       return false;
-    } finally {
-      setBusy(false);
     }
-  }, [refreshPackages]);
+  }, [cases, contextKey, onCaseSelected, update]);
+
+  useEffect(() => {
+    if (inbox.loading || inbox.error) return;
+    const preferredCaseId = caseId || visible.selectedCaseId ||
+      cases.find((item) => isPendingStatus(item.reviewStatus))?.caseId || cases[0]?.caseId || "";
+    if (!preferredCaseId) return;
+    if (preferredCaseId === visible.selectedCaseId && visible.detail?.caseId === preferredCaseId) return;
+    if (visible.transitioning && visible.selectedCaseId === preferredCaseId) return;
+    const automaticSelection = `${contextKey}:${preferredCaseId}`;
+    if (automaticSelection === autoOpenedRef.current) return;
+    if (cases.some((item) => item.caseId === preferredCaseId)) {
+      autoOpenedRef.current = automaticSelection;
+      void openCase(preferredCaseId);
+    }
+  }, [caseId, cases, contextKey, inbox.error, inbox.loading, openCase, visible.detail?.caseId, visible.selectedCaseId, visible.transitioning]);
 
   const saveDecision = useCallback(async () => {
-    if (!detail || !rationale.trim() || transitioning) return false;
-    const caseId = detail.caseId;
-    const revision = selectionRevision.current;
-    setBusy(true);
-    setError("");
-    setNotice("");
+    const detail = visible.detail;
+    if (!detail || !visible.rationale.trim() || visible.transitioning || visible.busy) return false;
+    const key = contextKey;
+    const selectedId = detail.caseId;
+    const request = requestSequence.current;
+    update(key, (current) => ({ ...current, busy: true, error: "", notice: "" }));
     try {
-      const saved = await recordQualityReviewDecision(caseId, {
+      const saved = await recordQualityReviewDecision(selectedId, {
         expectedRecordVersion: detail.recordVersion,
-        decision,
-        rationale: rationale.trim(),
-        verifiedQuote: verifiedQuote.trim(),
-        displayName: displayName.trim(),
+        decision: visible.decision,
+        rationale: visible.rationale.trim(),
+        verifiedQuote: visible.verifiedQuote.trim(),
+        displayName: visible.displayName.trim(),
       });
-      if (selectionRevision.current === revision && selection.current.caseId === caseId) {
-        setDetail(saved);
-        clearDraft();
-        setNotice(saved.decisions[saved.decisions.length - 1]?.stage === "final"
-          ? "教材决定已保存，并绑定到已核验的原页和当前案例版本。"
-          : "意见已保存为待核验记录。连接并核验原教材 PDF 后，才能提交最终教材决定。");
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({
+          ...current, detail: saved, rationale: "", verifiedQuote: "",
+          notice: saved.decisions[saved.decisions.length - 1]?.stage === "final"
+            ? "教材决定已保存，并绑定到已核验的原页和当前案例版本。"
+            : "意见已保存为待核验记录。连接并核验原教材 PDF 后，才能提交最终教材决定。",
+        }));
+        await refreshInbox();
       }
-      await refreshPackageSummaries(revision);
       return true;
-    } catch (cause) {
-      if (selectionRevision.current === revision) setError(cause instanceof Error ? cause.message : "决定保存失败");
+    } catch (requestError) {
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({ ...current, error: requestError instanceof Error ? requestError.message : "决定保存失败" }));
+      }
       return false;
     } finally {
-      setBusy(false);
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({ ...current, busy: false }));
+      }
     }
-  }, [clearDraft, decision, detail, displayName, rationale, refreshPackageSummaries, transitioning, verifiedQuote]);
+  }, [contextKey, refreshInbox, update, visible]);
 
   const reviseCase = useCallback(async (snapshot: { input: Record<string, unknown>; expected: Record<string, unknown>; actual: Record<string, unknown> }) => {
-    if (!detail || transitioning || busy) return false;
-    const caseId = detail.caseId;
-    const revision = selectionRevision.current;
-    setBusy(true);
-    setError("");
-    setNotice("");
+    const detail = visible.detail;
+    if (!detail || visible.transitioning || visible.busy) return false;
+    const key = contextKey;
+    const selectedId = detail.caseId;
+    const request = requestSequence.current;
+    update(key, (current) => ({ ...current, busy: true, error: "", notice: "" }));
     try {
-      const revised = await reviseQualityReviewCase(caseId, {
+      const revised = await reviseQualityReviewCase(selectedId, {
         expectedRecordVersion: detail.recordVersion,
         ...snapshot,
       });
-      if (selectionRevision.current === revision && selection.current.caseId === caseId) {
-        setDetail(revised);
-        clearDraft();
-        setNotice(`已创建案例版本 ${revised.recordVersion}。旧决定仍保留在原版本，当前版本需重新复核。`);
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({
+          ...current, detail: revised,
+          notice: `已创建案例版本 ${revised.recordVersion}。旧决定仍保留在原版本，当前版本需重新复核。`,
+        }));
+        await refreshInbox();
       }
-      await refreshPackageSummaries(revision);
       return true;
-    } catch (cause) {
-      if (selectionRevision.current === revision) setError(cause instanceof Error ? cause.message : "案例修订失败");
+    } catch (requestError) {
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({ ...current, error: requestError instanceof Error ? requestError.message : "案例修订失败" }));
+      }
       return false;
     } finally {
-      setBusy(false);
+      if (requestSequence.current === request && contextRef.current === key) {
+        update(key, (current) => ({ ...current, busy: false }));
+      }
     }
-  }, [busy, clearDraft, detail, refreshPackageSummaries, transitioning]);
-
-  useEffect(() => {
-    void refreshPackages();
-  }, [refreshPackages]);
+  }, [contextKey, refreshInbox, update, visible]);
 
   return {
-    packages, selectedPackageId, cases, selectedCaseId, detail,
-    displayName, setDisplayName, decision, setDecision, rationale, setRationale,
-    verifiedQuote, setVerifiedQuote, busy, loading, transitioning, error, setError, notice,
-    refreshPackages, selectPackage, openCase, importPacket, saveDecision, reviseCase,
+    cases,
+    requestedCaseMissing: Boolean(caseId && !inbox.loading && !inbox.error && !cases.some((item) => item.caseId === caseId)),
+    counts: inbox.counts,
+    hasCounts: inbox.hasCounts,
+    inboxLoading: inbox.loading,
+    inboxError: inbox.error,
+    refresh: inbox.refresh,
+    selectedCaseId: visible.selectedCaseId,
+    detail: caseId && visible.detail?.caseId !== caseId ? null : visible.detail,
+    displayName: visible.displayName,
+    setDisplayName: (displayName: string) => update(contextKey, (current) => ({ ...current, displayName })),
+    decision: visible.decision,
+    setDecision: (decision: Decision) => update(contextKey, (current) => ({ ...current, decision })),
+    rationale: visible.rationale,
+    setRationale: (rationale: string) => update(contextKey, (current) => ({ ...current, rationale })),
+    verifiedQuote: visible.verifiedQuote,
+    setVerifiedQuote: (verifiedQuote: string) => update(contextKey, (current) => ({ ...current, verifiedQuote })),
+    busy: visible.busy,
+    transitioning: visible.transitioning,
+    error: visible.error,
+    setError: (error: string) => update(contextKey, (current) => ({ ...current, error })),
+    notice: visible.notice,
+    openCase,
+    saveDecision,
+    reviseCase,
   };
+}
+
+function isPendingStatus(status: string): boolean {
+  return !["human_accepted", "human_rejected"].includes(status);
 }

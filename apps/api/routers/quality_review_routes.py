@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.exc import IntegrityError
 
 from application.services.quality_review import quality_review_actor
 from domain.contracts.quality_review import (
     QualityReviewDecisionRequest,
+    QualityReviewInbox,
     QualityReviewPackageImport,
     QualityReviewRevisionRequest,
 )
@@ -40,6 +41,18 @@ def build_quality_review_router(service: Any) -> APIRouter:
     @router.get("/packages")
     def list_packages() -> dict[str, Any]:
         return service.list_packages()
+
+    @router.get("/inbox", response_model=QualityReviewInbox)
+    def list_inbox(
+        chapter_id: str | None = Query(default=None, alias="chapterId", min_length=1, max_length=64),
+        upload_id: str | None = Query(default=None, alias="uploadId", min_length=1, max_length=64),
+        include_reviewed: bool = Query(default=False, alias="includeReviewed"),
+    ) -> dict[str, Any]:
+        return service.list_inbox(
+            chapter_id=chapter_id,
+            upload_id=upload_id,
+            include_reviewed=include_reviewed,
+        )
 
     @router.get("/packages/{package_id}/cases")
     def list_cases(package_id: str) -> dict[str, Any]:

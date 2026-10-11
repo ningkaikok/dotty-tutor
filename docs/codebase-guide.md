@@ -159,8 +159,8 @@ dotty-tutor/
 │   │   │   ├── apps/home/      # 角色入口选择
 │   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程、独立错误及搜索；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
-│   │   │   ├── apps/chapters/  # 章节工作台、来源/课程编辑及学生作答/教师复核 Hook
-│   │   │   ├── apps/quality-review/ # 复核/模型对照组件；useQualityReview/useQualityReviewRuns 管理网络和过期响应
+│   │   │   ├── apps/chapters/  # 章节工作台、来源/课程复核；useChapterPublishedMedia 读取冻结发布课时
+│   │   │   ├── apps/quality-review/ # CaseReviewPanel 与 useQualityReviewInbox 共享来源复核，保留模型运行组件
 │   │   │   ├── apps/media/     # useLessonMediaStudio 管理版本切换；教师分镜审校与学生视频/字幕播放器
 │   │   │   ├── apps/voice/     # 录音、转写回放、明确确认与可打断追问
 │   │   │   ├── apps/teacher/   # 班级、作业计划审阅、指派和教师掌握度看板
@@ -347,21 +347,26 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 ### 系统内质量复核、媒体与语音链路
 
 ```text
+我的教材待审 / 章节复核 → quality_review_routes.py /inbox → QualityReviewService
+  → QualityReviewStore + ChapterStore + TextbookStore（当前来源哈希/页码关联，保留未关联案例）
+  → LessonMediaStore（系列最新版本、当前发布快照的媒体待办）
+  → useQualityReviewInbox → MaterialsApp / ChapterStudioApp
+
 来源复核包 → quality_review_routes.py → QualityReviewService
   → quality_review_sources.py（配置的受管素材或已有上传、服务端哈希/原句校验、原页预览）
   → quality_review_store.py（案例快照、来源/输入/输出指纹、追加复核与修订）
-  → apps/quality-review/（Hook 管理异步选择；用户核对原页并提交决定）
+  → CaseReviewPanel / useQualityReview（章节内及兼容详情共用；原页对照与追加决定）
 
 固定案例快照 → quality_review_runs_routes.py → QualityReviewRunsService
   → quality_review_runs_store.py（匿名分配、真实调用结果、人工评分和失败）
   → quality_review_runs_jobs.py → 既有 JobStore / Worker → ModelRuntime（真实超时、无回退）
-  → 全部成功案例评分后揭盲；独立双审与 50 案覆盖不足时不导出正式 gold
+  → ModelMetricsApp 高级模型评测 → 全部成功案例评分后揭盲；独立双审与 50 案覆盖不足时不导出正式 gold
 
 已审核发布 tutorial → lesson_media_routes.py → LessonMediaService
   → lesson_media_store.py（每次修改生成新媒体版本，保留旧分镜与审校）
   → lesson_media_jobs.py → 既有 JobStore / Worker
   → TtsRuntime → lesson_media_renderer.py（固定 SVG、CairoSVG、受限 FFmpeg、VTT）
-  → 人工一致性审校 → 独立发布 → MediaPlayer
+  → ChapterStudioApp 内 MediaStudioPanel（绑定已发布课时）→ 人工一致性审校 → 独立发布 → MediaPlayer
 
 已发布课程当前讲解步骤 → voice_routes.py → VoiceTutorService
   → voice_audio.py / VoiceTranscriptionRuntime（格式/时长/资源边界、本地或云端转写）

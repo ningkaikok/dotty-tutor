@@ -142,3 +142,7 @@
 .chapter-steps li { padding:9px 14px; border-radius:8px; background:#e6ede5; color:#5a6f60; font-size:14px; }
 .chapter-steps li[aria-current="step"] { background:#267451; color:white; font-weight:700; }
 .chapter-history { margin-top:18px; }
+.chapter-content-review-step, .chapter-media-review-step { margin-top:26px; }
+.chapter-content-review-heading { margin-bottom:14px; }
+.chapter-content-review-heading h2 { margin:5px 0; }
+.chapter-content-review-heading p { color:#5f7265; line-height:1.6; }

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { loadLearningCostReport, type LearningCostReport } from "../../api/metrics";
 import { PRODUCT_TERMS } from "../../productTerms";
+import { QualityReviewRunsPanel } from "../quality-review/QualityReviewRunsPanel";
+import { useQualityReviewInbox } from "../quality-review/useQualityReviewInbox";
 import { formatRate, formatTokens, toRowViews, toSummaryView, type MetricRowView } from "./metricsView";
 import "./metrics.css";
 
@@ -13,10 +15,13 @@ const DAY_OPTIONS = [7, 14, 30] as const;
  */
 export function ModelMetricsApp() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const evaluationSelected = searchParams.get("tab") === "evaluation";
   const [days, setDays] = useState<number>(7);
   const [report, setReport] = useState<LearningCostReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const evaluation = useQualityReviewInbox({ includeReviewed: true, enabled: evaluationSelected });
 
   const refresh = useCallback(async (windowDays: number) => {
     setLoading(true);
@@ -33,6 +38,15 @@ export function ModelMetricsApp() {
   useEffect(() => {
     void refresh(days);
   }, [days, refresh]);
+
+  const selectTab = (tab: "metrics" | "evaluation") => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (tab === "evaluation") next.set("tab", "evaluation");
+      else next.delete("tab");
+      return next;
+    });
+  };
 
   const rows: MetricRowView[] = report ? toRowViews(report.modelCost.items) : [];
   const summary = report ? toSummaryView(report.modelCost.summary) : null;
@@ -57,7 +71,19 @@ export function ModelMetricsApp() {
         <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
       </header>
 
-      <section className="panel metrics-panel" aria-label="学习效果与模型成本报告">
+      <nav className="metrics-tabs" role="tablist" aria-label="指标与评测">
+        <button id="metrics-tab-report" type="button" role="tab" aria-controls="metrics-content-panel" aria-selected={!evaluationSelected} onClick={() => selectTab("metrics")}>指标报告</button>
+        <button id="metrics-tab-evaluation" type="button" role="tab" aria-controls="metrics-content-panel" aria-selected={evaluationSelected} onClick={() => selectTab("evaluation")}>模型评测</button>
+      </nav>
+      {evaluationSelected ? (
+        <section id="metrics-content-panel" className="panel metrics-panel metrics-evaluation-panel" role="tabpanel" aria-labelledby="metrics-tab-evaluation">
+          <header><span className="eyebrow">高级教学工具 · 来源案例</span><h2>模型评测</h2><p>可选用各来源包中的冻结案例开展两模型匿名对比、人工评分和历史复查。打开此页不会自动启动运行。</p></header>
+          {evaluation.loading && <p role="status">正在读取所有来源案例…</p>}
+          {evaluation.error && <p role="alert">评测案例读取失败：{evaluation.error}</p>}
+          {!evaluation.loading && !evaluation.error && <QualityReviewRunsPanel cases={evaluation.items} />}
+        </section>
+      ) : (
+        <section id="metrics-content-panel" className="panel metrics-panel" role="tabpanel" aria-labelledby="metrics-tab-report">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">CONTENT STUDIO · 只读聚合</span>
@@ -180,7 +206,8 @@ export function ModelMetricsApp() {
             </>
           )}
         </div>
-      </section>
+        </section>
+      )}
     </main>
   );
 }
