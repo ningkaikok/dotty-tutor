@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { loadLibrary } from "../../api/textbooks";
 import type { ChapterSource, ChapterSourceLocator, ChapterSubject } from "../../types/chapter";
@@ -11,6 +11,10 @@ import { AutomaticCourseCreator } from "./AutomaticCourseCreator";
 import { useChapterStudio } from "./useChapterStudio";
 import { useChapterAttemptReview } from "./useChapterAttemptReview";
 import { useChapterStudioIndex } from "./useChapterStudioIndex";
+import { CaseReviewPanel } from "../quality-review/CaseReviewPanel";
+import { MediaStudioPanel } from "../media/MediaStudioPanel";
+import { useChapterPublishedMedia } from "./useChapterPublishedMedia";
+import type { QualityReviewInboxItem } from "../../api/qualityReviews";
 import "./chapters.css";
 
 export function ChapterStudioApp() {
@@ -67,6 +71,7 @@ function ChapterCreator() {
 
 function ChapterWorkspace({ chapterId }: { chapterId: string }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { chapter, loading, busy, error, notice, aiJob, reload, generate, startAiGeneration, retryAiGeneration, cancelAiGeneration, revise, edit, review, publish } = useChapterStudio(chapterId);
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
   const [showRevision, setShowRevision] = useState(false);
@@ -74,6 +79,23 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
   const [libraryError, setLibraryError] = useState("");
   const [focusedLocator, setFocusedLocator] = useState<ChapterSourceLocator | undefined>();
   const attemptReview = useChapterAttemptReview(chapterId);
+  const requestedMediaPublicationId = searchParams.get("mediaReviewPublicationId");
+  const selectedMediaLessonId = searchParams.get("mediaReviewLessonId") ?? undefined;
+  const requestedPublicationIsValid = !requestedMediaPublicationId || Boolean(chapter?.publications.some((item) => item.publicationId === requestedMediaPublicationId));
+  const mediaPublication = chapter
+    ? requestedMediaPublicationId
+      ? chapter.publications.find((item) => item.publicationId === requestedMediaPublicationId) ?? null
+      : chapter.publications.find((item) => item.publicationId === chapter.publicationId) ?? null
+    : null;
+  const publishedMedia = useChapterPublishedMedia(chapterId, requestedPublicationIsValid ? mediaPublication?.publicationId ?? null : null);
+  const onSourceCaseSelected = useCallback((item: QualityReviewInboxItem) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("sourceReviewPackageId", item.packageId);
+      next.set("sourceReviewCaseId", item.caseId);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   useEffect(() => {
     loadLibrary().then(setLibraries).catch((requestError) => setLibraryError(requestError instanceof Error ? requestError.message : "教材库读取失败"));
@@ -83,6 +105,9 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
   if (!chapter) return <main className="chapter-shell"><div className="chapter-error" role="alert">{error || "章节不存在"}<button type="button" onClick={() => void reload()}>重试</button></div></main>;
 
   const source = chapter.sourceRevisions[chapter.sourceRevisions.length - 1];
+  const sourceReviewCaseId = searchParams.get("sourceReviewCaseId") ?? undefined;
+  const sourceReviewPackageId = searchParams.get("sourceReviewPackageId") ?? undefined;
+  const explicitlyFilteredUploadId = searchParams.get("uploadId") ?? undefined;
   const currentLessons = chapter.lessons.filter((lesson) => chapter.currentLessonIds.includes(lesson.lessonId));
   const aiJobActive = aiJob?.status === "queued" || aiJob?.status === "running";
   const blockers = [
@@ -91,6 +116,10 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
     ...currentLessons.flatMap((lesson) => lesson.reviewIssues),
   ];
   const canPublish = currentLessons.length > 0 && currentLessons.every((lesson) => lesson.status === "approved") && blockers.length === 0;
+  const publishedLessons = publishedMedia.snapshot?.teachingMode === "tutorial"
+    ? publishedMedia.snapshot.lessons.map((lesson) => ({ lessonId: lesson.lessonId, title: lesson.title, sourceRevisionId: lesson.sourceRevisionId }))
+    : [];
+  const selectedMediaLessonIsValid = !selectedMediaLessonId || publishedLessons.some((lesson) => lesson.lessonId === selectedMediaLessonId);
 
   const saveRevision = async (value: Parameters<NonNullable<React.ComponentProps<typeof ChapterSourceForm>["onSubmit"]>>[0]) => {
     const next = await revise(value.source);
@@ -146,6 +175,25 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
           onFocusSource={(lesson) => { setShowSource(true); setFocusedLocator(lesson.sourceLocator); }}
         />
       </div>
+      <section className="chapter-content-review-step" aria-label="第 2 步 复核内容">
+        <div className="chapter-content-review-heading"><span className="eyebrow">2 · 复核内容</span><h2>教材来源与课程内容复核</h2><p>来源案例、课程内容和视频分别记录决定；复核教材来源不会批准课程或教学视频。</p></div>
+        <CaseReviewPanel packageId={sourceReviewPackageId} caseId={sourceReviewCaseId} chapterId={chapterId}
+          uploadId={explicitlyFilteredUploadId} onCaseSelected={onSourceCaseSelected} />
+      </section>
+      {chapter.teachingMode === "tutorial" && <section className="chapter-media-review-step" aria-label="已发布课程教学短视频审校">
+        {!requestedPublicationIsValid && <p className="chapter-error" role="alert">请求的视频审校不属于此章节的发布历史，请从“我的教材”重新打开。</p>}
+        {requestedPublicationIsValid && !mediaPublication && <p className="chapter-help">当前教程还没有已发布课程快照；请先发布教程，再创建来源分镜。</p>}
+        {requestedPublicationIsValid && mediaPublication && <>
+          <div className="chapter-content-review-heading"><span className="eyebrow">视频独立审校</span><h2>视频来源课程发布版本 {mediaPublication.version} · {mediaPublication.publicationId}</h2><p>分镜只从该不可变发布快照读取课程和来源修订。</p></div>
+          {publishedMedia.loading && <p role="status">正在读取已发布课程快照…</p>}
+          {publishedMedia.error && <p className="chapter-error" role="alert">已发布课程快照读取失败：{publishedMedia.error}</p>}
+          {!publishedMedia.loading && !publishedMedia.error && !publishedMedia.snapshot && <p className="chapter-help">正在准备视频审校…</p>}
+          {!publishedMedia.loading && !publishedMedia.error && publishedMedia.snapshot && !publishedLessons.length && <p className="chapter-help">这个发布快照没有教程讲解，无法创建教学短视频。</p>}
+          {!publishedMedia.loading && !publishedMedia.error && publishedLessons.length > 0 && !selectedMediaLessonIsValid && <p className="chapter-error" role="alert">此发布快照不包含请求的课程，请返回“我的教材”重新打开视频审校。</p>}
+          {!publishedMedia.loading && !publishedMedia.error && publishedMedia.snapshot && publishedLessons.length > 0 && selectedMediaLessonIsValid && <MediaStudioPanel
+            chapterId={chapterId} publicationId={mediaPublication.publicationId} lessons={publishedLessons} selectedLessonId={selectedMediaLessonId} />}
+        </>}
+      </section>}
       {!!blockers.length && <section className="chapter-panel chapter-blockers"><h2>发布前待处理</h2><ul>{blockers.map((item, index) => <li key={`${item.code}-${item.lessonId ?? "chapter"}-${index}`}>{item.message}</li>)}</ul></section>}
       {!canPublish && currentLessons.length > 0 && blockers.length === 0 && <p className="chapter-help">{chapter.teachingMode === "tutorial" ? "确认教程讲解与引用已经人工复核后，发布按钮才会启用。" : "逐一打开检查题并确认人工复核后，发布按钮才会启用。"}</p>}
       {chapter.publications.length > 0 && <details className="chapter-panel chapter-history"><summary>查看发布历史</summary><ul>{chapter.publications.map((item) => <li key={item.publicationId}>

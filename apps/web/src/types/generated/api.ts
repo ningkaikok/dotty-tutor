@@ -1718,6 +1718,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/quality-reviews/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inbox */
+        get: operations["list_inbox_api_quality_reviews_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/quality-reviews/packages": {
         parameters: {
             query?: never;
@@ -4090,6 +4107,106 @@ export interface components {
              * @default
              */
             verifiedQuote: string;
+        };
+        /**
+         * QualityReviewInbox
+         * @description Counts describe all context-matched cases, regardless of includeReviewed.
+         */
+        QualityReviewInbox: {
+            /** Items */
+            items: components["schemas"]["QualityReviewInboxItem"][];
+            /** Mediapendingcount */
+            mediaPendingCount: number;
+            /** Mediatasks */
+            mediaTasks: components["schemas"]["QualityReviewInboxMediaTask"][];
+            /** Pendingcount */
+            pendingCount: number;
+            /** Reviewedcount */
+            reviewedCount: number;
+            /** Total */
+            total: number;
+            /** Unlinkedcount */
+            unlinkedCount: number;
+        };
+        /**
+         * QualityReviewInboxItem
+         * @description Case summary enriched only with server-derived material associations.
+         */
+        QualityReviewInboxItem: {
+            /** Assetverification */
+            assetVerification: string;
+            /** Caseid */
+            caseId: string;
+            /** Chapterids */
+            chapterIds: string[];
+            /** Counted */
+            counted: boolean;
+            /** Externalcaseid */
+            externalCaseId: string;
+            /** Inputfingerprint */
+            inputFingerprint: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Outputfingerprint */
+            outputFingerprint: string;
+            /** Packageid */
+            packageId: string;
+            /** Recordversion */
+            recordVersion: number;
+            /**
+             * Reviewstatus
+             * @enum {string}
+             */
+            reviewStatus: "pending_source_verification" | "pending_human_review" | "decision_recorded_pending_source" | "human_accepted" | "human_rejected" | "needs_changes";
+            /** Sourcefingerprint */
+            sourceFingerprint: string;
+            /** Sourcekey */
+            sourceKey: string;
+            /** Sourcekind */
+            sourceKind: string;
+            /** Sourcepage */
+            sourcePage: number;
+            /** Sourcetitle */
+            sourceTitle: string;
+            /** Sourceverification */
+            sourceVerification: string;
+            /** Sourceverifiedat */
+            sourceVerifiedAt: number | null;
+            /** Sourceverifiedhash */
+            sourceVerifiedHash: string | null;
+            /** Subject */
+            subject: string;
+            /** Uploadid */
+            uploadId: string | null;
+        };
+        /**
+         * QualityReviewInboxMediaTask
+         * @description Current publication media revision awaiting review or still rendering.
+         */
+        QualityReviewInboxMediaTask: {
+            /** Chapterid */
+            chapterId: string;
+            /** Lessonid */
+            lessonId: string;
+            /** Mediaid */
+            mediaId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Sourcekey */
+            sourceKey: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "rendering" | "consistency_review_required" | "consistency_failed" | "changes_requested";
+            /** Title */
+            title: string;
+            /** Uploadid */
+            uploadId: string | null;
+            /** Version */
+            version: number;
         };
         /** QualityReviewModelSelection */
         QualityReviewModelSelection: {
@@ -8259,6 +8376,39 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_inbox_api_quality_reviews_inbox_get: {
+        parameters: {
+            query?: {
+                chapterId?: string | null;
+                includeReviewed?: boolean;
+                uploadId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReviewInbox"];
+                };
             };
             /** @description Validation Error */
             422: {

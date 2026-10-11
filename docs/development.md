@@ -308,6 +308,9 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 | `http://localhost:59174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
 | <http://localhost:59174/studio> | 教材导入、OCR、内容生成与互动预览 |
 | <http://localhost:59174/studio/metrics> | 学习效果与模型成本联合报告 |
+| <http://localhost:59174/studio/metrics?tab=evaluation> | 高级模型盲评与已有运行记录；读取不会启动模型调用 |
+
+教材来源复核从「我的教材 → 待我复核」进入。关联当前来源的案例位于课程编辑第 2 步「复核内容」，未关联来源包也保留可读详情。视频审校在该章节内选择已发布版本；更新未发布草稿不会改变视频的冻结课时。来源接受、课程批准和媒体发布各自保留独立操作与历史，具体关联和计数口径见[整合说明](material-review-integration.md)。
 | <http://localhost:59174/teacher> | 班级、作业计划审阅、作业指派和掌握度看板 |
 | <http://localhost:59174/mistakes> | AI 错题本、图片录入和确认 |
 | <http://localhost:59174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |

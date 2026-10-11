@@ -105,6 +105,7 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 | --- | --- | --- |
 | `POST` | `/api/quality-reviews/packages` | 导入带来源 URL/许可/版本/哈希、定位及预期/实际的案例包；拒绝客户端文件路径与计数字段 |
 | `GET` | `/api/quality-reviews/packages` | 列出复核包与待审/已记录意见数量 |
+| `GET` | `/api/quality-reviews/inbox` | 教材/章节复核收件箱；按 `chapterId`、`uploadId` 筛选当前来源案例和当前发布版本的媒体待办 |
 | `GET` | `/api/quality-reviews/packages/{package_id}/cases` | 列出该包固定版本的案例 |
 | `GET` | `/api/quality-reviews/cases/{case_id}` | 查看来源定位、预期/实际、指纹、版本和意见历史 |
 | `GET` | `/api/quality-reviews/cases/{case_id}/source-page` | 校验受管 PDF 哈希后返回指定原页 PNG；无受管素材拒绝预览 |
@@ -114,6 +115,12 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 案例的 `sourceKind` 与 `counted` 由服务端决定，开放教材案例不计人工金标准。
 来源通过 `sourceAssetId` 对应的配置受管素材或已有 `uploadId` 解析，服务端校验实际 SHA-256 与原页摘录；文件路径不接受客户端指定。`sourceVerifiedHash` 记录实际文件哈希。来源核验未完成时决定保持 `provisional`，状态为 `decision_recorded_pending_source`，不能宣称教材验收通过。
 保存人工意见不占模型工作配额。可用范围和未完成的人工条件见[验收记录](quality-media-voice-acceptance.md)。
+
+收件箱的 `chapterId` 与 `uploadId` 同时提供时取交集。`includeReviewed` 默认 `false`，控制来源案例 `items` 是否包含已完成决定；`pendingCount`、`reviewedCount`、`unlinkedCount` 始终统计该筛选范围，`total` 是返回的 `items` 数量。待审包括未核验、待人工复核、已记录临时决定及要求修改的案例；接受或拒绝当前版本视为已记录最终意见。
+
+案例附带服务端生成的 `sourceTitle`、`sourceKey`、`uploadId` 和 `chapterIds`。来源关联要求服务端已核验文件 SHA-256，与章节最新来源修订的文件哈希相同，且案例页码同时位于修订范围和实际页面快照中；旧修订、已删除章节和客户端标题不能制造关联。`sourceKey` 用于分组，同名不同 PDF 不合并；它不授予来源验证或发布权限。没有关联章节的旧案例仍在全局收件箱中保留。
+
+`mediaTasks` 来自未删除章节的当前发布快照及媒体系列最新版本，包含 `mediaId`、`chapterId`、`publicationId`、`lessonId`、`sourceRevisionId`、`sourceKey`、`uploadId`、`version`、`title`、`status`。媒体来源绑定该发布快照，可能与最新未发布教材修订不同；其分组键取冻结来源 SHA-256，无有效哈希时按发布 ID 隔离，不能借用当前草稿的来源。`mediaPendingCount` 统计草稿、等待一致性审核、检查失败及要求修改的最新媒体；渲染中的媒体可显示进度，但不计入待审数。来源案例接受不会改变课程或媒体状态。
 
 ### 受限模型对照与匿名评分
 

@@ -86,10 +86,79 @@ class QualityReviewPackageList(BaseModel):
     items: list[dict[str, Any]]
 
 
+class QualityReviewInboxItem(BaseModel):
+    """Case summary enriched only with server-derived material associations."""
+
+    caseId: str
+    externalCaseId: str
+    packageId: str
+    ordinal: int
+    subject: str
+    sourcePage: int
+    sourceKind: str
+    sourceFingerprint: str
+    inputFingerprint: str
+    outputFingerprint: str
+    recordVersion: int
+    reviewStatus: Literal[
+        "pending_source_verification",
+        "pending_human_review",
+        "decision_recorded_pending_source",
+        "human_accepted",
+        "human_rejected",
+        "needs_changes",
+    ]
+    sourceVerification: str
+    assetVerification: str
+    sourceVerifiedAt: float | None
+    sourceVerifiedHash: str | None
+    counted: bool
+    sourceKey: str
+    sourceTitle: str
+    uploadId: str | None
+    chapterIds: list[str]
+
+
+class QualityReviewInboxMediaTask(BaseModel):
+    """Current publication media revision awaiting review or still rendering."""
+
+    mediaId: str
+    chapterId: str
+    publicationId: str
+    lessonId: str
+    version: int
+    title: str
+    sourceKey: str
+    status: Literal[
+        "draft",
+        "rendering",
+        "consistency_review_required",
+        "consistency_failed",
+        "changes_requested",
+    ]
+    uploadId: str | None
+    sourceRevisionId: str
+
+
+class QualityReviewInbox(BaseModel):
+    """Counts describe all context-matched cases, regardless of includeReviewed."""
+
+    items: list[QualityReviewInboxItem]
+    total: int
+    pendingCount: int
+    reviewedCount: int
+    unlinkedCount: int
+    mediaTasks: list[QualityReviewInboxMediaTask]
+    mediaPendingCount: int
+
+
 __all__ = [
     "QualityReviewCaseImport",
     "QualityReviewPackageImport",
     "QualityReviewDecisionRequest",
     "QualityReviewRevisionRequest",
     "QualityReviewPackageList",
+    "QualityReviewInboxItem",
+    "QualityReviewInboxMediaTask",
+    "QualityReviewInbox",
 ]

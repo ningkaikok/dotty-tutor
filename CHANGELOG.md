@@ -7,6 +7,17 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.36.0] - 2026-10-11
+
+### Added
+
+- “我的教材”可集中筛选待复核来源、课程和视频，按实际教材文件归组；未关联章节的旧案例仍可直接查看。
+- 来源案例审核嵌入章节的“复核内容”步骤，原页、预期与实际结果共用现有复核面板；模型盲评和运行记录移入高级教学工具。
+
+### Fixed
+
+- 教师视频审校面板接入实际章节页面，按已发布课程快照显示课时与媒体待办，避免新版草稿覆盖视频的来源上下文。
+
 ## [0.35.0] - 2026-10-11
 
 ### Added
@@ -624,7 +635,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.35.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.36.0...HEAD
+[0.36.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.34.0...v0.35.0
 [0.32.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.30.0...v0.31.0

@@ -245,6 +245,29 @@ class QualityReviewStore(DatabaseStore):
             ).order_by(quality_review_cases.c.ordinal)).mappings().all()
         return {"package": package, "items": [self._case_summary(row) for row in rows]}
 
+    def list_inbox_cases(self) -> list[dict[str, Any]]:
+        """Read case summaries and immutable source snapshots for server-side linking."""
+        with self.read_connection() as connection:
+            rows = connection.execute(
+                select(
+                    quality_review_cases,
+                    quality_review_packages.c.title.label("package_title"),
+                )
+                .join(
+                    quality_review_packages,
+                    quality_review_packages.c.package_id == quality_review_cases.c.package_id,
+                )
+                .order_by(quality_review_cases.c.created_at, quality_review_cases.c.ordinal)
+            ).mappings().all()
+        return [
+            {
+                **self._case_summary(row),
+                "source": decode_json(row["source_json"]),
+                "packageTitle": row["package_title"],
+            }
+            for row in rows
+        ]
+
     def get_package(self, package_id: str) -> dict[str, Any] | None:
         with self.read_connection() as connection:
             row = connection.execute(select(quality_review_packages).where(
