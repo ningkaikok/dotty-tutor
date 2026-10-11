@@ -8,10 +8,11 @@
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| A 当前优先 | 数学教材章节 → 来源关联互动课程 | 合成基线与有限模板工程第一版验收通过；真实教材人工复核仍待完成 | [产品路线图](product-roadmap.md)、[工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
-| B 下一阶段 | 英语教材阅读与证据定位 | 工程第一版验收通过；保留学科判定差异与数学回归，真实课文仍待验证 | [工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
-| C/D 后续 | 教学短视频 → 可打断语音 | 工程实现已接入；真实教材、视频审校与真人语音质量仍待用户验收 | [工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
-| 历史 AI 基础（已收口） | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache、跨模型评测和真实数据扩充纳入主动实验队列。AI 前沿实验线已建立，新增排序由 2026-10-02 章节与英语计划取代，跨模型和工具安全评测随实施批次开展。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
+| 当前优先 | 旧教材生成结果定向清理 → 英语教材互动课件试点 | 计划已制定，待实施与真实教材人工验收；试卷保留现有原题生产 | [教材课件实施计划](textbook-courseware-plan.md) |
+| 下一阶段 | 数学教材课件 → 更多学科扩展 | 待实施；沿用既有章节来源与判定能力作为回归基础 | [教材课件实施计划](textbook-courseware-plan.md) |
+| 历史 A/B 基础 | 数学来源关联课程、英语阅读与证据定位 | 工程第一版已有；不等于本次多页课件完成，真实材料质量仍需复核 | [原 A/B 计划](chapter-ab-implementation-plan.md) |
+| C/D 基础 | 教学媒体与步骤语音 | 工程实现已接入；复用既有能力，真实教材/视频审校/真人语音质量仍待人工验收 | [工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
+| 历史 AI 基础（已收口） | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache、跨模型评测和真实数据扩充纳入主动实验队列。新增排序以 2026-10-11 教材课件计划为准，跨模型和工具安全评测随实施批次开展。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | T0 | 知识点实体化 + 掌握度改为派生量 | 已完成（代码、迁移、验证） | [`engineering-roadmap.md`](engineering-roadmap.md) |
 | P1 产品 | 作业指派（班级 + assignment）、班级掌握分布看板和班级级个性化作业 MVP；主用户明确为老师 | 第二版及个性化 MVP 已完成：脱敏证据→审阅→新试卷→确认创建（单机单库；可显式启用受保护会话） | [`product-roadmap.md`](product-roadmap.md) |
 | T1 | 金标准集补维度（公式/审核/陪练）、EvaluationEvidence 判题证据接入陪练、LLM-as-Judge 和学习漏斗报告 | 第一版已完成；人工金标准扩充至 50+ 题和跨模型统计横评仍待完成 | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -26,8 +27,10 @@
 
 ## 执行边界
 
-2026-10-02 起新增开发按教材章节互动课程 → 英语阅读与证据定位 → 教学短视频 → 可打断语音推进。
-具体用户验收只在 [产品路线图](product-roadmap.md) 维护，实施批次与评测只在 [工程路线图](engineering-roadmap.md) 维护。
+2026-10-11 起本次新增开发按旧教材产物清理 → 英语课件 → 数学课件 → 学科扩展推进，
+技术设计与专项验收见 [教材互动课件实施计划](textbook-courseware-plan.md)。该顺序取代历史 A/B 的新增排期；
+历史章节、英语阅读与 C/D 设计继续作为基础与后续参考。全局产品范围仍见 [产品路线图](product-roadmap.md)，
+全局工程与实验边界见 [工程路线图](engineering-roadmap.md)。
 已有错题、作业、掌握度和复习能力作为回归基线；前沿工具围绕当前批次实验，不能绕过确定性状态机和证据链。
 
 个人教师账号、多租户、商业化、高可用与匿名公网运营继续暂缓；已有受保护模式和可选配额的当前接口见 API 文档。
@@ -39,6 +42,7 @@
 - [运行快照、事件和后台任务](runtime-governance-plan.md)：已实现边界及 G5 契约。
 - [原题级试卷处理链路](exam-pipeline-refactor-plan.md)：分阶段 IR、缓存和质量门禁。
 - [可编程课程与学习闭环](programmable-learning.md)：内容块、播放器和学习状态边界。
+- [教材互动课件实施计划](textbook-courseware-plan.md)：本地 OpenMAIC 参考、英语/数学课件与旧教材产物清理，待实施。
 - [错题陪练设计](mistake-coach-plan.md)：单题状态机与用户闭环。
 - [模型与系统测试报告](model-evaluation-report.md)：带日期的历史证据，不能当作当前验证结果。
 
@@ -47,7 +51,7 @@
 保留此锚点以兼容已有链接。Tutor Turn Plan、多模态观察、shadow 工具提案和画像的设计见
 [错题陪练设计](mistake-coach-plan.md#第七阶段自主多模态智能导师)，实现与实验状态见
 [工程路线图](engineering-roadmap.md#当前-ai-能力实验路线2026-09-14)。此处不再维护第二套 A/B/C/D 任务列表；
-新的阶段编号以 2026-10-02 教材章节与跨学科计划为准。
+本次教材课件阶段编号以 [2026-10-11 实施计划](textbook-courseware-plan.md) 为准。
 
 2026-10-11：新增系统内原页复核、不可变案例修订、受限模型盲评、教学媒体和步骤语音；
 18 个真实教材案例仍待用户复核，独立双审 50+ 人工金标准与正式跨模型排名未完成。
