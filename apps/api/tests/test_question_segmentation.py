@@ -93,6 +93,27 @@ Chapter 2 Solving Linear Equations and Inequalities 217
         self.assertNotIn("Self Check", blocks[3][1])
         self.assertNotIn("Chapter 2", blocks[3][1])
 
+    def test_user_can_split_109_openstax_exercises_after_long_whitespace_prefix(self) -> None:
+        """user Given OCR with many tab-only lines before a real exercise heading When split Then all 109 labels remain available.
+
+        OpenStax pages can be preceded by large OCR whitespace runs. They must
+        not make the line-anchored exercise grammar cross line boundaries or
+        hide a valid section and its complete numbered sequence.
+        """
+        whitespace_prefix = "\n".join("\t" * 128 if index % 2 == 0 else "" for index in range(256))
+        malformed_activity = "TRY IT" + "\t" * 4096 + "not-a-number"
+        exercise_items = " ".join(
+            f"{number}. Solve x + {number} = {number + 1}." for number in range(1, 110)
+        )
+        source = (
+            f"{whitespace_prefix}\n{malformed_activity}\n2.1 EXERCISES\n"
+            f"In the following exercises, solve each equation.\n{exercise_items}"
+        )
+
+        blocks = split_question_sources(source)
+
+        self.assertEqual([number for number, _, _ in blocks], [str(number) for number in range(1, 110)])
+
     def test_ignores_numbered_exam_instructions_before_question_section(self) -> None:
         source = """
         注意事项：

@@ -31,21 +31,28 @@ QUESTION_START_PATTERN = re.compile(
 # Keep this grammar narrow and line-anchored so ordinary prose references to an
 # example never become new question boundaries.
 OPENSTAX_ACTIVITY_PATTERN = re.compile(
-    r"(?im)^\s*(?:#{1,6}\s*)?(?:"
-    r"(?P<example>EXAMPLE\s+(?P<example_number>\d{1,3}\.\d{1,3}))"
-    r"|(?P<try_it>TRY\s*IT\s*[:：\s]*(?P<try_it_number>\d{1,3}\.\d{1,3}))"
+    r"(?im)^[ \t]*+(?:#{1,6}[ \t]*+)?(?:"
+    r"(?P<example>EXAMPLE[ \t]++(?P<example_number>\d{1,3}\.\d{1,3}))"
+    r"|(?P<try_it>TRY[ \t]*+IT[:： \t]*+(?P<try_it_number>\d{1,3}\.\d{1,3}))"
     r")\b"
 )
 OPENSTAX_EXERCISE_SECTION_PATTERN = re.compile(
-    r"(?im)^\s*(?:#{1,6}\s*)?(?:\d{1,2}\.\d{1,2}\s+EXERCISES\b|In\s+the\s+following\s+exercises\b)"
+    r"(?im)^[ \t]*+(?:#{1,6}[ \t]*+)?(?:"
+    r"\d{1,2}\.\d{1,2}[ \t]++EXERCISES\b"
+    r"|In[ \t]++the[ \t]++following[ \t]++exercises\b"
+    r")"
 )
 OPENSTAX_EXERCISE_SUBSECTION_PATTERN = re.compile(
-    r"(?im)^\s*(?:Everyday\s+Math|Writing\s+Exercises|Technology|Critical\s+Thinking|"
-    r"Translate\s+to\s+an\s+Equation\s+and\s+Solve|Translate\s+and\s+Solve\s+Applications)\s*$"
+    r"(?im)^[ \t]*+(?:Everyday[ \t]++Math|Writing[ \t]++Exercises|Technology|Critical[ \t]++Thinking|"
+    r"Translate[ \t]++to[ \t]++an[ \t]++Equation[ \t]++and[ \t]++Solve|"
+    r"Translate[ \t]++and[ \t]++Solve[ \t]++Applications)[ \t\r]*+$"
 )
 OPENSTAX_TAIL_SECTION_PATTERN = re.compile(
-    r"(?im)^\s*(?:Self\s+Check|(?:\d{1,3}\s+)?Chapter\s+\d+\s+[^\n]+|"
-    r"This\s+OpenStax\s+book\s+is\s+available\s+for\s+free\s+at\s+[^\n]+)\s*$"
+    r"(?im)^[ \t]*+(?:Self[ \t]++Check[ \t\r]*+|"
+    r"(?:\d{1,3}[ \t]++)?Chapter[ \t]++\d+[ \t]++[^\r\n \t][^\r\n]*+\r?+|"
+    r"This[ \t]++OpenStax[ \t]++book[ \t]++is[ \t]++available[ \t]++for[ \t]++free[ \t]++at"
+    r"[ \t]++[^\r\n \t][^\r\n]*+\r?+)"
+    r"$"
 )
 # OpenStax's PDF text layer often puts two or three numbered exercises on one
 # visual line. This pattern is used only on pages that identify themselves as
