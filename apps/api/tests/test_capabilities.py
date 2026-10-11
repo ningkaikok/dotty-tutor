@@ -40,6 +40,12 @@ class CapabilityLookupTests(unittest.TestCase):
         self.assertIn("vision", capability.capabilities)
         self.assertEqual(capability.fallback, ("codex", "gpt-5.6-luna"))
 
+    def test_known_ollama_embedding_models_are_not_generation_candidates(self) -> None:
+        for model in ("nomic-embed-text:latest", "qwen3-embedding:0.6b", "bge-m3:latest"):
+            entry = annotate_model_entry("ollama", model)
+            self.assertIn("embeddings", entry["capabilities"])
+            self.assertNotIn("generation", entry["roles"])
+
 
 class ModelHealthBookTests(unittest.TestCase):
     def setUp(self) -> None:

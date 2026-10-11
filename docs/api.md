@@ -84,6 +84,8 @@ pnpm check:api     # 只校验，过期时返回非零状态
 教师管理响应增加 `generationJobId`，刷新后用既有 `/api/jobs/{jobId}` 恢复状态；来源页增加由服务端生成的
 `previewUrl`，来源修订保存 `sourceFileSha256`。预览不接受客户端文件路径，校验上传目录、内容哈希和修订页范围；
 响应为 `private, no-store`，受保护模式下学生不能读取原页接口。粘贴文本的来源没有原页预览。
+来源请求和修订响应支持 `sourceTitle`、HTTPS `sourceUrl`、`attributionText`，随许可和页面进入来源指纹；
+后续视频分镜保留这些归属信息。填写来源字段不等于许可已经人工确认。
 
 AI 任务同一来源/记录版本重复入队返回同一任务，单次执行失败后由教师通过既有任务重试接口追加一次预算；
 不自动重复消耗模型用量。任务固定 generation Runtime 非密钥配置、Prompt/Schema 哈希和来源指纹，
@@ -93,6 +95,93 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 编辑字段增加 `exampleText`、`hints` 和 `teacherVariants`；英语原文阅读块不被 `conceptMarkdown` 覆盖。
 
 实施、测试与真实教材人工验收边界见 [A/B 计划](chapter-ab-implementation-plan.md)。
+
+## 系统内质量复核
+
+受保护模式仅教师可访问，演示模式用于可信本机数据。审核者身份从服务端取得，
+`displayName` 只作显示备注；当前共享教师账号与演示身份都不能证明独立双审。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/quality-reviews/packages` | 导入带来源 URL/许可/版本/哈希、定位及预期/实际的案例包；拒绝客户端文件路径与计数字段 |
+| `GET` | `/api/quality-reviews/packages` | 列出复核包与待审/已记录意见数量 |
+| `GET` | `/api/quality-reviews/packages/{package_id}/cases` | 列出该包固定版本的案例 |
+| `GET` | `/api/quality-reviews/cases/{case_id}` | 查看来源定位、预期/实际、指纹、版本和意见历史 |
+| `GET` | `/api/quality-reviews/cases/{case_id}/source-page` | 校验受管 PDF 哈希后返回指定原页 PNG；无受管素材拒绝预览 |
+| `POST` | `/api/quality-reviews/cases/{case_id}/revisions` | 携带旧 `expectedRecordVersion` 创建新输入/预期/实际快照，保留旧修订与意见 |
+| `POST` | `/api/quality-reviews/cases/{case_id}/decisions` | 携带 `expectedRecordVersion` 追加决定和理由；旧版本冲突返回 `409` |
+
+案例的 `sourceKind` 与 `counted` 由服务端决定，开放教材案例不计人工金标准。
+来源通过 `sourceAssetId` 对应的配置受管素材或已有 `uploadId` 解析，服务端校验实际 SHA-256 与原页摘录；文件路径不接受客户端指定。`sourceVerifiedHash` 记录实际文件哈希。来源核验未完成时决定保持 `provisional`，状态为 `decision_recorded_pending_source`，不能宣称教材验收通过。
+保存人工意见不占模型工作配额。可用范围和未完成的人工条件见[验收记录](quality-media-voice-acceptance.md)。
+
+### 受限模型对照与匿名评分
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/quality-review-runs/models` | 已配置的真实模型目录；不调用模型 |
+| `POST` | `/api/quality-review-runs` | 固定案例版本与 A/B 分配，排入共享 Worker；唯一模型工作配额端点 |
+| `GET` | `/api/quality-review-runs` | 当前审核者的运行记录 |
+| `GET` | `/api/quality-review-runs/{run_id}` | 查询进度、冻结输入、匿名输出与人工评分；读取不启动任务 |
+| `POST` | `/api/quality-review-runs/{run_id}/cancel` | 请求取消，正在执行的外部调用受原超时约束 |
+| `POST` | `/api/quality-review-runs/{run_id}/ratings` | 对成功的两臂输出提交 A/B 通过、偏好与理由；重复评分返回 `409` |
+| `GET` | `/api/quality-review-runs/{run_id}/summary` | 人工评分的探索性配对统计；`formalRankingAvailable=false` |
+| `GET` | `/api/quality-review-runs/gold-export` | 检查受信作者、不同身份双审、固定版本/指纹与 50 案覆盖门槛；不足时 `ready=false`、`jsonl=null` |
+
+模型目录与创建校验共用生成角色能力门禁，已知 embedding-only 模型不出现在对照选项中，提交此类模型会被拒绝。
+`GET /api/models` 的 `modelDetails.capabilities` 可包含 `embeddings`，其 `roles` 为空，不作为生成/审校/陪练候选。
+
+创建体含 `caseIds`（1～6 个不重复案例）、`taskInstruction`、不同的 `baseline` / `candidate`
+（`provider` / `model`）、`perCallTimeoutSeconds`（1～60）、`totalBudgetSeconds`（1～300）、
+`maxOutputTokens`（100～700）。运行固化来源、输入、输出指纹及 `recordVersion`，排队时间也计入总预算。
+完成前与成功案例全部评分前保持匿名，失败臂不可评分，不自动重试收费调用；未知 Token/货币成本保持 `null`。
+当前共享教师和演示身份不能证明独立个人身份，公开教材与合成夹具不计正式人工金标准。
+
+## 教学视频
+
+教师媒体入口接收已发布教程的 `chapterId`、`publicationId`、`lessonId` 与 `sourceRevisionId`。
+分镜与来源原句匹配，修订创建不可变新版本；渲染成功后仍需人工审校和显式发布。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `POST` | `/api/lesson-media/drafts` | 创建来源关联分镜草稿 |
+| `GET` | `/api/lesson-media/lessons/{chapter_id}/{publication_id}/{lesson_id}` | 列出该教程的媒体版本 |
+| `GET` | `/api/lesson-media/{media_id}` | 教师读取分镜、来源快照、任务与一致性检查 |
+| `GET` | `/api/lesson-media/{media_id}/asset` | 教师读取待审 MP4，禁止公共缓存 |
+| `GET` | `/api/lesson-media/{media_id}/captions` | 教师读取待审 VTT 字幕 |
+| `POST` | `/api/lesson-media/{media_id}/revisions` | 按 `expectedVersion` 创建片段修订，重新渲染与审校 |
+| `POST` | `/api/lesson-media/{media_id}/render` | `202` 创建有界渲染任务，复用通用 job 状态/重试接口 |
+| `DELETE` | `/api/lesson-media/{media_id}/render` | 请求取消当前版本渲染 |
+| `POST` | `/api/lesson-media/{media_id}/review` | 服务端审核者追加批准或要求修改，不接受客户端审计身份 |
+| `POST` | `/api/lesson-media/{media_id}/publish` | 一致性与人工批准通过后发布固定媒体版本 |
+| `GET` | `/api/chapters/{chapter_id}/media/published` | 使用 `publicationId`、`lessonId` 读取学生安全的已发布媒体目录 |
+| `GET` | `/api/chapters/{chapter_id}/media/published/{media_id}/asset` | 按来源、发布和分发范围校验后读取 MP4 |
+| `GET` | `/api/chapters/{chapter_id}/media/published/{media_id}/captions` | 同一已发布版本的 VTT 字幕 |
+
+媒体记录包含 `sourceSnapshot`、`scenes`、`distributionScope`、`consistencyReview`、`durationSeconds`
+与产物哈希；学生目录只返回播放 URL、字幕 URL 和必要来源信息。
+视频第一版目标为 60～120 秒，渲染任务有 10 分钟上限及有限重试。
+`local_only` 来源不能通过学生媒体目录或资源接口分发。观看不创建作答或掌握度记录。
+
+## 当前步骤语音追问
+
+受保护模式须学生会话，`X-Learner-ID` 与会话一致；恢复及写操作还须 `X-Voice-Session-Token`。
+语音会话固定到已发布课程内容块，不接受检查题标准答案作为上下文。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/voice/status` | 查询可选转写能力，不含学生数据或本地模型路径 |
+| `POST` | `/api/voice/sessions` | 创建当前发布步骤的语音会话，返回一次恢复凭据 |
+| `GET` | `/api/voice/sessions/{session_id}` | 验证学生归属和凭据后恢复转写/对话 |
+| `PUT` | `/api/voice/sessions/{session_id}/transcript` | 保存手动或浏览器识别草稿，不能自动作答 |
+| `POST` | `/api/voice/sessions/{session_id}/transcribe` | 转写最长 60 秒、最多 16 MB 的受支持音频，返回待确认文本和置信诊断 |
+| `POST` | `/api/voice/sessions/{session_id}/confirm-transcript` | 确认具体转写版本，陈旧版本返回 `409` |
+| `POST` | `/api/voice/sessions/{session_id}/responses` | 按 `turnId`、转写版本与 `expectedGeneration` 请求有界追问，重复轮次幂等 |
+| `POST` | `/api/voice/sessions/{session_id}/cancel` | 推进响应代际，旧结果不得覆盖，取消不占模型工作槽位 |
+
+原始录音在转写期间临时保存并清理，持久化会话文本与确认记录。
+未配置实际模型/转写能力时明确返回不可用，不以静态替身充当真实模型；浏览器可回放录音或手动确认文本。
+语音追问与学习作答分开，不更新掌握度；响应朗读复用既有 `/api/tts` 及浏览器回退。
 
 ## 健康与运行时
 
@@ -386,7 +475,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
 - 管理员调试入口：`GET /api/debug/errors?request_id=` 返回最近失败请求的脱敏摘要
   （错误类型 + 截断消息，无完整堆栈）。三重门控：环境变量 `DOTTY_DEBUG_TOKEN` 未配置时
   端点返回 404；token 不匹配返回 403；匹配才返回数据。生产默认关闭（不配置即隐藏）。
-- 当前 API 尚未实现登录、权限、租户隔离和限流，只应运行在受控环境。
+- 默认 `AUTH_MODE=demo` 用于可信本机演示；`AUTH_MODE=protected` 已提供教师/学生服务端会话、角色与学生资源归属检查，配置和限制见[身份与权限](#身份与权限)。当前没有多租户隔离或完整账号管理。
+- `PUBLIC_PROTECTION_ENABLED=true` 可启用进程内请求、模型调用配额、请求大小和并发限制；计数随进程重启清空，多实例部署仍需边缘限流。受保护身份与公共请求保护分别配置，开启其中一个不会自动开启另一个。
 - OCR Markdown 和模型提示词属于调试资源，生产环境应限制为管理员访问。
 
 ## 错题录入与确认

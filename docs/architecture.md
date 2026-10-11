@@ -223,6 +223,9 @@ flowchart TB
 | 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
+| 系统内质量复核 | `apps/api/routers/quality_review_routes.py`、`application/services/quality_review.py`、`persistence/quality_review_store.py` | 来源与输入输出指纹绑定的案例、版本冲突校验、追加式人工意见；单审不计独立双审金标准 |
+| 教学媒体 | `apps/api/application/services/lesson_media.py`、`application/lesson_media_renderer.py`、`persistence/lesson_media_store.py` | 已发布教程转换为来源分镜，复用 TTS 与 Job Worker，固定 SVG/CairoSVG/FFmpeg 渲染，人工审校后发布 |
+| 语音步骤追问 | `apps/api/application/services/voice_tutor.py`、`persistence/voice_store.py`、`infrastructure/runtime/voice_transcription.py` | 绑定学生及固定发布步骤，录音转写须确认；取消与旧响应隔离，不写作答或掌握度 |
 | 错题路由与契约 | `apps/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
@@ -278,6 +281,33 @@ flowchart TB
 两者均不执行 OCR 或模型质量评测。人工决策导入验证材料、包与案例哈希，单次审核始终不计双审金标准。
 真实教材人工复核、跨模型质量和真实参与者学习效果仍需独立验证，见 [增强验收记录](chapter-source-quality-acceptance.md)。
 完整依赖和验收门槛见 [A/B 实施计划](chapter-ab-implementation-plan.md)。
+
+## 系统内复核、教学媒体与语音
+
+质量工作台 `/studio/quality-review` 将来源定位、预期、实际和决定保存在 PostgreSQL，
+客户端不能通过姓名制造独立审核者，也不能把开放教材改名计入人工金标准。
+当前 shared teacher 凭据只能证明同一教师账号，演示模式身份也未经验证。
+未核验的来源决定保持临时状态；技术运行成功、单次人工复核和正式金标准分别呈现。
+工程门禁与人工待办见[本轮验收记录](quality-media-voice-acceptance.md)。
+
+质量复核的模型对照由 `QualityReviewRunsService` 固定案例版本、指纹与匿名 A/B 分配，
+通过既有 JobStore/Worker 执行一次有界任务；GET 只查询，不恢复收费工作。
+每臂在真实 Provider 的 HTTP/CLI 超时边界内执行，无隐式回退；人工评分追加保存，成功案例全部评分后揭盲。
+`quality_review_runs_store.py` 保存审计状态，队列与租约仍归共享 JobStore。
+受管素材通过 `quality_review_sources.py` 校验文件哈希并复用原页渲染器；未核验摘录只作为声明。
+
+教学媒体固定引用已审核且发布的教程版本及原句。分镜修订创建新版本，旧视频、字幕及来源快照保留；
+正文与归属信息先做画幅预检，复杂公式明确要求人工改写，不静默删除符号。
+配音复用 Azure/Qwen 边界并记录实际模型；渲染使用受控 SVG 数据，经 CairoSVG 和 FFmpeg
+产生固定尺寸视频、轻量平移缩放及 VTT 侧车字幕。任务通过现有 Worker 的租约、取消、超时和重试边界执行。
+时长、字幕、音视频流和来源检查均通过后仍须教师审校，学生只读取符合分发范围的已发布投影。
+观看视频不改变学习证据。FFmpeg/Cairo/CJK 字体属于 API 与 Worker 的运行依赖。
+
+语音面板从课程播放器取得当前已发布内容块。录音可回放，转写支持显式配置的本地离线 Whisper、
+兼容云 API、浏览器识别和手动输入；低置信度或未知置信度均保留并要求确认。
+服务端绑定 learnerId 与恢复凭据哈希，响应按转写版本和 generation 条件提交，取消后旧响应不能覆盖当前步骤。
+音频只在有界转写中临时保存；持久化文本与辅导会话，不将未确认转写、口头追问或观看次数写入作答/掌握度。
+浏览器录音、转写服务和 TTS 的可用性分别处理，缺能力时提供可见回退。
 
 ## 错题录入与确认
 
@@ -364,7 +394,7 @@ erDiagram
 根路径显示角色导航；`/learn` 通过 `useStudentTodayQueue` 读取作业、练习、错题和复习队列，
 不加载模型/OCR 等生产配置。进入 `/studio` 后，上传页首次加载时并行调用：
 
-1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
+1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、embeddings/json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
 3. `GET /api/library`：从 PostgreSQL 恢复已完成教材。
 

@@ -7,7 +7,14 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.35.0] - 2026-10-11
+
 ### Added
+
+- 质量复核整合到工作台：核对教材原页、预期与实际结果，记录人工意见、来源验证和修订历史；共享身份的单审不会被计为独立双审金标准。
+- 可对固定案例执行小规模、有时间和输出限制的真实模型对照，匿名评分后揭盲；失败与成本信息保留，未达到人工基准门槛不生成正式排名。
+- 已审核教程可制作来源关联的教学短视频、配音和字幕，经独立媒体审校后发布；学生观看不会自动更新掌握度。
+- 当前教程步骤支持录音、转写确认、语音追问、取消和刷新恢复；未经确认的转写不会提交模型或学习证据。
 
 - 上传试卷与教材统一入口，自动识别类型；教材课程跳过前置填写，自动识别并最多制作前 5 章，保留原文件、待复核提示与发布审核。
 
@@ -18,6 +25,9 @@ Semantic Versioning。
 - 每轮错题陪练现在创建不可变 `RunSnapshot`，用同一 `runId` 串联启动、工具策略、完成或失败事件；快照记录模型配置、阶段转换和决策摘要，但不保存学生原文，并继续从学生响应中隐藏内部运行标识。
 
 ### Fixed
+
+- OpenStax 练习区题号切分保留负数、跨小节题号和旧中文题体；千页以上教材原页预览恢复正常。
+- 教材题号解析可处理异常长的空白与制表符，避免损坏或恶意输入使处理变慢。
 
 - 一本教材在“我的教材”中归并为一个教程及内部章节目录；自动制作默认生成学习目标、讲解、示例与总结，不再将英文教材强制转为多篇阅读题。旧草稿保留，可显式重新制作讲解教程。
 
@@ -614,7 +624,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.32.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.35.0...HEAD
+[0.35.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.34.0...v0.35.0
 [0.32.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.31.0...v0.32.0
 [0.31.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.30.0...v0.31.0
 [0.30.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.29.0...v0.30.0

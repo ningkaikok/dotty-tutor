@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 ROLES = frozenset({"generation", "review", "tutoring", "vision"})
-CAPABILITY_TAGS = frozenset({"json-schema", "vision", "math", "long-context"})
+CAPABILITY_TAGS = frozenset({"embeddings", "json-schema", "vision", "math", "long-context"})
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,60 @@ class ModelCapability:
 
 
 _MODEL_CAPABILITIES: tuple[ModelCapability, ...] = (
+    ModelCapability(
+        "ollama", "nomic-embed-text*", "Nomic text embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "mxbai-embed-large*", "MixedBread embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "all-minilm*", "all-MiniLM embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "snowflake-arctic-embed*", "Snowflake Arctic embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "bge-m3*", "BGE-M3 embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "embeddinggemma*", "EmbeddingGemma 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "qwen3-embedding*", "Qwen3 embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "granite-embedding*", "Granite embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
+    ModelCapability(
+        "ollama", "jina-embeddings*", "Jina embedding 系列",
+        frozenset(),
+        frozenset({"embeddings"}),
+        0, "fast", "local-free", None,
+    ),
     ModelCapability(
         "ollama", "deepseek-r1:*", "DeepSeek-R1 推理系列",
         frozenset({"generation", "review", "tutoring"}),

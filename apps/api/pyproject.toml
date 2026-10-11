@@ -2,10 +2,11 @@
 # 后端包版本与依赖的唯一事实来源；API 文档读取 project.version，
 # uv.lock 用于 Docker、CI 与本地的精确锁定（`uv sync --frozen`）。
 name = "dotty-tutor-backend"
-version = "0.34.0"
+version = "0.35.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0,<2",
+    "CairoSVG>=2.9.0,<3",
     "fastapi>=0.141.1,<1",
     "httpx2>=2.13.0,<3",
     "pypdf>=6.19.0,<7",

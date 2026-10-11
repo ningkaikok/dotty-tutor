@@ -90,6 +90,17 @@ Python 依赖统一使用 [uv](https://docs.astral.sh/uv/) 与 `apps/api/uv.lock
 如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
 `docker compose up --build --detach` 并打开 `http://localhost:8080`。
 
+多个 worktree 并行运行时，Vite 可用 `DOTTY_WEB_PORT` 选择独立页面端口，
+用 `DOTTY_API_URL` 指向该 worktree 的 API（默认 `http://127.0.0.1:8010`）。例如，
+在已启动独立 API `59242` 后，在 `apps/web` 下运行：
+
+```bash
+DOTTY_WEB_PORT=59243 DOTTY_API_URL=http://127.0.0.1:59242 pnpm dev --host 127.0.0.1
+```
+
+每套独立运行时还须分别配置数据库、`DOTTY_DATA_DIR` 和 Worker；页面端口与代理地址不会隔离数据。
+E2E 用另一个空闲 `DOTTY_WEB_PORT`，测试配置不会复用已运行的页面服务器。
+
 ### 内容平台管理凭据
 
 `/studio/prompts` 的“内容平台凭据”填写维护者提供的内容管理访问令牌。

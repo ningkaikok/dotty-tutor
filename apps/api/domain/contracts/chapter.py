@@ -47,6 +47,9 @@ class ChapterSource(BaseModel):
     uploadId: str | None = Field(default=None, max_length=64)
     sourceVersion: str = Field(default="1", min_length=1, max_length=128)
     license: str | None = Field(default=None, max_length=256)
+    sourceTitle: str | None = Field(default=None, max_length=200)
+    sourceUrl: str | None = Field(default=None, max_length=500)
+    attributionText: str | None = Field(default=None, max_length=500)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
     pageEnd: int | None = Field(default=None, ge=1, le=100_000)
     pages: list[ChapterPage] = Field(default_factory=list, max_length=80)
@@ -188,6 +191,9 @@ class ChapterSourceRevisionView(BaseModel):
     uploadId: str | None = None
     sourceVersion: str
     license: str | None = None
+    sourceTitle: str | None = None
+    sourceUrl: str | None = None
+    attributionText: str | None = None
     pageStart: int
     pageEnd: int
     sourceFileSha256: str | None = None

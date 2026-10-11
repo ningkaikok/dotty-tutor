@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 // 第二个检出根本起不来，而且更糟的是会让 Playwright 误连到另一个检出的服务器。
 const DEFAULT_PORT = 59174;
 const port = Number(process.env.DOTTY_WEB_PORT ?? DEFAULT_PORT);
+const apiUrl = process.env.DOTTY_API_URL ?? "http://127.0.0.1:8010";
 
 export default defineConfig({
   plugins: [react()],
@@ -15,7 +16,7 @@ export default defineConfig({
     // 书签和端到端测试都指向一个并不存在的地址。
     strictPort: true,
     proxy: {
-      "/api": "http://127.0.0.1:8010",
+      "/api": apiUrl,
     },
   },
 });

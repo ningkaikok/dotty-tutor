@@ -509,16 +509,28 @@ class OcrRuntime:
         output_path = asset_dir / f"{basename}.png"
         if not output_path.is_file():
             completed = subprocess.run(
-                [command, "-f", str(page_number), "-l", str(page_number), "-png", "-r", "144", str(source_path), str(output_prefix)],
+                [
+                    command,
+                    "-f", str(page_number),
+                    "-l", str(page_number),
+                    "-singlefile",
+                    "-png",
+                    "-r", "144",
+                    str(source_path),
+                    str(output_prefix),
+                ],
                 capture_output=True,
                 text=True,
                 timeout=90,
                 check=False,
             )
-            generated = asset_dir / f"{basename}-{page_number}.png"
-            if completed.returncode != 0 or not generated.is_file():
+            # Poppler appends a page number by default, and for long PDFs it may
+            # zero-pad that suffix based on the document's total page count. The
+            # exact suffix is therefore not stable across source documents. With
+            # -singlefile the requested page is written to this fixed name.
+            if completed.returncode != 0 or not output_path.is_file():
+                output_path.unlink(missing_ok=True)
                 return None
-            generated.replace(output_path)
         return f"images/{output_path.name}", f"{asset_url_prefix}/{output_path.name}"
 
 

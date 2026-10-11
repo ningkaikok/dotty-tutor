@@ -10,31 +10,43 @@ from pathlib import Path
 from application import create_app
 from application.chapter_jobs import build_chapter_registry
 from application.job_registry import merge_registries
+from application.lesson_media_jobs import build_lesson_media_registry
 from application.mistake_jobs import build_mistake_registry
+from application.quality_review_runs_jobs import build_quality_review_runs_registry
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.chapter_courses import ChapterCourseService
 from application.services.lesson_generation import generate_lesson, question_payload
+from application.services.lesson_media import LessonMediaService
 from application.services.personalized_assignment import PersonalizedAssignmentService
+from application.services.quality_review import QualityReviewService
+from application.services.quality_review_runs import QualityReviewRunsService
 from application.services.stateful_tutor import StatefulTutor
 from application.services.tutor_input_service import TutorInputService
 from application.services.tutor_model_evaluation import TutorModelEvaluationService
 from application.services.tutor_search_service import TutorSearchService
+from application.services.voice_tutor import VoiceTutorService
 from domain.questions.pipeline import build_question_content_blocks
 from domain.questions.student_view import student_mistake_item
 from infrastructure.runtime.model_runtime import ModelRuntime
 from infrastructure.runtime.model_runtime import runtime as generation_runtime
+from infrastructure.runtime.tts_runtime import TtsRuntime
 from infrastructure.runtime.tutor_observation_adapter import TutorObservationAdapter
+from infrastructure.runtime.voice_transcription import VoiceTranscriptionRuntime
 from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.auth_store import AuthSessionStore
+from persistence.lesson_media_store import LessonMediaStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
 from persistence.prompt_store import PromptStore
+from persistence.quality_review_runs_store import QualityReviewRunsStore
+from persistence.quality_review_store import QualityReviewStore
 from persistence.review_store import ReviewStore
 from persistence.search_store import TutorSearchStore
 from persistence.tutoring_store import TutoringStore
 from persistence.variation_store import VariationStore
+from persistence.voice_store import VoiceStore
 from prompts import configure_prompt_source
 from publication_revision import PublicationRevisionService
 from routers.auth_routes import build_auth_router
@@ -42,10 +54,13 @@ from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
+from routers.lesson_media_routes import build_lesson_media_router
 from routers.mistake_routes import build_mistake_router
 from routers.practice_routes import build_practice_router
 from routers.prompt_routes import build_prompt_router
 from routers.publication_routes import build_publication_router
+from routers.quality_review_routes import build_quality_review_router
+from routers.quality_review_runs_routes import build_quality_review_runs_router
 from routers.review_routes import build_review_router
 from routers.runtime_routes import build_runtime_router
 from routers.textbook_routes import job_store as background_job_store
@@ -54,6 +69,7 @@ from routers.textbook_routes import router as textbook_router
 from routers.tutor_input_routes import build_tutor_input_router
 from routers.tutor_search_routes import build_tutor_search_router
 from routers.tutoring_routes import build_tutoring_router
+from routers.voice_routes import build_voice_router
 from run_audit import RunAudit
 from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
@@ -65,6 +81,14 @@ app.state.auth_session_store = auth_session_store
 app.state.background_job_store = background_job_store
 app.include_router(build_auth_router(session_store=auth_session_store))
 app.include_router(build_dependency_preflight_router())
+quality_review_store = QualityReviewStore(engine=store.engine, data_root=str(store.root))
+quality_review_service = QualityReviewService(
+    quality_review_store,
+    auth_mode=os.getenv("AUTH_MODE", "demo").strip().lower(),
+    source_root=Path(os.getenv("DOTTY_QUALITY_REVIEW_SOURCE_DIR", str(store.root / "quality-review" / "sources"))),
+    source_store=store,
+)
+app.include_router(build_quality_review_router(quality_review_service))
 prompt_store = PromptStore(engine=store.engine)
 app.include_router(build_prompt_router(store=prompt_store))
 if os.getenv("DOTTY_CONTENT_EDITOR_TOKEN") or os.getenv("DOTTY_CONTENT_PUBLISHER_TOKEN"):
@@ -75,6 +99,14 @@ if os.getenv("DOTTY_CONTENT_EDITOR_TOKEN") or os.getenv("DOTTY_CONTENT_PUBLISHER
 metrics_store = MetricsStore(engine=store.engine)
 generation_runtime.metrics_store = metrics_store
 tutor_runtime = ModelRuntime(env_prefix="TUTOR_", metrics_store=metrics_store)
+quality_review_runs_store = QualityReviewRunsStore(engine=store.engine)
+quality_review_runs_service = QualityReviewRunsService(
+    store=quality_review_runs_store,
+    review_store=quality_review_store,
+    runtime=tutor_runtime,
+    jobs=background_job_store,
+)
+app.include_router(build_quality_review_runs_router(quality_review_runs_service))
 tutor_model_evaluation = TutorModelEvaluationService(
     runtime=tutor_runtime,
     candidates_path=Path(__file__).resolve().parent
@@ -123,6 +155,25 @@ chapter_course_service = ChapterCourseService(store, jobs=background_job_store, 
 app.include_router(build_chapter_router(chapter_course_service))
 app.include_router(textbook_router)
 
+# Media and voice reuse the published source service while keeping their durable
+# revisions and learner conversations in separate PostgreSQL domains.
+lesson_media_store = LessonMediaStore(database_url=store.database_url, data_root=str(store.root))
+lesson_media_service = LessonMediaService(
+    chapter_service=chapter_course_service,
+    media_store=lesson_media_store,
+    jobs=background_job_store,
+    speech_runtime=TtsRuntime(),
+)
+app.include_router(build_lesson_media_router(lesson_media_service))
+voice_store = VoiceStore(database_url=store.database_url, data_root=str(store.root))
+voice_service = VoiceTutorService(
+    store=voice_store,
+    chapter_service=chapter_course_service,
+    tutor_runtime=tutor_runtime,
+    stt_runtime=VoiceTranscriptionRuntime(),
+)
+app.include_router(build_voice_router(service=voice_service))
+
 # 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
 tutoring_store = TutoringStore(engine=store.engine)
 stateful_tutor = StatefulTutor(runtime=tutor_runtime)
@@ -154,7 +205,13 @@ mistake_job_registry = build_mistake_registry(
     recognize=mistake_recognizer,
     project_result=student_mistake_item,
 )
-job_registry = merge_registries(textbook_job_registry, mistake_job_registry, build_chapter_registry(chapter_course_service))
+job_registry = merge_registries(
+    textbook_job_registry,
+    mistake_job_registry,
+    build_chapter_registry(chapter_course_service),
+    build_lesson_media_registry(lesson_media_service),
+    build_quality_review_runs_registry(quality_review_runs_service),
+)
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,

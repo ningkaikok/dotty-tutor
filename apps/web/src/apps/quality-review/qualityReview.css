@@ -1,0 +1,69 @@
+.quality-review-shell { max-width: 1450px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 42px) 40px; color: #203b30; }
+.quality-review-heading { margin: 24px 0 20px; }
+.quality-review-heading h1 { margin: 6px 0; font-size: clamp(27px, 4vw, 38px); }
+.quality-review-heading p, .quality-review-import p, .quality-review-decision > p { color: #64766c; line-height: 1.6; }
+.quality-review-import, .quality-review-sidebar .panel, .quality-review-detail .panel { padding: 18px; border: 1px solid #dce5dd; border-radius: 15px; background: #fff; box-shadow: 0 10px 28px rgba(30, 60, 42, .045); }
+.quality-review-import { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(240px, .8fr) auto; align-items: end; gap: 16px; margin-bottom: 18px; }
+.quality-review-import h2, .quality-review-sidebar h2, .quality-review-comparison h2, .quality-review-decision h2 { margin: 0 0 8px; font-size: 17px; }
+.quality-review-import p { margin: 0; font-size: 13px; }
+.quality-review-import label, .quality-review-decision-form label { display: grid; gap: 6px; color: #3f5749; font-size: 13px; font-weight: 650; }
+.quality-review-import input, .quality-review-decision-form input, .quality-review-decision-form select, .quality-review-decision-form textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd7ce; border-radius: 8px; padding: 9px 10px; color: #1e382a; background: #fcfdfb; font: inherit; font-weight: 400; }
+.quality-review-decision-form textarea { resize: vertical; line-height: 1.55; }
+.quality-review-primary { border: 0; border-radius: 9px; padding: 10px 14px; background: #267451; color: white; font: inherit; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.quality-review-primary:disabled { opacity: .5; cursor: not-allowed; }
+.quality-review-layout { display: grid; grid-template-columns: minmax(255px, .75fr) minmax(0, 2fr); align-items: start; gap: 18px; }
+.quality-review-sidebar { display: grid; gap: 14px; }
+.quality-review-sidebar .panel { padding: 15px; }
+.quality-review-package-list, .quality-review-case-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.quality-review-package-list button, .quality-review-case-list button { display: grid; width: 100%; gap: 4px; border: 1px solid #e2e9e2; border-radius: 9px; padding: 10px; background: #fbfdfa; color: #345541; text-align: left; cursor: pointer; }
+.quality-review-package-list button[aria-current="true"], .quality-review-case-list button[aria-current="true"] { border-color: #2f9063; background: #f0faf2; }
+.quality-review-package-list span, .quality-review-case-list span, .quality-review-case-list small { color: #718076; font-size: 11px; }
+.quality-review-detail { display: grid; gap: 14px; min-width: 0; }
+.quality-review-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.quality-review-section-heading h2 { margin: 4px 0 0; font-size: 20px; }
+.quality-review-status { flex: 0 0 auto; border-radius: 20px; padding: 5px 9px; background: #fff4d8; color: #775a15; font-size: 11px; }
+.quality-review-provenance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.quality-review-provenance > div { display: grid; gap: 4px; min-width: 0; padding: 9px; border-radius: 8px; background: #f8faf7; font-size: 12px; }
+.quality-review-provenance b { color: #748278; font-size: 10px; }
+.quality-review-provenance span, .quality-review-provenance code { overflow-wrap: anywhere; }
+.quality-review-provenance code, .quality-review-fingerprints { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.quality-review-source h3 { margin: 18px 0 6px; font-size: 14px; }
+.quality-review-source blockquote { margin: 8px 0; padding: 11px 13px; border-left: 3px solid #84b38b; background: #f7faf5; color: #405a47; font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
+.quality-review-source-gate { margin-top: 14px; padding: 12px; border: 1px solid #e9d7a9; border-radius: 10px; background: #fff8e5; color: #6c571d; }
+.quality-review-source-gate p { margin: 5px 0 0; font-size: 12px; line-height: 1.6; }
+.quality-review-source-page { margin: 16px 0 0; padding: 10px; border: 1px solid #e2e9e2; border-radius: 10px; background: #f8faf7; }
+.quality-review-source-page img { display: block; width: 100%; max-height: 1150px; object-fit: contain; background: #edf1ed; }
+.quality-review-source-page figcaption { margin-top: 8px; color: #65776b; font-size: 12px; line-height: 1.5; }
+.quality-review-fingerprints { display: grid; gap: 5px; margin-top: 13px; color: #738076; overflow-wrap: anywhere; }
+.quality-review-question { margin: 12px 0; color: #324e3b; font-weight: 650; line-height: 1.6; }
+.quality-review-passage { max-height: 340px; overflow: auto; }
+.quality-review-input, .quality-review-revisions { padding: 18px; border: 1px solid #dce5dd; border-radius: 15px; background: #fff; }
+.quality-review-ocr-evidence { margin: 12px 0; padding: 12px; border: 1px solid #e5c98e; border-radius: 10px; background: #fffaf0; color: #5f4a18; }
+.quality-review-ocr-evidence h3 { margin: 0 0 8px; font-size: 14px; }
+.quality-review-ocr-evidence p, .quality-review-revisions > p, .quality-review-revision-editor > p { font-size: 12px; line-height: 1.6; }
+.quality-review-ocr-evidence pre { max-height: 520px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quality-review-summary-list { display: grid; min-width: 0; gap: 7px; margin: 10px 0; padding-left: 20px; color: #3e5946; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.quality-review-summary-list li { min-width: 0; overflow-wrap: anywhere; }
+.quality-review-failed-check { color: #973f32; font-weight: 650; }
+.quality-review-limitations { color: #7a6440; font-size: 12px; line-height: 1.6; }
+.quality-review-raw-data, .quality-review-revisions details, .quality-review-revision-editor { margin-top: 12px; color: #52665a; font-size: 12px; }
+.quality-review-raw-data summary, .quality-review-revisions summary, .quality-review-revision-editor summary { cursor: pointer; font-weight: 650; }
+.quality-review-revision { display: grid; gap: 5px; margin: 10px 0; padding: 10px; border: 1px solid #e2e9e2; border-radius: 9px; color: #617167; font-size: 11px; overflow-wrap: anywhere; }
+.quality-review-revision strong { color: #2e4f3a; }
+.quality-review-revision-editor { display: grid; gap: 10px; padding-top: 12px; }
+.quality-review-revision-editor label { display: grid; gap: 5px; font-weight: 650; }
+.quality-review-revision-editor textarea { box-sizing: border-box; width: 100%; border: 1px solid #cbd7ce; border-radius: 8px; padding: 9px; background: #fcfdfb; color: #1e382a; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.quality-review-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.quality-review-comparison .panel { min-width: 0; }
+.quality-review-comparison pre { max-height: 380px; overflow: auto; margin: 0; padding: 10px; border-radius: 8px; background: #f7faf7; color: #314a39; font-size: 11px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quality-review-prior-decision { display: grid; gap: 4px; margin: 10px 0; padding: 10px; border: 1px solid #e2e9e2; border-radius: 9px; background: #f9fbf8; font-size: 12px; }
+.quality-review-prior-decision span { color: #718076; font-size: 11px; }
+.quality-review-prior-decision p { margin: 3px 0; color: #455c4b; line-height: 1.5; }
+.quality-review-decision-form { display: grid; gap: 12px; }
+.quality-review-alert, .quality-review-notice { margin: 10px 0; padding: 11px 13px; border-radius: 9px; line-height: 1.5; }
+.quality-review-alert { background: #fff1ed; color: #933d31; }
+.quality-review-notice { background: #edf8ef; color: #2d6841; }
+.quality-review-footer { display: flex; justify-content: flex-end; margin-top: 20px; }
+.quality-review-footer button { border: 1px solid #cdd9d0; border-radius: 8px; padding: 8px 11px; background: #fff; color: #28533e; font: inherit; cursor: pointer; }
+@media (max-width: 850px) { .quality-review-import { grid-template-columns: 1fr; align-items: stretch; } .quality-review-layout { grid-template-columns: 1fr; } .quality-review-sidebar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .quality-review-sidebar, .quality-review-comparison { grid-template-columns: 1fr; } .quality-review-provenance { grid-template-columns: 1fr; } .quality-review-section-heading { display: grid; } }
