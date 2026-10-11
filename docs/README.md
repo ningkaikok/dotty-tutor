@@ -15,6 +15,7 @@
 | 定义用户价值 | [产品路线图](product-roadmap.md) | 产品范围、优先级、用户验收与暂缓项 |
 | 安排开发与实验 | [工程路线图](engineering-roadmap.md) | 实施批次、技术选型、依赖、实验与交付门禁 |
 | 理解课程播放 | [可编程课程](programmable-learning.md) | LessonDocument、渲染与学习状态边界 |
+| 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理；待实施 |
 | 理解单题辅导 | [错题陪练设计](mistake-coach-plan.md) | 单题状态机、用户闭环与专题设计 |
 | 理解内容生产 | [原题处理链路](exam-pipeline-refactor-plan.md) | IR 分阶段改造、兼容设计与实施状态 |
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |
@@ -33,6 +34,8 @@
 [测试说明](../apps/api/tests/README.md)。
 
 数学章节与英语阅读的批次、失败判据和验收边界见 [A/B 实施与验收计划](chapter-ab-implementation-plan.md)。
+2026-10-11 的新增开发顺序调整为英语教材课件试点 → 数学教材课件 → 学科扩展，见
+[教材互动课件实施计划](textbook-courseware-plan.md)；旧 A/B 记录仍作为历史能力与回归依据。
 2026-10-03 的入口合并与交互简化验证见 [教材与课程统一入口验收记录](materials-workflow-acceptance.md)。
 2026-10-11 的六项交付、系统内质量复核和人工验收边界见 [质量复核、视频与语音交付计划](quality-media-voice-delivery-plan.md)。
 实际执行结果持续记录在 [质量复核、视频与语音验收记录](quality-media-voice-acceptance.md)。
