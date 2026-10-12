@@ -898,11 +898,11 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 `CoursewareService` 复用 ModelRuntime、PromptStore 和原页预览服务，先生成包含目标、课时、页面大纲与来源覆盖的规划，
 教师确认后才创建逐页生成任务。来源准备最多 80 页，一次规划最多 30 页/80,000 个序列化字符；超限显式拒绝，不能静默节选后声称完整覆盖。
 模型输出通过 `model_output.py` 转为严格 JSON 协议：模型传输中的 coverageMap 用有限字段条目列表，领域契约恢复为映射；对象关闭额外字段，生成规划按页面时长汇总环节和课时。已失败的规划可用新命令生成新版本，同一命令仍保持幂等。
-页面内容按受限块渲染，不接受模型生成可执行脚本。教材原页资产明确标记 `source_page`，不冒称已提取的插图区域。
+页面内容按受限块渲染，不接受模型生成可执行脚本。教材原页资产标记 `source_page`；只有冻结来源中已保存合法 ChapterRegion 坐标的素材才生成 `source_image` 裁图，缺失坐标标记回退原因。
 
 `CoursewareStore` 使用同一 PostgreSQL Engine：`courseware_records` 保存规划和课件 JSONB，
 `courseware_publications` 保存不可变发布快照，`courseware_attempts` 保存按学习者/发布/命令幂等的可选互动。
-迁移 `0023_courseware` 与 `0024_legacy_textbook_cleanup` 注册到唯一 schema 链。
+迁移 `0023_courseware`、`0024_legacy_textbook_cleanup`、`0025_courseware_voice_context` 注册到唯一 schema 链；0025 为历史语音默认保留 chapter 来源并增加 courseware 标识，扩展媒体 science 约束。
 共享 Worker 用 job ID、worker ID、认领次数、实时租约和来源/规划/页面版本保护检查点；单页失败保留已完成页面，迟到执行不能覆盖教师修改。
 
 页面编辑保留完整私有 DTO 中的句子/区域引用、作者属性和 ID。任何修改需重新审核，结构与来源检查不替代教师内容复核。标为 source_excerpt 的文字必须与引用原页一致（允许 PDF 换行差异），翻译或改写应标为补充讲解。
@@ -917,3 +917,13 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 再检查 active marker。两侧按同一把行锁交接，不能单靠清理事务的隔离级别声称并发安全。
 数据库备份、真实数据恢复演练与普通读取/并发写门禁的实际验收状态见 [独立验收记录](textbook-courseware-acceptance.md)。
 英语真实样本接受后才运行数学代数/几何内容验收；新增 profile 的 smoke 不能视为全学科已支持。
+
+## 前端组件与课件质量扩展
+
+Bright 基础 token 独立在 `components/ui/tokens.css`，基础组件的低优先级样式在 `ui.css`。页面负责组合；教师工作台、课件媒体和发布读取各自使用 Hook。共享 Button/ButtonLink 保留原生操作和路由语义，Field 关联标签、提示与错误，Dialog 使用浏览器原生模态焦点与 Escape 行为。开发目录只在 DEV 注册，生产构建不包含目录。深色课堂播放器保留投影布局与独立颜色变量。
+
+完整单元覆盖以当前来源修订的全部物理页为基准，列出缺原文、未规划、未生成、未审核、未发布页。`complete` 只表示工程覆盖交集满足；`qualityAcceptance` 始终要求教师验证。小页段、图像页 OCR 或结构测试均不表示整单元教学质量通过。异常公式保留原 OCR，加入来源不可读标记；客户端遗漏标记不能取消服务端复核门禁。
+
+课件媒体固定 publication ID、来源修订、页 ID 与发布内容指纹。只将 text/formula/image caption/word cards 的公开讲解交给既有渲染和语音域；活动答案、教师笔记、揭晓步骤不会进入旁白或语音上下文。媒体仍经过原渲染、一致性检查、教师审校和发布链路，学生资产核验批准、关联、文件哈希与许可。语音会话明确区分 chapter/courseware，复用原能力令牌、学习者身份、恢复、确认和取消协议。
+
+科学是第三学科工程试点，包含单位、观察/解释、证据/假设、因果与实验安全规则；真实科学教材和教师效果仍待验收。人工金标准准入要求同一内容哈希的两名独立真人批准和外部身份登记，正式评测另需覆盖门槛、完整模型两臂和两名独立盲审。分歧保留为待人工裁决，合成/公开来源不能计入 50 案。
