@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import time
 from contextlib import contextmanager
 from typing import Any
@@ -12,9 +13,11 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.schema import (
+    background_jobs,
     chapter_english_attempt_reviews,
     chapter_english_attempts,
     chapter_records,
+    upload_jobs,
 )
 
 
@@ -34,10 +37,42 @@ class ChapterStore(DatabaseStore):
             finally:
                 connection.close()
 
-    def create_chapter(self, chapter: dict[str, Any]) -> dict[str, Any]:
+    def create_chapter(
+        self,
+        chapter: dict[str, Any],
+        *,
+        execution_context: Any | None = None,
+        source_guard: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Insert a source chapter only while its creating Worker still owns the lease.
+
+        Source preparation is a durable job. The worker and upload rows are locked
+        together so an expired attempt or concurrently replaced OCR snapshot cannot
+        commit a chapter after the request has moved on.
+        """
         self._ensure_initialized()
         now = time.time()
         with self.atomic() as connection:
+            if execution_context is not None:
+                job = connection.execute(select(background_jobs).where(
+                    background_jobs.c.job_id == execution_context.job_id,
+                    background_jobs.c.status == "running",
+                    background_jobs.c.lease_owner == execution_context.worker_id,
+                    background_jobs.c.attempt_count == execution_context.attempt_count,
+                    background_jobs.c.lease_expires_at > now,
+                    background_jobs.c.cancel_requested.is_(False),
+                ).with_for_update()).mappings().first()
+                if job is None:
+                    raise ValueError("教材来源准备任务租约已过期或已被接管")
+            if source_guard is not None:
+                source_row = connection.execute(select(
+                    upload_jobs.c.status, upload_jobs.c.source_text,
+                ).where(upload_jobs.c.upload_id == source_guard["uploadId"]).with_for_update()).mappings().first()
+                actual_hash = hashlib.sha256(str((source_row or {}).get("source_text") or "").encode()).hexdigest()
+                if not source_row or source_row["status"] not in {"complete", "completed", "ready"}:
+                    raise ValueError("教材来源在准备期间已不可用")
+                if actual_hash != source_guard["sourceTextSha256"]:
+                    raise ValueError("教材 OCR 来源在准备期间已变化")
             connection.execute(chapter_records.insert().values(
                 chapter_id=chapter["chapterId"], subject=chapter["subject"],
                 status=chapter["status"], chapter_json=chapter,

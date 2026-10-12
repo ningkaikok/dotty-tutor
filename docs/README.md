@@ -15,7 +15,9 @@
 | 定义用户价值 | [产品路线图](product-roadmap.md) | 产品范围、优先级、用户验收与暂缓项 |
 | 安排开发与实验 | [工程路线图](engineering-roadmap.md) | 实施批次、技术选型、依赖、实验与交付门禁 |
 | 理解课程播放 | [可编程课程](programmable-learning.md) | LessonDocument、渲染与学习状态边界 |
-| 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理；待实施 |
+| 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理 |
+| 执行课件改造 | [课件执行与独立验收计划](textbook-courseware-execution-plan.md) | 并行任务、串行门禁、Luna 分工和主代理验收；本地工程及英语/数学试点完成 |
+| 检查课件结果 | [独立验收记录](textbook-courseware-acceptance.md)、[设计验收](design-qa.md) | 实际模型范围、门禁、截图与限制；正式清理和教师内容复核待完成 |
 | 理解单题辅导 | [错题陪练设计](mistake-coach-plan.md) | 单题状态机、用户闭环与专题设计 |
 | 理解内容生产 | [原题处理链路](exam-pipeline-refactor-plan.md) | IR 分阶段改造、兼容设计与实施状态 |
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |

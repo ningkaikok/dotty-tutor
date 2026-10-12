@@ -4,12 +4,12 @@
 当前实现以 [系统架构](architecture.md)、[代码地图](codebase-guide.md) 和 [API](api.md) 为准。
 已完成状态表示仓库实现存在，不表示本次重跑了全部测试、真实部署或教学效果验证。
 
-## 当前优先级索引（2026-10-11）
+## 当前优先级索引（2026-10-12）
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| 当前优先 | 旧教材生成结果定向清理 → 英语教材互动课件试点 | 计划已制定，待实施与真实教材人工验收；试卷保留现有原题生产 | [教材课件实施计划](textbook-courseware-plan.md) |
-| 下一阶段 | 数学教材课件 → 更多学科扩展 | 待实施；沿用既有章节来源与判定能力作为回归基础 | [教材课件实施计划](textbook-courseware-plan.md) |
+| 当前优先 | 旧教材生成结果定向清理 → 英语教材互动课件试点 | 本地工程门禁及真实英语五页试点通过；真实副本撤回/恢复通过，原库正式清理和教师内容复核待完成；试卷保留原题生产 | [独立验收记录](textbook-courseware-acceptance.md) |
+| 下一阶段 | 数学教材课件 → 更多学科扩展 | 真实代数三页、几何五页本地试点通过；第三学科注册 smoke 通过，更多学科教学质量待实施与复核 | [执行与独立验收计划](textbook-courseware-execution-plan.md) |
 | 历史 A/B 基础 | 数学来源关联课程、英语阅读与证据定位 | 工程第一版已有；不等于本次多页课件完成，真实材料质量仍需复核 | [原 A/B 计划](chapter-ab-implementation-plan.md) |
 | C/D 基础 | 教学媒体与步骤语音 | 工程实现已接入；复用既有能力，真实教材/视频审校/真人语音质量仍待人工验收 | [工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
 | 历史 AI 基础（已收口） | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache、跨模型评测和真实数据扩充纳入主动实验队列。新增排序以 2026-10-11 教材课件计划为准，跨模型和工具安全评测随实施批次开展。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -42,7 +42,7 @@
 - [运行快照、事件和后台任务](runtime-governance-plan.md)：已实现边界及 G5 契约。
 - [原题级试卷处理链路](exam-pipeline-refactor-plan.md)：分阶段 IR、缓存和质量门禁。
 - [可编程课程与学习闭环](programmable-learning.md)：内容块、播放器和学习状态边界。
-- [教材互动课件实施计划](textbook-courseware-plan.md)：本地 OpenMAIC 参考、英语/数学课件与旧教材产物清理，待实施。
+- [教材互动课件实施计划](textbook-courseware-plan.md)：本地 OpenMAIC 参考、英语/数学课件与旧教材产物清理；当前按 [执行计划](textbook-courseware-execution-plan.md) 实施，结果见 [独立验收记录](textbook-courseware-acceptance.md)。
 - [错题陪练设计](mistake-coach-plan.md)：单题状态机与用户闭环。
 - [模型与系统测试报告](model-evaluation-report.md)：带日期的历史证据，不能当作当前验证结果。
 

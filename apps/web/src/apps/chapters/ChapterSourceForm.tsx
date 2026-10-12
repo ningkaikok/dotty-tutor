@@ -36,6 +36,7 @@ export function ChapterSourceForm({
   const [pageEnd, setPageEnd] = useState("1");
   const [sourceVersion, setSourceVersion] = useState("1");
   const [license, setLicense] = useState("");
+  const [distributionScope, setDistributionScope] = useState<ChapterSource["distributionScope"]>("private");
   const [flagsPage, setFlagsPage] = useState("");
   const [ocrText, setOcrText] = useState("");
   const [flags, setFlags] = useState<ChapterSourceFlag[]>([]);
@@ -74,12 +75,14 @@ export function ChapterSourceForm({
         uploadId,
         sourceVersion: sourceVersion.trim() || "1",
         license: license.trim(),
+        distributionScope,
         pageStart: start,
         pageEnd: end,
         pageFlags: flags.length ? [{ page: issuePage, flags }] : [],
       }
       : {
         sourceVersion: sourceVersion.trim() || "1",
+        distributionScope,
         ...(license.trim() ? { license: license.trim() } : {}),
         pageStart: start,
         pageEnd: end,
@@ -131,6 +134,7 @@ export function ChapterSourceForm({
         <label>结束页<input type="number" min="1" max={pageStart ? Number(pageStart) + 79 : undefined} value={pageEnd} onChange={(event) => setPageEnd(event.target.value)} required /></label>
       </div>
       <label>来源许可说明<input value={license} onChange={(event) => setLicense(event.target.value)} maxLength={256} placeholder="例如：校内授权 / CC BY 4.0 / 待核实" required /></label>
+      <label>来源分发范围<select value={distributionScope} onChange={(event) => setDistributionScope(event.target.value as ChapterSource["distributionScope"])}><option value="private">仅教师可见</option><option value="classroom">可在本班授课</option><option value="public">允许公开发布</option></select></label>
       {!uploadId && (
         <label>
           OCR 原文

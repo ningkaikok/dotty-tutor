@@ -222,6 +222,62 @@ class BackgroundJobTests(PostgresTestCase):
             store.close()
             directory.cleanup()
 
+    def test_user_late_attempt_from_same_worker_cannot_write_after_reclaim(self) -> None:
+        """Given one worker ID is reused, When attempt one returns late, Then attempt two stays owner."""
+        store, directory = self.make_store()
+        try:
+            job = store.create_job("fenced", {}, max_attempts=2, now=1)
+            first = store.claim_next("same-worker", lease_seconds=1, now=2)
+            self.assertEqual(first["attemptCount"], 1)
+            store.recover_expired_leases(now=4)
+            second = store.claim_next("same-worker", lease_seconds=60, now=5)
+            self.assertEqual(second["attemptCount"], 2)
+
+            self.assertFalse(store.heartbeat(
+                job["jobId"], "same-worker", expected_attempt_count=1,
+                lease_seconds=60, now=6,
+            ))
+            unchanged = store.update_progress(
+                job["jobId"], progress=99, message="late attempt",
+                worker_id="same-worker", expected_attempt_count=1, now=6,
+            )
+            self.assertEqual(unchanged["attemptCount"], 2)
+            self.assertNotEqual(unchanged["message"], "late attempt")
+            with self.assertRaises(ValueError):
+                store.complete_success(
+                    job["jobId"], "same-worker", {"late": True},
+                    expected_attempt_count=1, now=6,
+                )
+            with self.assertRaises(ValueError):
+                store.complete_failure(
+                    job["jobId"], "same-worker", {"late": True}, retryable=True,
+                    expected_attempt_count=1, now=6,
+                )
+            current = store.get_job(job["jobId"])
+            self.assertEqual(current["status"], "running")
+            self.assertEqual(current["attemptCount"], 2)
+            self.assertIsNone(current["result"])
+        finally:
+            store.close()
+            directory.cleanup()
+
+    def test_user_cancel_racing_failure_converges_to_cancelled(self) -> None:
+        """Given a teacher cancels during handling, When failure commits, Then cancellation wins."""
+        store, directory = self.make_store()
+        try:
+            job = store.create_job("cancel-race", {}, max_attempts=3, now=1)
+            claim = store.claim_next("worker-a", lease_seconds=60, now=2)
+            store.request_cancel(job["jobId"], now=3)
+            result = store.complete_failure(
+                job["jobId"], "worker-a", {"retryable": True}, retryable=True,
+                expected_attempt_count=claim["attemptCount"], now=4,
+            )
+            self.assertEqual(result["status"], "cancelled")
+            self.assertEqual(result["attemptCount"], 1)
+        finally:
+            store.close()
+            directory.cleanup()
+
 
 @unittest.skipUnless(
     postgres_tests_enabled(),

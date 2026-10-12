@@ -13,16 +13,18 @@ from application.job_worker import (
 )
 
 
-def build_chapter_registry(service: Any) -> TaskRegistry:
-    """Register the source-versioned chapter generation handler."""
+def build_chapter_registry(service: Any, source_preparation_service: Any | None = None) -> TaskRegistry:
+    """Register legacy chapter generation and fenced textbook-source preparation."""
     registry = TaskRegistry()
 
     @registry.decorator("chapter.lesson.generate")
-    def generate(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> dict[str, Any]:
+    def generate(payload: dict[str, Any], cancellation_check: Callable[[], bool], context: Any) -> dict[str, Any]:
         if cancellation_check():
             raise JobCancelled()
         try:
-            return service.run_ai_generation(payload, cancellation_check=cancellation_check)
+            return service.run_ai_generation(
+                payload, cancellation_check=cancellation_check, execution_context=context,
+            )
         except JobFailure:
             raise
         except LookupError as error:
@@ -32,16 +34,20 @@ def build_chapter_registry(service: Any) -> TaskRegistry:
         except Exception as error:
             raise RetryableJobError(f"章节草稿生成失败：{error}") from error
 
-    @registry.decorator("material.courses.create")
-    def create_material_courses(payload: dict[str, Any], cancellation_check: Callable[[], bool]) -> dict[str, Any]:
-        from application.services.material_courses import MaterialCourseService
-        from infrastructure.runtime.job_snapshot import use_job_runtime_snapshot
-        from infrastructure.runtime.ocr_runtime import runtime
-        try:
-            # Automatic course preparation uses page routing even for legacy queued snapshots.
-            with use_job_runtime_snapshot(payload), runtime.use_selection("auto"):
-                return MaterialCourseService(service, runtime).run(payload["uploadId"], cancellation_check)
-        except (ValueError, LookupError) as error:
-            raise TerminalJobError(str(error)) from error
+    if source_preparation_service is not None:
+        @registry.decorator("courseware.source.prepare")
+        def prepare_courseware_source(
+            payload: dict[str, Any],
+            cancellation_check: Callable[[], bool],
+            context: Any,
+        ) -> Any:
+            try:
+                return source_preparation_service.run(payload, cancellation_check, context)
+            except JobCancelled:
+                raise
+            except (ValueError, LookupError) as error:
+                raise TerminalJobError(str(error)) from error
+            except Exception as error:
+                raise RetryableJobError(f"教材来源准备失败：{error}") from error
 
     return registry

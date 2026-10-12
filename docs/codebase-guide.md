@@ -50,6 +50,7 @@ dotty-tutor/
 │   │   ├── routers/            # HTTP 协议边界；按产品域拆分 APIRouter
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
 │   │   │   ├── chapter_routes.py # 来源关联章节、人工复核、发布与学科作答
+│   │   │   ├── courseware_routes.py # 课件规划确认、逐页编辑、审核发布与独立学生投影
 │   │   │   ├── quality_review_runs_routes.py # 受限模型对照、匿名评分、统计与金标准门禁
 │   │   │   ├── quality_review_routes.py # 教师案例导入、来源复核与追加决定
 │   │   │   ├── lesson_media_routes.py # 教师分镜、渲染审校与已发布学生媒体
@@ -61,7 +62,9 @@ dotty-tutor/
 │   │   │   ├── dependency_preflight_routes.py # GET /api/system/dependency-preflight（环境依赖自检只读端点）
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
-│   │   │   ├── material_courses.py # 自动章节识别、前五章页段与生成队列编排
+│   │   │   ├── material_courses.py # 显式教材分类/学科/页段，准备来源章节
+│   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
+│   │   │   ├── legacy_textbook_cleanup.py # 精确 manifest、环境指纹、安全撤回与恢复
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
 │   │   │   ├── personalized_assignment.py # 全班共享个性化作业生成与幂等 publication
@@ -79,6 +82,7 @@ dotty-tutor/
 │   │   │   ├── tutor_search_service.py # 已发布题目检索索引编排
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
 │   │   ├── application/chapter_jobs.py # 章节 AI 草稿 Worker 注册、取消与错误分类
+│   │   ├── application/courseware_jobs.py # 规划与逐页课件 Worker 注册、租约/认领门禁
 │   │   ├── application/quality_review_sources.py # 受管素材哈希、原句与既有 PDF 预览适配
 │   │   ├── application/quality_review_runs_jobs.py # 共用 Worker 的一次性有界模型对照
 │   │   ├── application/lesson_media_jobs.py # 共用 Worker 的有界媒体渲染任务
@@ -92,8 +96,9 @@ dotty-tutor/
 │   │   ├── textbook_ocr.py     # 手工文本/MinerU/pypdf 的回退策略
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
-│   │   │   │                   # quality_review.py、quality_review_runs.py、lesson_media.py、voice.py 定义新增协议
+│   │   │   │                   # courseware.py、quality_review.py、quality_review_runs.py、lesson_media.py、voice.py 定义新增协议
 │   │   │   ├── chapters/       # material.py 文档分类与章节边界；source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
+│   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -134,6 +139,9 @@ dotty-tutor/
 │   │       ├── chapter_store.py # 章节来源修订、两学科提交/依据及英语人工审核；数学确判沿用学习证据
 │   │       ├── quality_review_runs_store.py # 模型对照审计、冻结输入、A/B 分配与人工评分
 │   │       ├── quality_review_store.py # 版本绑定的复核包、案例与追加人工意见
+│   │       ├── courseware_store.py # 规划/课件 JSONB、逐页检查点、发布快照与可选作答
+│   │       ├── legacy_textbook_cleanup_store.py # 精确关联盘点、墓碑 CAS 与恢复 metadata
+│   │       ├── legacy_cleanup_guards.py # 上传共享行锁与精确墓碑 ID 读写门禁
 │   │       ├── lesson_media_store.py # 不可变视频版本、产物指纹与审校事件
 │   │       ├── voice_store.py # 学生归属、凭据哈希、转写版本与响应代际
 │   │       ├── voice_schema.py # 独立语音会话 metadata
@@ -160,6 +168,7 @@ dotty-tutor/
 │   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程、独立错误及搜索；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
 │   │   │   ├── apps/chapters/  # 章节工作台、来源/课程复核；useChapterPublishedMedia 读取冻结发布课时
+│   │   │   ├── apps/courseware/ # 来源准备/规划确认/逐页审核与 Deck/Rail 播放；useCoursewarePlanWorkflow/useCoursewareDocumentWorkflow/useCoursewarePresentation 网络 Hook、完整编辑 DTO 与学生安全播放视图
 │   │   │   ├── apps/quality-review/ # CaseReviewPanel 与 useQualityReviewInbox 共享来源复核，保留模型运行组件
 │   │   │   ├── apps/media/     # useLessonMediaStudio 管理版本切换；教师分镜审校与学生视频/字幕播放器
 │   │   │   ├── apps/voice/     # 录音、转写回放、明确确认与可打断追问
@@ -186,6 +195,7 @@ dotty-tutor/
 ├── scripts/migrate_variation_attribution.py # deprecated：兼容旧调用
 ├── scripts/seed_classroom_demo.py # 显式创建班级看板演示数据，不在启动时自动运行
 ├── scripts/seed_demo_bundle.py # 固定 ID 的合成三人课堂 bundle，支持 --verify
+├── scripts/cleanup_legacy_textbook_content.py # 默认 dry-run，精确 manifest 的 apply/restore
 ├── examples/demo-pack/manifest.json # demo bundle 的隐私声明和固定数据契约
 ├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
 ├── docs/                       # 面向维护者和使用者的文档
@@ -195,6 +205,29 @@ dotty-tutor/
 前端 API 和类型按领域分别位于 `apps/web/src/api/` 与 `apps/web/src/types/` 目录。后端规范代码必须进入
 `apps/api/routers`、`apps/api/application/services`、`apps/api/domain`、`apps/api/infrastructure` 或
 `apps/api/persistence`；跨领域组合只在明确的应用入口完成。
+
+教材课件领域链路与试卷生成分开：
+
+```mermaid
+flowchart LR
+  Source[上传 PDF / 逐页来源] --> Prepare[MaterialCourseService / source.prepare]
+  Prepare --> Chapter[来源章节 / 修订]
+  Chapter --> Plan[CoursewareService / 教学规划]
+  Plan --> Confirm[教师确认]
+  Confirm --> Worker[courseware_jobs / 页面检查点]
+  Worker --> Draft[CoursewareStore / 课件草稿]
+  Draft --> Review[编辑与逐页审核]
+  Review --> Publication[不可变发布]
+  Publication --> Teacher[教师播放投影]
+  Publication --> Student[学生安全投影 / 可选互动]
+  Source --> Paper[试卷原题流水线]
+  Old[旧教材派生产物] --> Manifest[精确清理 manifest]
+  Manifest --> Tombstone[墓碑 / ID 过滤 / 可恢复]
+```
+
+共享协议在 `domain/contracts/courseware.py`；学科差异在 `domain/courseware/profiles.py`
+及四份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
+清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。
 
 ### 2026-09 学习闭环新增边界
 
