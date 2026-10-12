@@ -353,7 +353,7 @@ export function PublishedPaperApp() {
   if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开练习…</span></main>;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell student-paper-shell">
       <header className="topbar student-paper-topbar">
         <button className="product-home-button" onClick={() => navigate("/learn")}>← 返回今日</button>
         <div className="brand-mark">D</div>

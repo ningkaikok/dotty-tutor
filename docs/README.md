@@ -23,6 +23,7 @@
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |
 | 学习后端 | [后端学习指南](backend-learning-guide.md) | 按代码路径解释设计与学习练习，不维护独立能力清单 |
 | 学习前端 | [前端学习指南](frontend-learning-guide.md) | 页面、Hook、组件、渲染与测试的教学解释 |
+| 改界面样式 | [界面设计规范](design-system.md) | Bright 设计 token、对比度与触控约束、分页面迁移状态 |
 | 管理数据库 | [数据库演进](database-evolution.md) | 带日期的演进依据、schema 治理原则与迁移背景 |
 | 理解知识点身份 | [ADR-001](adr/001-knowledge-point-identity-and-mastery-v2.md) | 已采用的知识点与 mastery-v2 决策及后果 |
 | 部署与恢复 | [部署运维](deployment.md) | Docker/systemd/Nginx、迁移、备份与部署步骤 |

@@ -93,7 +93,7 @@ export function ProductHome() {
           </ul>
           <div className="producer-entry-actions">
             <button onClick={enterStudio}>打开我的教材</button>
-            <button onClick={() => navigate("/studio/quality-review")}>质量复核工作台</button>
+            <button className="secondary-entry-button" onClick={() => navigate("/studio/quality-review")}>质量复核工作台</button>
           </div>
         </article>
         <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>
