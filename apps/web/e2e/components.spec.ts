@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 test("user Given the development component catalog When opening and closing a dialog with keyboard Then focus returns to its trigger", async ({ page }) => {
+  await page.route("**/api/auth/config", (route) => route.fulfill({ json: { protected: false } }));
   await page.goto("/dev/components");
   const trigger = page.getByRole("button", { name: "查看复核说明" });
   await trigger.focus();
