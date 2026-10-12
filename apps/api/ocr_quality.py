@@ -41,6 +41,12 @@ def _formula_problems(text: str) -> list[str]:
     without_display = re.sub(r"\$\$", "", text)
     if without_display.count("$") % 2:
         problems.append("inline_formula_delimiter_unbalanced")
+    # Separated digits adjacent to a fraction/equality are a known rendered-page
+    # badcase. This is only a suspicion flag: never reconstruct the intended math.
+    formulas = re.findall(r"\$\$(.*?)\$\$|(?<!\$)\$([^$]+)\$(?!\$)", text, re.DOTALL)
+    if any(re.search(r"(?<![\w.])\d+\s+\d+(?![\w.])", first or second)
+           and (r"\frac" in (first or second) or "=" in (first or second)) for first, second in formulas):
+        problems.append("formula_digits_fragmented")
     return problems
 
 
@@ -110,12 +116,16 @@ def evaluate_page_quality(
     if _garbled_rate(source) >= 0.03:
         problems.append("garbled_text_rate_high")
     problems.extend(_formula_problems(source))
-    return _decision(
+    decision = _decision(
         problems=problems,
         provider=provider,
         retry_count=retry_count,
         retry_scope={"type": "page", "pageNumbers": [page_number]},
     )
+    if any("formula" in problem for problem in problems):
+        decision["formulaReview"] = {"originalText": source, "status": "requires_human_review",
+                                     "page": page_number, "provider": provider}
+    return decision
 
 
 def evaluate_question_quality(

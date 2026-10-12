@@ -6,7 +6,7 @@ export type LessonMediaScene = {
   kind: string;
   title: string;
   narration: string;
-  sourceRefs: Array<{ sourceRevisionId: string; page: number; sentenceId?: string; quote: string }>;
+  sourceRefs: Array<{ sourceRevisionId: string; page: number; sentenceId?: string; quote?: string }>;
 };
 
 export type LessonMediaReview = {
@@ -29,7 +29,7 @@ export type LessonMedia = {
   lessonId: string;
   sourceRevisionId: string;
   title: string;
-  subject: "math" | "english";
+  subject: "math" | "english" | "science";
   license: string;
   sourceTitle: string | null;
   sourceUrl: string | null;
@@ -52,7 +52,7 @@ export type PublishedLessonMedia = {
   mediaId: string;
   version: number;
   title: string;
-  subject: "math" | "english";
+  subject: "math" | "english" | "science";
   sourceRevisionId: string;
   sourceTitle: string | null;
   sourceUrl: string | null;
@@ -122,4 +122,19 @@ export function lessonMediaTeacherAssetUrl(mediaId: string, kind: "asset" | "cap
 
 export function lessonMediaPublicAssetUrl(path: string): string {
   return apiResourceUrl(path);
+}
+
+export async function listCoursewareMedia(coursewareId: string, publicationId: string, signal?: AbortSignal): Promise<LessonMedia[]> {
+  const params = new URLSearchParams({ publicationId });
+  const result = await parse<{ items: LessonMedia[] }>(await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}/media?${params}`, { cache: "no-store", signal }));
+  return result.items;
+}
+export async function createCoursewareMedia(coursewareId: string, input: { publicationId: string; sourceRevisionId: string; pageIds: string[] }): Promise<LessonMedia> {
+  return parse(await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}/media`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  }));
+}
+export async function listPublishedCoursewareMedia(coursewareId: string, publicationId: string, signal?: AbortSignal): Promise<{ items: PublishedLessonMedia[] }> {
+  const params = new URLSearchParams({ publicationId });
+  return parse(await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}/media/published?${params}`, { cache: "no-store", signal }));
 }

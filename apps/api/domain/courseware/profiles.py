@@ -53,3 +53,8 @@ courseware_profiles.register(CoursewareSubjectProfile(
     subject_id="math", plan_prompt_id="courseware.plan.math",
     page_prompt_id="courseware.page.math", label="Mathematics",
 ))
+
+courseware_profiles.register(CoursewareSubjectProfile(
+    subject_id="science", plan_prompt_id="courseware.plan.science",
+    page_prompt_id="courseware.page.science", label="科学（教师复核试点）",
+))

@@ -140,6 +140,18 @@ class QualityReviewInboxMediaTask(BaseModel):
     sourceRevisionId: str
 
 
+class QualityReviewInboxCoursewareTask(BaseModel):
+    coursewareId: str
+    chapterId: str
+    sourceRevisionId: str
+    sourceKey: str
+    uploadId: str | None
+    title: str
+    status: str
+    pageCount: int
+    pendingPageCount: int
+
+
 class QualityReviewInbox(BaseModel):
     """Counts describe all context-matched cases, regardless of includeReviewed."""
 
@@ -150,6 +162,8 @@ class QualityReviewInbox(BaseModel):
     unlinkedCount: int
     mediaTasks: list[QualityReviewInboxMediaTask]
     mediaPendingCount: int
+    coursewareTasks: list[QualityReviewInboxCoursewareTask] = Field(default_factory=list)
+    coursewarePendingCount: int = 0
 
 
 __all__ = [

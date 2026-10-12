@@ -128,26 +128,9 @@ class CoursewareService:
 
     @staticmethod
     def _source_assets(source: dict[str, Any], selected_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        revision_id = str(source["sourceRevisionId"])
-        if not source.get("uploadId") or not source.get("sourceFileSha256"):
-            return []
-        result: list[dict[str, Any]] = []
-        for page in selected_pages:
-            # The existing managed source-preview API renders this exact original
-            # PDF page. It is deliberately called a source_page, never a region
-            # crop or figure asset that the OCR pipeline did not actually create.
-            asset_id = f"source-page-{revision_id[:12]}-{int(page['page'])}"
-            ref = CoursewareSourceRef.model_validate({
-                "sourceRevisionId": revision_id, "page": page["page"], "assetId": asset_id,
-            }).model_dump()
-            result.append({
-                "assetId": asset_id, "kind": "source_page", "origin": "textbook",
-                "sourceRefs": [ref], "license": source.get("license"),
-                "attributionText": source.get("attributionText"),
-                "distributionScope": source.get("distributionScope") or "private",
-                "alt": f"教材原页 {page['page']}", "status": "available",
-            })
-        return result
+        from application.services.courseware_assets import source_assets
+
+        return source_assets(source, selected_pages)
 
     @staticmethod
     def _assets_for_page(assets: list[dict[str, Any]], source_page_numbers: set[int]) -> list[dict[str, Any]]:
@@ -201,11 +184,12 @@ class CoursewareService:
                 source.get("uploadId") and source.get("sourceFileSha256")
                 and ref.assetId == f"source-page-{str(source.get('sourceRevisionId'))[:12]}-{ref.page}"
             )
+            generated_ids = {item["assetId"] for item in cls._source_assets(source, [page])}
             page_asset_ids = {
                 str(region.get("assetId")) for region in (page or {}).get("regions", [])
                 if region.get("assetId")
             }
-            if not source_page_asset and ref.assetId not in page_asset_ids:
+            if not source_page_asset and ref.assetId not in page_asset_ids | generated_ids:
                 raise ValueError("来源引用包含当前冻结来源中不存在的 assetId")
 
     @classmethod
@@ -287,6 +271,13 @@ class CoursewareService:
                 "publicationId",
             )} | {"pageCount": len(document.get("pages", []))})
         return {"items": items}
+
+    def get_coverage(self, chapter_id: str) -> dict[str, Any]:
+        """Report complete-unit physical-page gaps without asserting teaching quality."""
+        from application.services.courseware_coverage import coverage_report
+
+        chapter, source = self._chapter(chapter_id)
+        return coverage_report(chapter, source, self.store)
 
     def get_plan(self, chapter_id: str) -> dict[str, Any] | None:
         chapter, source = self._chapter(chapter_id)
@@ -524,11 +515,21 @@ class CoursewareService:
                 profile = self.profiles.get(str(plan["subject"]))
                 template = self._prompt(profile.page_prompt_id)
                 template_data = self._frozen_template(template)
-                assets = self._source_assets(source, pages)
                 now = time.time()
                 documents: list[dict[str, Any]] = []
                 jobs: list[dict[str, Any]] = []
                 for session in plan["sessions"]:
+                    session_page_numbers = {
+                        int(ref["page"])
+                        for section in session["sections"]
+                        for outline in section["pages"]
+                        for ref in outline["sourceRefs"]
+                    }
+                    assets = self._source_assets(source, [
+                        page for page in pages if int(page["page"]) in session_page_numbers
+                    ])
+                    if len(assets) > 200:
+                        raise ValueError("单个课时的来源素材超过 200 项，请拆分课时或减少来源区域后重新确认规划")
                     courseware_id = uuid.uuid4().hex
                     sections = []
                     outline_pages = []
@@ -688,8 +689,11 @@ class CoursewareService:
                     and not (teacher_preview and publication["distributionScope"] == "private")):
                 raise LookupError("课件素材不存在")
             target = publication["snapshot"]
+            document = self.store.load_document(courseware_id)
+            if not document or document.get("deletedAt") or document.get("status") == "deleted":
+                raise LookupError("课件素材不存在")
             chapter = self.chapters.store.load_chapter(str(target.get("chapterId", "")))
-            if not chapter:
+            if not chapter or chapter.get("deletedAt"):
                 raise LookupError("课件素材不存在")
             source = next((item for item in chapter.get("sourceRevisions", [])
                            if item.get("sourceRevisionId") == target.get("sourceRevisionId")), None)
@@ -698,7 +702,7 @@ class CoursewareService:
         else:
             chapter, source, target = self._document(courseware_id)
         asset = next((item for item in target.get("assets", []) if item.get("assetId") == asset_id), None)
-        if not asset or asset.get("status") != "available" or asset.get("kind") != "source_page":
+        if not asset or asset.get("status") != "available" or asset.get("kind") not in {"source_page", "source_image"}:
             raise LookupError("课件素材不存在")
         ref = next((item for item in asset.get("sourceRefs", [])
                     if item.get("assetId") == asset_id
@@ -711,6 +715,12 @@ class CoursewareService:
         path = ChapterSourcePreview(self.chapters.store).get(
             chapter["chapterId"], str(ref["sourceRevisionId"]), int(ref["page"]),
         )
+        if asset.get("sourceFileSha256") and asset["sourceFileSha256"] != source.get("sourceFileSha256"):
+            raise ValueError("素材原文件身份与冻结来源不一致")
+        if asset.get("kind") == "source_image":
+            from application.services.courseware_assets import crop_source_asset
+
+            path = crop_source_asset(path, source, int(ref["page"]), asset)
         return str(path), "image/png"
 
     def regenerate_page(self, courseware_id: str, page_id: str, *, expected_record_version: int,
@@ -1095,8 +1105,8 @@ class CoursewareService:
                 raise ValueError("课件素材许可范围小于本次发布范围")
             if asset.get("origin") == "textbook" and (not asset.get("license") or not asset.get("attributionText")):
                 raise ValueError("发布中的教材素材必须登记许可和署名")
-            if asset.get("kind") != "source_page":
-                raise ValueError("当前版本只发布由受控来源预览服务解析的教材原页素材")
+            if asset.get("kind") not in {"source_page", "source_image"}:
+                raise ValueError("仅发布由受控来源预览服务解析的原页或冻结区域素材")
             self.get_chapter_assets(courseware_id, str(asset["assetId"]))
         snapshot = CoursewareDocument.model_validate({
             **document, "status": "published", "publicationId": None,
@@ -1138,6 +1148,7 @@ class CoursewareService:
         publication = self.store.load_publication(publication_id) if publication_id else self.store.latest_publication(courseware_id)
         if not publication or publication["coursewareId"] != courseware_id:
             raise LookupError("课件发布版本不存在")
+        self._assert_publication_visible(courseware_id, publication)
         document = CoursewareDocument.model_validate(publication["snapshot"]).model_dump()
         document = self._with_asset_urls(document, publication_id=publication["publicationId"])
         return {
@@ -1157,6 +1168,7 @@ class CoursewareService:
         if (not publication or publication["coursewareId"] != courseware_id
                 or publication["distributionScope"] not in {"classroom", "public"}):
             raise LookupError("课件不存在")
+        self._assert_publication_visible(courseware_id, publication)
         snapshot = copy.deepcopy(publication["snapshot"])
         assets = self._with_asset_urls(snapshot, publication_id=publication["publicationId"])["assets"]
         pages = []
@@ -1197,6 +1209,7 @@ class CoursewareService:
         if (not publication or publication["coursewareId"] != courseware_id
                 or publication["distributionScope"] not in {"classroom", "public"}):
             raise LookupError("课件不存在")
+        self._assert_publication_visible(courseware_id, publication)
         snapshot = publication["snapshot"]
         activity = next((block for page in snapshot.get("pages", []) for block in page.get("blocks", [])
                          if block.get("kind") == "activity" and block.get("activityId") == request.activityId), None)
@@ -1217,6 +1230,15 @@ class CoursewareService:
             "createdAt": time.time(),
         })
         return {key: attempt[key] for key in ("attemptId", "publicationId", "activityId", "assessment", "feedback", "createdAt")}
+
+    def _assert_publication_visible(self, courseware_id: str, publication: dict[str, Any]) -> None:
+        """Retain immutable history while withdrawing delivery after parent deletion."""
+        document = self.store.load_document(courseware_id)
+        chapter_id = publication["snapshot"].get("chapterId")
+        chapter = self.chapters.store.load_chapter(str(chapter_id or ""))
+        if (not document or document.get("deletedAt") or document.get("status") == "deleted"
+                or not chapter or chapter.get("deletedAt")):
+            raise LookupError("课件不存在")
 
     def delete_draft(self, courseware_id: str, *, expected_record_version: int) -> dict[str, str]:
         chapter, source, document = self._document(courseware_id)

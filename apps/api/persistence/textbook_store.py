@@ -254,6 +254,10 @@ class TextbookStore(DatabaseStore):
         items = []
         for row in rows:
             result = decode_json(row["result_json"])
+            # JSON null differs from SQL NULL in existing JSONB records. A
+            # completed transport without extraction metadata is not a library item.
+            if not isinstance(result, dict):
+                continue
             extraction = result.get("extraction", {})
             question_count = extraction.get("questionCount", 0)
             if row["upload_id"] in cleaned_uploads:

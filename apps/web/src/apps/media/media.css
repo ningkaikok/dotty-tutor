@@ -10,9 +10,9 @@
 
 .lesson-media-player-card {
   padding: 16px;
-  border: 1px solid var(--border, #d8deea);
-  border-radius: 14px;
-  background: var(--surface, #fff);
+  border: 1px solid var(--border, var(--c-line-strong));
+  border-radius: var(--radius-md);
+  background: var(--surface, var(--c-surface));
 }
 
 .lesson-media-player-card h3 {
@@ -23,8 +23,8 @@
 .lesson-media-player-card video {
   width: 100%;
   max-height: 70vh;
-  border-radius: 10px;
-  background: #0a1522;
+  border-radius: var(--radius-sm);
+  background: var(--c-ink);
 }
 
 .lesson-media-player-footer,
@@ -37,12 +37,12 @@
 
 .lesson-media-player-footer {
   justify-content: space-between;
-  color: var(--muted, #657084);
+  color: var(--muted, var(--c-ink-muted));
   font-size: 0.9rem;
 }
 
 .lesson-media-player-footer a {
-  color: var(--link, #1769aa);
+  color: var(--link, var(--c-brand));
 }
 
 @media (max-width: 680px) {
@@ -61,9 +61,9 @@
   gap: 16px;
   margin: 20px 0;
   padding: 20px;
-  border: 1px solid var(--border, #d8deea);
-  border-radius: 16px;
-  background: var(--surface, #fff);
+  border: 1px solid var(--border, var(--c-line-strong));
+  border-radius: var(--radius-md);
+  background: var(--surface, var(--c-surface));
 }
 
 .media-studio-heading,
@@ -91,7 +91,7 @@
 .media-citation,
 .media-job-status,
 .media-review-record {
-  color: var(--muted, #657084);
+  color: var(--muted, var(--c-ink-muted));
   font-size: 0.88rem;
 }
 
@@ -108,9 +108,9 @@
 .media-studio-panel button {
   min-height: 38px;
   padding: 8px 10px;
-  border: 1px solid var(--border, #d8deea);
-  border-radius: 10px;
-  background: var(--surface, #fff);
+  border: 1px solid var(--border, var(--c-line-strong));
+  border-radius: var(--radius-sm);
+  background: var(--surface, var(--c-surface));
   color: inherit;
   font: inherit;
 }
@@ -147,13 +147,13 @@
 
 .media-version span,
 .media-status {
-  color: var(--muted, #657084);
+  color: var(--muted, var(--c-ink-muted));
   font-size: 0.82rem;
 }
 
 .media-version.selected {
-  border-color: #1677ff;
-  background: #edf5ff;
+  border-color: var(--c-brand);
+  background: var(--c-brand-soft);
 }
 
 .media-studio-content details,
@@ -162,7 +162,7 @@
 .media-review,
 .media-preview {
   padding: 14px;
-  border: 1px solid var(--border, #d8deea);
+  border: 1px solid var(--border, var(--c-line-strong));
   border-radius: 12px;
 }
 
@@ -189,8 +189,8 @@
   width: 100%;
   max-height: 70vh;
   margin: 10px 0;
-  border-radius: 10px;
-  background: #0a1522;
+  border-radius: var(--radius-sm);
+  background: var(--c-ink);
 }
 
 .media-error {

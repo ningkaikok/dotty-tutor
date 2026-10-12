@@ -179,3 +179,11 @@ it("user Given a course draft now cites another textbook while its published vid
   expect(screen.getByText(/发布快照 pub-old/)).toBeVisible();
   expect(screen.queryByRole("heading", { name: "数学教材.pdf" })).not.toBeInTheDocument();
 });
+
+it("user Given pending courseware drafts When opening the review inbox Then per-page review links appear without claiming teacher approval", async () => {
+  setup(false, { ...emptyInbox, coursewarePendingCount: 1, coursewareTasks: [{ coursewareId: "draft-1", chapterId: "en-1", sourceRevisionId: "source-1", sourceKey: "sha256:fixture", uploadId: null, title: "真实教材待审草稿", status: "draft", pageCount: 5, pendingPageCount: 5 }] });
+  fireEvent.click(await screen.findByRole("button", { name: "待我复核（来源 0 · 课程 1 · 课件 1 · 视频 0）" }));
+  expect(screen.getByRole("region", { name: "互动课件待审任务" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "打开课件逐页复核" })).toHaveAttribute("href", "/studio/courseware/draft-1");
+  expect(screen.getByText(/5 页待复核/)).toBeVisible();
+});

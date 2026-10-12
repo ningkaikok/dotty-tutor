@@ -135,6 +135,7 @@
 .courseware-choice-list button { min-height: 42px; padding: 8px 13px; border: 1px solid var(--cw-border); border-radius: 4px; background: #203252; cursor: pointer; }
 .courseware-choice-list button[aria-pressed="true"] { border-color: var(--cw-accent); background: #294873; }
 .courseware-activity-block textarea { display: block; min-height: 100px; resize: vertical; }
+.courseware-activity-block > button { min-height: 44px; margin-top: 10px; padding: 9px 14px; border: 1px solid var(--cw-accent); border-radius: var(--radius-sm); background: #294873; color: var(--cw-text); }
 .courseware-practice-reason { color: var(--cw-muted); font-size: 13px; }
 .courseware-practice-hint { margin: 13px 0 0; color: var(--cw-muted); font-size: 12px; }
 .courseware-notes { border-left: 3px solid #cfaa70; background: #1b2b45; }
@@ -393,3 +394,15 @@
 @media (prefers-reduced-motion: reduce) {
   .courseware-player *, .courseware-player *::before, .courseware-player *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+.courseware-coverage { margin: 20px 0; }
+.courseware-coverage h2 { margin: 0; }
+.courseware-coverage p { color: var(--c-ink-soft); line-height: 1.7; }
+.courseware-coverage dl { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.courseware-coverage dt { font-weight: 800; }
+.courseware-coverage dd { margin: 6px 0 0; color: var(--c-ink-muted); overflow-wrap: anywhere; }
+.courseware-media-panel { margin: 24px auto; max-width: 1180px; }
+.courseware-media-panel fieldset { display: flex; flex-wrap: wrap; gap: 14px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px; }
+.courseware-published-media { margin: 20px auto; max-width: 1180px; }
+.courseware-published-media video { width: 100%; max-height: 420px; }
+.courseware-page-voice { margin: 24px 0; color: var(--c-ink); }

@@ -3,12 +3,12 @@
 本文件描述前端新版视觉方向“Bright”（明快学习）的设计 token 和使用规则。目标用户以初中学生为主，
 同时服务教师和内容生产者：界面要明快、有鼓励感、触控友好，但信息密度仍需支撑教师与工作室的管理场景。
 
-token 定义在 `apps/web/src/styles.css` 顶部的 `:root` 中，命名以 `--c-`（颜色）、`--radius-`
+token 定义在 `apps/web/src/components/ui/tokens.css` 的 `:root` 中，命名以 `--c-`（颜色）、`--radius-`
 （圆角）、`--font-` 和 `--touch-` 开头。**新样式只引用 token，不再写硬编码色值**。
 
 ## 迁移状态
 
-迁移按页面分批进行，未迁移页面暂时保留旧的绿灰配色：
+共享 token 和基础组件覆盖现有页面；课堂投影保留独立的深色语义：
 
 | 页面 | 状态 |
 | --- | --- |
@@ -16,12 +16,11 @@ token 定义在 `apps/web/src/styles.css` 顶部的 `:root` 中，命名以 `--c
 | 学生今日 `/learn` | 已迁移（含加载骨架、出错提示、练习与已完成作业） |
 | 错题本 / 拍照录入 / 确认 / 陪练 / 复习 `/mistakes/*` | 已迁移 |
 | 做题 `/learn/papers/:id` | 已迁移（题目选项、填空等共享组件只在 `.student-paper-shell` 内覆盖） |
-| 按需讲解（LessonPlayer）、章节学习 `/learn/chapters/:id`、课件 | 待迁移 |
-| 教师工作台 `/teacher` | 待迁移（需同步更新 E2E 截图基线 `teacher-dashboard`） |
-| 教材工作室 `/studio` 及子页面 | 待迁移（指标页需同步更新截图基线 `learning-cost-report`） |
+| 按需讲解（LessonPlayer）、章节学习 `/learn/chapters/:id`、课件 | 授课/编辑采用共享基础样式；课件播放器保留深色投影 |
+| 教师工作台 `/teacher` | 已迁移；状态与网络在 useTeacherClassroomWorkspace；macOS/Linux 视觉基线已更新 |
+| 教材工作室 `/studio` 及子页面 | 教材、章节、课件编辑、复核、指标、提示词与媒体换用共享 token；指标 macOS/Linux 基线已更新 |
 
-已迁移页面通过 `src/styles.css` 里 `:root:has(...)` / `body:has(...)` 两个选择器切换为淡紫底；新增迁移页面时把其根容器类名加进这两个选择器。
-根容器是共享类（如 `.app-shell`）时，先给页面加一个专属类名，再把覆盖样式挂在它下面，避免影响其它页面。
+基础色板全局加载，领域样式沿用现有布局并使用语义变量。组件样式用低优先级 `:where`，避免覆盖课堂播放器等特定用途布局。专门的题目、数学、图片定位和语音协议继续使用已有组件。
 
 共享组件“为什么这样判”（`.evaluation-evidence`）的样式放在全局 `styles.css`：它同时出现在做题页和错题陪练，
 两处样式表都随路由懒加载，放在任一页面的样式表里都会让另一处在首次进入时没有样式。
@@ -92,3 +91,9 @@ token 定义在 `apps/web/src/styles.css` 顶部的 `:root` 中，命名以 `--c
 
 后续页面（错题、复习、做题、陪练、教师工作台、教材工作室）按方向 C 的交互原型迁移；原型中的班级、
 题目和辅导话术是示意数据，迁移时以现有组件的数据结构和文案为准。
+
+## 可复用组件目录
+
+从 `components/ui` 导入 Button/ButtonLink、TextField/SelectField/TextAreaField、Badge/Notice、PageShell/PageHeader/Card/EmptyState/Skeleton、AppHeader/Navigation/Dialog。页面保留业务组合，重复视觉状态交给这些组件；不引入第二套路由、公式渲染或网络状态。表单组件保留原生约束、显式标签和 aria 描述；Dialog 使用原生 `<dialog>`。
+
+开发模式 `/dev/components` 可检查禁用/忙碌/错误、键盘、模态焦点与窄屏；生产不注册该路由。组件 DOM 用 RTL，真实路由与布局用 Playwright。当前库提供基础系统，领域控件不为形式统一而泛化。后续扩展组件时同步目录、使用页面和可观察行为验证。

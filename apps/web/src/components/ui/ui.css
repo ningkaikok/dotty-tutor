@@ -1,0 +1,60 @@
+/* Low-specificity foundations let domain layouts (especially projection) retain their geometry. */
+:where(.ui-button) { display: inline-flex; gap: 8px; align-items: center; justify-content: center; min-height: var(--touch-min); padding: 10px 16px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); background: var(--c-surface); color: var(--c-ink); font: 800 14px/1.4 var(--font-bright); text-decoration: none; cursor: pointer; }
+:where(.ui-button:hover) { background: var(--c-surface-tint); }
+:where(.ui-button:disabled) { opacity: .5; cursor: not-allowed; }
+:where(.ui-button-primary) { background: var(--c-brand); border-color: var(--c-brand); color: var(--c-surface); }
+:where(.ui-button-primary:hover) { background: var(--c-brand-strong); }
+:where(.ui-button-accent) { background: var(--c-accent); border-color: var(--c-accent); color: var(--c-ink); }
+:where(.ui-button-accent:hover) { background: var(--c-accent-strong); }
+:where(.ui-button-danger) { background: var(--c-danger); border-color: var(--c-danger); color: var(--c-surface); }
+:where(.ui-button-quiet) { background: transparent; border-color: transparent; }
+:where(.ui-badge) { display: inline-flex; gap: 4px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 800; }
+:where(.ui-tone-neutral) { background: var(--c-ground); color: var(--c-ink-soft); }
+:where(.ui-tone-brand) { background: var(--c-brand-soft); color: var(--c-brand); }
+:where(.ui-tone-success) { background: var(--c-success-soft); color: var(--c-on-success-soft); }
+:where(.ui-tone-warning) { background: var(--c-accent-soft); color: var(--c-on-accent-soft); }
+:where(.ui-tone-info) { background: var(--c-info-soft); color: var(--c-on-info-soft); }
+:where(.ui-tone-danger) { background: var(--c-danger-soft); color: var(--c-danger); }
+:where(.ui-notice) { padding: 14px 18px; border-radius: var(--radius-md); line-height: 1.65; overflow-wrap: anywhere; }
+:where(.ui-field) { display: grid; gap: 6px; min-width: 0; }
+:where(.ui-field label) { color: var(--c-ink); font-weight: 800; font-size: 14px; }
+:where(.ui-field input, .ui-field select, .ui-field textarea) { min-height: var(--touch-min); width: 100%; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); padding: 10px 12px; color: var(--c-ink); background: var(--c-surface); font: inherit; }
+:where(.ui-field small) { color: var(--c-ink-muted); line-height: 1.5; }
+:where(.ui-field [aria-invalid="true"]) { border-color: var(--c-danger); }
+:where(.ui-field .ui-field-error) { color: var(--c-danger); }
+:where(.ui-page) { position: relative; width: min(1180px, calc(100% - 40px)); margin: 24px auto 60px; color: var(--c-ink); font-family: var(--font-bright); }
+:where(.ui-page-header) { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 24px 0; }
+:where(.ui-page-header h1) { margin: 6px 0 12px; font-size: clamp(28px, 4vw, 40px); font-weight: 900; }
+:where(.ui-page-header p) { max-width: 780px; margin: 0; color: var(--c-ink-soft); line-height: 1.7; }
+:where(.ui-eyebrow) { color: var(--c-brand); font-size: 13px; font-weight: 800; }
+:where(.ui-actions) { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+:where(.ui-card) { padding: 24px; border: 1px solid var(--c-line); border-radius: var(--radius-lg); background: var(--c-surface); }
+:where(.ui-empty) { text-align: center; }
+:where(.ui-empty p) { color: var(--c-ink-soft); line-height: 1.7; }
+:where(.ui-skeleton) { display: grid; gap: 10px; }
+:where(.ui-skeleton span) { display: block; height: 60px; border-radius: var(--radius-md); background: var(--c-brand-soft); }
+:where(.ui-navigation) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+:where(.ui-nav-link) { display: inline-flex; min-height: var(--touch-min); align-items: center; padding: 10px 20px; border-radius: var(--radius-pill); color: var(--c-ink); background: var(--c-surface); text-decoration: none; font-weight: 800; }
+:where(.ui-nav-link:hover) { background: var(--c-brand-soft); }
+:where(.ui-nav-link.active) { color: var(--c-surface); background: var(--c-ink); }
+.ui-dialog { width: min(620px, calc(100% - 32px)); max-height: calc(100dvh - 40px); padding: 24px; border: 1px solid var(--c-line); border-radius: var(--radius-lg); color: var(--c-ink); background: var(--c-surface); font-family: var(--font-bright); }
+.ui-dialog::backdrop { background: var(--c-overlay); }
+.ui-dialog header { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.ui-dialog h2 { margin: 0; }
+.ui-dialog-body { margin: 20px 0; line-height: 1.7; }
+.ui-spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .8s linear infinite; }
+.student-identity { display: flex; gap: 7px; align-items: center; margin-left: auto; color: var(--c-ink-muted); font-size: 12px; }
+.student-identity-select { min-height: var(--touch-min); max-width: 100%; padding: 8px 12px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-pill); background: var(--c-surface); color: var(--c-ink); font: inherit; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-spinner { animation: none; } }
+@media (max-width: 600px) { :where(.ui-page) { width: calc(100% - 24px); } .ui-dialog { padding: 18px; } .student-identity { flex-wrap: wrap; margin-left: 0; width: 100%; } }
+.ui-catalog-grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.ui-catalog-grid .ui-card { min-width: 0; }
+.ui-catalog-grid .ui-notice, .ui-catalog-grid .ui-field { margin-top: 14px; }
+
+.ui-app-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 64px; margin-bottom: 18px; }
+.ui-brand-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--c-ink); color: var(--c-surface); font-size: 22px; font-weight: 900; }
+.ui-brand { display: grid; gap: 3px; }
+.ui-brand strong { font-size: 18px; }
+.ui-brand span { color: var(--c-ink-soft); font-size: 13px; }
+.ui-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }

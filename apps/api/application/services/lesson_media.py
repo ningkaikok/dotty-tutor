@@ -60,8 +60,10 @@ class LessonMediaService:
         jobs: Any,
         speech_runtime: Any | None = None,
         renderer: LessonMediaRenderer | None = None,
+        courseware_service: Any | None = None,
     ) -> None:
         self.chapter_service = chapter_service
+        self.courseware_service = courseware_service
         self.media_store = media_store
         self.jobs = jobs
         self.speech_runtime = speech_runtime or TtsRuntime()
@@ -116,6 +118,14 @@ class LessonMediaService:
         return resolved
 
     def _build_storyboard(self, request: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        if request.get("sourceKind") == "courseware":
+            from application.services.courseware_publication import (
+                CoursewarePublicationAdapter,
+            )
+
+            source_snapshot, scenes = CoursewarePublicationAdapter(self.courseware_service).storyboard(request)
+            self.renderer.validate_storyboard(scenes=scenes, source=source_snapshot)
+            return source_snapshot, scenes
         published, chapter, source = self._published_chapter(request["chapterId"], request["publicationId"])
         if published.get("teachingMode") != "tutorial":
             raise ValueError("视频第一版只接受经过审核并发布的教程章节")
@@ -237,7 +247,11 @@ class LessonMediaService:
 
     def create_draft(self, request: dict[str, Any], *, created_by: str = "teacher") -> dict[str, Any]:
         source_snapshot, scenes = self._build_storyboard(request)
-        published = self.chapter_service.get_published(request["chapterId"], request["publicationId"])
+        if request.get("sourceKind") == "courseware":
+            request = {**request, "chapterId": source_snapshot["chapterId"], "lessonId": source_snapshot["lessonId"]}
+            published = {"subject": source_snapshot["subject"]}
+        else:
+            published = self.chapter_service.get_published(request["chapterId"], request["publicationId"])
         media_id = uuid.uuid4().hex
         series_id = uuid.uuid4().hex
         source_hash = source_snapshot["contentFingerprint"]
@@ -260,12 +274,12 @@ class LessonMediaService:
                 "implementation": "CairoSVG+FFmpeg",
                 "rendererTemplateVersion": "lesson-media-renderer-v1",
                 "narrationTemplateVersion": NARRATION_TEMPLATE_VERSION,
-                "plannedLanguage": "Chinese" if published["subject"] == "math" else "English",
-                "plannedSpeaker": SPEAKER_BY_LANGUAGE["Chinese" if published["subject"] == "math" else "English"],
-                "plannedInstruct": INSTRUCT_BY_LANGUAGE["Chinese" if published["subject"] == "math" else "English"],
+                "plannedLanguage": "English" if published["subject"] == "english" else "Chinese",
+                "plannedSpeaker": SPEAKER_BY_LANGUAGE["English" if published["subject"] == "english" else "Chinese"],
+                "plannedInstruct": INSTRUCT_BY_LANGUAGE["English" if published["subject"] == "english" else "Chinese"],
             },
             "status": "draft",
-            "distributionScope": "student" if source_snapshot["license"] and self._student_distribution_allowed(source_snapshot["license"]) else "local_only",
+            "distributionScope": "student" if source_snapshot["license"] and self._student_distribution_allowed(source_snapshot["license"]) and source_snapshot.get("distributionScope") != "private" else "local_only",
             "createdBy": created_by,
             "createdAt": now,
         })
@@ -375,6 +389,13 @@ class LessonMediaService:
         return result
 
     def _validate_sources_still_published(self, row: dict[str, Any]) -> None:
+        if row["sourceSnapshot"].get("sourceKind") == "courseware":
+            from application.services.courseware_publication import (
+                CoursewarePublicationAdapter,
+            )
+
+            CoursewarePublicationAdapter(self.courseware_service).validate_media(row)
+            return
         published, _chapter, source = self._published_chapter(row["chapterId"], row["publicationId"])
         lesson = next((item for item in published["lessons"] if item.get("lessonId") == row["lessonId"]), None)
         if not lesson or lesson.get("status") != "published" or source.get("sourceRevisionId") != row["sourceRevisionId"]:
@@ -418,7 +439,7 @@ class LessonMediaService:
         if not row or row["version"] != payload["version"] or row["status"] != "rendering":
             raise TerminalJobError("视频版本或状态已变化，当前任务已失效")
         deadline = time.monotonic() + min(float(payload.get("deadlineSeconds", JOB_TIMEOUT_SECONDS)), JOB_TIMEOUT_SECONDS)
-        language = "Chinese" if row["subject"] == "math" else "English"
+        language = "English" if row["subject"] == "english" else "Chinese"
         speaker = SPEAKER_BY_LANGUAGE[language]
         instruct = INSTRUCT_BY_LANGUAGE[language]
         try:
@@ -595,6 +616,8 @@ class LessonMediaService:
         rows = self.media_store.list_for_lesson(chapter_id, publication_id, lesson_id)
         newest_by_series: dict[str, dict[str, Any]] = {}
         for row in rows:
+            if row["sourceSnapshot"].get("sourceKind") == "courseware":
+                continue
             if row["status"] != "published" or row["distributionScope"] != "student":
                 continue
             if row["sourceRevisionId"] != lesson["sourceRevisionId"]:
@@ -635,6 +658,49 @@ class LessonMediaService:
             "items": items,
         }
 
+    def list_for_courseware(self, courseware_id: str, publication_id: str, *, public: bool = False) -> dict[str, Any]:
+        from application.services.courseware_publication import (
+            CoursewarePublicationAdapter,
+        )
+
+        adapter = CoursewarePublicationAdapter(self.courseware_service)
+        publication, _source = adapter.load(courseware_id, publication_id, public=public)
+        rows = self.media_store.list_for_lesson(publication["snapshot"]["chapterId"], publication_id, f"courseware:{courseware_id}")
+        items = []
+        for row in rows:
+            if row["sourceSnapshot"].get("sourceKind") != "courseware" or row["sourceSnapshot"].get("coursewareId") != courseware_id:
+                continue
+            if not public:
+                items.append(self.get(row["mediaId"]))
+                continue
+            if row["status"] != "published" or row["distributionScope"] != "student":
+                continue
+            try:
+                adapter.validate_media(row, public=True)
+                self._validated_public_paths(row)
+            except (LookupError, ValueError):
+                continue
+            if not row["durationSeconds"] or not row["artifactSha256"] or not row["captionsSha256"]:
+                continue
+            base = f"/api/courseware/{courseware_id}/media/published/{row['mediaId']}"
+            query = f"?publicationId={publication_id}"
+            items.append({"mediaId": row["mediaId"], "version": row["version"], "title": row["title"],
+                          "subject": row["subject"], "sourceRevisionId": row["sourceRevisionId"],
+                          "sourceTitle": publication.get("sourceTitle"), "sourceUrl": publication.get("sourceUrl"),
+                          "attributionText": publication.get("attributionText"), "durationSeconds": row["durationSeconds"],
+                          "videoUrl": f"{base}/asset{query}", "captionsUrl": f"{base}/captions{query}",
+                          "captionsDownloadUrl": f"{base}/captions/download{query}"})
+        return {"chapterId": publication["snapshot"]["chapterId"], "publicationId": publication_id,
+                "lessonId": f"courseware:{courseware_id}", "sourceRevisionId": publication["sourceRevisionId"], "items": items}
+
+    def courseware_asset(self, courseware_id: str, publication_id: str, media_id: str, *, kind: str) -> Path:
+        published = self.list_for_courseware(courseware_id, publication_id, public=True)
+        if not any(item["mediaId"] == media_id for item in published["items"]):
+            raise LookupError("指定课件发布版本没有此视频")
+        row = self.media_store.get_revision(media_id)
+        paths = self._validated_public_paths(row)
+        return paths[0] if kind == "asset" else paths[1]
+
     def _artifact_path(self, relative_path: str | None) -> Path:
         if not relative_path:
             raise LookupError("媒体文件路径不存在")
@@ -657,7 +723,7 @@ class LessonMediaService:
 
     def public_asset(self, chapter_id: str, media_id: str, *, kind: str) -> Path:
         row = self.media_store.get_revision(media_id)
-        if not row or row["chapterId"] != chapter_id:
+        if not row or row["chapterId"] != chapter_id or row["sourceSnapshot"].get("sourceKind") == "courseware":
             raise LookupError("已发布教学视频不存在")
         published = self.published_for_student(chapter_id, row["publicationId"], row["lessonId"])
         if not any(item["mediaId"] == media_id for item in published["items"]):

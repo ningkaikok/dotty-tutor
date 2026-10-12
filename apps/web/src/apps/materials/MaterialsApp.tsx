@@ -1,3 +1,4 @@
+import { Button } from "../../components/ui";
 import { useState } from "react";
 import { Link } from "react-router";
 import { useQualityReviewInbox } from "../quality-review/useQualityReviewInbox";
@@ -14,6 +15,7 @@ type ReviewItem = ReturnType<typeof useQualityReviewInbox>["items"][number];
 function subjectLabel(subject: string) {
   if (subject === "english") return "英语";
   if (subject === "math") return "数学";
+  if (subject === "science") return "科学";
   return subject || "未配置学科";
 }
 
@@ -53,6 +55,11 @@ export function MaterialsApp() {
     && (!reviewSourceKey || item.sourceKey === reviewSourceKey)
     && `${item.title} ${chapterById.get(item.chapterId)?.title ?? ""} ${item.uploadId ? uploadById.get(item.uploadId)?.filename ?? "" : ""}`.toLocaleLowerCase().includes(query));
   const sourceOptions = allReviewGroups.map((group) => ({ sourceKey: group.sourceKey, title: group.title }));
+  const coursewareTasks = (inbox.counts.coursewareTasks ?? []).filter((item) => chapterMatches(item.chapterId)
+    && (!reviewSourceKey || item.sourceKey === reviewSourceKey) && item.title.toLocaleLowerCase().includes(query));
+  for (const item of inbox.counts.coursewareTasks ?? []) {
+    if (!sourceOptions.some((option) => option.sourceKey === item.sourceKey)) sourceOptions.push({ sourceKey: item.sourceKey, title: item.uploadId ? uploadById.get(item.uploadId)?.filename ?? item.title : item.title });
+  }
   for (const item of inbox.counts.mediaTasks) {
     if (sourceOptions.some((option) => option.sourceKey === item.sourceKey)) continue;
     sourceOptions.push({ sourceKey: item.sourceKey, title: item.uploadId ? uploadById.get(item.uploadId)?.filename ?? `发布来源 ${item.publicationId}` : `发布来源 ${item.publicationId}` });
@@ -65,22 +72,22 @@ export function MaterialsApp() {
   const knownSourceCount = globalInbox.hasCounts && !globalInbox.error ? globalInbox.counts.pendingCount : null;
   const knownMediaCount = globalInbox.hasCounts && !globalInbox.error ? globalInbox.counts.mediaPendingCount : null;
   const pendingLabel = countsAreCurrent
-    ? `待我复核（来源 ${knownSourceCount} · 课程 ${knownCourseCount} · 视频 ${knownMediaCount}）`
+    ? `待我复核（来源 ${knownSourceCount} · 课程 ${knownCourseCount}${globalInbox.counts.coursewarePendingCount ? ` · 课件 ${globalInbox.counts.coursewarePendingCount}` : ""} · 视频 ${knownMediaCount}）`
     : `待我复核（数量暂不可用${knownSourceCount !== null ? ` · 来源 ${knownSourceCount}` : ""}${knownCourseCount !== null ? ` · 课程 ${knownCourseCount}` : ""}${knownMediaCount !== null ? ` · 视频 ${knownMediaCount}` : ""}）`;
   const refreshAll = () => { void Promise.all([reload(), globalInbox.refresh(), inbox.refresh()]); };
 
   return <main className="app-shell materials-shell">
-    <MaterialsHeader backTo="/" backLabel="返回首页" subtitle="教材与课程" actions={<button type="button" disabled={loading || inbox.loading} onClick={refreshAll}>刷新</button>} />
+    <MaterialsHeader backTo="/" backLabel="返回首页" subtitle="教材与课程" actions={<Button type="button" disabled={loading || inbox.loading} onClick={refreshAll}>刷新</Button>} />
     <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>上传教材后，先确认材料类型、学科与来源范围，再审核教学规划；确认后逐页生成、编辑和发布互动课件。试卷继续使用原有练习流程。</p></div>
       <Link className="material-main-action" to="/studio/import">＋ 上传试卷或教材</Link>
     </section>
     <label className="materials-search">查找教材或课程<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入名称、数学或英语" /></label>
     <nav className="materials-filters" aria-label="材料类型">
-      {[["all", "全部"], ["books", "教材与课程"], ["papers", "试卷"], ["unknown", "待识别材料"]].map(([value, label]) => <button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
-      <button type="button" aria-pressed={filter === "reviews"} onClick={() => setFilter("reviews")}>{pendingLabel}</button>
+      {[["all", "全部"], ["books", "教材与课程"], ["papers", "试卷"], ["unknown", "待识别材料"]].map(([value, label]) => <Button type="button" key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}
+      <Button type="button" aria-pressed={filter === "reviews"} onClick={() => setFilter("reviews")}>{pendingLabel}</Button>
     </nav>
-    {errors.map((message) => <div className="chapter-error" role="alert" key={message}><span>{message}</span><button type="button" onClick={() => void reload()}>重试</button></div>)}
-    {inbox.error && <div className="chapter-error" role="alert"><span>待审列表无法读取：{inbox.error}；已有教材与课程仍可继续使用。</span><button type="button" onClick={() => void inbox.refresh()}>重试待审列表</button></div>}
+    {errors.map((message) => <div className="chapter-error" role="alert" key={message}><span>{message}</span><Button type="button" onClick={() => void reload()}>重试</Button></div>)}
+    {inbox.error && <div className="chapter-error" role="alert"><span>待审列表无法读取：{inbox.error}；已有教材与课程仍可继续使用。</span><Button type="button" onClick={() => void inbox.refresh()}>重试待审列表</Button></div>}
     {loading && <p role="status">正在读取教材与课程…</p>}
     {filter === "reviews" && inbox.loading && <p role="status">正在读取待我复核的来源案例…</p>}
     {filter === "reviews" && <section aria-label="来源复核任务">
@@ -96,7 +103,7 @@ export function MaterialsApp() {
         </select></label>
       </div>
       {inbox.hasCounts && !inbox.error && <p className="materials-review-counts" role="status">来源：{inbox.counts.pendingCount} 项待处理 · {inbox.counts.reviewedCount} 项已复核 · {inbox.counts.unlinkedCount} 项未关联；课程：{knownCourseCount ?? "暂不可用"} 章待复核；视频：{inbox.counts.mediaPendingCount} 项待审（正在渲染的视频不计入）。</p>}
-      {!inbox.loading && !inbox.error && reviewGroups.length === 0 && !reviewCourses.length && !mediaTasks.length && <section className="chapter-panel materials-empty"><h3>{query ? "没有找到匹配的复核任务" : includeReviewed ? "还没有来源复核案例" : "当前没有待处理复核任务"}</h3><p>复核意见保存在来源记录中；接受来源案例不会自动批准课程或教学视频。</p></section>}
+      {!inbox.loading && !inbox.error && reviewGroups.length === 0 && !reviewCourses.length && !mediaTasks.length && !coursewareTasks.length && <section className="chapter-panel materials-empty"><h3>{query ? "没有找到匹配的复核任务" : includeReviewed ? "还没有来源复核案例" : "当前没有待处理复核任务"}</h3><p>复核意见保存在来源记录中；接受来源案例不会自动批准课程或教学视频。</p></section>}
       {reviewCourses.length > 0 && <section className="materials-review-task-section" aria-label="课程待复核任务"><h3>课程待复核（{reviewCourses.length}）</h3><ul className="materials-review-task-list">{reviewCourses.map((item) => <li key={item.chapterId}><span>{item.title} · {statuses[item.status] ?? "待复核"}</span><Link to={`/studio/chapters/${item.chapterId}`}>继续课程复核</Link></li>)}</ul></section>}
       <section className="materials-grid" aria-label="按教材或来源分组的复核任务">
         {reviewGroups.map((group) => <article className="chapter-panel material-card" key={group.sourceKey}>
@@ -110,6 +117,7 @@ export function MaterialsApp() {
           </li>)}</ul>
         </article>)}
       </section>
+      {coursewareTasks.length > 0 && <section className="materials-review-task-section" aria-label="互动课件待审任务"><h3>互动课件逐页复核（{coursewareTasks.length}）</h3><ul className="materials-review-task-list">{coursewareTasks.map((item) => <li key={item.coursewareId}><span>{item.title} · {item.pageCount} 页 · {item.pendingPageCount} 页待复核</span><Link to={`/studio/courseware/${encodeURIComponent(item.coursewareId)}`}>打开课件逐页复核</Link></li>)}</ul></section>}
       {mediaTasks.length > 0 && <section className="materials-review-task-section" aria-label="教学短视频待审任务"><h3>教学短视频待审（{mediaTasks.filter((item) => item.status !== "rendering").length}）</h3><ul className="materials-review-task-list">{mediaTasks.map((item) => <li key={item.mediaId}>
         <span>{item.title} · {chapterById.get(item.chapterId)?.title ?? item.chapterId} · 视频修订 v{item.version} · 发布快照 {item.publicationId} · {item.status === "rendering" ? "正在渲染" : "待审核"}</span>
         <Link to={mediaReviewHref(item)}>打开视频审校</Link>

@@ -38,9 +38,11 @@ class VoiceTutorService:
         chapter_service: Any,
         tutor_runtime: Any,
         stt_runtime: VoiceTranscriptionRuntime,
+        courseware_service: Any | None = None,
     ) -> None:
         self.store = store
         self.chapter_service = chapter_service
+        self.courseware_service = courseware_service
         self.tutor_runtime = tutor_runtime
         self.stt_runtime = stt_runtime
 
@@ -71,6 +73,35 @@ class VoiceTutorService:
             }
         )
         return self._response_session(session, recovery_token=recovery_token)
+
+    def create_courseware_session(self, courseware_id: str, values: dict[str, Any]) -> dict[str, Any]:
+        from application.services.courseware_publication import (
+            CoursewarePublicationAdapter,
+        )
+
+        adapter = CoursewarePublicationAdapter(self.courseware_service)
+        context = adapter.voice_context(courseware_id, values["publicationId"], values["pageId"], values["blockId"])
+        publication, _source = adapter.load(courseware_id, values["publicationId"], public=True)
+        recovery_token = secrets.token_urlsafe(32)
+        session = self.store.create({
+            "sessionId": str(uuid.uuid4()), "capabilityHash": self._token_hash(recovery_token),
+            "learnerId": values["learnerId"], "sourceKind": "courseware", "coursewareId": courseware_id,
+            "chapterId": publication["snapshot"]["chapterId"], "publicationId": values["publicationId"],
+            "lessonId": values["pageId"], "blockId": values["blockId"], "contextLabel": context["contextLabel"],
+        })
+        return self._response_session(session, recovery_token=recovery_token)
+
+    def _session_context(self, session: dict[str, Any]) -> dict[str, Any]:
+        if session.get("sourceKind") == "courseware":
+            from application.services.courseware_publication import (
+                CoursewarePublicationAdapter,
+            )
+
+            return CoursewarePublicationAdapter(self.courseware_service).voice_context(
+                session["coursewareId"], session["publicationId"], session["lessonId"], session["blockId"],
+            )
+        return self._published_step(chapter_id=session["chapterId"], publication_id=session["publicationId"],
+                                    lesson_id=session["lessonId"], block_id=session["blockId"])
 
     def get_session(
         self, session_id: str, recovery_token: str, *, learner_id: str
@@ -206,12 +237,7 @@ class VoiceTutorService:
         generation = claim["generation"]
         try:
             session = self.store.get(session_id, token_hash, learner_id=learner_id)
-            context = self._published_step(
-                chapter_id=session["chapterId"],
-                publication_id=session["publicationId"],
-                lesson_id=session["lessonId"],
-                block_id=session["blockId"],
-            )
+            context = self._session_context(session)
             prompt = self._prompt(
                 context=context,
                 transcript=claim["confirmedTranscript"]["text"],
@@ -231,6 +257,10 @@ class VoiceTutorService:
                 task="voice_tutor",
             )
             reply = self._validated_reply(generated.get("reply"))
+            # A source may be withdrawn while the external model is running.
+            # Recheck before persisting or returning its now-stale teaching text.
+            if self._session_context(session) != context:
+                raise ValueError("语音陪练来源已变化，请重新打开课件")
             turn = self.store.complete_response(
                 session_id,
                 token_hash,

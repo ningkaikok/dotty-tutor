@@ -464,7 +464,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/api/courseware/profiles` | 列出已注册学科配置，当前内置英语和数学 |
+| `GET` | `/api/courseware/profiles` | 列出已注册学科配置，当前内置英语、数学和科学教师复核试点 |
 | `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202` |
 | `GET` / `PUT` | `/api/chapters/{chapter_id}/courseware-plan` | 读取或修改完整教学目标、课时、页面大纲和覆盖映射；修改要求 `expectedRecordVersion` |
 | `POST` | `/api/chapters/{chapter_id}/courseware-plan/approve` | 明确确认 `planVersion` 与 `expectedRecordVersion`，以 `commandId` 幂等创建课件及逐页生成任务，返回 `202` |
@@ -694,3 +694,19 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 自动课程任务优先采用 PDF 实际章节目录；仅在缺目录时扫描前 80 页。OCR 使用任务内自动路由，不改变上传的全局选择；任务消息包含当前章及物理页码，失败前已读取文本保存以供重试。列表删除仅隐藏记录，删除课程不会删除来源 PDF 或历史发布。
 
 长章节的单次 AI 草稿使用最多 12000 字符的原句节选，并在课程里标明教学范围；完整来源修订不被截断。模型提交引用句子 ID，服务端核验所属页及修订后回填逐字原句；若模型自行提供伪造引文仍会拒绝。
+
+### 课件覆盖、媒体与语音扩展
+
+| 方法 | 路径 | 行为 |
+| --- | --- | --- |
+| GET | `/api/chapters/{chapter_id}/courseware-coverage` | 教师读取当前来源完整物理页段的覆盖及缺口；不能视为教学质量验收 |
+| POST / GET | `/api/courseware/{courseware_id}/media` | 教师创建或列出固定 publicationId 的课件媒体；创建需 sourceRevisionId 和 3–8 个不同 pageIds |
+| GET | `/api/courseware/{courseware_id}/media/published` | 按 publicationId 查询仅已批准、可分发的课件媒体 |
+| GET | `/api/courseware/{courseware_id}/media/published/{media_id}/asset` | 绑定课件和发布版本的受控 MP4 |
+| GET | `/api/courseware/{courseware_id}/media/published/{media_id}/captions` | 同一受控版本的 VTT；`/download` 提供下载 |
+| POST | `/api/courseware/{courseware_id}/voice-sessions` | learnerId/publicationId/pageId/blockId；protected 模式验证学生会话及 X-Learner-ID，拒绝活动答案块 |
+
+Coverage 返回 source/planned/generated/reviewed/publishedPages 和 missingSource/unplanned/ungenerated/unreviewed/unpublishedPages，`complete` 是结构交集，`qualityAcceptance=requires_teacher_validation`。
+课件 Asset 增加 sourceRegionId/sourceFileSha256/crop/fallbackReason；crop 必须与冻结原页区域完全匹配，缺可信坐标只返回整页。
+QualityReviewInbox 增加 `coursewareTasks`（当前规划版本的未发布课件及 pendingPageCount）和 `coursewarePendingCount`，与来源意见、旧课程、视频分别计数。语音持久化会话增加 `sourceKind` 和 `coursewareId`，历史 chapter 会话保持原恢复协议。
+渲染、审校、发布与后续语音轮次仍使用既有 `/api/lesson-media`、`/api/voice` 接口。

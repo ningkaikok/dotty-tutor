@@ -51,6 +51,7 @@ dotty-tutor/
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
 │   │   │   ├── chapter_routes.py # 来源关联章节、人工复核、发布与学科作答
 │   │   │   ├── courseware_routes.py # 课件规划确认、逐页编辑、审核发布与独立学生投影
+│   │   │   ├── courseware_delivery_routes.py # 课件视频和语音到已有领域服务的薄路由
 │   │   │   ├── quality_review_runs_routes.py # 受限模型对照、匿名评分、统计与金标准门禁
 │   │   │   ├── quality_review_routes.py # 教师案例导入、来源复核与追加决定
 │   │   │   ├── lesson_media_routes.py # 教师分镜、渲染审校与已发布学生媒体
@@ -64,6 +65,12 @@ dotty-tutor/
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
 │   │   │   ├── material_courses.py # 显式教材分类/学科/页段，准备来源章节
 │   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
+│   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
+│   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
+│   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
+│   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
+│   │   │   ├── review_restore.py # 待审案例包恢复指纹与事务锁
+│   │   │   ├── quality_review_courseware.py # 当前课件版本的逐页复核收件箱
 │   │   │   ├── legacy_textbook_cleanup.py # 精确 manifest、环境指纹、安全撤回与恢复
 │   │   │   ├── textbook_processing.py # PDF 合并、OCR、生成和批次编排；含人工字段级编辑（质量门禁复核）与历史版本回滚
 │   │   │   ├── question_processing.py # 批次生成、审校和质量门禁
@@ -164,6 +171,8 @@ dotty-tutor/
 │   │   ├── src/
 │   │   │   ├── App.tsx         # React Router 顶层路由和懒加载
 │   │   │   ├── auth/           # protected 模式登录、邀请兑换、当前会话和退出
+│   │   │   ├── components/ui/ # Bright token、布局、表单、反馈、导航、原生对话框与开发目录
+│   │   │   ├── apps/teacher/useTeacherClassroomWorkspace.ts # 教师工作台请求、并发状态与派生视图
 │   │   │   ├── apps/home/      # 角色入口选择
 │   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程、独立错误及搜索；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
@@ -226,7 +235,7 @@ flowchart LR
 ```
 
 共享协议在 `domain/contracts/courseware.py`；学科差异在 `domain/courseware/profiles.py`
-及四份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
+及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
 清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。
 
 ### 2026-09 学习闭环新增边界
@@ -668,3 +677,11 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+
+### 课件扩展链路（2026-10-12）
+
+`courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划版本的未发布课件加入“我的教材 → 待我复核”。
+`courseware_publication` 读取不可变发布 → 白名单讲解 → 既有 LessonMediaService/VoiceTutorService；不复制渲染、语音轮次或答案规则。
+`courseware_assets` 从保存的 ChapterRegion 推导裁图；缺坐标明确回退原页。恢复命令为 `scripts/restore-quality-review.py` 和 `scripts/restore-courseware-drafts.py`，只恢复待审，不复建批准。
+
+人工评测位于 `evaluation/benchmark/admission.py`（快照双审与独立身份登记）和 `formal.py`（50 案覆盖、完整两臂、离线盲审与分歧阻断），继续复用 `blind_review.py` 和 `statistics.py`。流程见 [执行与验收](frontend-quality-expansion-acceptance.md)。

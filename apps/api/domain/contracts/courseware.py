@@ -40,6 +40,21 @@ class CoursewareSourceRef(BaseModel):
         return self
 
 
+class CoursewareCropRect(BaseModel):
+    """Normalized coordinates copied only from a frozen source region."""
+
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def within_page(self) -> CoursewareCropRect:
+        if self.x + self.width > 1 or self.y + self.height > 1:
+            raise ValueError("裁图区域必须位于原页边界内")
+        return self
+
+
 class CoursewareAsset(BaseModel):
     assetId: str = Field(min_length=1, max_length=128)
     kind: Literal["source_image", "source_page", "teacher_image", "teaching_illustration", "audio"]
@@ -50,6 +65,10 @@ class CoursewareAsset(BaseModel):
     distributionScope: Literal["private", "classroom", "public"] = "private"
     alt: str = Field(default="", max_length=500)
     status: Literal["available", "missing", "needs_review"] = "available"
+    sourceRegionId: str | None = None
+    sourceFileSha256: str | None = None
+    crop: CoursewareCropRect | None = None
+    fallbackReason: Literal["missing_trusted_region"] | None = None
     # Populated by the API from managed storage; never trusted from a request.
     src: str | None = None
 
@@ -780,3 +799,48 @@ class CoursewareSourcePreparationResult(BaseModel):
     chapters: list[CoursewareSourceChapterResult]
     notices: list[str] = Field(default_factory=list, max_length=30)
     requiresHumanReview: Literal[True] = True
+
+
+class CoursewareCoverage(BaseModel):
+    """Physical-page coverage reports structural gaps, never learning quality."""
+
+    chapterId: str
+    sourceRevisionId: str
+    pageStart: int
+    pageEnd: int
+    sourcePages: list[int]
+    plannedPages: list[int]
+    generatedPages: list[int]
+    reviewedPages: list[int]
+    publishedPages: list[int]
+    missingSourcePages: list[int]
+    unplannedPages: list[int]
+    ungeneratedPages: list[int]
+    unreviewedPages: list[int]
+    unpublishedPages: list[int]
+    complete: bool
+    qualityAcceptance: Literal["requires_teacher_validation"] = "requires_teacher_validation"
+
+
+class CoursewareMediaCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    publicationId: str = Field(min_length=1, max_length=64)
+    sourceRevisionId: str = Field(min_length=1, max_length=64)
+    pageIds: list[str] = Field(min_length=3, max_length=8)
+
+    @field_validator("pageIds")
+    @classmethod
+    def unique_pages(cls, values: list[str]) -> list[str]:
+        if len(set(values)) != len(values) or any(not item or len(item) > 128 for item in values):
+            raise ValueError("课件视频 pageIds 必须唯一且有效")
+        return values
+
+
+class CoursewareVoiceSessionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    learnerId: str = Field(min_length=1, max_length=128)
+    publicationId: str = Field(min_length=1, max_length=64)
+    pageId: str = Field(min_length=1, max_length=128)
+    blockId: str = Field(min_length=1, max_length=128)

@@ -107,8 +107,10 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
     def test_user_submits_a_single_blank_then_the_attempt_is_saved_with_objective_feedback(self) -> None:
         # Given an immutable classroom activity with one reviewed blank
         cid, pid = "blank-courseware", "blank-publication"
+        chapter = self.chapters.create({"title": "Blank fixture", "subject": "english", "teachingMode": "tutorial",
+            "source": {"pageStart": 1, "pageEnd": 1, "pages": [{"page": 1, "text": "Name the audience."}]}})
         self.courseware_store.save_record(
-            record_id=f"document:{cid}", record_type="document", chapter_id="blank-chapter",
+            record_id=f"document:{cid}", record_type="document", chapter_id=chapter["chapterId"],
             courseware_id=cid, source_revision_id="blank-source", status="published",
             payload={"coursewareId": cid, "status": "published"}, expected_version=0,
         )
@@ -116,7 +118,7 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
             "publicationId": pid, "coursewareId": cid, "version": 1,
             "sourceRevisionId": "blank-source", "sourceTitle": "Engineering fixture",
             "sourceUrl": None, "attributionText": "Local fixture", "distributionScope": "classroom",
-            "snapshot": {"pages": [{"blocks": [{"kind": "activity", "blockId": "blank",
+            "snapshot": {"chapterId": chapter["chapterId"], "pages": [{"blocks": [{"kind": "activity", "blockId": "blank",
                 "activityId": "name-audience", "activityKind": "fill_blank", "assessmentMode": "objective",
                 "instructions": "Name the audience", "answerKey": "audience"}]}]},
             "reviewRecords": [], "publishedAt": 1_800_000_000.0,
@@ -139,6 +141,48 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
         self.addCleanup(self.jobs.close)
         self.courseware_store = CoursewareStore(engine=self.app_store.engine)
         self.chapters = ChapterCourseService(self.app_store, self.jobs)
+
+    def test_user_restores_an_archived_draft_twice_then_teacher_edits_and_pending_reviews_are_preserved(self) -> None:
+        # Given a source-bound engineering draft without teacher approvals
+        from application.services.courseware_restore import restore_courseware_draft
+        chapter, source, _refs, service = self._source_course()
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=1, pageStart=23, pageEnd=24,
+        ))
+        JobWorker(self.jobs, build_courseware_registry(service), worker_id="restore-test").run_once()
+        plan = service.get_plan(chapter["chapterId"])
+        approved = service.approve_plan(chapter["chapterId"], plan_version=plan["planVersion"], expected_record_version=plan["recordVersion"], command_id="test-create-draft")
+        document = approved["documents"][0]
+        packet = {"title": chapter["title"], "sourceFileSha256": source["sourceFileSha256"],
+                  "pageStart": 23, "pageEnd": 25, "pages": source["pages"]}
+        # When the original archive is restored, a new pending draft is created and existing source history stays intact
+        restored = restore_courseware_draft(service, packet, plan, document, upload_id=source["uploadId"])
+        draft = service.get_document(restored["coursewareId"])
+        self.assertIsNone(draft["publicationId"])
+        self.assertEqual(draft["reviewRecords"], [])
+        self.assertTrue(all(page["reviewStatus"] == "pending" for page in draft["pages"]))
+        draft["title"] = "Teacher retained title"
+        self.courseware_store.save_record(record_id=f"document:{restored['coursewareId']}", record_type="document",
+            chapter_id=restored["chapterId"], courseware_id=restored["coursewareId"], source_revision_id=source["sourceRevisionId"],
+            payload=draft, status="draft", expected_version=draft["recordVersion"])
+        # Then a repeated restore returns the same record without overwriting teacher changes
+        repeated = restore_courseware_draft(service, packet, plan, document, upload_id=source["uploadId"])
+        self.assertFalse(repeated["created"])
+        self.assertEqual(service.get_document(restored["coursewareId"])["title"], "Teacher retained title")
+        self.assertEqual(self.app_store.load_chapter(chapter["chapterId"])["title"], chapter["title"])
+        from application.services.quality_review_courseware import (
+            courseware_review_tasks,
+        )
+        tasks = courseware_review_tasks(self.app_store, self.courseware_store, chapter_id=restored["chapterId"], upload_id=None)
+        self.assertEqual([item["coursewareId"] for item in tasks], [restored["coursewareId"]])
+        self.assertEqual(tasks[0]["pendingPageCount"], 2)
+        self.assertEqual(courseware_review_tasks(self.app_store, self.courseware_store, chapter_id=restored["chapterId"], upload_id="foreign-upload"), [])
+        incomplete = self.app_store.load_job(source["uploadId"])
+        incomplete.update(uploadId="completed-with-json-null", result=None)
+        self.app_store.save_job(incomplete)
+        self.assertNotIn("completed-with-json-null", {item["uploadId"] for item in self.app_store.list_imports()})
+        self.assertIn(source["uploadId"], {item["uploadId"] for item in self.app_store.list_imports()})
 
     def _source_course(self, *, distribution_scope: str = "classroom"):
         upload_id = "courseware-acceptance-book"
@@ -186,6 +230,37 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
             store=self.courseware_store, chapters=self.chapters, jobs=self.jobs, runtime=runtime,
         )
         return chapter, source, refs, service
+
+    def test_user_confirms_a_region_heavy_session_then_receives_an_actionable_limit_without_partial_drafts(self) -> None:
+        # Given two valid physical pages with 100 saved regions each
+        chapter, source, _refs, service = self._source_course()
+        for page in source["pages"][:2]:
+            page["regions"] = [{"regionId": f"region-{index}", "x": .1, "y": .1, "width": .1, "height": .1}
+                               for index in range(100)]
+        self.app_store.save_chapter(chapter)
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=chapter["recordVersion"], pageStart=23, pageEnd=24,
+        ))
+        JobWorker(self.jobs, build_courseware_registry(service), worker_id="region-limit-test").run_once()
+        plan = service.get_plan(chapter["chapterId"])
+        # When confirming the session, Then explain the limit and retain the editable plan atomically
+        with self.assertRaisesRegex(ValueError, "拆分课时"):
+            service.approve_plan(chapter["chapterId"], plan_version=plan["planVersion"],
+                expected_record_version=plan["recordVersion"], command_id="region-limit")
+        self.assertEqual(service.get_plan(chapter["chapterId"])["status"], "awaiting_confirmation")
+        self.assertEqual(self.courseware_store.list_documents(chapter["chapterId"]), [])
+
+    def test_user_submits_formula_ocr_without_quality_flags_then_source_still_requires_review(self) -> None:
+        # Given a client omits quality flags for damaged formula OCR
+        chapter = self.chapters.create({"title": "Damaged formula", "subject": "math", "teachingMode": "tutorial",
+            "source": {"pageStart": 1, "pageEnd": 1,
+                       "pages": [{"page": 1, "text": r"$$ - 1 3 \frac { 7 } { 3 } = - 1 3 6 $$"}]}})
+        # When source normalization runs, Then the server preserves the text and blocks generation
+        source = chapter["sourceRevisions"][-1]
+        self.assertIn("unreadable", source["pages"][0]["flags"])
+        with self.assertRaisesRegex(ValueError, "来源未就绪"):
+            CoursewareService._selected_pages(source)
 
     def test_user_resubmits_a_failed_plan_with_a_new_command_then_a_new_version_can_complete(self) -> None:
         # Given a valid textbook source and a terminal failure at the external model boundary
@@ -345,8 +420,16 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
         with self.assertRaisesRegex(LookupError, "课件素材不存在"):
             service.get_chapter_assets(courseware_id, asset_id, publication_id=publication_id)
 
+        # When the chapter is withdrawn, Then even the old teacher preview cannot deliver the preserved source asset.
+        chapter["deletedAt"] = 1_800_000_001.0
+        self.app_store.save_chapter(chapter)
+        with self.assertRaises(LookupError):
+            service.get_chapter_assets(courseware_id, asset_id, publication_id=publication_id, teacher_preview=True)
+
     def test_user_submits_multiple_choice_options_then_the_persisted_attempt_is_correct_and_idempotent(self) -> None:
         # Given an immutable classroom publication with a two-option objective activity
+        chapter = self.chapters.create({"title": "Choice fixture", "subject": "english", "teachingMode": "tutorial",
+            "source": {"pageStart": 1, "pageEnd": 1, "pages": [{"page": 1, "text": "Select the evidence."}]}})
         courseware_id = "attempt-courseware"
         publication_id = "attempt-publication"
         activity = {
@@ -360,7 +443,7 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
             "sentenceIds": ["attempt-sentence"], "regionIds": [], "assetId": None,
         }
         snapshot = CoursewareDocument.model_validate({
-            "coursewareId": courseware_id, "chapterId": "acceptance-chapter", "planVersion": 1,
+            "coursewareId": courseware_id, "chapterId": chapter["chapterId"], "planVersion": 1,
             "sourceRevisionId": "attempt-source", "pageStart": 1, "pageEnd": 1,
             "sourceTitle": "Textbook", "sourceLicense": "CC BY 4.0",
             "attributionText": "Source attribution", "sourceDistributionScope": "classroom",
@@ -381,7 +464,7 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
             "createdAt": 1_800_000_000.0, "updatedAt": 1_800_000_000.0,
         }).model_dump()
         self.courseware_store.save_record(
-            record_id=f"document:{courseware_id}", record_type="document", chapter_id="acceptance-chapter",
+            record_id=f"document:{courseware_id}", record_type="document", chapter_id=chapter["chapterId"],
             courseware_id=courseware_id, source_revision_id="attempt-source", payload={"coursewareId": courseware_id},
             status="published", expected_version=0,
         )
@@ -416,6 +499,17 @@ class CoursewarePostgresAcceptanceTests(PostgresTestCase):
                 courseware_attempts.c.learner_id == "learner-1",
             )).scalar_one()
         self.assertEqual(count, 1)
+
+        # Given the parent chapter is deleted, When old delivery or attempt URLs are reused, Then history is retained but access stops.
+        chapter["deletedAt"] = 1_800_000_001.0
+        self.app_store.save_chapter(chapter)
+        with self.assertRaises(LookupError):
+            service.get_published(courseware_id, publication_id)
+        with self.assertRaises(LookupError):
+            service.get_presentation(courseware_id, publication_id)
+        with self.assertRaises(LookupError):
+            service.attempt(courseware_id, learner_id="learner-1", request=request)
+        self.assertIsNotNone(self.courseware_store.load_publication(publication_id))
 
 
 if __name__ == "__main__":
