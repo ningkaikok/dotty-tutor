@@ -7,6 +7,8 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.37.0] - 2026-10-12
+
 ### Added
 
 - 教材互动课件制作：明确来源范围与学科，先确认教学规划，再逐页生成、编辑、审核与发布；支持英语和数学配置，讲解不强制出题。
@@ -646,7 +648,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.36.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.37.0...HEAD
+[0.37.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.34.0...v0.35.0
 [0.32.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.31.0...v0.32.0
