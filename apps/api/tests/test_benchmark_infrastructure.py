@@ -9,6 +9,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 from application.services.tutor_model_evaluation import TutorModelEvaluationService
+from evaluation.benchmark.admission import admit_case, snapshot_hash
 from evaluation.benchmark.contract import DEFAULT_TASK_DIMENSIONS, validate_records
 from evaluation.benchmark.drafts import validate_drafts, validate_reviewed_synthetic
 from evaluation.benchmark.statistics import (
@@ -19,9 +20,12 @@ from evaluation.benchmark.statistics import (
 from evaluation.prefix_cache_probe import probe_prefix_cache
 from infrastructure.runtime.model_runtime import ModelRuntime
 
+TEST_IDENTITIES = {actor: {"identityVerified": True, "actorKind": "individual",
+    "personKey": actor, "evidenceRef": "test-only-verification"} for actor in ("annotator-a", "reviewer")}
+
 
 def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str = "reviewer") -> dict:
-    return {
+    row = {
         "caseId": case_id,
         "taskDimension": dimension,
         "redactedInput": {"prompt": "脱敏合成输入"},
@@ -39,7 +43,13 @@ def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str
             "difficulty": "easy" if int(case_id.split("-")[-1]) % 2 else "hard",
         },
         "counted": counted,
+        "source": {"contentSha256": "a" * 64, "reference": "engineering-test-only"},
     }
+    if counted and reviewer != "annotator-a":
+        return admit_case(row, [{"actorId": actor, "snapshotSha256": snapshot_hash(row),
+            "decision": "approve", "reviewedAt": "2026-09-22T00:00:00Z", "rationale": "test fixture"}
+            for actor in ("annotator-a", reviewer)], TEST_IDENTITIES)
+    return row
 
 
 class BenchmarkContractTests(unittest.TestCase):
@@ -138,7 +148,7 @@ class BenchmarkContractTests(unittest.TestCase):
             for index in range(50)
         ]
         records.append(_record("fixture-1", "error_localization", counted=False))
-        result = validate_records(records)
+        result = validate_records(records, trusted_identities=TEST_IDENTITIES)
         self.assertTrue(result.ok, result.problems)
         self.assertEqual(result.counted_cases, 50)
 
@@ -148,7 +158,7 @@ class BenchmarkContractTests(unittest.TestCase):
             for index in range(49)
         ]
         records.append({**_record("public-50", "error_localization"), "sourceKind": "public", "counted": True})
-        result = validate_records(records)
+        result = validate_records(records, trusted_identities=TEST_IDENTITIES)
         self.assertFalse(result.ok)
         self.assertEqual(result.counted_cases, 49)
         self.assertTrue(any("requires at least 50" in item for item in result.problems))
@@ -254,3 +264,36 @@ class PrefixCacheProbeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FormalComparisonScenarios(unittest.TestCase):
+    def test_user_has_only_synthetic_or_incomplete_gold_then_formal_blind_packet_is_refused(self) -> None:
+        # Given development fixtures, When requesting a formal packet, Then no ranking is produced.
+        from evaluation.benchmark.formal import prepare_formal
+        with self.assertRaisesRegex(ValueError, '门槛'):
+            prepare_formal({}, [_record('case-1', DEFAULT_TASK_DIMENSIONS[0], counted=False)], {}, dataset_sha256='test', report_sha256='test')
+
+    def test_user_completes_two_independent_blind_reviews_then_disagreements_keep_ranking_unavailable(self) -> None:
+        # Given 50 engineering identity fixtures (not a real human dataset) and complete paired outputs
+        from evaluation.benchmark.formal import prepare_formal, summarize_formal
+        rows = [_record(f'case-{n}', DEFAULT_TASK_DIMENSIONS[n % len(DEFAULT_TASK_DIMENSIONS)]) for n in range(50)]
+        report = {'status': 'completed', 'baselineModel': 'fixture-a', 'candidateModel': 'fixture-b', 'datasetSha256': 'test-only',
+                  'results': [{**{field: row[field] for field in ('caseId', 'taskDimension', 'expected', 'rubric')},
+                    'input': row['redactedInput'], 'baseline': {'status': 'success', 'output': 'Engineering answer'},
+                    'candidate': {'status': 'success', 'output': 'Engineering answer'}} for row in rows]}
+        packet, key = prepare_formal(report, rows, TEST_IDENTITIES, dataset_sha256='test-only', report_sha256='test', seed=42)
+        self.assertNotIn('fixture-a', str(packet))
+        self.assertNotIn('privateSeed', packet)
+        ratings = [{'packetId': packet['packetId'], 'reviewerId': actor, 'reviewedAt': '2026-10-12T00:00:00Z',
+                    'ratings': [{'caseId': row['caseId'], 'aPass': True, 'bPass': True, 'preferred': 'tie', 'reason': 'Test only'} for row in rows]}
+                   for actor in TEST_IDENTITIES]
+        self.assertTrue(summarize_formal(packet, key, ratings, TEST_IDENTITIES)['formalRankingAvailable'])
+        ratings[1]['ratings'][0]['preferred'] = 'A'
+        result = summarize_formal(packet, key, ratings, TEST_IDENTITIES)
+        self.assertFalse(result['formalRankingAvailable'])
+        self.assertEqual(result['unresolvedCaseIds'], ['case-0'])
+        with self.assertRaisesRegex(ValueError, '核验'):
+            summarize_formal(packet, key, ratings, {})
+        report['results'].pop()
+        with self.assertRaises(ValueError):
+            prepare_formal(report, rows, TEST_IDENTITIES, dataset_sha256='test-only', report_sha256='test')

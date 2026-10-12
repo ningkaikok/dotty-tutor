@@ -75,7 +75,7 @@ class LessonMediaResponse(BaseModel):
     lessonId: str
     sourceRevisionId: str
     title: str
-    subject: Literal["math", "english"]
+    subject: Literal["math", "english", "science"]
     license: str
     sourceTitle: str | None = None
     sourceUrl: str | None = None
@@ -102,7 +102,7 @@ class LessonMediaPublishedItem(BaseModel):
     mediaId: str
     version: int
     title: str
-    subject: Literal["math", "english"]
+    subject: Literal["math", "english", "science"]
     sourceRevisionId: str
     sourceTitle: str | None = None
     sourceUrl: str | None = None

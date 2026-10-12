@@ -1,7 +1,10 @@
+/* 学生端（Bright）：淡紫底、白色圆角卡、紫色主色 + 橙色强调。token 定义在 src/styles.css。 */
 .student-shell {
   position: relative;
-  width: min(1120px, calc(100% - 40px));
-  margin: 34px auto 60px;
+  width: min(1180px, calc(100% - 40px));
+  margin: 20px auto 72px;
+  color: var(--c-ink);
+  font-family: var(--font-bright);
 }
 
 .student-header {
@@ -10,37 +13,71 @@
   gap: 12px;
 }
 
+.student-header .brand-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px 14px 14px 4px;
+  color: #fff;
+  background: var(--c-brand);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.student-header .route-back-button {
+  border: 0;
+  color: var(--c-ink);
+  background: var(--c-surface);
+  font-weight: 800;
+}
+
+.student-header .route-back-button:hover { background: var(--c-surface-tint); }
+
+.student-header .demo-badge {
+  padding: 3px 12px;
+  border: 0;
+  color: var(--c-on-accent-soft);
+  background: var(--c-accent-soft);
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+
 .student-header strong,
 .student-header span:not(.demo-badge) {
   display: block;
 }
 
 .student-header strong {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 900;
 }
 
 .student-header span:not(.demo-badge) {
-  color: #6d776f;
+  color: var(--c-ink-muted);
   font-size: 13px;
 }
 
 .student-hero {
-  max-width: 760px;
-  /* 顶部间距比旧版收紧：StudentNav 现在挤在 header 和 hero 之间，
-     原来给"无导航"版面留的大留白会让首屏显得空落落。 */
-  margin: clamp(40px, 7vh, 84px) 0 30px;
+  margin: 16px 0 14px;
+  padding: clamp(20px, 4vw, 28px);
+  border-radius: var(--radius-lg);
+  background: var(--c-surface);
 }
 
+.student-hero .eyebrow { color: var(--c-brand); letter-spacing: .08em; }
+
 .student-hero h1 {
-  margin: 11px 0 16px;
-  font-size: clamp(44px, 7vw, 72px);
-  line-height: 1.02;
+  margin: 6px 0 6px;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 900;
+  line-height: 1.15;
 }
 
 .student-hero p {
-  color: #59675f;
-  font-size: 17px;
-  line-height: 1.75;
+  max-width: 680px;
+  margin: 0;
+  color: var(--c-ink-soft);
+  font-size: 16px;
+  line-height: 1.7;
 }
 
 /*
@@ -48,46 +85,15 @@
  * /mistakes/progress）常驻；任务进行中的页面（做题、拍照录入、确认、陪练）
  * 不渲染它，避免中途跳走的诱惑，见各页面里对 StudentNav 的引用位置。
  */
-.student-nav {
-  display: flex;
-  gap: 6px;
-  margin-top: 18px;
-}
 
-.student-nav-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  color: #4c5b52;
-  font-size: 13px;
-  font-weight: 700;
-  text-decoration: none;
-  transition: background .15s ease, color .15s ease, border-color .15s ease;
-}
-
-.student-nav-link:hover { background: #eef1ed; }
-
-.student-nav-link.active {
-  color: #183f31;
-  border-color: rgba(24, 63, 49, .18);
-  background: #dff3e8;
-}
-
-.student-nav-link:focus-visible {
-  outline: 2px solid #1b9a72;
-  outline-offset: 2px;
-}
 
 .student-empty-note {
   margin: 8px 0 24px;
-  padding: 13px;
-  border-radius: 12px;
-  color: #865423;
-  background: #f8ebdc;
-  font-size: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  color: #3f2300;
+  background: var(--c-accent-soft);
+  font-size: 14px;
 }
 
 /* 今日任务队列：一条有序列表，每行只有一个主按钮，取代旧版三张等权重卡片。 */
@@ -101,56 +107,55 @@
 
 .today-queue-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: 18px;
-  padding: 18px 22px;
-  border: 1px solid rgba(34, 57, 47, .13);
-  border-radius: 18px;
-  background: rgba(251, 250, 246, .95);
-  box-shadow: 0 12px 34px rgba(45, 55, 48, .06);
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: var(--c-surface);
 }
 
 .today-queue-index {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 16px 16px 5px 16px;
-  color: #fff;
-  background: #183f31;
-  font-size: 14px;
-  font-weight: 800;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  font-size: 15px;
+  font-weight: 900;
 }
 
 .today-queue-body { min-width: 0; }
-.today-queue-body h3 { margin: 0 0 4px; font-size: 17px; }
-.today-queue-body p { margin: 0; overflow: hidden; color: #56645c; font-size: 13px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
+.today-queue-body h3 { margin: 0 0 2px; font-size: 16px; font-weight: 800; }
+.today-queue-body p { margin: 0; overflow: hidden; color: var(--c-ink-soft); font-size: 13px; line-height: 1.55; text-overflow: ellipsis; white-space: nowrap; }
 
 .today-queue-badge {
-  padding: 6px 11px;
-  border-radius: 999px;
-  color: #176d54;
-  background: #dff3e8;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  color: var(--c-on-accent-soft);
+  background: var(--c-accent-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   white-space: nowrap;
 }
 
 .today-queue-action {
-  padding: 11px 18px;
+  min-height: var(--touch-min);
+  padding: 6px 16px;
   border: 0;
-  border-radius: 11px;
+  border-radius: 14px;
   color: #fff;
-  background: #183f31;
-  font-weight: 700;
+  background: var(--c-ink);
+  font-weight: 800;
   white-space: nowrap;
 }
 
-.today-queue-action:hover { background: #245b46; }
+.today-queue-action:hover { background: var(--c-brand); }
 
 .today-queue-action:focus-visible {
-  outline: 2px solid #1b9a72;
+  outline: 3px solid var(--c-accent);
   outline-offset: 2px;
 }
 
@@ -160,7 +165,7 @@
 .today-queue-skeleton .today-queue-badge,
 .today-queue-skeleton .today-queue-action,
 .today-queue-skeleton-line {
-  background: #e5e6e2;
+  background: var(--c-brand-soft);
   animation: student-queue-pulse 1.4s ease-in-out infinite;
 }
 
@@ -175,25 +180,38 @@
   50% { opacity: .55; }
 }
 
+/*
+ * 做题页（Bright）。根容器是共享的 .app-shell，所以样式都挂在 .student-paper-shell 下，
+ * 题目选项、填空等共享组件的覆盖也只在这里生效，不影响教材讲解等其它使用 .app-shell 的页面。
+ */
+.student-paper-shell { color: var(--c-ink); font-family: var(--font-bright); }
+.student-paper-shell .panel { border: 0; border-radius: var(--radius-xl); background: var(--c-surface); box-shadow: none; }
+.student-paper-shell .eyebrow { color: var(--c-brand); letter-spacing: .08em; }
+.student-paper-topbar .brand-mark { border-radius: 14px 14px 14px 4px; color: #fff; background: var(--c-brand); font-weight: 900; }
+.student-paper-topbar strong { font-weight: 900; }
+.student-paper-topbar span { color: var(--c-ink-muted); }
+.student-paper-topbar .product-home-button { border: 0; color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
+.student-paper-topbar .product-home-button:hover { color: var(--c-ink); background: var(--c-surface-tint); }
+.student-paper-topbar .paper-sync-badge { color: var(--c-on-success-soft); background: var(--c-success-soft); font-family: inherit; font-size: 12px; }
+
 .paper-question-progress {
   display: block;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   padding: 14px 18px;
-  border-radius: 16px;
 }
 
 .paper-question-progress-summary {
   margin-bottom: 10px;
-  color: #48584f;
-  font-size: 12px;
-  font-weight: 700;
+  color: var(--c-ink-soft);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .paper-question-progress-list {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   margin: 0;
-  padding: 0;
+  padding: 4px;
   list-style: none;
   overflow-x: auto;
 }
@@ -202,43 +220,42 @@
   display: grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid #cbd6cf;
-  border-radius: 999px;
-  color: #48584f;
-  background: #f4f8f5;
-  font-size: 12px;
-  font-weight: 700;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--c-brand);
+  background: var(--c-brand-soft);
+  font-size: 13px;
+  font-weight: 800;
 }
 
-.paper-question-progress-item.todo { color: #7c887f; background: #eef1ed; }
-.paper-question-progress-item.correct { color: #fff; border-color: #1b9a72; background: #1b9a72; }
-.paper-question-progress-item.needs-fix { color: #fff; border-color: #d58232; background: #d58232; }
+.paper-question-progress-item.todo { color: var(--c-ink-muted); background: var(--c-ground); }
+.paper-question-progress-item.correct { color: #fff; background: var(--c-brand); }
+.paper-question-progress-item.needs-fix { color: var(--c-ink); background: var(--c-accent); }
 /* 当前题必须能在一排题号里被一眼认出，因此用实心描边而不是浅色阴影。 */
-.paper-question-progress-item.current { border-color: #183f31; box-shadow: 0 0 0 3px rgba(24, 63, 49, .22); }
-.paper-question-progress-item.current.todo { color: #183f31; font-weight: 800; }
+.paper-question-progress-item.current { box-shadow: 0 0 0 2px var(--c-surface), 0 0 0 4px var(--c-ink); }
+.paper-question-progress-item.current.todo { color: var(--c-ink); font-weight: 900; }
 
 .paper-learning-progress {
   display: grid;
   grid-template-columns: minmax(220px, 1.5fr) minmax(170px, .8fr);
   gap: 24px;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
   padding: 18px 22px;
-  border-radius: 18px;
 }
 
 .paper-learning-progress > div:first-child small {
   display: block;
 }
 
-.paper-learning-progress > div:first-child small { color: #68766e; font-size: 12px; }
+.paper-learning-progress > div:first-child small { color: var(--c-ink-muted); font-size: 13px; }
 .paper-mastery-score { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: end; }
-.paper-mastery-score > span { color: #68766e; font-size: 12px; }
-.paper-mastery-score > strong { color: #176d54; font-size: 22px; }
-.paper-mastery-track { grid-column: 1 / -1; height: 7px; overflow: hidden; border-radius: 999px; background: #dce5df; }
-.paper-mastery-track i { display: block; height: 100%; border-radius: inherit; background: #1b9a72; transition: width .25s ease; }
+.paper-mastery-score > span { color: var(--c-ink-muted); font-size: 13px; }
+.paper-mastery-score > strong { color: var(--c-brand); font-size: 24px; font-weight: 900; }
+.paper-mastery-track { grid-column: 1 / -1; height: 12px; overflow: hidden; border-radius: var(--radius-pill); background: var(--c-brand-soft); }
+.paper-mastery-track i { display: block; height: 100%; border-radius: inherit; background: var(--c-accent); transition: width .25s ease; }
 
 .student-paper-panel {
   overflow: hidden;
@@ -251,25 +268,26 @@
   padding: clamp(32px, 7vw, 72px) clamp(24px, 7vw, 80px);
   text-align: center;
 }
-.student-paper-completed h1 { margin: 12px 0; color: #183a2e; font-size: clamp(30px, 5vw, 52px); }
-.student-paper-completed p { max-width: 620px; margin: 0 auto; color: #59675f; line-height: 1.8; }
+.student-paper-completed h1 { margin: 12px 0; color: var(--c-ink); font-size: clamp(30px, 5vw, 48px); font-weight: 900; }
+.student-paper-completed p { max-width: 620px; margin: 0 auto; color: var(--c-ink-soft); line-height: 1.8; }
 .student-completed-actions { display: flex; justify-content: center; gap: 10px; margin-top: 26px; }
-.student-completed-actions button { min-height: 44px; padding: 11px 17px; border: 1px solid #bdcbc3; border-radius: 11px; color: #245c47; background: #f4f8f5; font-weight: 700; }
-.student-completed-actions .student-submit-button { color: #fff; border-color: #183f31; background: #183f31; }
+.student-completed-actions button { min-height: 52px; padding: 10px 24px; border: 2px solid var(--c-line-strong); border-radius: var(--radius-pill); color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
+.student-completed-actions .student-submit-button { color: var(--c-ink); border-color: var(--c-accent); background: var(--c-accent); font-weight: 900; }
 
 .student-question-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  padding: 26px 30px 20px;
-  border-bottom: 1px solid rgba(34, 57, 47, .1);
+  padding: 24px 28px 18px;
+  border-bottom: 2px solid var(--c-line);
 }
 
 .student-question-header h1 {
-  margin: 8px 0 0;
-  color: #183a2e;
-  font-size: clamp(25px, 3vw, 36px);
+  margin: 6px 0 0;
+  color: var(--c-ink);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 900;
 }
 
 .student-question-nav { display: flex; gap: 8px; }
@@ -277,85 +295,109 @@
 .student-help-button,
 .student-submit-button,
 .student-mistake-notice button {
-  min-height: 44px;
-  padding: 10px 15px;
-  border: 1px solid #bdcbc3;
-  border-radius: 11px;
-  color: #245c47;
-  background: #f4f8f5;
-  font-weight: 700;
+  min-height: 48px;
+  padding: 8px 20px;
+  border: 2px solid var(--c-line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--c-ink);
+  background: var(--c-surface);
+  font-weight: 800;
 }
 
 .student-question-nav button:disabled,
 .student-help-button:disabled,
 .student-submit-button:disabled { cursor: not-allowed; opacity: .46; }
+.student-question-nav button:focus-visible,
+.student-help-button:focus-visible,
+.student-submit-button:focus-visible,
+.student-mistake-notice button:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 2px; }
 
-.student-question-body { overflow: hidden; padding: 30px; }
-.student-question-body .question-prompt { max-width: 100%; margin-top: 0; overflow-x: auto; font-size: clamp(22px, 2.4vw, 32px); }
+.student-question-body { overflow: hidden; padding: 28px; }
+.student-question-body .question-prompt { max-width: 100%; margin-top: 0; overflow-x: auto; font-size: clamp(22px, 2.4vw, 30px); font-weight: 700; }
 .student-question-body .math-display { max-width: 100%; overflow-x: auto; }
 .student-question-givens { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
-.student-question-givens-heading { width: 100%; padding: 0; color: #53655c; background: transparent !important; font-size: 12px; font-weight: 750; }
-.student-question-givens > span:not(.student-question-givens-heading) { padding: 8px 11px; border-radius: 10px; color: #586760; background: #eef1ed; }
+.student-question-givens-heading { width: 100%; padding: 0; color: var(--c-ink-muted); background: transparent !important; font-size: 13px; font-weight: 800; }
+.student-question-givens > span:not(.student-question-givens-heading) { padding: 6px 12px; border-radius: var(--radius-pill); color: var(--c-ink-soft); background: var(--c-ground); }
 
 .student-answer-card {
-  padding: 24px 30px 28px;
-  border-top: 1px solid rgba(34, 57, 47, .1);
-  background: rgba(241, 245, 241, .55);
+  padding: 24px 28px 28px;
+  border-top: 2px solid var(--c-line);
+  background: var(--c-surface-tint);
 }
 
-.student-answer-card > label { display: block; margin-bottom: 9px; color: #31483e; font-weight: 750; }
+.student-answer-card > label { display: block; margin-bottom: 9px; color: var(--c-ink); font-weight: 800; }
 .student-answer-card textarea {
   width: 100%;
   min-height: 92px;
   padding: 13px 14px;
-  border: 1px solid #cbd6cf;
-  border-radius: 13px;
-  color: #21362c;
+  border: 2px solid var(--c-line);
+  border-radius: var(--radius-md);
+  color: var(--c-ink);
   background: #fff;
   font: inherit;
   resize: vertical;
 }
 
-.student-answer-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 12px; }
-.student-submit-button { color: #fff; border-color: #183f31; background: #183f31; }
-.student-submit-button:hover:not(:disabled) { background: #245b46; }
+.student-answer-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.student-submit-button { color: var(--c-ink); border-color: var(--c-accent); background: var(--c-accent); font-weight: 900; }
+.student-submit-button:hover:not(:disabled) { border-color: var(--c-accent-strong); background: var(--c-accent-strong); }
 
-.student-feedback { margin: 0 30px 22px; padding: 17px 19px; border-radius: 15px; color: #394d44; background: #edf2ee; }
-.student-feedback.correct { color: #155c45; background: #e2f4eb; }
-.student-feedback.incorrect { color: #8b452f; background: #fae9df; }
-.student-feedback.partial { color: #765f1e; background: #f7f0d9; }
+.student-feedback { margin: 0 28px 22px; padding: 18px 20px; border-radius: 20px; color: var(--c-ink); background: var(--c-brand-soft); }
+.student-feedback.correct { color: var(--c-on-success-soft); background: var(--c-success-soft); }
+.student-feedback.incorrect { color: var(--c-on-accent-soft); background: var(--c-accent-soft); }
+.student-feedback.partial { color: var(--c-on-info-soft); background: var(--c-info-soft); }
 .student-feedback-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.student-feedback-heading span { color: #7b887f; font-size: 11px; }
-.student-feedback p { margin: 6px 0 0; line-height: 1.65; }
-.student-paper-panel > .evaluation-evidence { margin: 0 30px 22px; }
-.student-paper-panel .evaluation-evidence { border-color: #dce8e0; color: #53665b; background: #f8fbf8; }
-.student-paper-panel .evaluation-evidence summary { color: #27755d; cursor: pointer; font-weight: 700; }
-.student-paper-panel .evaluation-evidence-body { margin-top: 8px; line-height: 1.6; }
-.student-paper-panel .evaluation-evidence-body p { margin: 0; }
-.student-paper-panel .evaluation-evidence-body small { display: block; margin-top: 7px; color: #89958e; font-size: 10px; }
-.student-paper-panel .evaluation-evidence-parts { display: grid; gap: 4px; margin: 8px 0 0; padding: 0; list-style: none; }
-.student-paper-panel .evaluation-evidence-parts li { display: flex; justify-content: space-between; gap: 12px; }
-.student-paper-panel .evaluation-evidence-parts strong { color: #27755d; font-size: 11px; }
+.student-feedback-heading strong { font-size: 18px; font-weight: 900; }
+.student-feedback-heading span { color: inherit; opacity: .8; font-size: 12px; }
+.student-feedback p { margin: 6px 0 0; line-height: 1.7; }
+.student-paper-panel > .evaluation-evidence { margin: 0 28px 22px; }
 
 .student-mistake-notice {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 0 30px 28px;
-  padding: 14px 16px;
-  border: 1px solid #e4c4a8;
-  border-radius: 13px;
-  color: #85532b;
-  background: #fff2e6;
+  margin: 0 28px 28px;
+  padding: 14px 18px;
+  border-radius: 20px;
+  color: #3f2300;
+  background: var(--c-accent-soft);
 }
 
-.student-mistake-notice button { flex: 0 0 auto; color: #7b4922; border-color: #dfb48e; background: #fff; }
-.student-auto-advance { display: flex; justify-content: flex-end; margin: 0 30px 22px; }
+.student-mistake-notice button { flex: 0 0 auto; border-color: var(--c-ink); color: #fff; background: var(--c-ink); }
+.student-auto-advance { display: flex; justify-content: flex-end; margin: 0 28px 22px; }
+
+/* 题目作答区的共享组件（QuestionAnswer）在做题页内的 Bright 覆盖。 */
+.student-paper-shell .canonical-prompt { color: var(--c-ink); font-family: inherit; font-weight: 700; }
+.student-paper-shell .selected-option { color: var(--c-brand); font-weight: 700; }
+.student-paper-shell .question-options li { min-height: 0; border-radius: 20px; background: transparent; }
+.student-paper-shell .question-options.exam-options { font-family: inherit; }
+/* Bright 选项带 38px 字母块和更大内边距，旧的 110px 紧凑列宽会把短选项挤成竖排；
+   220px 让四个短选项在中等宽度排成 2×2、整宽时排成一行，避免 3+1 的残行。 */
+.student-paper-shell .question-options.compact-options { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.student-paper-shell .question-options.exam-options li { border: 0; background: transparent; }
+.student-paper-shell .question-option,
+.student-paper-shell .question-options.exam-options .question-option { min-height: 64px; padding: 10px 14px; border: 3px solid var(--c-line); border-radius: 20px; color: var(--c-ink); background: var(--c-surface); font-size: 19px; font-weight: 700; }
+.student-paper-shell .question-option:hover { border-color: var(--c-line-strong); background: var(--c-surface-tint); }
+.student-paper-shell .question-option.selected { border-color: var(--c-brand); background: var(--c-brand-soft); box-shadow: none; }
+.student-paper-shell .question-option:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 2px; }
+.student-paper-shell .question-options .option-label { display: grid; place-items: center; flex: 0 0 38px; height: 38px; border-radius: var(--radius-sm); color: var(--c-brand); background: var(--c-brand-soft); font-weight: 900; }
+.student-paper-shell .question-option.selected .option-label { color: #fff; background: var(--c-brand); }
+.student-paper-shell .true-false-options .option-label { flex-basis: 44px; height: 44px; font-size: 22px; }
+.student-paper-shell .fill-blank-field,
+.student-paper-shell .numeric-answer-field { color: var(--c-ink); font-weight: 800; }
+.student-paper-shell .fill-blank-field input,
+.student-paper-shell .numeric-answer-field input { min-height: 48px; border: 2px solid var(--c-line); border-radius: var(--radius-md); color: var(--c-ink); font: inherit; font-size: 18px; }
+.student-paper-shell .fill-blank-field input:focus-visible,
+.student-paper-shell .numeric-answer-field input:focus-visible { border-color: var(--c-brand); outline: 3px solid var(--c-accent); outline-offset: 2px; }
+.student-paper-shell .fill-blank-field small,
+.student-paper-shell .numeric-answer-field small { color: var(--c-ink-muted); }
+.student-paper-shell .sub-question-fieldset { border: 2px solid var(--c-line); border-radius: 20px; background: var(--c-surface); }
+
 .student-explanation-section { margin-top: 34px; }
 .student-explanation-heading { max-width: 720px; margin: 0 0 18px 4px; }
-.student-explanation-heading h2 { margin: 7px 0; color: #173b2e; font-size: clamp(27px, 4vw, 42px); }
-.student-explanation-heading p { margin: 0; color: #68766e; }
+.student-explanation-heading h2 { margin: 7px 0; color: var(--c-ink); font-size: clamp(26px, 4vw, 38px); font-weight: 900; }
+.student-explanation-heading p { margin: 0; color: var(--c-ink-soft); }
 
 @media (max-width: 560px) {
   .student-header { flex-wrap: wrap; }
@@ -384,8 +426,6 @@
   .student-paper-topbar .paper-sync-badge { display: none; }
   .student-shell { width: calc(100% - 24px); margin-top: 16px; }
   .student-header .route-back-button { padding-inline: 10px; }
-  .student-hero { margin-top: 62px; }
-  .student-hero h1 { font-size: 42px; }
   .today-queue-row {
     display: flex;
     flex-direction: column;
@@ -410,28 +450,4 @@
 
 /* 练习区与今日队列刻意分开：作业指派还不存在时，已发布试卷是自助目录而不是待办。 */
 .student-practice-section { margin-top: 28px; }
-.student-practice-section h2 { margin: 0 0 12px; color: #24372f; font-size: 18px; }
-
-/* 身份选择器跟在导航右侧；它不是导航项，所以不复用 student-nav-link 的胶囊样式。 */
-.student-identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  color: #4c5b52;
-  font-size: 12px;
-}
-
-.student-identity-label { font-weight: 700; }
-
-.student-identity-select {
-  max-width: 190px;
-  padding: 6px 8px;
-  border: 1px solid #d3dbd5;
-  border-radius: 8px;
-  background: #fff;
-  color: #2f3a33;
-  font-size: 12px;
-}
-
-.student-identity-select:focus-visible { outline: 2px solid #3f7d5c; outline-offset: 1px; }
+.student-practice-section h2 { margin: 0 0 12px; color: var(--c-ink); font-size: 18px; font-weight: 900; }

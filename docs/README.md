@@ -17,12 +17,13 @@
 | 理解课程播放 | [可编程课程](programmable-learning.md) | LessonDocument、渲染与学习状态边界 |
 | 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理 |
 | 执行课件改造 | [课件执行与独立验收计划](textbook-courseware-execution-plan.md) | 并行任务、串行门禁、Luna 分工和主代理验收；本地工程及英语/数学试点完成 |
-| 检查课件结果 | [独立验收记录](textbook-courseware-acceptance.md)、[设计验收](design-qa.md) | 实际模型范围、门禁、截图与限制；正式清理和教师内容复核待完成 |
+| 检查课件结果 | [独立验收记录](textbook-courseware-acceptance.md)、[设计验收](design-qa.md) | 实际模型范围、门禁、截图与限制；本机正式清理已完成，教师内容复核与整单元验收待完成 |
 | 理解单题辅导 | [错题陪练设计](mistake-coach-plan.md) | 单题状态机、用户闭环与专题设计 |
 | 理解内容生产 | [原题处理链路](exam-pipeline-refactor-plan.md) | IR 分阶段改造、兼容设计与实施状态 |
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |
 | 学习后端 | [后端学习指南](backend-learning-guide.md) | 按代码路径解释设计与学习练习，不维护独立能力清单 |
 | 学习前端 | [前端学习指南](frontend-learning-guide.md) | 页面、Hook、组件、渲染与测试的教学解释 |
+| 改界面样式 | [界面设计规范](design-system.md) | Bright 设计 token、对比度与触控约束、分页面迁移状态 |
 | 管理数据库 | [数据库演进](database-evolution.md) | 带日期的演进依据、schema 治理原则与迁移背景 |
 | 理解知识点身份 | [ADR-001](adr/001-knowledge-point-identity-and-mastery-v2.md) | 已采用的知识点与 mastery-v2 决策及后果 |
 | 部署与恢复 | [部署运维](deployment.md) | Docker/systemd/Nginx、迁移、备份与部署步骤 |
@@ -52,3 +53,5 @@
 - 学习指南保留解释与练习，具体契约链接 API/架构；重复说明只有帮助理解时才保留。
 - 历史实验保留日期、环境和结果限制，不用旧环境覆盖当前配置。完成状态变化更新相关索引，不能只追加新章节。
 - 只改文档时检查差异、链接/锚点和引用路径；代码行为变化按 AGENTS.md 执行相关门禁。
+
+- [前端组件与教材质量扩展执行计划](frontend-quality-expansion-execution-plan.md) / [实际验收与待人工任务](frontend-quality-expansion-acceptance.md)（2026-10-12）。

@@ -109,6 +109,7 @@ def validate_records(
     required_dimensions: Iterable[str] = DEFAULT_TASK_DIMENSIONS,
     min_counted_cases: int = MIN_COUNTED_CASES,
     min_cases_per_dimension: int = MIN_CASES_PER_DIMENSION,
+    trusted_identities: Mapping[str, Any] | None = None,
 ) -> BenchmarkValidation:
     """Validate schema, review independence, count and coverage gates."""
     rows = list(records)
@@ -121,6 +122,7 @@ def validate_records(
         if not isinstance(row, Mapping):
             problems.append(f"{prefix}: record must be a JSON object")
             continue
+        initial_problem_count = len(problems)
         case_id = row.get("caseId")
         if not _non_empty_text(case_id):
             problems.append(f"{prefix}: caseId is required")
@@ -170,11 +172,23 @@ def validate_records(
         is_fixture = not source_kind_valid or source_kind != "human" or row.get("counted") is False
         if source_kind == "fixture" and row.get("counted") is not False:
             problems.append(f"{prefix} {case_id!r}: fixture records must set counted=false")
-        if not is_fixture and isinstance(strata, Mapping):
-            counted.append(row)
+        if not is_fixture:
+            from evaluation.benchmark.admission import snapshot_hash, verified_reviews
+
+            try:
+                reviews = verified_reviews(row, row.get("humanReviews"), trusted_identities or {})
+                if (row.get("annotatorId") != reviews[0]["actorId"] or row.get("reviewerId") != reviews[1]["actorId"]
+                        or row.get("approvedAt") != max(review["reviewedAt"] for review in reviews)
+                        or row.get("admission") != {"snapshotSha256": snapshot_hash(row), "version": "human-gold-v1"}):
+                    raise ValueError("admission metadata does not match verified reviews")
+            except ValueError as error:
+                problems.append(f"{prefix} {case_id!r}: {error}")
+            if len(problems) == initial_problem_count:
+                counted.append(row)
 
     for case_id in sorted({item for item in ids if ids.count(item) > 1}):
         problems.append(f"duplicate caseId: {case_id}")
+    counted = [row for row in counted if ids.count(str(row["caseId"])) == 1]
     if len(counted) < min_counted_cases:
         problems.append(f"counted case coverage is {len(counted)}, requires at least {min_counted_cases}")
 
@@ -198,9 +212,10 @@ def validate_records(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate human gold-standard benchmark JSONL.")
     parser.add_argument("path", type=Path)
+    parser.add_argument("--identities", type=Path, help="独立核验的身份登记 JSON")
     args = parser.parse_args()
     try:
-        result = validate_records(load_jsonl(args.path))
+        result = validate_records(load_jsonl(args.path), trusted_identities=json.loads(args.identities.read_text()) if args.identities else None)
     except (OSError, ValueError) as error:
         print(json.dumps({"ok": False, "problems": [str(error)]}, ensure_ascii=False))
         return 2

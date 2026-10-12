@@ -7,6 +7,10 @@ from fastapi.testclient import TestClient
 
 from application.services.chapter_source_preview import file_hash
 from application.services.quality_review import QualityReviewService
+from application.services.review_restore import (
+    prepare_restore_packet,
+    restore_pending_package,
+)
 from persistence.quality_review_store import QualityReviewStore
 from routers.quality_review_routes import build_quality_review_router
 from tests.postgres_test_support import PostgresTestCase
@@ -51,6 +55,26 @@ class QualityReviewPostgresAcceptanceTests(PostgresTestCase):
                 "actual": {"method": "real_source_replay_pending_human_review", "checks": {"questionNumbersMatch": True}},
             }],
         }
+
+    def test_user_restores_a_pending_packet_twice_then_the_original_review_and_versions_remain(self) -> None:
+        # Given a historical pending case and its managed PDF
+        row = self.packet()["cases"][0]
+        row["sourcePage"] = 1
+        row["source"].update(sourceAssetId="openstax-elementary-algebra-2e", contentSha256=self.source_hash)
+        row["sourceLocator"]["quote"] = "Verified source quote for the test."
+        packet = prepare_restore_packet([row], title="Historical pending packet")
+        service = QualityReviewService(self.store, source_root=self.source_root)
+        actor = {"actorId": "restore-test", "identityVerified": False}
+        first, created = restore_pending_package(service, packet, actor)
+        self.assertTrue(created)
+        case = self.store.list_cases(first["packageId"])["items"][0]
+        # When the exact packet is restored again, Then reuse IDs and never add human decisions.
+        second, created = restore_pending_package(service, packet, actor)
+        self.assertFalse(created)
+        self.assertEqual(first["packageId"], second["packageId"])
+        self.assertEqual(self.store.list_cases(second["packageId"])["items"][0]["caseId"], case["caseId"])
+        self.assertEqual(case["reviewStatus"], "pending_human_review")
+        self.assertFalse(case["counted"])
 
     def test_user_imports_a_source_package_and_reviews_its_original_case_snapshot(self) -> None:
         # Given an OpenStax page case with source, expectation and observed output fingerprints

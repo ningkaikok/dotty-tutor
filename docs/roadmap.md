@@ -8,8 +8,9 @@
 
 | 顺序 | 目标 | 状态 | 入口 |
 | --- | --- | --- | --- |
-| 当前优先 | 旧教材生成结果定向清理 → 英语教材互动课件试点 | 本地工程门禁及真实英语五页试点通过；真实副本撤回/恢复通过，原库正式清理和教师内容复核待完成；试卷保留原题生产 | [独立验收记录](textbook-courseware-acceptance.md) |
-| 下一阶段 | 数学教材课件 → 更多学科扩展 | 真实代数三页、几何五页本地试点通过；第三学科注册 smoke 通过，更多学科教学质量待实施与复核 | [执行与独立验收计划](textbook-courseware-execution-plan.md) |
+| 当前优先 | 已生成英语/数学课件的教师内容复核与整单元覆盖验收 | v0.37.0 工程实现及英语五页、代数三页、几何五页真实模型试点已交付；本机旧英语教材产物已可恢复撤回；教师复核与整单元教学质量待完成；试卷保留原题生产 | [独立验收记录](textbook-courseware-acceptance.md) |
+| 下一阶段 | 教材区域图像、课件媒体/语音适配与更多学科扩展 | 当前原图为整页预览；媒体/语音沿用章节发布契约，课件适配待实施；正式生成仅注册英语/数学，第三学科仅注册 smoke 通过 | [工程后续队列](engineering-roadmap.md#教材课件后续队列2026-10-12) |
+| 界面收尾 | Bright 视觉迁移 | 首页、学生今日、做题、错题与陪练已迁移；讲解/章节学习/课件、教师工作台、教材工作室待迁移 | [界面设计规范](design-system.md#迁移状态) |
 | 历史 A/B 基础 | 数学来源关联课程、英语阅读与证据定位 | 工程第一版已有；不等于本次多页课件完成，真实材料质量仍需复核 | [原 A/B 计划](chapter-ab-implementation-plan.md) |
 | C/D 基础 | 教学媒体与步骤语音 | 工程实现已接入；复用既有能力，真实教材/视频审校/真人语音质量仍待人工验收 | [工程计划](engineering-roadmap.md#教材章节与跨学科实施计划2026-10-02) |
 | 历史 AI 基础（已收口） | AI 工程方向：模型调用边界指标、评测语料继续扩充、陪练上下文分层 | 模型调用指标、陪练上下文切分与度量、多模态 TutorInput、受约束 ToolProposal、Tutor 评测实验室、最小画布和 PostgreSQL 全文检索第一版均已完成；Prefix Cache、跨模型评测和真实数据扩充纳入主动实验队列。新增排序以 2026-10-11 教材课件计划为准，跨模型和工具安全评测随实施批次开展。理由与范围见 [`product-roadmap.md`](product-roadmap.md) “优先级临时调整” | [`engineering-roadmap.md`](engineering-roadmap.md) |
@@ -57,4 +58,14 @@
 18 个真实教材案例仍待用户复核，独立双审 50+ 人工金标准与正式跨模型排名未完成。
 本轮工程门禁和发布状态以[验收记录](quality-media-voice-acceptance.md)为准。
 
-来源复核融入「我的教材 / 章节复核」，视频绑定发布快照，模型盲评位于高级教学工具；后续整合与验收见[记录](material-review-integration.md)。教材互动课件生成仍按上述专项计划待实施。
+来源复核融入「我的教材 / 章节复核」，视频绑定发布快照，模型盲评位于高级教学工具；整合与验收见[记录](material-review-integration.md)。教材互动课件生成已随 v0.37.0 交付，教师内容复核与扩展范围按上述入口继续推进。
+
+## 本次代码与运行核对（2026-10-12）
+
+main 已到 `4ab30e98`（[PR #289](https://github.com/ningkaikok/dotty-tutor/pull/289)）；该提交的 [CI](https://github.com/ningkaikok/dotty-tutor/actions/runs/38232093507) 与 [CodeQL](https://github.com/ningkaikok/dotty-tutor/actions/runs/38232093548) 均成功。
+发布准备前的最新 Release 为 [v0.37.0](https://github.com/ningkaikok/dotty-tutor/releases/tag/v0.37.0)，旧教材计数修复、Bright 视觉及本轮组件/教材质量扩展合并整理为 v0.38.0。
+`deploy/render-supabase` 当前为 `dc1e18f2`，尚未包含这两项变化；本机 8010 服务的运行 checkout 为 `039ba196`，也未包含 Bright 改版。更新审查工作区不等于更新运行服务。
+
+本轮工程扩展和材料恢复已经完成独立验收，见[执行计划](frontend-quality-expansion-execution-plan.md)与[验收报告](frontend-quality-expansion-acceptance.md)。本机原库已恢复 18 待审案例及英语/代数/几何 3 份原始课件草稿，均未经人工批准；完整单元仍有生成和审核缺口。组件系统、区域裁图、课件媒体/语音适配、science profile、人工双审与正式盲评门槛已实现于本工作区。
+
+本机原运行代码未替换，数据库仍为 0024；新前端和 0025 仅在隔离克隆验收。真实扫描 OCR、教师内容质量、第三学科真实教材、50+ 双审金标准和正式跨模型结果继续待完成；没有新增真实模型调用。用户随后授权发布 v0.38.0 并同步部署分支；GitHub 标签/Release 与部署分支需分别核验，原本机运行切换不属于此次发布。

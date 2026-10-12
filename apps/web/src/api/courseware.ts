@@ -150,3 +150,8 @@ export async function deleteCoursewareDraft(coursewareId: string, expectedRecord
     await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}?expectedRecordVersion=${expectedRecordVersion}`, { method: "DELETE" }),
   );
 }
+
+export type CoursewareCoverage = components["schemas"]["CoursewareCoverage"];
+export async function loadCoursewareCoverage(chapterId: string, signal?: AbortSignal): Promise<CoursewareCoverage> {
+  return parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/courseware-coverage`, { cache: "no-store", signal }));
+}

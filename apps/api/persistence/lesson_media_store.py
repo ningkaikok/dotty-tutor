@@ -56,7 +56,7 @@ lesson_media_revisions = Table(
     Column("created_at", Float, nullable=False),
     UniqueConstraint("series_id", "version", name="uq_lesson_media_series_version"),
     CheckConstraint("version > 0", name="ck_lesson_media_version_positive"),
-    CheckConstraint("subject IN ('math', 'english')", name="ck_lesson_media_subject"),
+    CheckConstraint("subject IN ('math', 'english', 'science')", name="ck_lesson_media_subject"),
     CheckConstraint("status IN ('draft', 'rendering', 'consistency_review_required', 'consistency_failed', 'changes_requested', 'approved', 'published')", name="ck_lesson_media_status"),
     CheckConstraint("distribution_scope IN ('student', 'local_only')", name="ck_lesson_media_distribution_scope"),
 )

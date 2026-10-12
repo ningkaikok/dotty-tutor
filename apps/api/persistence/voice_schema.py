@@ -19,6 +19,8 @@ voice_sessions = Table(
     Column("capability_hash", String(64), nullable=False),
     Column("learner_id", String(128), nullable=False),
     Column("chapter_id", String(128), nullable=False),
+    Column("source_kind", String(16), nullable=False, server_default="chapter"),
+    Column("courseware_id", String(64)),
     Column("publication_id", String(128), nullable=False),
     Column("lesson_id", String(128), nullable=False),
     Column("block_id", String(128), nullable=False),

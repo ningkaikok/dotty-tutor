@@ -164,6 +164,43 @@ class LegacyCleanupProjectionAcceptanceTests(PostgresTestCase):
                 status="applied", applied_at=time.time(),
             ))
 
+    def test_user_lists_cleaned_and_restored_textbook_then_library_counts_only_visible_questions(self):
+        # Given old questions are withdrawn while their source and extraction metadata remain
+        app = FastAPI()
+        app.include_router(build_library_router(
+            store=self.store, upload_registry=self.registry_cache,
+            lesson_store=self.registry_cache.lesson_store, job_store=self.jobs,
+        ))
+        client = TestClient(app)
+        # When the teacher lists the cleaned source, no obsolete practice entry should remain
+        cleaned = client.get("/api/library").json()["items"][0]
+        self.assertEqual(cleaned["questionCount"], 0)
+        self.assertEqual(cleaned["pageCount"], 2)
+        self.assertEqual(cleaned["materialKind"], "textbook")
+        # Then later questions remain visible without resurrecting the exact retired IDs
+        self.store.save_question(self.upload_id, "new-batch", {
+            "question": {"id": "new-question", "prompt": "new"},
+        }, [])
+        self.assertEqual(client.get("/api/library").json()["items"][0]["questionCount"], 1)
+        # Restoring the marker returns the original stored extraction count
+        with self.store.engine.begin() as connection:
+            connection.execute(update(legacy_textbook_cleanup_manifests).values(status="restored"))
+        self.assertEqual(client.get("/api/library").json()["items"][0]["questionCount"], 1)
+
+    def test_user_lists_an_exam_after_textbook_cleanup_then_exam_question_count_is_preserved(self):
+        # Given an exam has no textbook cleanup marker
+        source = self.store.load_job(self.upload_id)
+        assert source is not None
+        self.store.save_job({
+            **source, "uploadId": "exam-upload", "filename": "Mathematics exam.pdf",
+            "result": {"materialKind": "paper", "extraction": {"questionCount": 23, "pageCount": 6}},
+        })
+        # When the same library reader handles cleaned textbooks and ordinary exams
+        items = {item["uploadId"]: item for item in self.store.list_imports()}
+        # Then its existing exam count is preserved and the cleaned textbook has no questions
+        self.assertEqual(items["exam-upload"]["questionCount"], 23)
+        self.assertEqual(items[self.upload_id]["questionCount"], 0)
+
     def test_user_reopens_a_cleaned_textbook_then_old_answers_stay_hidden_while_source_preparation_remains_available(self):
         # Given a reversible cleanup marker for exact old chapters, lessons, questions, and jobs
         upload = self.store.load_job(self.upload_id)

@@ -44,13 +44,10 @@ export type VoiceResponse = {
   turn: VoiceTurn | null;
 };
 
-export type VoiceSessionScope = {
-  learnerId: string;
-  chapterId: string;
-  publicationId: string;
-  lessonId: string;
-  blockId: string;
-};
+export type VoiceSessionScope = { learnerId: string; publicationId: string; blockId: string } & (
+  | { sourceKind?: "chapter"; chapterId: string; lessonId: string }
+  | { sourceKind: "courseware"; coursewareId: string; pageId: string }
+);
 
 export type VoiceSessionCredential = { sessionId: string; recoveryToken: string };
 
@@ -59,10 +56,12 @@ function sessionHeaders(credential: VoiceSessionCredential) {
 }
 
 export async function createVoiceSession(scope: VoiceSessionScope): Promise<VoiceSession> {
-  return parse<VoiceSession>(await fetch("/api/voice/sessions", {
+  return parse<VoiceSession>(await fetch(scope.sourceKind === "courseware" ? `/api/courseware/${encodeURIComponent(scope.coursewareId)}/voice-sessions` : "/api/voice/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Learner-ID": currentLearnerId() },
-    body: JSON.stringify(scope),
+    body: JSON.stringify(scope.sourceKind === "courseware"
+      ? { learnerId: scope.learnerId, publicationId: scope.publicationId, pageId: scope.pageId, blockId: scope.blockId }
+      : { learnerId: scope.learnerId, publicationId: scope.publicationId, chapterId: scope.chapterId, lessonId: scope.lessonId, blockId: scope.blockId }),
   }));
 }
 

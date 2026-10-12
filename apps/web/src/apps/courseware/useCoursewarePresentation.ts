@@ -21,7 +21,7 @@ export function useCoursewarePresentation(coursewareId: string, publicationId: s
     const load = role === "student"
       ? loadPublishedCourseware(coursewareId, publicationId, controller.signal).then(studentPlaybackDocument)
       : loadCoursewarePresentation(coursewareId, publicationId, controller.signal).then(teacherPlaybackDocument);
-    load.then(setDocument).catch((requestError: unknown) => {
+    load.then((value) => { if (!controller.signal.aborted) setDocument(value); }).catch((requestError: unknown) => {
       if (controller.signal.aborted) return;
       setError(requestError instanceof Error ? requestError.message : "课件暂时无法打开");
     });

@@ -1,3 +1,4 @@
+import { AppHeader, Badge, Button, PageShell } from "../../components/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { PRODUCT_TERMS } from "../../productTerms";
@@ -46,15 +47,8 @@ export function ProductHome() {
   };
 
   return (
-    <main className="product-home">
-      <header className="product-home-header">
-        <div className="brand-mark">D</div>
-        <div>
-          <strong>Dotty Tutor</strong>
-          <span>个人 AI 学习工具</span>
-        </div>
-        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
-      </header>
+    <PageShell className="product-home">
+      <AppHeader subtitle="个人 AI 学习工具" actions={<Badge tone="brand">{PRODUCT_TERMS.demoBadge}</Badge>} />
 
       <section className="product-home-hero">
         <h1>选择你的使用入口</h1>
@@ -75,7 +69,7 @@ export function ProductHome() {
             <li>拍照录入与人工确认错题</li>
             <li>AI 错题辅导与掌握验证</li>
           </ul>
-          <button onClick={enterStudent}>进入学生学习空间</button>
+          <Button onClick={enterStudent}>进入学生学习空间</Button>
         </article>
 
         <article className={`product-entry-card producer${lastEntry === "studio" ? " last-entry" : ""}`}>
@@ -92,8 +86,8 @@ export function ProductHome() {
             <li>复核内容后分享给学生</li>
           </ul>
           <div className="producer-entry-actions">
-            <button onClick={enterStudio}>打开我的教材</button>
-            <button onClick={() => navigate("/studio/quality-review")}>质量复核工作台</button>
+            <Button onClick={enterStudio}>打开我的教材</Button>
+            <Button className="secondary-entry-button" onClick={() => navigate("/studio/quality-review")}>质量复核工作台</Button>
           </div>
         </article>
         <article className={`product-entry-card teacher${lastEntry === "teacher" ? " last-entry" : ""}`}>
@@ -101,9 +95,9 @@ export function ProductHome() {
           <h2>班级学习进展</h2>
           <p>创建班级、布置已发布练习，并按学生和知识点查看完成与掌握情况。</p>
           <ul><li>班级成员与作业管理</li><li>学生作业完成进度</li><li>知识点掌握分布看板</li></ul>
-          <button onClick={enterTeacher}>进入教师工作台</button>
+          <Button onClick={enterTeacher}>进入教师工作台</Button>
         </article>
       </section>
-    </main>
+    </PageShell>
   );
 }

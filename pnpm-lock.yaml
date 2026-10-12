@@ -10,6 +10,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource-variable/nunito':
+        specifier: ^5.3.0
+        version: 5.3.0
       katex:
         specifier: ^0.18.7
         version: 0.18.7
@@ -269,6 +272,9 @@ packages:
       '@noble/hashes':
         optional: true
 
+  '@fontsource-variable/nunito@5.3.0':
+    resolution: {integrity: sha512-tw0ch7evIDSwoeUy+0XzocYHfbRWLeCRPJy22KgbrLjDLAbNw/fErBiil10Ssrs3Sjr55zaZrr36a975j8cBkQ==}
+
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
     engines: {node: '>=18.18.0'}
@@ -350,7 +356,6 @@ packages:
   '@rolldown/binding-darwin-arm64@1.2.8':
     resolution: {integrity: sha512-PCSDQGXD2IyTEFrcgPyBM8jJuGmrbCMuoIOXdbEGVemruKACXoLQJrb+A45Z0L5t1RQkdfJprAYPkikbh7dzdA==}
     engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [arm64]
     os: [darwin]
 
   '@rolldown/binding-darwin-x64@1.2.8':
@@ -398,7 +403,6 @@ packages:
   '@rolldown/binding-linux-x64-gnu@1.2.8':
     resolution: {integrity: sha512-H9tRr5ibfXFVLxbPOseVewewFpl28zcEdjRDt2FTUZU7odxP0gEv1ki4/kGmcGOh78oRwZuuQllGLZ9zTJp84g==}
     engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
     os: [linux]
 
   '@rolldown/binding-linux-x64-musl@1.2.8':
@@ -1671,6 +1675,8 @@ snapshots:
       levn: 0.4.1
 
   '@exodus/bytes@1.15.2': {}
+
+  '@fontsource-variable/nunito@5.3.0': {}
 
   '@humanfs/core@0.19.2':
     dependencies:

@@ -26,6 +26,7 @@ from persistence.schema_registry import (
 LEGACY_MASTERY_TABLE = "mastery_states_legacy"
 LEGACY_PUBLICATION_ID = "legacy-mastery-v2"
 _ADDITIVE_COLUMNS: dict[str, dict[str, str]] = {
+    "voice_sessions": {"source_kind": "VARCHAR(16) NOT NULL DEFAULT 'chapter'", "courseware_id": "VARCHAR(64)"},
     "learning_sessions": {"assignment_id": "VARCHAR(64)"},
     "exercise_attempts": {
         "publication_id": "VARCHAR(128)",
