@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiResourceUrl } from "../../api/client";
 import MathText from "../../MathText";
 import { RichText } from "../../RichText";
@@ -17,6 +17,7 @@ function formatTime(seconds: number) {
 function subjectLabel(subject: string) {
   if (subject === "english") return "英语";
   if (subject === "math") return "数学";
+  if (subject === "science") return "科学";
   return subject.trim() || "未配置学科";
 }
 
@@ -31,9 +32,10 @@ function blockActivityKey(page: CoursewarePageView, blockIndex: number, block: C
   return `${page.pageId}:block-${blockIndex}`;
 }
 
-export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local" }: {
+export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local", renderPageTools }: {
   document: CoursewarePresentationDocument;
   now?: () => number;
+  renderPageTools?: (page: CoursewarePageView) => ReactNode;
   /** UI identity scope prevents classroom state from crossing learner or role boundaries. */
   playbackScope?: string;
   onSubmitActivity?: (activityId: string, response: { text?: string; selectedOptions?: string[] }) => Promise<{ assessment: string; feedback: string }>;
@@ -164,6 +166,7 @@ export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitAct
             {activePanel === "content" && <PageImages page={page} assetsById={assetsById} />}
           </div>
         </>}
+        {renderPageTools?.(page)}
         <SourceFooter page={page} document={lesson} />
       </section>
     </div>

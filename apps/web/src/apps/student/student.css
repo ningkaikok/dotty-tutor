@@ -85,39 +85,7 @@
  * /mistakes/progress）常驻；任务进行中的页面（做题、拍照录入、确认、陪练）
  * 不渲染它，避免中途跳走的诱惑，见各页面里对 StudentNav 的引用位置。
  */
-.student-nav {
-  display: flex;
-  gap: 6px;
-  margin-top: 18px;
-}
 
-.student-nav-link {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--touch-min);
-  padding: 6px 18px;
-  border: 0;
-  border-radius: var(--radius-pill);
-  color: var(--c-ink);
-  background: var(--c-surface);
-  font-size: 15px;
-  font-weight: 700;
-  text-decoration: none;
-  transition: background .15s ease, color .15s ease;
-}
-
-.student-nav-link:hover { background: var(--c-brand-soft); }
-
-.student-nav-link.active {
-  color: #fff;
-  background: var(--c-ink);
-  font-weight: 800;
-}
-
-.student-nav-link:focus-visible {
-  outline: 3px solid var(--c-accent);
-  outline-offset: 2px;
-}
 
 .student-empty-note {
   margin: 8px 0 24px;
@@ -483,27 +451,3 @@
 /* 练习区与今日队列刻意分开：作业指派还不存在时，已发布试卷是自助目录而不是待办。 */
 .student-practice-section { margin-top: 28px; }
 .student-practice-section h2 { margin: 0 0 12px; color: var(--c-ink); font-size: 18px; font-weight: 900; }
-
-/* 身份选择器跟在导航右侧；它不是导航项，所以不复用 student-nav-link 的胶囊样式。 */
-.student-identity {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  color: #4c5b52;
-  font-size: 12px;
-}
-
-.student-identity-label { font-weight: 700; }
-
-.student-identity-select {
-  max-width: 190px;
-  padding: 6px 8px;
-  border: 1px solid #d3dbd5;
-  border-radius: 8px;
-  background: #fff;
-  color: #2f3a33;
-  font-size: 12px;
-}
-
-.student-identity-select:focus-visible { outline: 2px solid #3f7d5c; outline-offset: 1px; }

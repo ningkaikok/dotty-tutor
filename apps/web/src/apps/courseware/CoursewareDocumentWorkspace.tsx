@@ -1,3 +1,5 @@
+import { CoursewareCoveragePanel } from "./CoursewareCoveragePanel";
+import { CoursewareMediaPanel } from "./CoursewareMediaPanel";
 import { useNavigate } from "react-router";
 import { CoursewareDraftEditor } from "./CoursewareDraftEditor";
 import { useCoursewareDocumentWorkflow } from "./useCoursewareDocumentWorkflow";
@@ -10,6 +12,7 @@ export function CoursewareDocumentWorkspace({ coursewareId }: { coursewareId: st
   if (!document) return <main className="courseware-route-state"><h1>课件草稿暂不可用</h1><p role="alert">{error || "找不到这份课件。"}</p><button type="button" onClick={() => navigate("/studio/courseware")}>返回教材课件</button></main>;
   return <div className="courseware-authoring-route">
     {error && <p role="alert" className="courseware-editor-error">{error}</p>}
+    <CoursewareCoveragePanel chapterId={document.chapterId} revisionKey={document.recordVersion} />
     <CoursewareDraftEditor
       document={document}
       busy={busy}
@@ -23,5 +26,6 @@ export function CoursewareDocumentWorkspace({ coursewareId }: { coursewareId: st
       onPresent={() => document.publicationId && navigate(`/teacher/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`)}
       onLearn={() => document.publicationId && navigate(`/learn/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`)}
     />
+    {document.publicationId && <CoursewareMediaPanel coursewareId={coursewareId} publicationId={document.publicationId} />}
   </div>;
 }

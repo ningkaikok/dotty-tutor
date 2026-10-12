@@ -1,16 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   cancelLessonMediaRender,
   createLessonMediaDraft,
   createLessonMediaRevision,
   enqueueLessonMediaRender,
   listLessonMedia,
+  listCoursewareMedia,
+  createCoursewareMedia,
   publishLessonMedia,
   reviewLessonMedia,
   type LessonMedia,
 } from "../../api/lessonMedia";
 
 export type MediaStudioLesson = { lessonId: string; title: string; sourceRevisionId: string };
+
+export type CoursewareMediaScope = { coursewareId: string; pageIds: string[]; sourceRevisionId: string };
 
 type ScopeToken = { scopeKey: string; generation: number };
 
@@ -48,11 +52,13 @@ export function useLessonMediaStudio({
   publicationId,
   lessons,
   selectedLessonId,
+  courseware,
 }: {
   chapterId: string;
   publicationId: string;
   lessons: MediaStudioLesson[];
   selectedLessonId?: string;
+  courseware?: CoursewareMediaScope;
 }) {
   const defaultLessonId = selectedLessonId ?? lessons[0]?.lessonId ?? "";
   const [lessonSelection, setLessonSelection] = useState({ defaultLessonId, selectedLessonId: defaultLessonId });
@@ -65,7 +71,12 @@ export function useLessonMediaStudio({
       ? defaultLessonId
       : lessons[0]?.lessonId ?? "";
   const lesson = lessons.find((item) => item.lessonId === lessonId);
-  const scopeKey = JSON.stringify([chapterId, publicationId, lessonId]);
+  const scopeKey = JSON.stringify([chapterId, publicationId, lessonId, courseware?.coursewareId]);
+
+  const coursewareId = courseware?.coursewareId;
+  const listMedia = useCallback((signal?: AbortSignal) => coursewareId
+    ? listCoursewareMedia(coursewareId, publicationId, signal)
+    : listLessonMedia(chapterId, publicationId, lessonId, signal), [chapterId, publicationId, lessonId, coursewareId]);
 
   const generationRef = useRef(0);
   const listRequestRef = useRef(0);
@@ -109,7 +120,7 @@ export function useLessonMediaStudio({
     const requestToken = { scopeKey, generation: generationRef.current };
     const requestId = ++listRequestRef.current;
     const controller = new AbortController();
-    void listLessonMedia(chapterId, publicationId, lessonId, controller.signal).then((nextItems) => {
+    void listMedia(controller.signal).then((nextItems) => {
       if (controller.signal.aborted || !isCurrent(requestToken) || requestId !== listRequestRef.current) return;
       const selectedId = selectionRef.current.scopeKey === scopeKey ? selectionRef.current.mediaId : "";
       const nextActiveId = nextItems.some((item) => item.mediaId === selectedId) ? selectedId : nextItems[0]?.mediaId ?? "";
@@ -129,14 +140,14 @@ export function useLessonMediaStudio({
       }
     });
     return () => controller.abort();
-  }, [chapterId, lessonId, publicationId, scopeKey]);
+  }, [chapterId, lessonId, publicationId, scopeKey, coursewareId, listMedia]);
 
   const refresh = async () => {
     if (!lessonId) return;
     const requestToken = token();
     const requestId = ++listRequestRef.current;
     try {
-      const nextItems = await listLessonMedia(chapterId, publicationId, lessonId);
+      const nextItems = await listMedia();
       if (!isCurrent(requestToken) || requestId !== listRequestRef.current) return;
       const selectedId = selectionRef.current.scopeKey === scopeKey ? selectionRef.current.mediaId : "";
       const nextActiveId = nextItems.some((item) => item.mediaId === selectedId)
@@ -169,7 +180,7 @@ export function useLessonMediaStudio({
       const preferredMediaId = await operation();
       if (!isCurrent(requestToken)) return;
       const requestId = ++listRequestRef.current;
-      const nextItems = await listLessonMedia(chapterId, publicationId, lessonId);
+      const nextItems = await listMedia();
       if (!isCurrent(requestToken) || requestId !== listRequestRef.current) return;
       const selectedId = selectionRef.current.scopeKey === scopeKey ? selectionRef.current.mediaId : "";
       const selectionUnchanged = selectedId === activeAtStart;
@@ -198,7 +209,9 @@ export function useLessonMediaStudio({
   const createDraft = () => {
     if (!lesson) return;
     void mutate(async () => {
-      const created = await createLessonMediaDraft({ chapterId, publicationId, lessonId, sourceRevisionId: lesson.sourceRevisionId });
+      const created = courseware
+        ? await createCoursewareMedia(courseware.coursewareId, { publicationId, sourceRevisionId: courseware.sourceRevisionId, pageIds: courseware.pageIds })
+        : await createLessonMediaDraft({ chapterId, publicationId, lessonId, sourceRevisionId: lesson.sourceRevisionId });
       return created.mediaId;
     });
   };

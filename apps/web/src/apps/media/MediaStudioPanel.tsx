@@ -1,5 +1,5 @@
 import { lessonMediaTeacherAssetUrl } from "../../api/lessonMedia";
-import { useLessonMediaStudio, type MediaStudioLesson } from "./useLessonMediaStudio";
+import { useLessonMediaStudio, type MediaStudioLesson, type CoursewareMediaScope } from "./useLessonMediaStudio";
 import "./media.css";
 
 export type MediaStudioPanelProps = {
@@ -7,11 +7,12 @@ export type MediaStudioPanelProps = {
   publicationId: string;
   lessons: MediaStudioLesson[];
   selectedLessonId?: string;
+  courseware?: CoursewareMediaScope;
 };
 
 /** Present the teacher workflow; API calls and race-safe state live in the studio hook. */
-export function MediaStudioPanel({ chapterId, publicationId, lessons, selectedLessonId }: MediaStudioPanelProps) {
-  const studio = useLessonMediaStudio({ chapterId, publicationId, lessons, selectedLessonId });
+export function MediaStudioPanel({ chapterId, publicationId, lessons, selectedLessonId, courseware }: MediaStudioPanelProps) {
+  const studio = useLessonMediaStudio({ chapterId, publicationId, lessons, selectedLessonId, courseware });
   const { active } = studio;
   const currentJob = active?.renderJob;
 
@@ -25,7 +26,7 @@ export function MediaStudioPanel({ chapterId, publicationId, lessons, selectedLe
               {lessons.map((item) => <option key={item.lessonId} value={item.lessonId}>{item.title}</option>)}
             </select>
           </label>
-          <button type="button" disabled={studio.busy || !studio.lesson} onClick={studio.createDraft}>从发布讲解创建分镜</button>
+          <button type="button" disabled={studio.busy || !studio.lesson || Boolean(courseware && (courseware.pageIds.length < 3 || courseware.pageIds.length > 8))} onClick={studio.createDraft}>{courseware ? "从选定发布页创建分镜" : "从发布讲解创建分镜"}</button>
         </div>
       </header>
       <div className="media-studio-layout">
@@ -57,7 +58,7 @@ export function MediaStudioPanel({ chapterId, publicationId, lessons, selectedLe
                   <label htmlFor={`media-scene-${scene.sceneId}`}>片段 {scene.order} · {scene.title}</label>
                   <textarea id={`media-scene-${scene.sceneId}`} value={studio.edits[scene.sceneId] ?? scene.narration} maxLength={2_000}
                     onChange={(event) => studio.changeNarration(scene.sceneId, event.target.value)} />
-                  <p className="media-citation">来源页：{scene.sourceRefs.map((ref) => `${ref.page} · ${ref.quote}`).join("；")}</p>
+                  <p className="media-citation">来源页：{scene.sourceRefs.map((ref) => `${ref.page}${ref.quote ? ` · ${ref.quote}` : ""}`).join("；")}</p>
                 </article>
               ))}
             </div>
@@ -71,7 +72,7 @@ export function MediaStudioPanel({ chapterId, publicationId, lessons, selectedLe
             {active.consistencyReview && <div className="media-checks"><strong>一致性审校：{active.consistencyReview.passed ? "通过" : "未通过"}</strong>{active.consistencyReview.issues.map((issue) => <p key={issue.code}>{issue.message}</p>)}</div>}
             {studio.previewable && <div className="media-preview"><h4>人工审校预览</h4><video controls playsInline preload="metadata" aria-label={`${active.title}审校预览`}>
               <source src={lessonMediaTeacherAssetUrl(active.mediaId, "asset")} type="video/mp4" />
-              <track kind="captions" src={lessonMediaTeacherAssetUrl(active.mediaId, "captions")} srcLang={active.subject === "math" ? "zh" : "en"} label={active.subject === "math" ? "中文字幕" : "English captions"} default />
+              <track kind="captions" src={lessonMediaTeacherAssetUrl(active.mediaId, "captions")} srcLang={active.subject === "english" ? "en" : "zh"} label={active.subject === "english" ? "English captions" : "中文字幕"} default />
             </video><a href={lessonMediaTeacherAssetUrl(active.mediaId, "captions/download")} download={`${active.mediaId}.vtt`}>下载 VTT 字幕</a></div>}
             {active.status === "consistency_review_required" && <div className="media-review">
               <label htmlFor="media-review-note">人工审校记录</label>

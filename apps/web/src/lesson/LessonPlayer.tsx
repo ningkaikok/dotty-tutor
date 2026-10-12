@@ -1,3 +1,4 @@
+import { Button } from "../components/ui";
 import { useEffect, useMemo, useState } from "react";
 import { playSpeech, preloadSpeech, stopSpeech } from "../speech";
 import { RichText } from "../RichText";
@@ -102,18 +103,18 @@ export function LessonPlayer(props: LessonPlayerProps) {
             <span className="eyebrow">{props.payload ? props.payload.question.chapter : document.knowledgePoints?.join(" · ") || "章节课程"}</span>
             <h1>{document.title}</h1>
           </div>
-          <button
+          <Button
             className="lesson-button"
             onClick={() => {
               if (!playing && step >= playableBlocks.length - 1) setStep(0);
               setPlaying((value) => !value);
             }}
-          >{playing ? "暂停讲解" : "播放讲解"}</button>
+          >{playing ? "暂停讲解" : "播放讲解"}</Button>
         </div>
         {renderLessonBlock(current, document.title)}
         <div className="lesson-progress" aria-label="讲解步骤">
           {playableBlocks.map((block, index) => (
-            <button
+            <Button
               key={block.id}
               className={index === step ? "active" : ""}
               onClick={() => {

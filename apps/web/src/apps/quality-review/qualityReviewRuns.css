@@ -1,21 +1,21 @@
-.quality-runs { display: grid; gap: 14px; margin: 18px 0; padding: 18px; border: 1px solid #dce5dd; border-radius: 15px; background: #fff; }
+.quality-runs { display: grid; gap: 14px; margin: 18px 0; padding: 18px; border: 1px solid var(--c-line-strong); border-radius: 15px; background: var(--c-surface); }
 .quality-runs-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .quality-runs-heading h2, .quality-runs-heading h3, .quality-runs-gold h3, .quality-runs-result h3 { margin: 3px 0 6px; }
-.quality-runs-heading p, .quality-runs-description, .quality-runs-gold p { margin: 4px 0; color: #64766c; font-size: 12px; line-height: 1.6; }
+.quality-runs-heading p, .quality-runs-description, .quality-runs-gold p { margin: 4px 0; color: var(--c-ink-muted); font-size: 12px; line-height: 1.6; }
 .quality-runs-launch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.quality-runs-launch fieldset { display: flex; flex-wrap: wrap; gap: 8px 12px; border: 1px solid #dce5dd; border-radius: 9px; padding: 10px; }
-.quality-runs-launch label, .quality-runs-rating label { display: flex; align-items: center; gap: 7px; color: #40594a; font-size: 12px; }
+.quality-runs-launch fieldset { display: flex; flex-wrap: wrap; gap: 8px 12px; border: 1px solid var(--c-line-strong); border-radius: 9px; padding: 10px; }
+.quality-runs-launch label, .quality-runs-rating label { display: flex; align-items: center; gap: 7px; color: var(--c-ink-muted); font-size: 12px; }
 .quality-runs-launch > label, .quality-runs-rating > label { display: grid; gap: 6px; }
-.quality-runs-launch textarea, .quality-runs-launch select, .quality-runs-rating textarea, .quality-runs-rating select { box-sizing: border-box; width: 100%; border: 1px solid #cbd7ce; border-radius: 8px; padding: 8px; color: #1e382a; background: #fcfdfb; font: inherit; font-size: 12px; }
+.quality-runs-launch textarea, .quality-runs-launch select, .quality-runs-rating textarea, .quality-runs-rating select { box-sizing: border-box; width: 100%; border: 1px solid var(--c-line-strong); border-radius: 8px; padding: 8px; color: var(--c-ink); background: var(--c-surface); font: inherit; font-size: 12px; }
 .quality-runs-launch .quality-review-primary { justify-self: start; }
-.quality-runs-result, .quality-runs-gold { display: grid; gap: 12px; border-top: 1px solid #e2e9e2; padding-top: 14px; }
-.quality-runs-case { display: grid; gap: 8px; padding: 12px; border: 1px solid #e2e9e2; border-radius: 10px; }
+.quality-runs-result, .quality-runs-gold { display: grid; gap: 12px; border-top: 1px solid var(--c-line-strong); padding-top: 14px; }
+.quality-runs-case { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--c-line-strong); border-radius: 10px; }
 .quality-runs-case h4, .quality-runs-case p { margin: 0; }
-.quality-runs-case p, .quality-runs-case small { color: #718076; font-size: 11px; }
+.quality-runs-case p, .quality-runs-case small { color: var(--c-ink-muted); font-size: 11px; }
 .quality-runs-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.quality-runs-arm { min-width: 0; border: 1px solid #e2e9e2; border-radius: 8px; padding: 10px; background: #f9fbf8; }
-.quality-runs-arm h5, .quality-runs-rating h5 { margin: 0 0 8px; color: #385744; }
-.quality-runs-arm pre, .quality-runs-result pre, .quality-runs-gold pre { max-height: 320px; overflow: auto; margin: 0; padding: 9px; border-radius: 7px; background: #f4f7f3; color: #334b3a; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.quality-runs-arm { min-width: 0; border: 1px solid var(--c-line-strong); border-radius: 8px; padding: 10px; background: var(--c-brand-soft); }
+.quality-runs-arm h5, .quality-runs-rating h5 { margin: 0 0 8px; color: var(--c-ink); }
+.quality-runs-arm pre, .quality-runs-result pre, .quality-runs-gold pre { max-height: 320px; overflow: auto; margin: 0; padding: 9px; border-radius: 7px; background: var(--c-brand-soft); color: var(--c-ink); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .quality-runs-arm small { display: block; margin-top: 7px; }
 .quality-runs-rating { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 9px; padding-top: 7px; }
 .quality-runs-rating h5, .quality-runs-rating button { grid-column: 1 / -1; }

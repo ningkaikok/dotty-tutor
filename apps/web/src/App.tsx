@@ -23,6 +23,8 @@ const PublishedChapterApp = lazy(() => import("./apps/student/PublishedChapterAp
 const QualityReviewApp = lazy(() => import("./apps/quality-review/QualityReviewApp").then((module) => ({ default: module.QualityReviewApp })));
 const CoursewareApp = lazy(() => import("./apps/courseware/CoursewareApp").then((module) => ({ default: module.CoursewareApp })));
 
+const ComponentCatalog = import.meta.env.DEV ? lazy(() => import("./components/ui/ComponentCatalog").then((module) => ({ default: module.ComponentCatalog }))) : null;
+
 function PageTitle() {
   const { pathname } = useLocation();
 
@@ -51,6 +53,7 @@ function AppRoutes() {
       <PageTitle />
       <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
         <Routes>
+          {ComponentCatalog && <Route path="dev/components" element={<ComponentCatalog />} />}
           <Route index element={<ProductHome />} />
           <Route path="learn/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />

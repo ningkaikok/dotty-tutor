@@ -56,6 +56,8 @@ export interface QualityReviewInbox {
   reviewedCount: number;
   unlinkedCount: number;
   mediaTasks: QualityReviewInboxMediaTask[];
+  coursewareTasks?: Array<{ coursewareId: string; chapterId: string; sourceRevisionId: string; sourceKey: string; uploadId: string | null; title: string; status: string; pageCount: number; pendingPageCount: number }>;
+  coursewarePendingCount?: number;
   mediaPendingCount: number;
 }
 
