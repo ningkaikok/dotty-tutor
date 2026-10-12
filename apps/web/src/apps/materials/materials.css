@@ -1,6 +1,7 @@
 .materials-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:32px 0 24px; }
 .materials-heading h1 { margin:8px 0; font-size:clamp(26px,3vw,36px); letter-spacing:-.04em; }
 .materials-heading p { margin:0; line-height:1.6; color:#647568; }
+.materials-heading-actions { display:flex; flex:0 0 auto; flex-wrap:wrap; align-items:center; justify-content:flex-end; gap:9px; }
 .materials-shell a { color:#285c43; text-decoration:none; }
 .materials-shell a:hover { text-decoration:underline; }
 .materials-shell a:focus-visible, .materials-shell summary:focus-visible { outline:3px solid #8ebda3; outline-offset:4px; }
@@ -32,6 +33,7 @@
 .materials-header button:disabled { opacity:.55; }
 .materials-shell .chapter-panel { padding:28px; border-radius:24px; background:rgba(251,250,246,.94); border-color:rgba(34,57,47,.12); box-shadow:0 18px 50px rgba(45,55,48,.08); }
 .materials-shell .material-main-action { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:11px 18px; border:1px solid #183f31; border-radius:999px; background:#183f31; color:#fbfaf6; text-decoration:none; font-size:14px; font-weight:700; }
+.materials-heading-actions .material-main-action { flex:0 1 auto; white-space:nowrap; }
 .materials-shell .material-main-action:hover { background:#20543d; border-color:#20543d; text-decoration:none; }
 .materials-shell .route-back-button:hover { text-decoration:none; }
 .automatic-course-task { display:flex; align-items:center; justify-content:space-between; gap:24px; }
@@ -75,3 +77,12 @@
 .materials-review-task-list li:first-child { border-top:0; }
 .materials-review-task-list a { font-weight:700; }
 @media(max-width:600px) { .materials-review-heading, .materials-review-task-list li { align-items:flex-start; flex-direction:column; } }
+@media(min-width:601px) and (max-width:900px) {
+  .materials-heading { align-items:flex-start; flex-wrap:wrap; }
+  .materials-heading > div:first-child { flex:1 1 100%; }
+  .materials-heading-actions { width:100%; justify-content:flex-start; }
+}
+@media(max-width:600px) {
+  .materials-heading-actions { width:100%; flex-direction:column; align-items:stretch; }
+  .materials-heading-actions .material-main-action { width:100%; box-sizing:border-box; white-space:normal; }
+}

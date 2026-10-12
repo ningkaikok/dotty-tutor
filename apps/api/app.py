@@ -9,14 +9,17 @@ from pathlib import Path
 
 from application import create_app
 from application.chapter_jobs import build_chapter_registry
+from application.courseware_jobs import build_courseware_registry
 from application.job_registry import merge_registries
 from application.lesson_media_jobs import build_lesson_media_registry
 from application.mistake_jobs import build_mistake_registry
 from application.quality_review_runs_jobs import build_quality_review_runs_registry
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.chapter_courses import ChapterCourseService
+from application.services.courseware import CoursewareService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.lesson_media import LessonMediaService
+from application.services.material_courses import MaterialCourseService
 from application.services.personalized_assignment import PersonalizedAssignmentService
 from application.services.quality_review import QualityReviewService
 from application.services.quality_review_runs import QualityReviewRunsService
@@ -36,6 +39,7 @@ from mistake_recognition import build_mistake_recognizer
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.auth_store import AuthSessionStore
+from persistence.courseware_store import CoursewareStore
 from persistence.lesson_media_store import LessonMediaStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
@@ -52,6 +56,7 @@ from publication_revision import PublicationRevisionService
 from routers.auth_routes import build_auth_router
 from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
+from routers.courseware_routes import build_courseware_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.lesson_media_routes import build_lesson_media_router
@@ -155,7 +160,22 @@ app.include_router(build_publication_router(
     revision_service=publication_revision_service,
 ))
 chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
-app.include_router(build_chapter_router(chapter_course_service))
+source_preparation_service = MaterialCourseService(chapter_course_service)
+courseware_store = CoursewareStore(engine=store.engine)
+courseware_service = CoursewareService(
+    store=courseware_store,
+    chapters=chapter_course_service,
+    jobs=background_job_store,
+    runtime=generation_runtime,
+    prompt_store=prompt_store,
+)
+app.state.courseware_service = courseware_service
+app.state.courseware_store = courseware_store
+app.include_router(build_chapter_router(
+    chapter_course_service,
+    source_preparation_service=source_preparation_service,
+))
+app.include_router(build_courseware_router(courseware_service))
 app.include_router(textbook_router)
 
 # Media and voice reuse the published source service while keeping their durable
@@ -210,7 +230,8 @@ mistake_job_registry = build_mistake_registry(
 job_registry = merge_registries(
     textbook_job_registry,
     mistake_job_registry,
-    build_chapter_registry(chapter_course_service),
+    build_chapter_registry(chapter_course_service, source_preparation_service),
+    build_courseware_registry(courseware_service),
     build_lesson_media_registry(lesson_media_service),
     build_quality_review_runs_registry(quality_review_runs_service),
 )

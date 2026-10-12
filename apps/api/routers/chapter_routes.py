@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from application.services.chapter_source_preview import ChapterSourcePreview
@@ -24,9 +24,10 @@ from domain.contracts.chapter import (
     ChapterReview,
     ChapterRevisionCreate,
 )
+from domain.contracts.courseware import CoursewareSourcePreparationRequest
 
 
-def build_chapter_router(service: Any) -> APIRouter:
+def build_chapter_router(service: Any, *, source_preparation_service: Any | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/chapters", tags=["chapters"])
 
     def call(fn, *args, **kwargs):
@@ -46,10 +47,19 @@ def build_chapter_router(service: Any) -> APIRouter:
         return service.list()
 
     @router.post("/from-upload/{upload_id}", response_model=BackgroundJobSummary, status_code=202)
-    def create_courses_from_upload(upload_id: str) -> dict[str, Any]:
-        from application.services.material_courses import MaterialCourseService
-        from infrastructure.runtime.ocr_runtime import runtime
-        return call(MaterialCourseService(service, runtime).enqueue, upload_id)
+    def create_courses_from_upload(
+        upload_id: str,
+        payload: CoursewareSourcePreparationRequest,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ) -> dict[str, Any]:
+        if source_preparation_service is None:
+            raise HTTPException(status_code=503, detail="课件来源准备服务尚未就绪")
+        return call(
+            source_preparation_service.enqueue,
+            upload_id,
+            payload,
+            idempotency_key=idempotency_key,
+        )
 
     @router.delete("/{chapter_id}")
     def delete_chapter(chapter_id: str) -> dict[str, str]:

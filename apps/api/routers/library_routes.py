@@ -44,7 +44,7 @@ def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict
         result = job.get("result")
         if job.get("status") == "deleted":
             raise HTTPException(status_code=404, detail="教材已删除")
-        if job.get("status") != "complete" or not result:
+        if job.get("status") not in {"complete", "completed", "ready"} or not result:
             raise HTTPException(status_code=409, detail="这本教材尚未处理完成")
         restored = dict(result)
 
@@ -54,8 +54,10 @@ def build_library_router(*, store: Any, upload_registry: Any, lesson_store: dict
             return (int(match.group()) if match else 10**9, number)
 
         payloads = sorted(job.get("batchPayloads", {}).values(), key=question_sort_key)
-        restored["questionPayloads"] = payloads or [result["questionPayload"]]
-        restored["questionPayload"] = restored["questionPayloads"][0]
+        if not payloads and isinstance(result.get("questionPayload"), dict):
+            payloads = [result["questionPayload"]]
+        restored["questionPayloads"] = payloads
+        restored["questionPayload"] = payloads[0] if payloads else None
         return restored
 
     return router

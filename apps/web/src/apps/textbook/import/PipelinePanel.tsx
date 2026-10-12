@@ -98,7 +98,7 @@ export function PipelinePanel({ result, pdfMode, phase, processingTask, activeSt
             </div>
           )}
           {result.qualityReport && <QualityReport report={result.qualityReport} />}
-          {!result.questionPayload && result.uploadId ? <Link className="continue-button" to={`/studio/chapters/new?uploadId=${encodeURIComponent(result.uploadId)}`}>自动制作课程（最多前 5 章） →</Link> : <button
+          {!result.questionPayload && result.materialKind !== "paper" && result.uploadId ? <Link className="continue-button" to={`/studio/courseware?uploadId=${encodeURIComponent(result.uploadId)}`}>制作互动课件 →</Link> : result.materialKind === "paper" && !result.questionPayload ? <p className="pipeline-note" role="alert">这份材料已识别为试卷，但尚未得到可复核题目。请检查识别结果后重试；试卷不会进入教材课件流程。</p> : <button
             className="continue-button"
             disabled={!canContinue}
             onClick={() => canContinue && onContinue(result)}

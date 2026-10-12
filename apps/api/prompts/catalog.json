@@ -33,6 +33,26 @@
       "repair"
     ]
   },
+  "courseware.plan.english": {
+    "version": "english-courseware-plan-v1",
+    "file": "courseware.plan.english.txt",
+    "variables": ["chapter", "audience", "language_policy", "duration_minutes", "objectives", "source"]
+  },
+  "courseware.plan.math": {
+    "version": "math-courseware-plan-v1",
+    "file": "courseware.plan.math.txt",
+    "variables": ["chapter", "audience", "language_policy", "duration_minutes", "objectives", "source"]
+  },
+  "courseware.page.english": {
+    "version": "english-courseware-page-v1",
+    "file": "courseware.page.english.txt",
+    "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
+  },
+  "courseware.page.math": {
+    "version": "math-courseware-page-v1",
+    "file": "courseware.page.math.txt",
+    "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
+  },
   "tutor.stable": {
     "version": "tutor-stable-v1",
     "file": "tutor.stable.txt",

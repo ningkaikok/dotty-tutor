@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -67,8 +68,18 @@ class _WorkerStore:
     def claim_next(self, worker_id: str, *, lease_seconds: float):
         if self.job["status"] != "queued":
             return None
-        self.job.update(status="running", leaseOwner=worker_id)
+        self.job.update(
+            status="running", leaseOwner=worker_id, attemptCount=1,
+            leaseExpiresAt=time.time() + lease_seconds,
+        )
         return self.job
+
+    def execution_is_current(self, job_id: str, worker_id: str, attempt_count: int) -> bool:
+        return (
+            job_id == self.job["jobId"] and self.job["status"] == "running"
+            and self.job.get("leaseOwner") == worker_id
+            and self.job.get("attemptCount") == attempt_count
+        )
 
     def is_cancel_requested(self, job_id: str) -> bool:
         self.cancel_checks += 1
@@ -85,7 +96,9 @@ class _WorkerStore:
     def get_job(self, job_id: str):
         return self.job
 
-    def mark_cancelled(self, job_id: str, worker_id: str):
+    def mark_cancelled(self, job_id: str, worker_id: str, *, expected_attempt_count: int):
+        if not self.execution_is_current(job_id, worker_id, expected_attempt_count):
+            return self.job
         self.job.update(status="cancelled", cancelRequested=True)
         return self.job
 

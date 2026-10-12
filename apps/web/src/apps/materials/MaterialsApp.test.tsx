@@ -7,7 +7,7 @@ import type { QualityReviewInbox } from "../../api/qualityReviews";
 import { MaterialsApp } from "./MaterialsApp";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const course = { chapterId: "en-1", title: "A day outdoors", subject: "english", status: "in_review", version: 1, recordVersion: 2, currentLessonIds: ["lesson-1"], reviewIssues: [], publicationId: null };
+const course = { chapterId: "en-1", title: "A day outdoors", subject: "english", teachingMode: "tutorial", status: "in_review", version: 1, recordVersion: 2, currentLessonIds: ["lesson-1"], reviewIssues: [], publicationId: null };
 const upload = { uploadId: "pdf-1", filename: "数学教材.pdf", pageCount: 12, questionCount: 4, status: "complete" };
 const emptyInbox: QualityReviewInbox = { items: [], total: 0, pendingCount: 0, reviewedCount: 0, unlinkedCount: 0, mediaTasks: [], mediaPendingCount: 0 };
 function setup(failedUploads = false, inbox: QualityReviewInbox = emptyInbox, courseItems: Array<typeof course & { uploadId?: string }> = [course]) {
@@ -23,7 +23,9 @@ it("user Given an uploaded PDF and an English course When opening my materials T
   expect(await screen.findByRole("heading", { name: "A day outdoors" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
   expect(screen.getByRole("link", { name: "继续复核 →" })).toHaveAttribute("href", "/studio/chapters/en-1");
-  expect(screen.getByRole("link", { name: "自动制作课程" })).toHaveAttribute("href", "/studio/chapters/new?uploadId=pdf-1");
+  expect(screen.getByRole("link", { name: "制作互动课件 · A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
+  expect(screen.getByRole("link", { name: "为 数学教材.pdf 制作互动课件" })).toHaveAttribute("href", "/studio/courseware?uploadId=pdf-1");
+  expect(screen.queryByRole("link", { name: "自动制作课程" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看练习 →" })).toHaveAttribute("href", "/studio/import?uploadId=pdf-1");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "英语" } });
   expect(screen.queryByRole("heading", { name: "数学教材.pdf" })).not.toBeInTheDocument();
@@ -75,6 +77,7 @@ it("user Given one textbook and multiple generated chapters When opening my mate
   expect(screen.queryByText("英语阅读")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
   expect(screen.getByRole("link", { name: "Chapter 1 Writing" })).toHaveAttribute("href", "/studio/chapters/first");
+  expect(screen.getByRole("link", { name: "制作互动课件 · Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
   expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Chapter 1 Writing");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Chapter 2" } });
   expect(screen.getByRole("heading", { name: book.filename })).toBeVisible();
@@ -83,11 +86,11 @@ it("user Given one textbook and multiple generated chapters When opening my mate
 it("user Given a regenerated tutorial and preserved reading drafts When opening the book Then the tutorial count excludes its old drafts and history remains accessible", async () => {
   const book = { ...upload, materialKind: "textbook", questionCount: 0 };
   const fresh = { ...course, chapterId: "fresh", uploadId: book.uploadId, title: "新的讲解章节", teachingMode: "tutorial" };
-  const old = { ...course, uploadId: book.uploadId, title: "原阅读练习" };
+  const old = { ...course, uploadId: book.uploadId, title: "原阅读练习", teachingMode: "practice" };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify(String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: String(url).endsWith("/api/library") ? [book] : [fresh, old] }), { headers: { "Content-Type": "application/json" } }));
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   await screen.findByRole("heading", { name: book.filename });
-  expect(screen.getByText("1 章 · 1 节内容 · 待复核")).toBeVisible();
+  expect(screen.getByText("1 章 · 1 节旧版课程内容")).toBeVisible();
   expect(screen.queryByRole("link", { name: "制作讲解教程" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
   expect(screen.getByRole("link", { name: fresh.title })).toBeVisible();

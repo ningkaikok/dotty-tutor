@@ -12,10 +12,19 @@ import uuid
 from typing import Any
 
 from sqlalchemy import and_, or_, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
 
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
+from persistence.legacy_cleanup_guards import (
+    job_is_tombstoned,
+    lock_upload_for_legacy_write,
+    payload_targets_any_tombstoned_output,
+    source_upload_id_for_payload,
+    tombstoned_ids,
+)
 from persistence.schema import background_jobs
 
 JOB_STATUSES = {"queued", "running", "succeeded", "failed", "cancelled"}
@@ -59,6 +68,8 @@ class JobStore(DatabaseStore):
         max_attempts: int = 3,
         job_id: str | None = None,
         now: float | None = None,
+        connection: Connection | None = None,
+        reject_payload_mismatch: bool = False,
     ) -> dict[str, Any]:
         """创建 queued 任务；相同幂等键始终返回原任务而不重复入队。"""
         if not job_type or not job_type.strip():
@@ -81,22 +92,62 @@ class JobStore(DatabaseStore):
             "progress": 0,
             "message": "等待 Worker 处理",
         }
+        if connection is None:
+            with self.engine.begin() as active:
+                result = self.create_job(
+                    job_type, payload, idempotency_key=idempotency_key,
+                    max_attempts=max_attempts, job_id=job_id, now=timestamp,
+                    connection=active, reject_payload_mismatch=reject_payload_mismatch,
+                )
+            return self.get_job(result["jobId"]) or result
+
+        upload_id = payload.get("uploadId") or source_upload_id_for_payload(connection, payload)
+        marker = None
+        if upload_id:
+            _upload, marker = lock_upload_for_legacy_write(connection, str(upload_id))
+        if payload_targets_any_tombstoned_output(connection, payload):
+            raise ValueError("该历史内容已撤回，不能为旧对象创建生成任务")
+        if values["job_id"] in tombstoned_ids(marker, "jobIds") or job_is_tombstoned(connection, values["job_id"]):
+            raise ValueError("该历史任务已撤回，不能重新使用")
+
         if idempotency_key:
-            existing = self.get_by_idempotency_key(idempotency_key)
+            existing = connection.execute(select(background_jobs).where(
+                background_jobs.c.idempotency_key == idempotency_key,
+            ).with_for_update()).mappings().first()
             if existing:
-                return existing
-        try:
-            with self.engine.begin() as connection:
-                connection.execute(background_jobs.insert().values(**values))
-        except IntegrityError:
-            # A concurrent PostgreSQL request may win the unique idempotency
-            # index between the read above and INSERT. Return that winner.
-            if idempotency_key:
-                existing = self.get_by_idempotency_key(idempotency_key)
-                if existing:
-                    return existing
-            raise
-        return self.get_job(values["job_id"])  # type: ignore[return-value]
+                if str(existing["job_id"]) in tombstoned_ids(marker, "jobIds") or job_is_tombstoned(connection, str(existing["job_id"])):
+                    raise ValueError("该历史任务已撤回，不能重新使用")
+                if reject_payload_mismatch and (
+                    existing["job_type"] != job_type
+                    or decode_json(existing["payload_json"]) != payload
+                ):
+                    raise ValueError("幂等键已用于不同任务请求")
+                return self._row_to_job(existing)
+
+        statement = postgresql_insert(background_jobs).values(**values)
+        if idempotency_key:
+            statement = statement.on_conflict_do_nothing(
+                index_elements=[background_jobs.c.idempotency_key],
+            )
+        inserted = connection.execute(statement.returning(background_jobs)).mappings().first()
+        if inserted is not None:
+            return self._row_to_job(inserted)
+        # A concurrent request may have won the idempotency key after our read.
+        existing = connection.execute(select(background_jobs).where(
+            background_jobs.c.idempotency_key == idempotency_key,
+        ).with_for_update()).mappings().first()
+        if existing is None:
+            raise IntegrityError(
+                "background job insert conflict", {}, RuntimeError("conflicting row was not visible"),
+            )
+        if str(existing["job_id"]) in tombstoned_ids(marker, "jobIds") or job_is_tombstoned(connection, str(existing["job_id"])):
+            raise ValueError("该历史任务已撤回，不能重新使用")
+        if reject_payload_mismatch and (
+            existing["job_type"] != job_type
+            or decode_json(existing["payload_json"]) != payload
+        ):
+            raise ValueError("幂等键已用于不同任务请求")
+        return self._row_to_job(existing)
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
@@ -104,16 +155,30 @@ class JobStore(DatabaseStore):
             row = connection.execute(
                 select(background_jobs).where(background_jobs.c.job_id == job_id)
             ).mappings().first()
+            if row and job_is_tombstoned(connection, job_id):
+                return None
         return self._row_to_job(row) if row else None
 
-    def get_by_idempotency_key(self, idempotency_key: str) -> dict[str, Any] | None:
+    def get_by_idempotency_key(
+        self, idempotency_key: str, *, connection: Connection | None = None, lock: bool = False,
+    ) -> dict[str, Any] | None:
         if not idempotency_key:
             return None
         self._ensure_initialized()
-        with self.engine.connect() as connection:
-            row = connection.execute(
-                select(background_jobs).where(background_jobs.c.idempotency_key == idempotency_key)
-            ).mappings().first()
+        if connection is not None:
+            query = select(background_jobs).where(background_jobs.c.idempotency_key == idempotency_key)
+            if lock:
+                query = query.with_for_update()
+            row = connection.execute(query).mappings().first()
+            if row and job_is_tombstoned(connection, str(row["job_id"])):
+                return None
+        else:
+            with self.engine.connect() as active:
+                row = active.execute(
+                    select(background_jobs).where(background_jobs.c.idempotency_key == idempotency_key)
+                ).mappings().first()
+                if row and job_is_tombstoned(active, str(row["job_id"])):
+                    return None
         return self._row_to_job(row) if row else None
 
     def latest_for_payload(self, job_type: str, key: str, value: str) -> dict[str, Any] | None:
@@ -124,6 +189,8 @@ class JobStore(DatabaseStore):
                 background_jobs.c.job_type == job_type,
                 background_jobs.c.payload_json[key].as_string() == value,
             ).order_by(background_jobs.c.created_at.desc()).limit(1)).mappings().first()
+            if row and job_is_tombstoned(connection, str(row["job_id"])):
+                return None
         return self._row_to_job(row) if row else None
 
     def list_jobs(self, *, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
@@ -136,7 +203,12 @@ class JobStore(DatabaseStore):
             query = query.where(background_jobs.c.status == status)
         with self.engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
-        return [self._row_to_job(row) for row in rows]
+            visible = []
+            for row in rows:
+                if job_is_tombstoned(connection, str(row["job_id"])):
+                    continue
+                visible.append(row)
+        return [self._row_to_job(row) for row in visible]
 
     def recover_expired_leases(self, *, now: float | None = None) -> int:
         """回收已过期租约，并遵守最大尝试次数。
@@ -266,52 +338,85 @@ class JobStore(DatabaseStore):
             )
         return bool(value)
 
+    def execution_is_current(
+        self,
+        job_id: str,
+        worker_id: str,
+        attempt_count: int,
+        *,
+        now: float | None = None,
+    ) -> bool:
+        """Fence a claimed execution by owner, attempt, live lease, and cancellation."""
+        timestamp = time.time() if now is None else now
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            value = connection.scalar(
+                select(background_jobs.c.job_id).where(
+                    background_jobs.c.job_id == job_id,
+                    background_jobs.c.status == "running",
+                    background_jobs.c.lease_owner == worker_id,
+                    background_jobs.c.attempt_count == attempt_count,
+                    background_jobs.c.lease_expires_at > timestamp,
+                    background_jobs.c.cancel_requested.is_(False),
+                )
+            )
+        return value is not None
+
     def heartbeat(
         self,
         job_id: str,
         worker_id: str,
         *,
         lease_seconds: float = 60.0,
+        expected_attempt_count: int | None = None,
         now: float | None = None,
     ) -> bool:
         """续租仍由指定 Worker 持有的任务；过期后不复活旧执行者。"""
         timestamp = time.time() if now is None else now
         self._ensure_initialized()
+        conditions = [
+            background_jobs.c.job_id == job_id,
+            background_jobs.c.status == "running",
+            background_jobs.c.lease_owner == worker_id,
+            background_jobs.c.lease_expires_at > timestamp,
+        ]
+        if expected_attempt_count is not None:
+            conditions.append(background_jobs.c.attempt_count == expected_attempt_count)
         with self.engine.begin() as connection:
             changed = connection.execute(
                 update(background_jobs)
-                .where(
-                    background_jobs.c.job_id == job_id,
-                    background_jobs.c.status == "running",
-                    background_jobs.c.lease_owner == worker_id,
-                )
+                .where(*conditions)
                 .values(lease_expires_at=timestamp + lease_seconds, updated_at=timestamp)
             )
         return bool(changed.rowcount)
 
-    def request_cancel(self, job_id: str, *, now: float | None = None) -> dict[str, Any] | None:
+    def request_cancel(self, job_id: str, *, now: float | None = None, connection: Connection | None = None) -> dict[str, Any] | None:
         """排队任务立即取消，运行任务设置标记并由 handler 在安全点退出。"""
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
-        with self.engine.begin() as connection:
-            connection.execute(
-                update(background_jobs)
-                .where(background_jobs.c.job_id == job_id, background_jobs.c.status == "queued")
-                .values(
-                    status="cancelled", cancel_requested=True, completed_at=timestamp,
-                    updated_at=timestamp, progress=100, message="已取消",
-                )
+        if connection is None:
+            with self.engine.begin() as active:
+                self.request_cancel(job_id, now=timestamp, connection=active)
+            return self.get_job(job_id)
+        connection.execute(
+            update(background_jobs)
+            .where(background_jobs.c.job_id == job_id, background_jobs.c.status == "queued")
+            .values(
+                status="cancelled", cancel_requested=True, completed_at=timestamp,
+                updated_at=timestamp, progress=100, message="已取消",
             )
-            connection.execute(
-                update(background_jobs)
-                .where(background_jobs.c.job_id == job_id, background_jobs.c.status == "running")
-                .values(
-                    cancel_requested=True,
-                    updated_at=timestamp,
-                    message="已请求取消，将在安全点停止",
-                )
+        )
+        connection.execute(
+            update(background_jobs)
+            .where(background_jobs.c.job_id == job_id, background_jobs.c.status == "running")
+            .values(
+                cancel_requested=True,
+                updated_at=timestamp,
+                message="已请求取消，将在安全点停止",
             )
-        return self.get_job(job_id)
+        )
+        row = connection.execute(select(background_jobs).where(background_jobs.c.job_id == job_id)).mappings().first()
+        return self._row_to_job(row) if row else None
 
     cancel_job = request_cancel
 
@@ -324,12 +429,25 @@ class JobStore(DatabaseStore):
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
         with self.engine.begin() as connection:
+            preview = connection.execute(select(
+                background_jobs.c.payload_json,
+            ).where(background_jobs.c.job_id == job_id)).mappings().first()
+            preview_payload = decode_json(preview["payload_json"]) if preview else {}
+            upload_id = (
+                (preview_payload.get("uploadId") or source_upload_id_for_payload(connection, preview_payload))
+                if isinstance(preview_payload, dict) else None
+            )
+            marker = None
+            if upload_id:
+                _upload, marker = lock_upload_for_legacy_write(connection, str(upload_id))
+            if job_id in tombstoned_ids(marker, "jobIds") or job_is_tombstoned(connection, job_id):
+                return None
             row = connection.execute(
                 select(
                     background_jobs.c.status,
                     background_jobs.c.attempt_count,
                     background_jobs.c.max_attempts,
-                ).where(background_jobs.c.job_id == job_id)
+                ).where(background_jobs.c.job_id == job_id).with_for_update()
             ).mappings().first()
             if not row or row["status"] != "failed":
                 return None
@@ -352,6 +470,7 @@ class JobStore(DatabaseStore):
         progress: int,
         message: str = "",
         worker_id: str | None = None,
+        expected_attempt_count: int | None = None,
         now: float | None = None,
     ) -> dict[str, Any] | None:
         """更新任务展示进度；worker_id 存在时只允许租约持有者写入。"""
@@ -362,7 +481,10 @@ class JobStore(DatabaseStore):
             conditions.extend([
                 background_jobs.c.status == "running",
                 background_jobs.c.lease_owner == worker_id,
+                background_jobs.c.lease_expires_at > timestamp,
             ])
+            if expected_attempt_count is not None:
+                conditions.append(background_jobs.c.attempt_count == expected_attempt_count)
         with self.engine.begin() as connection:
             connection.execute(
                 update(background_jobs).where(*conditions).values(
@@ -377,19 +499,23 @@ class JobStore(DatabaseStore):
         job_id: str,
         worker_id: str,
         *,
+        expected_attempt_count: int | None = None,
         now: float | None = None,
     ) -> dict[str, Any]:
         """由当前租约 Worker 将运行任务收敛为 cancelled。"""
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
+        conditions = [
+            background_jobs.c.job_id == job_id,
+            background_jobs.c.status == "running",
+            background_jobs.c.lease_owner == worker_id,
+        ]
+        if expected_attempt_count is not None:
+            conditions.append(background_jobs.c.attempt_count == expected_attempt_count)
         with self.engine.begin() as connection:
             changed = connection.execute(
                 update(background_jobs)
-                .where(
-                    background_jobs.c.job_id == job_id,
-                    background_jobs.c.status == "running",
-                    background_jobs.c.lease_owner == worker_id,
-                )
+                .where(*conditions)
                 .values(
                     status="cancelled", cancel_requested=True,
                     lease_owner=None, lease_expires_at=None,
@@ -407,20 +533,25 @@ class JobStore(DatabaseStore):
         worker_id: str,
         result: Any = None,
         *,
+        expected_attempt_count: int | None = None,
         now: float | None = None,
     ) -> dict[str, Any]:
         """由租约持有者完成任务；取消请求优先于成功结果。"""
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
+        conditions = [
+            background_jobs.c.job_id == job_id,
+            background_jobs.c.status == "running",
+            background_jobs.c.lease_owner == worker_id,
+            background_jobs.c.lease_expires_at > timestamp,
+            background_jobs.c.cancel_requested.is_(False),
+        ]
+        if expected_attempt_count is not None:
+            conditions.append(background_jobs.c.attempt_count == expected_attempt_count)
         with self.engine.begin() as connection:
             changed = connection.execute(
                 update(background_jobs)
-                .where(
-                    background_jobs.c.job_id == job_id,
-                    background_jobs.c.status == "running",
-                    background_jobs.c.lease_owner == worker_id,
-                    background_jobs.c.cancel_requested.is_(False),
-                )
+                .where(*conditions)
                 .values(
                     status="succeeded", result_json=result,
                     last_error_json=None,
@@ -440,44 +571,65 @@ class JobStore(DatabaseStore):
         error: dict[str, Any],
         *,
         retryable: bool,
+        expected_attempt_count: int | None = None,
         now: float | None = None,
     ) -> dict[str, Any]:
         """记录结构化错误；可重试且未达上限时回到 queued，否则 failed。"""
         self._ensure_initialized()
         timestamp = time.time() if now is None else now
         with self.engine.begin() as connection:
+            conditions = [
+                background_jobs.c.job_id == job_id,
+                background_jobs.c.status == "running",
+                background_jobs.c.lease_owner == worker_id,
+                background_jobs.c.lease_expires_at > timestamp,
+            ]
+            if expected_attempt_count is not None:
+                conditions.append(background_jobs.c.attempt_count == expected_attempt_count)
             row = connection.execute(
-                select(background_jobs.c.attempt_count, background_jobs.c.max_attempts)
-                .where(
-                    background_jobs.c.job_id == job_id,
-                    background_jobs.c.status == "running",
-                    background_jobs.c.lease_owner == worker_id,
+                select(
+                    background_jobs.c.attempt_count,
+                    background_jobs.c.max_attempts,
+                    background_jobs.c.cancel_requested,
                 )
+                .where(*conditions)
+                .with_for_update()
             ).mappings().first()
             if not row:
                 raise ValueError("任务不存在，或租约已不属于当前 Worker")
-            should_retry = retryable and row["attempt_count"] < row["max_attempts"]
-            values: dict[str, Any] = {
-                "status": "queued" if should_retry else "failed",
-                "last_error_json": error,
-                "lease_owner": None,
-                "lease_expires_at": None,
-                "updated_at": timestamp,
-            }
-            if not should_retry:
-                values["completed_at"] = timestamp
-                values["progress"] = 100
-                values["message"] = "处理失败"
-            else:
-                values["progress"] = 0
-                values["message"] = "处理失败，等待重试"
-            connection.execute(
-                update(background_jobs)
-                .where(
-                    background_jobs.c.job_id == job_id,
-                    background_jobs.c.status == "running",
-                    background_jobs.c.lease_owner == worker_id,
+            if row["cancel_requested"]:
+                changed = connection.execute(
+                    update(background_jobs)
+                    .where(*conditions, background_jobs.c.cancel_requested.is_(True))
+                    .values(
+                        status="cancelled", lease_owner=None, lease_expires_at=None,
+                        completed_at=timestamp, updated_at=timestamp, progress=100,
+                        message="已取消",
+                    )
                 )
-                .values(**values)
-            )
+                if changed.rowcount != 1:
+                    raise ValueError("取消中的任务执行尝试已变化")
+            else:
+                should_retry = retryable and row["attempt_count"] < row["max_attempts"]
+                values: dict[str, Any] = {
+                    "status": "queued" if should_retry else "failed",
+                    "last_error_json": error,
+                    "lease_owner": None,
+                    "lease_expires_at": None,
+                    "updated_at": timestamp,
+                }
+                if not should_retry:
+                    values["completed_at"] = timestamp
+                    values["progress"] = 100
+                    values["message"] = "处理失败"
+                else:
+                    values["progress"] = 0
+                    values["message"] = "处理失败，等待重试"
+                changed = connection.execute(
+                    update(background_jobs)
+                    .where(*conditions, background_jobs.c.cancel_requested.is_(False))
+                    .values(**values)
+                )
+                if changed.rowcount != 1:
+                    raise ValueError("任务不存在，或执行尝试已不属于当前 Worker")
         return self.get_job(job_id)  # type: ignore[return-value]

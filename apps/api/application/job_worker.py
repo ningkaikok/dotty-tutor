@@ -8,6 +8,7 @@ Worker 只负责领取任务、调用注册表中的 handler 和收敛执行状�
 from __future__ import annotations
 
 import importlib
+import inspect
 import threading
 import uuid
 from dataclasses import dataclass
@@ -18,7 +19,7 @@ from observability import log_event
 from persistence.job_store import JobStore
 
 CancellationCheck = Callable[[], bool]
-JobHandler = Callable[[dict[str, Any], CancellationCheck], Any]
+JobHandler = Callable[..., Any]
 CompletionCleanup = Callable[[], None]
 
 # HTTP 状态码到"值得重试"的既有映射，供 handler 把 HTTPException 转换成
@@ -56,6 +57,17 @@ class TerminalJobError(JobFailure):
 class RegisteredTask:
     name: str
     handler: JobHandler
+    accepts_execution_context: bool = False
+
+
+@dataclass(frozen=True)
+class JobExecutionContext:
+    """Trusted claim metadata used by domain checkpoints to fence late output."""
+
+    job_id: str
+    worker_id: str
+    attempt_count: int
+    lease_expires_at: float
 
 
 @dataclass(frozen=True)
@@ -84,7 +96,11 @@ class TaskRegistry:
             raise ValueError("job_type 不能为空")
         if job_type in self._tasks and not replace:
             raise ValueError(f"任务类型已经注册：{job_type}")
-        self._tasks[job_type] = RegisteredTask(job_type, handler)
+        try:
+            accepts_context = len(inspect.signature(handler).parameters) >= 3
+        except (TypeError, ValueError):
+            accepts_context = False
+        self._tasks[job_type] = RegisteredTask(job_type, handler, accepts_context)
         return handler
 
     def decorator(self, job_type: str, *, replace: bool = False) -> Callable[[JobHandler], JobHandler]:
@@ -96,6 +112,20 @@ class TaskRegistry:
     def get(self, job_type: str) -> JobHandler | None:
         task = self._tasks.get(job_type)
         return task.handler if task else None
+
+    def run(
+        self,
+        job_type: str,
+        payload: dict[str, Any],
+        cancellation_check: CancellationCheck,
+        context: JobExecutionContext,
+    ) -> Any:
+        task = self._tasks.get(job_type)
+        if task is None:
+            raise LookupError(f"未注册任务类型：{job_type}")
+        if task.accepts_execution_context:
+            return task.handler(payload, cancellation_check, context)
+        return task.handler(payload, cancellation_check)
 
     def items(self) -> tuple[tuple[str, JobHandler], ...]:
         """Expose registered handlers for composing domain registries."""
@@ -146,14 +176,24 @@ class JobWorker:
         if job is None:
             return None
         job_id = job["jobId"]
+        context = JobExecutionContext(
+            job_id=job_id,
+            worker_id=self.worker_id,
+            attempt_count=int(job["attemptCount"]),
+            lease_expires_at=float(job["leaseExpiresAt"]),
+        )
+        if not self.store.execution_is_current(job_id, self.worker_id, context.attempt_count):
+            return self.store.get_job(job_id)
         if self.store.is_cancel_requested(job_id):
-            return self.store.mark_cancelled(job_id, self.worker_id)
+            return self.store.mark_cancelled(
+                job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+            )
         handler = self.registry.get(job["jobType"])
         if handler is None:
             error = TerminalJobError(f"未注册任务类型：{job['jobType']}")
             return self.store.complete_failure(
                 job_id, self.worker_id, self._error_payload(error, retryable=False, code="unknown_job_type"),
-                retryable=False,
+                retryable=False, expected_attempt_count=context.attempt_count,
             )
 
         def cancellation_check() -> bool:
@@ -164,6 +204,7 @@ class JobWorker:
             progress=10,
             message="正在执行后台任务",
             worker_id=self.worker_id,
+            expected_attempt_count=context.attempt_count,
         )
 
         # 长任务必须在自己的租约过期前续租，否则另一个 Worker 会把仍在执行的
@@ -181,6 +222,7 @@ class JobWorker:
                         job_id,
                         self.worker_id,
                         lease_seconds=self.lease_seconds,
+                        expected_attempt_count=context.attempt_count,
                     ):
                         heartbeat_errors.append(RuntimeError("任务租约已不属于当前 Worker"))
                         lease_lost.set()
@@ -213,8 +255,20 @@ class JobWorker:
                     error=str(error)[:300],
                 )
 
+        def settle_cancel_or_stale() -> dict[str, Any] | None:
+            current = self.store.get_job(job_id)
+            if (current and current["status"] == "running"
+                    and current["leaseOwner"] == self.worker_id
+                    and current["attemptCount"] == context.attempt_count
+                    and current["cancelRequested"]):
+                cleanup_after_cancel()
+                return self.store.mark_cancelled(
+                    job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+                )
+            return current
+
         try:
-            execution = handler(job["payload"], cancellation_check)
+            execution = self.registry.run(job["jobType"], job["payload"], cancellation_check, context)
             if isinstance(execution, CancellableJobResult):
                 result = execution.value
                 on_cancel = execution.on_cancel
@@ -222,49 +276,71 @@ class JobWorker:
                 result = execution
             # 租约丢失表示数据库已经不再承认当前 Worker 的所有权。此时不能继续
             # 写入成功/失败状态，否则会覆盖接管该任务的新 Worker 的执行结果。
-            if lease_lost.is_set():
-                return self.store.get_job(job_id)
+            if lease_lost.is_set() or not self.store.execution_is_current(
+                job_id, self.worker_id, context.attempt_count,
+            ):
+                return settle_cancel_or_stale()
             if cancellation_check():
                 cleanup_after_cancel()
-                return self.store.mark_cancelled(job_id, self.worker_id)
+                return self.store.mark_cancelled(
+                    job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+                )
             try:
-                return self.store.complete_success(job_id, self.worker_id, result)
+                return self.store.complete_success(
+                    job_id, self.worker_id, result,
+                    expected_attempt_count=context.attempt_count,
+                )
             except ValueError:
                 # A cancellation can race the final check. Re-read the row and
                 # honor the request instead of leaving an orphaned lease.
                 current = self.store.get_job(job_id)
-                if current and current["status"] == "running" and current["cancelRequested"]:
+                if (current and current["status"] == "running" and current["cancelRequested"]
+                        and current["attemptCount"] == context.attempt_count):
                     cleanup_after_cancel()
-                    return self.store.mark_cancelled(job_id, self.worker_id)
-                raise
+                    return self.store.mark_cancelled(
+                        job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+                    )
+                return current
         except JobCancelled as error:
-            if lease_lost.is_set():
-                return self.store.get_job(job_id)
+            if lease_lost.is_set() or not self.store.execution_is_current(
+                job_id, self.worker_id, context.attempt_count,
+            ):
+                return settle_cancel_or_stale()
             cleanup_after_cancel()
-            return self.store.mark_cancelled(job_id, self.worker_id)
+            return self.store.mark_cancelled(job_id, self.worker_id, expected_attempt_count=context.attempt_count)
         except JobFailure as error:
-            if lease_lost.is_set():
-                return self.store.get_job(job_id)
+            if lease_lost.is_set() or not self.store.execution_is_current(
+                job_id, self.worker_id, context.attempt_count,
+            ):
+                return settle_cancel_or_stale()
             if cancellation_check():
                 cleanup_after_cancel()
-                return self.store.mark_cancelled(job_id, self.worker_id)
+                return self.store.mark_cancelled(
+                    job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+                )
             return self.store.complete_failure(
                 job_id,
                 self.worker_id,
                 self._error_payload(error, retryable=error.retryable, code=error.code),
                 retryable=error.retryable,
+                expected_attempt_count=context.attempt_count,
             )
         except Exception as error:  # Unknown failures are bounded retries for transient runtimes.
-            if lease_lost.is_set():
-                return self.store.get_job(job_id)
+            if lease_lost.is_set() or not self.store.execution_is_current(
+                job_id, self.worker_id, context.attempt_count,
+            ):
+                return settle_cancel_or_stale()
             if cancellation_check():
                 cleanup_after_cancel()
-                return self.store.mark_cancelled(job_id, self.worker_id)
+                return self.store.mark_cancelled(
+                    job_id, self.worker_id, expected_attempt_count=context.attempt_count,
+                )
             return self.store.complete_failure(
                 job_id,
                 self.worker_id,
                 self._error_payload(error, retryable=True, code="unhandled_error"),
                 retryable=True,
+                expected_attempt_count=context.attempt_count,
             )
         finally:
             heartbeat_stop.set()

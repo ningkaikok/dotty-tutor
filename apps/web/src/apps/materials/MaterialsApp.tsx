@@ -11,6 +11,12 @@ import "./materials.css";
 const statuses: Record<string, string> = { draft: "待生成", in_review: "待复核", needs_review: "需修改", published: "已发布" };
 type ReviewItem = ReturnType<typeof useQualityReviewInbox>["items"][number];
 
+function subjectLabel(subject: string) {
+  if (subject === "english") return "英语";
+  if (subject === "math") return "数学";
+  return subject || "未配置学科";
+}
+
 /** Keep source review tasks alongside their upload and chapter context in the main library. */
 export function MaterialsApp() {
   const { uploads, chapters, errors, loading, uploadsAvailable, chaptersAvailable, reload, remove } = useMaterials();
@@ -28,11 +34,11 @@ export function MaterialsApp() {
     .map((upload) => ({ upload, chapters: chapters.filter((chapter) => chapter.uploadId === upload.uploadId).sort((a, b) => (a.pageStart ?? 0) - (b.pageStart ?? 0)) }))
     .filter((book) => book.chapters.length > 0);
   const groupedIds = new Set(books.flatMap((book) => book.chapters.map((chapter) => chapter.chapterId)));
-  const tutorials = books.filter((book) => (filter === "all" || filter === "books") && `${book.upload.filename} ${book.chapters.map((chapter) => `${chapter.title} ${chapter.subject === "english" ? "英语" : "数学"}`).join(" ")}`.toLocaleLowerCase().includes(query));
+  const tutorials = books.filter((book) => (filter === "all" || filter === "books") && `${book.upload.filename} ${book.chapters.map((chapter) => `${chapter.title} ${subjectLabel(chapter.subject)}`).join(" ")}`.toLocaleLowerCase().includes(query));
   const files = uploads.filter((item) => !books.some((book) => book.upload.uploadId === item.uploadId))
     .filter((item) => item.filename.toLocaleLowerCase().includes(query) && (filter === "all" || (filter === "books" ? item.materialKind === "textbook" : filter === "papers" ? item.materialKind === "paper" : filter === "unknown" && (item.materialKind === "unknown" || !item.materialKind))));
   const courses = chapters.filter((item) => !groupedIds.has(item.chapterId))
-    .filter((item) => (filter === "all" || filter === "books") && `${item.title} ${item.subject === "english" ? "英语 阅读" : "数学"}`.toLocaleLowerCase().includes(query));
+    .filter((item) => (filter === "all" || filter === "books") && `${item.title} ${subjectLabel(item.subject)}`.toLocaleLowerCase().includes(query));
   const allReviewGroups = groupReviews(inbox.items, uploadById);
   const selectedGroup = allReviewGroups.find((group) => group.sourceKey === reviewSourceKey);
   const selectedChapterIds = new Set(selectedGroup?.chapterIds ?? []);
@@ -65,7 +71,7 @@ export function MaterialsApp() {
 
   return <main className="app-shell materials-shell">
     <MaterialsHeader backTo="/" backLabel="返回首页" subtitle="教材与课程" actions={<button type="button" disabled={loading || inbox.loading} onClick={refreshAll}>刷新</button>} />
-    <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>上传试卷或教材，自动识别类型；一本教材制作一个讲解教程，章节在教程内管理。当前最多处理前 5 章。</p></div>
+    <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>上传教材后，先确认材料类型、学科与来源范围，再审核教学规划；确认后逐页生成、编辑和发布互动课件。试卷继续使用原有练习流程。</p></div>
       <Link className="material-main-action" to="/studio/import">＋ 上传试卷或教材</Link>
     </section>
     <label className="materials-search">查找教材或课程<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入名称、数学或英语" /></label>
@@ -116,22 +122,21 @@ export function MaterialsApp() {
         const contents = current.length ? current : allChapters;
         const history = current.length ? allChapters.filter((chapter) => chapter.teachingMode !== "tutorial") : [];
         return <article className="chapter-panel material-card" key={`tutorial-${upload.uploadId}`}>
-          <span className="material-kind">教材教程</span><h2>{upload.filename}</h2><p>{contents.length} 章 · {contents.reduce((total, chapter) => total + chapter.currentLessonIds.length, 0)} 节内容 · {contents.every((chapter) => chapter.status === "published") ? "已发布" : "待复核"}</p>
-          <p>章节在教程目录内管理，分别复核后发布。</p>
-          <details><summary>查看教程目录</summary><ol>{contents.map((chapter) => <li key={chapter.chapterId}>
-            <Link to={`/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {statuses[chapter.status] ?? "待复核"}</span>
-            {chapter.teachingMode !== "tutorial" && <span> · 旧版练习草稿</span>}
-            {chapter.publicationId && <Link to={`/learn/chapters/${chapter.chapterId}`}> 学习本章</Link>}
-            <MaterialDeleteAction name={chapter.title} onDelete={() => remove("course", chapter.chapterId)} />
-          </li>)}</ol></details>
-          {history.length > 0 && <details><summary>旧版练习草稿（{history.length} 章）</summary><ol>{history.map((chapter) => <li key={chapter.chapterId}><Link to={`/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {statuses[chapter.status] ?? "待复核"}</span>{chapter.publicationId && <Link to={`/learn/chapters/${chapter.chapterId}`}> 查看旧发布版本</Link>}<MaterialDeleteAction name={chapter.title} onDelete={() => remove("course", chapter.chapterId)} /></li>)}</ol></details>}
-          {contents.some((chapter) => chapter.teachingMode !== "tutorial") && <Link to={`/studio/chapters/new?uploadId=${encodeURIComponent(upload.uploadId)}`}>制作讲解教程</Link>}
-          {upload.questionCount > 0 && <Link to={`/studio/import?uploadId=${encodeURIComponent(upload.uploadId)}`}>查看已有练习 →</Link>}
-          <MaterialDeleteAction name={upload.filename} onDelete={() => remove("upload", upload.uploadId)} />
-        </article>;
-      })}
-      {courses.map((item) => <article className="chapter-panel material-card" key={`course-${item.chapterId}`}><span className="material-kind">{item.teachingMode === "tutorial" ? "教程章节" : item.subject === "english" ? "英语阅读" : "数学课程"}</span><h2>{item.title}</h2><p>{statuses[item.status] ?? "待复核"} · {item.currentLessonIds.length} 节内容</p><Link className="material-main-action" to={`/studio/chapters/${item.chapterId}`}>{item.status === "published" ? "查看课程" : item.currentLessonIds.length ? "继续复核" : "制作课程"} →</Link>{item.publicationId && <Link to={`/learn/chapters/${item.chapterId}`}>查看学生版本</Link>}<MaterialDeleteAction name={item.title} onDelete={() => remove("course", item.chapterId)} /></article>)}
-      {files.map((item) => <article className="chapter-panel material-card" key={`upload-${item.uploadId}`}><span className="material-kind">{item.materialKind === "paper" ? "已上传试卷" : item.materialKind === "textbook" ? "已上传教材" : "待识别材料"}</span><h2>{item.filename}</h2><p>{item.pageCount ?? "?"} 页 · {item.questionCount} 道已生成练习</p>{item.questionCount > 0 && <Link className="material-main-action" to={`/studio/import?uploadId=${encodeURIComponent(item.uploadId)}`}>查看练习 →</Link>}{item.materialKind !== "paper" && <Link to={`/studio/chapters/new?uploadId=${encodeURIComponent(item.uploadId)}`}>自动制作课程</Link>}<MaterialDeleteAction name={item.filename} onDelete={() => remove("upload", item.uploadId)} /></article>)}
+        <span className="material-kind">教材课件</span><h2>{upload.filename}</h2><p>{contents.length} 章 · {contents.reduce((total, chapter) => total + chapter.currentLessonIds.length, 0)} 节旧版课程内容</p>
+        <p>互动课件按教材来源和规划逐页生成；旧版课程记录仍保留在章节目录中。</p>
+        <details><summary>查看教程目录</summary><ol>{contents.map((chapter) => <li key={chapter.chapterId}>
+          <Link to={`/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {statuses[chapter.status] ?? "待复核"}</span><Link to={`/studio/courseware?chapterId=${encodeURIComponent(chapter.chapterId)}`} aria-label={`制作互动课件 · ${chapter.title}`}>制作互动课件</Link>
+          {chapter.teachingMode !== "tutorial" && <span> · 旧版练习草稿</span>}
+          {chapter.publicationId && <Link to={`/learn/chapters/${chapter.chapterId}`}> 学习本章</Link>}
+          <MaterialDeleteAction name={chapter.title} onDelete={() => remove("course", chapter.chapterId)} />
+        </li>)}</ol></details>
+        {history.length > 0 && <details><summary>旧版练习草稿（{history.length} 章）</summary><ol>{history.map((chapter) => <li key={chapter.chapterId}><Link to={`/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {statuses[chapter.status] ?? "待复核"}</span>{chapter.publicationId && <Link to={`/learn/chapters/${chapter.chapterId}`}> 查看旧发布版本</Link>}<MaterialDeleteAction name={chapter.title} onDelete={() => remove("course", chapter.chapterId)} /></li>)}</ol></details>}
+        {contents.some((chapter) => chapter.teachingMode !== "tutorial") && <Link to={`/studio/courseware?uploadId=${encodeURIComponent(upload.uploadId)}`}>制作互动课件</Link>}
+        {upload.questionCount > 0 && <Link to={`/studio/import?uploadId=${encodeURIComponent(upload.uploadId)}`}>查看已有练习 →</Link>}
+        <MaterialDeleteAction name={upload.filename} onDelete={() => remove("upload", upload.uploadId)} />
+      </article>; })}
+      {courses.map((item) => <article className="chapter-panel material-card" key={`course-${item.chapterId}`}><span className="material-kind">{item.teachingMode === "tutorial" ? `${subjectLabel(item.subject)}教材章节` : item.subject === "english" ? "英语阅读" : item.subject === "math" ? "数学课程" : subjectLabel(item.subject)}</span><h2>{item.title}</h2><p>{statuses[item.status] ?? "待复核"} · {item.currentLessonIds.length} 节旧版内容</p><Link className="material-main-action" to={`/studio/chapters/${item.chapterId}`}>{item.status === "published" ? "查看课程" : item.currentLessonIds.length ? "继续复核" : "制作课程"} →</Link>{item.teachingMode === "tutorial" && <Link aria-label={`制作互动课件 · ${item.title}`} to={`/studio/courseware?chapterId=${encodeURIComponent(item.chapterId)}`}>制作互动课件</Link>}{item.publicationId && <Link to={`/learn/chapters/${item.chapterId}`}>查看学生版本</Link>}<MaterialDeleteAction name={item.title} onDelete={() => remove("course", item.chapterId)} /></article>)}
+      {files.map((item) => <article className="chapter-panel material-card" key={`upload-${item.uploadId}`}><span className="material-kind">{item.materialKind === "paper" ? "已上传试卷" : item.materialKind === "textbook" ? "已上传教材" : "待识别材料"}</span><h2>{item.filename}</h2><p>{item.pageCount ?? "?"} 页 · {item.questionCount} 道已生成练习</p>{item.questionCount > 0 && <Link className="material-main-action" to={`/studio/import?uploadId=${encodeURIComponent(item.uploadId)}`}>查看练习 →</Link>}{item.materialKind !== "paper" && <Link aria-label={`为 ${item.filename} 制作互动课件`} to={`/studio/courseware?uploadId=${encodeURIComponent(item.uploadId)}`}>制作互动课件</Link>}<MaterialDeleteAction name={item.filename} onDelete={() => remove("upload", item.uploadId)} /></article>)}
     </section>}
     <details className="materials-tools"><summary>教学工具</summary><nav aria-label="教学工具"><Link to="/studio/prompts">教学策略</Link><Link to="/studio/metrics">模型调用指标</Link><Link to="/studio/dependency-preflight">环境检查</Link></nav></details>
   </main>;

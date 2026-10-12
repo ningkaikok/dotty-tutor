@@ -444,7 +444,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 前端统一 `/studio` 入口并行读取 `/api/library` 与 `/api/chapters`，不新增合并接口，也不改变原记录、
 教师权限和学生安全投影。`/studio/import?uploadId=...` 通过既有教材详情接口恢复练习；
-`/studio/chapters/new?uploadId=...` 直接调用自动章节制作接口，无需填写前置选项。
+教材从 `/studio/courseware?uploadId=...` 进入互动课件制作，先明确学科、完整来源页段、许可与署名，再生成规划。旧章节练习入口继续管理已有课程。
 
 统一上传页面在单页表单和 PDF 完成请求中传 `autoDetect=true`（旧客户端默认 `false` 保持题目流程）。
 首批 OCR 自动判断 `materialKind: paper | textbook | unknown`，附 `detectionReason`；教材或类型不明时
@@ -453,13 +453,39 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/chapters/from-upload/{upload_id}` | 教师从完成上传制作一个教材教程的前 5 章，章节在教程目录内管理，默认不出题；返回 `202 BackgroundJobSummary`，无需请求体；按上传 ID 幂等 |
+| `POST` | `/api/chapters/from-upload/{upload_id}` | 教师提交 `CoursewareSourcePreparationRequest`，返回 `202 BackgroundJobSummary`；只准备教材来源章节，不自动生成旧讲解或题目 |
 
-该任务类型为 `material.courses.create`，沿用 `/api/jobs/{jobId}` 查询、取消和显式重试。结果包含
-`chapters[{chapterId,title,pageStart,pageEnd,boundaryDetected}]`、`chapterLimit=5`、`notices`、
-`requiresHumanReview=true`；完成代表章节来源已创建并安排独立 AI 草稿任务，生成进度仍在各章节查看。
-优先读取 PDF 章节书签，否则扫描前 80 页，找到第六章边界后停止；单章最多 80 页。没有可靠标题时
-只创建一个有提示的页段，不虚构五章。来源许可默认待核实，草稿复核与发布门禁继续生效。
+任务类型为 `courseware.source.prepare`，复用 `/api/jobs/{jobId}` 查询、取消和显式重试。
+请求包含显式 `subject`、成对的 `pageStart/pageEnd`（最多 80 页）、标题、`sourceTitle/sourceUrl/license/attributionText/distributionScope`。
+未知材料须传 `confirmedMaterialKind="textbook"`，试卷拒绝进入此路径；未注册学科拒绝，不能回退为数学。
+完成返回来源章节及 `requiresHumanReview=true`；不代表课件已经生成。复用持久化逐页文本和原 PDF，不自动扫描前五章。
+
+### 教材互动课件
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/courseware/profiles` | 列出已注册学科配置，当前内置英语和数学 |
+| `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202` |
+| `GET` / `PUT` | `/api/chapters/{chapter_id}/courseware-plan` | 读取或修改完整教学目标、课时、页面大纲和覆盖映射；修改要求 `expectedRecordVersion` |
+| `POST` | `/api/chapters/{chapter_id}/courseware-plan/approve` | 明确确认 `planVersion` 与 `expectedRecordVersion`，以 `commandId` 幂等创建课件及逐页生成任务，返回 `202` |
+| `GET` | `/api/chapters/{chapter_id}/courseware` | 列出该章节的课件制作记录 |
+| `GET` / `DELETE` | `/api/courseware/{courseware_id}` | 教师读取私有草稿或以版本条件撤回未发布草稿 |
+| `PUT` | `/api/courseware/{courseware_id}/pages/{page_id}` | 编辑完整页面 DTO，保留 block ID、作者属性与句子/区域来源；修改使审核失效 |
+| `POST` | `/api/courseware/{courseware_id}/pages/{page_id}/regenerate` | 以版本、原因和 `commandId` 重生成单页，返回 `202`，保留其他已完成页面 |
+| `POST` | `/api/courseware/{courseware_id}/review` | 教师会话身份追加审核记录；全部页面通过后才进入待发布状态 |
+| `POST` | `/api/courseware/{courseware_id}/publish` | 校验来源、结构、许可、资产与审核，保存不可变发布快照 |
+| `GET` | `/api/courseware/{courseware_id}/presentation` | 教师播放投影，包含讲稿与按步骤揭晓内容 |
+| `GET` | `/api/courseware/{courseware_id}/published` | 学生安全投影，不含答案、评分依据和教师讲稿；可指定 `publicationId` |
+| `GET` | `/api/courseware/{courseware_id}/assets/{asset_id}` | 读取受控教材原页素材；学生必须绑定可分发发布版本 |
+| `POST` | `/api/courseware/{courseware_id}/attempts` | 可选互动提交绑定会话学习者及发布版本，以 `commandId` 幂等；开放回答保持待复核 |
+
+一次规划最多选择 30 个物理页，序列化来源超过 80,000 字符会明确拒绝，要求选择较小的完整教学范围，不静默裁切。
+课件不要求包含练习，讲解可以独立发布；互动提交不写入原试卷掌握度。公开活动字段 `selectionMode=single|multiple` 决定单选或多选；选择题提交 `response.selectedOptions`，单填空提交 `response.text`，开放回答返回 `needs_review`。私有正确项不会随该模式字段公开。
+规划生成失败后，新 Idempotency-Key 可创建新版本；相同命令仍返回原任务。仅模型生成的课时总时长从页面时长汇总，手工编辑仍校验完整时长关系。教材摘录审核检查原页文字，改写或翻译不能标为 `source_excerpt`。
+任务按来源修订、规划、文档、页面版本以及 Worker 认领次数保存检查点。旧认领或教师修改后的迟到结果不能覆盖当前内容。
+
+旧教材产物清理由独立 CLI 的精确 manifest 撤回，不新增删除 HTTP 端点。保留上传完成状态、原文件、OCR 与来源修订；普通读取应过滤 manifest 内旧生成 ID。
+工程验收、真实教材复核及实际清理结果见 [验收记录](textbook-courseware-acceptance.md)，不能把接口存在视为验收通过。
 
 
 | 方法 | 路径 | 说明 |
