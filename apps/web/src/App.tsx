@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+// Bright 设计的拉丁字形与数字字体；中文仍走系统字体（见 --font-bright）。本地打包，不依赖外部字体 CDN。
+import "@fontsource-variable/nunito";
 import "./styles.css";
 import { PRODUCT_TERMS } from "./productTerms";
 import { ProtectedAccess } from "./auth/ProtectedAccess";
