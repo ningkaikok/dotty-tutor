@@ -32,14 +32,17 @@ ALLOWED_MOCK_FILES = {
     "test_app.py",
     "test_capabilities.py",
     "test_debug_entry.py",
-    # 只 mock dependency_preflight 里探测 Ollama/PostgreSQL/Azure Speech/Qwen3-TTS 的
-    # 探测函数本身（真实网络/进程调用），不 mock 报告聚合逻辑；聚合行为
-    # （ok 只看非 optional 项、任何探测异常都收敛成失败记录）在真实探测结果上验证。
+    # 只 mock dependency_preflight 中访问运行环境边界的探测函数本身（网络、数据库、
+    # 命令发现和可选渲染依赖），不 mock报告聚合逻辑；聚合行为（ok 只看非 optional 项、
+    # 任何探测异常都收敛成失败记录）在明确的探测结果上验证。
     "test_dependency_preflight.py",
     "test_evaluation_judge_cli.py",
     "test_model_call_metrics.py",
     "test_model_runtime.py",
     "test_ocr_runtime.py",
+    # Only QualityReviewRunsService's call into ModelRuntime.generate_json_as is
+    # replaced; PostgreSQL persistence, CAS, actor attribution, and routing stay real.
+    "test_quality_review_runs_acceptance.py",
     "test_question_ir.py",
     # 只 mock _load_batch_sources（读 OCR Runtime/磁盘缓存的既有方法，
     # test_textbook_processing.py 同名方法已经是被允许的边界 mock）；

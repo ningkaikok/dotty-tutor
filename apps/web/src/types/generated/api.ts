@@ -178,6 +178,59 @@ export interface paths {
         patch: operations["review_chapter_attempt_api_chapters__chapter_id__attempts__attempt_id__review_patch"];
         trace?: never;
     };
+    "/api/chapters/{chapter_id}/courseware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chapter Documents */
+        get: operations["list_chapter_documents_api_chapters__chapter_id__courseware_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/courseware-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Plan */
+        get: operations["get_plan_api_chapters__chapter_id__courseware_plan_get"];
+        /** Edit Plan */
+        put: operations["edit_plan_api_chapters__chapter_id__courseware_plan_put"];
+        /** Create Plan */
+        post: operations["create_plan_api_chapters__chapter_id__courseware_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/courseware-plan/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Plan */
+        post: operations["approve_plan_api_chapters__chapter_id__courseware_plan_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chapters/{chapter_id}/generate": {
         parameters: {
             query?: never;
@@ -244,6 +297,74 @@ export interface paths {
         head?: never;
         /** Review Lesson */
         patch: operations["review_lesson_api_chapters__chapter_id__lessons__lesson_id__review_patch"];
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/media/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Published For Student */
+        get: operations["published_for_student_api_chapters__chapter_id__media_published_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/media/published/{media_id}/asset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Published Asset */
+        get: operations["published_asset_api_chapters__chapter_id__media_published__media_id__asset_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/media/published/{media_id}/captions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Published Captions */
+        get: operations["published_captions_api_chapters__chapter_id__media_published__media_id__captions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/media/published/{media_id}/captions/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Published Captions Download */
+        get: operations["published_captions_download_api_chapters__chapter_id__media_published__media_id__captions_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/chapters/{chapter_id}/publish": {
@@ -604,6 +725,177 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courseware/{courseware_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["get_document_api_courseware__courseware_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Draft */
+        delete: operations["delete_draft_api_courseware__courseware_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Asset */
+        get: operations["get_asset_api_courseware__courseware_id__assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Attempt */
+        post: operations["record_attempt_api_courseware__courseware_id__attempts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/pages/{page_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Edit Page */
+        put: operations["edit_page_api_courseware__courseware_id__pages__page_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/pages/{page_id}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Regenerate Page */
+        post: operations["regenerate_page_api_courseware__courseware_id__pages__page_id__regenerate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/presentation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Presentation */
+        get: operations["get_presentation_api_courseware__courseware_id__presentation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish */
+        post: operations["publish_api_courseware__courseware_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/published": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Published */
+        get: operations["get_published_api_courseware__courseware_id__published_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review Document */
+        post: operations["review_document_api_courseware__courseware_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Profiles */
+        get: operations["list_profiles_api_courseware_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/debug/errors": {
         parameters: {
             query?: never;
@@ -838,6 +1130,177 @@ export interface paths {
          * @description 接收有上限的离线作答批次，并依靠 attemptId 安全幂等重试。
          */
         post: operations["sync_learning_attempts_api_learning_sessions__session_id__sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Revision */
+        get: operations["get_revision_api_lesson_media__media_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/asset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Asset */
+        get: operations["teacher_asset_api_lesson_media__media_id__asset_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/captions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Captions */
+        get: operations["teacher_captions_api_lesson_media__media_id__captions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/captions/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Captions Download */
+        get: operations["teacher_captions_download_api_lesson_media__media_id__captions_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish */
+        post: operations["publish_api_lesson_media__media_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/render": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enqueue Render */
+        post: operations["enqueue_render_api_lesson_media__media_id__render_post"];
+        /** Cancel Render */
+        delete: operations["cancel_render_api_lesson_media__media_id__render_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Review */
+        post: operations["review_api_lesson_media__media_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/{media_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Revision */
+        post: operations["create_revision_api_lesson_media__media_id__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Draft */
+        post: operations["create_draft_api_lesson_media_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/lesson-media/lessons/{chapter_id}/{publication_id}/{lesson_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List For Lesson */
+        get: operations["list_for_lesson_api_lesson_media_lessons__chapter_id___publication_id___lesson_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1283,6 +1746,246 @@ export interface paths {
          *     而不是放宽 ``/learn`` 数据边界。
          */
         get: operations["get_latest_publication_for_source_api_publications_source__source_upload_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_quality_review_runs_get"];
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_api_quality_review_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_quality_review_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_quality_review_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/{run_id}/ratings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rate */
+        post: operations["rate_api_quality_review_runs__run_id__ratings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/{run_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Summary */
+        get: operations["summary_api_quality_review_runs__run_id__summary_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/gold-export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Gold Export */
+        get: operations["gold_export_api_quality_review_runs_gold_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review-runs/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Models */
+        get: operations["models_api_quality_review_runs_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/cases/{case_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Case */
+        get: operations["get_case_api_quality_reviews_cases__case_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/cases/{case_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide */
+        post: operations["decide_api_quality_reviews_cases__case_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/cases/{case_id}/revisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revise Case */
+        post: operations["revise_case_api_quality_reviews_cases__case_id__revisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/cases/{case_id}/source-page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Source Page */
+        get: operations["get_source_page_api_quality_reviews_cases__case_id__source_page_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inbox */
+        get: operations["list_inbox_api_quality_reviews_inbox_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/packages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Packages */
+        get: operations["list_packages_api_quality_reviews_packages_get"];
+        put?: never;
+        /** Import Package */
+        post: operations["import_package_api_quality_reviews_packages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-reviews/packages/{package_id}/cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cases */
+        get: operations["list_cases_api_quality_reviews_packages__package_id__cases_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2065,6 +2768,142 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/voice/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Session */
+        post: operations["create_session_api_voice_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Session */
+        get: operations["get_session_api_voice_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel */
+        post: operations["cancel_api_voice_sessions__session_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}/confirm-transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Transcript */
+        post: operations["confirm_transcript_api_voice_sessions__session_id__confirm_transcript_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}/responses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Respond */
+        post: operations["respond_api_voice_sessions__session_id__responses_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Transcribe */
+        post: operations["transcribe_api_voice_sessions__session_id__transcribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/sessions/{session_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Transcript */
+        put: operations["save_transcript_api_voice_sessions__session_id__transcript_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/voice/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Status */
+        get: operations["get_status_api_voice_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2235,6 +3074,11 @@ export interface components {
              */
             sourceText: string;
         };
+        /** Body_transcribe_api_voice_sessions__session_id__transcribe_post */
+        Body_transcribe_api_voice_sessions__session_id__transcribe_post: {
+            /** Audio */
+            audio: string;
+        };
         /** ChapterAIGenerationRequest */
         ChapterAIGenerationRequest: {
             /** Expectedrecordversion */
@@ -2357,7 +3201,7 @@ export interface components {
             /** Sourcerevisionid */
             sourceRevisionId?: string | null;
             /** Subject */
-            subject?: ("math" | "english") | null;
+            subject?: string | null;
             /** Teachervariants */
             teacherVariants?: string[] | null;
             /** Variantreviewstatus */
@@ -2378,11 +3222,8 @@ export interface components {
         /** ChapterCreate */
         ChapterCreate: {
             source: components["schemas"]["ChapterSource"];
-            /**
-             * Subject
-             * @enum {string}
-             */
-            subject: "math" | "english";
+            /** Subject */
+            subject: string;
             /**
              * Teachingmode
              * @default practice
@@ -2601,11 +3442,8 @@ export interface components {
              * @constant
              */
             status: "published";
-            /**
-             * Subject
-             * @enum {string}
-             */
-            subject: "math" | "english";
+            /** Subject */
+            subject: string;
             /**
              * Teachingmode
              * @default practice
@@ -2668,11 +3506,8 @@ export interface components {
             sourceRevisions: components["schemas"]["ChapterSourceRevisionView"][];
             /** Status */
             status: string;
-            /**
-             * Subject
-             * @enum {string}
-             */
-            subject: "math" | "english";
+            /** Subject */
+            subject: string;
             /**
              * Teachingmode
              * @default practice
@@ -2735,6 +3570,14 @@ export interface components {
         };
         /** ChapterSource */
         ChapterSource: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /**
+             * Distributionscope
+             * @default private
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
             /** License */
             license?: string | null;
             /** Pageend */
@@ -2745,6 +3588,10 @@ export interface components {
             pages?: components["schemas"]["ChapterPage"][];
             /** Pagestart */
             pageStart?: number | null;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
             /**
              * Sourceversion
              * @default 1
@@ -2782,6 +3629,8 @@ export interface components {
         };
         /** ChapterSourceRevisionView */
         ChapterSourceRevisionView: {
+            /** Attributiontext */
+            attributionText?: string | null;
             /** Createdat */
             createdAt: number;
             /** Fingerprint */
@@ -2800,6 +3649,10 @@ export interface components {
             sourceFileSha256?: string | null;
             /** Sourcerevisionid */
             sourceRevisionId: string;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
             /** Sourceversion */
             sourceVersion: string;
             /** Uploadid */
@@ -2821,11 +3674,8 @@ export interface components {
             reviewIssues: components["schemas"]["ChapterIssue"][];
             /** Status */
             status: string;
-            /**
-             * Subject
-             * @enum {string}
-             */
-            subject: "math" | "english";
+            /** Subject */
+            subject: string;
             /**
              * Teachingmode
              * @default practice
@@ -2860,6 +3710,1006 @@ export interface components {
             displayName: string;
             /** Learnerid */
             learnerId: string;
+        };
+        /** CoursewareActivityBlock */
+        CoursewareActivityBlock: {
+            /** Acceptedanswers */
+            acceptedAnswers?: string[];
+            /** Activityid */
+            activityId: string;
+            /**
+             * Activitykind
+             * @enum {string}
+             */
+            activityKind: "discussion" | "reflection" | "matching" | "choice" | "fill_blank" | "short_answer";
+            /** Answerkey */
+            answerKey?: (string | string[]) | null;
+            /**
+             * Assessmentmode
+             * @enum {string}
+             */
+            assessmentMode: "participation" | "teacher_review" | "objective" | "self_check";
+            /**
+             * Authorship
+             * @default ai_supplement
+             * @enum {string}
+             */
+            authorship: "teacher_authored" | "ai_supplement";
+            /** Blockid */
+            blockId: string;
+            /** Choices */
+            choices?: string[];
+            /** Instructions */
+            instructions: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "activity";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /** Practicereason */
+            practiceReason?: string | null;
+            /** Responseschema */
+            responseSchema?: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Selectionmode
+             * @default single
+             * @enum {string}
+             */
+            selectionMode: "single" | "multiple";
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /** Teacherrubric */
+            teacherRubric?: string | null;
+        };
+        /** CoursewareAsset */
+        CoursewareAsset: {
+            /**
+             * Alt
+             * @default
+             */
+            alt: string;
+            /** Assetid */
+            assetId: string;
+            /** Attributiontext */
+            attributionText?: string | null;
+            /**
+             * Distributionscope
+             * @default private
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "source_image" | "source_page" | "teacher_image" | "teaching_illustration" | "audio";
+            /** License */
+            license?: string | null;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "textbook" | "teacher_provided" | "ai_supplement";
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /** Src */
+            src?: string | null;
+            /**
+             * Status
+             * @default available
+             * @enum {string}
+             */
+            status: "available" | "missing" | "needs_review";
+        };
+        /** CoursewareAttemptRequest */
+        CoursewareAttemptRequest: {
+            /** Activityid */
+            activityId: string;
+            /** Commandid */
+            commandId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Response */
+            response?: {
+                [key: string]: string | number | boolean | string[];
+            };
+        };
+        /** CoursewareAttemptResponse */
+        CoursewareAttemptResponse: {
+            /** Activityid */
+            activityId: string;
+            /**
+             * Assessment
+             * @enum {string}
+             */
+            assessment: "correct" | "incorrect" | "needs_review" | "participation";
+            /** Attemptid */
+            attemptId: string;
+            /** Createdat */
+            createdAt: number;
+            /** Feedback */
+            feedback: string;
+            /** Publicationid */
+            publicationId: string;
+        };
+        /** CoursewareChecklistBlock */
+        CoursewareChecklistBlock: {
+            /** Blockid */
+            blockId: string;
+            /** Items */
+            items: components["schemas"]["CoursewareChecklistItem"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "checklist";
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /** CoursewareChecklistItem */
+        CoursewareChecklistItem: {
+            /** Itemid */
+            itemId: string;
+            /** Label */
+            label: string;
+        };
+        /** CoursewareDocument */
+        CoursewareDocument: {
+            /** Assets */
+            assets?: components["schemas"]["CoursewareAsset"][];
+            /** Attributiontext */
+            attributionText?: string | null;
+            /**
+             * Audience
+             * @default
+             */
+            audience: string;
+            /** Chapterid */
+            chapterId: string;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Createdat */
+            createdAt: number;
+            /** Durationminutes */
+            durationMinutes: number;
+            /** Generationaudit */
+            generationAudit?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Generationjobid */
+            generationJobId?: string | null;
+            /**
+             * Generationstatus
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "partial" | "failed" | "completed" | "cancelled";
+            /**
+             * Languagepolicy
+             * @default
+             */
+            languagePolicy: string;
+            /** Pageend */
+            pageEnd: number;
+            /** Pages */
+            pages?: components["schemas"]["CoursewarePage"][];
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Recordversion */
+            recordVersion: number;
+            /** Reviewissues */
+            reviewIssues?: components["schemas"]["CoursewareIssue"][];
+            /** Reviewrecords */
+            reviewRecords?: {
+                [key: string]: string | number | boolean | string[];
+            }[];
+            /**
+             * Reviewstatus
+             * @enum {string}
+             */
+            reviewStatus: "pending" | "in_review" | "ready" | "changes_requested";
+            /** Sections */
+            sections?: components["schemas"]["CoursewareSection"][];
+            /**
+             * Sourcedistributionscope
+             * @default private
+             * @enum {string}
+             */
+            sourceDistributionScope: "private" | "classroom" | "public";
+            /** Sourcelicense */
+            sourceLicense?: string | null;
+            /**
+             * Sourcereadiness
+             * @enum {string}
+             */
+            sourceReadiness: "ready" | "needs_review" | "blocked";
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "in_review" | "ready" | "published" | "deleted";
+            /** Subject */
+            subject: string;
+            /** Title */
+            title: string;
+            /** Updatedat */
+            updatedAt: number;
+        };
+        /** CoursewareDocumentsResponse */
+        CoursewareDocumentsResponse: {
+            /** Items */
+            items: components["schemas"]["CoursewareDocumentSummary"][];
+        };
+        /** CoursewareDocumentSummary */
+        CoursewareDocumentSummary: {
+            /** Coursewareid */
+            coursewareId: string;
+            /**
+             * Generationstatus
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "partial" | "failed" | "completed" | "cancelled";
+            /** Pagecount */
+            pageCount: number;
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Recordversion */
+            recordVersion: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "in_review" | "ready" | "published" | "deleted";
+            /** Title */
+            title: string;
+        };
+        /** CoursewareFormulaBlock */
+        CoursewareFormulaBlock: {
+            /** Blockid */
+            blockId: string;
+            /** Explanation */
+            explanation?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "formula";
+            /** Latex */
+            latex: string;
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+        };
+        /** CoursewareImageBlock */
+        CoursewareImageBlock: {
+            /** Alt */
+            alt: string;
+            /** Assetid */
+            assetId: string;
+            /** Blockid */
+            blockId: string;
+            /** Caption */
+            caption?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "image";
+        };
+        /** CoursewareInputBlock */
+        CoursewareInputBlock: {
+            /** Blockid */
+            blockId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "input";
+            /**
+             * Minresponses
+             * @default 1
+             */
+            minResponses: number;
+            /**
+             * Placeholder
+             * @default
+             */
+            placeholder: string;
+            /** Prompt */
+            prompt: string;
+        };
+        /** CoursewareIssue */
+        CoursewareIssue: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
+            /** Pageid */
+            pageId?: string | null;
+        };
+        /** CoursewareJobSummary */
+        CoursewareJobSummary: {
+            /** Attemptcount */
+            attemptCount: number;
+            /** Jobid */
+            jobId: string;
+            /** Jobtype */
+            jobType: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Progress */
+            progress: number;
+            /** Result */
+            result?: {
+                [key: string]: string | number | boolean | null;
+            } | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        };
+        /** CoursewareObjective */
+        CoursewareObjective: {
+            /** Description */
+            description: string;
+            /** Objectiveid */
+            objectiveId: string;
+            /** Sourcerefs */
+            sourceRefs: components["schemas"]["CoursewareSourceRef"][];
+        };
+        /** CoursewarePage */
+        CoursewarePage: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Blocks */
+            blocks?: (components["schemas"]["CoursewareTextBlock"] | components["schemas"]["CoursewareImageBlock"] | components["schemas"]["CoursewareFormulaBlock"] | components["schemas"]["CoursewareWordCardsBlock"] | components["schemas"]["CoursewareInputBlock"] | components["schemas"]["CoursewareChecklistBlock"] | components["schemas"]["CoursewareActivityBlock"])[];
+            /** Error */
+            error?: string | null;
+            /** Estimatedminutes */
+            estimatedMinutes: number;
+            /** Generationaudit */
+            generationAudit?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /**
+             * Generationstatus
+             * @default queued
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /**
+             * Layout
+             * @enum {string}
+             */
+            layout: "hero_split" | "two_column" | "cards" | "text_focus" | "figure_focus";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /** Pageid */
+            pageId: string;
+            /**
+             * Pagekind
+             * @enum {string}
+             */
+            pageKind: "cover" | "explanation" | "vocabulary" | "reading" | "worked_example" | "activity" | "practice" | "summary";
+            /** Revealsteps */
+            revealSteps?: components["schemas"]["CoursewareRevealStep"][];
+            /**
+             * Reviewstatus
+             * @default pending
+             * @enum {string}
+             */
+            reviewStatus: "pending" | "approved" | "changes_requested";
+            /** Sectionid */
+            sectionId: string;
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /**
+             * Teachernotes
+             * @default
+             */
+            teacherNotes: string;
+            /** Title */
+            title: string;
+            /**
+             * Version
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * CoursewarePageContent
+         * @description Teacher-editable content only; workflow state stays server-owned.
+         */
+        CoursewarePageContent: {
+            /** Blocks */
+            blocks?: (components["schemas"]["CoursewareTextBlock"] | components["schemas"]["CoursewareImageBlock"] | components["schemas"]["CoursewareFormulaBlock"] | components["schemas"]["CoursewareWordCardsBlock"] | components["schemas"]["CoursewareInputBlock"] | components["schemas"]["CoursewareChecklistBlock"] | components["schemas"]["CoursewareActivityBlock"])[];
+            /** Estimatedminutes */
+            estimatedMinutes: number;
+            /**
+             * Layout
+             * @enum {string}
+             */
+            layout: "hero_split" | "two_column" | "cards" | "text_focus" | "figure_focus";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /**
+             * Pagekind
+             * @enum {string}
+             */
+            pageKind: "cover" | "explanation" | "vocabulary" | "reading" | "worked_example" | "activity" | "practice" | "summary";
+            /** Revealsteps */
+            revealSteps?: components["schemas"]["CoursewareRevealContent"][];
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /**
+             * Teachernotes
+             * @default
+             */
+            teacherNotes: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewarePageEdit */
+        CoursewarePageEdit: {
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            page: components["schemas"]["CoursewarePageContent"];
+        };
+        /** CoursewarePageOutline */
+        CoursewarePageOutline: {
+            /**
+             * Estimatedminutes
+             * @default 3
+             */
+            estimatedMinutes: number;
+            /**
+             * Layout
+             * @default text_focus
+             * @enum {string}
+             */
+            layout: "hero_split" | "two_column" | "cards" | "text_focus" | "figure_focus";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /** Pageid */
+            pageId: string;
+            /**
+             * Pagekind
+             * @enum {string}
+             */
+            pageKind: "cover" | "explanation" | "vocabulary" | "reading" | "worked_example" | "activity" | "practice" | "summary";
+            /**
+             * Required
+             * @default true
+             */
+            required: boolean;
+            /** Sourcerefs */
+            sourceRefs: components["schemas"]["CoursewareSourceRef"][];
+            /** Title */
+            title: string;
+        };
+        /** CoursewarePlan */
+        CoursewarePlan: {
+            /** Approvalcommandid */
+            approvalCommandId?: string | null;
+            /** Audience */
+            audience: string;
+            /** Chapterid */
+            chapterId: string;
+            /** Coursewareids */
+            coursewareIds?: string[];
+            /** Coveragemap */
+            coverageMap?: {
+                [key: string]: components["schemas"]["CoursewareSourceRef"][];
+            };
+            /** Createdat */
+            createdAt: number;
+            /** Generationaudit */
+            generationAudit?: {
+                [key: string]: string | number | boolean | null;
+            };
+            /** Generationjobid */
+            generationJobId?: string | null;
+            /**
+             * Generationstatus
+             * @default completed
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Languagepolicy */
+            languagePolicy: string;
+            /** Objectives */
+            objectives?: components["schemas"]["CoursewareObjective"][];
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Requestedobjectives */
+            requestedObjectives?: string[];
+            /** Requesthash */
+            requestHash?: string | null;
+            /**
+             * Schemaversion
+             * @default 1
+             * @constant
+             */
+            schemaVersion: 1;
+            /** Sessions */
+            sessions?: components["schemas"]["CoursewareSessionPlan"][];
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /**
+             * Status
+             * @default draft
+             * @enum {string}
+             */
+            status: "draft" | "awaiting_confirmation" | "approved" | "superseded";
+            /** Subject */
+            subject: string;
+            /** Updatedat */
+            updatedAt: number;
+        };
+        /** CoursewarePlanApprovalResult */
+        CoursewarePlanApprovalResult: {
+            /** Documents */
+            documents: components["schemas"]["CoursewareDocument"][];
+            /** Jobs */
+            jobs: components["schemas"]["CoursewareJobSummary"][];
+            plan: components["schemas"]["CoursewarePlan"];
+        };
+        /** CoursewarePlanApprove */
+        CoursewarePlanApprove: {
+            /** Commandid */
+            commandId: string;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Planversion */
+            planVersion: number;
+        };
+        /** CoursewarePlanCreate */
+        CoursewarePlanCreate: {
+            /** Audience */
+            audience: string;
+            /**
+             * Durationminutes
+             * @default 40
+             */
+            durationMinutes: number;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Languagepolicy */
+            languagePolicy: string;
+            /** Objectives */
+            objectives: string[];
+            /** Pageend */
+            pageEnd?: number | null;
+            /** Pagestart */
+            pageStart?: number | null;
+            /** Subject */
+            subject: string;
+        };
+        /** CoursewarePlanEdit */
+        CoursewarePlanEdit: {
+            /** Audience */
+            audience: string;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Languagepolicy */
+            languagePolicy: string;
+            /** Objectives */
+            objectives: components["schemas"]["CoursewareObjective"][];
+            /** Pageend */
+            pageEnd?: number | null;
+            /** Pagestart */
+            pageStart?: number | null;
+            /** Sessions */
+            sessions: components["schemas"]["CoursewareSessionPlan"][];
+        };
+        /** CoursewarePlanResult */
+        CoursewarePlanResult: {
+            job?: components["schemas"]["CoursewareJobSummary"] | null;
+            plan: components["schemas"]["CoursewarePlan"];
+        };
+        /** CoursewarePresentation */
+        CoursewarePresentation: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Coursewareid */
+            coursewareId: string;
+            /**
+             * Distributionscope
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
+            document: components["schemas"]["CoursewareDocument"];
+            /** Publicationid */
+            publicationId: string;
+            /** Sourcelicense */
+            sourceLicense?: string | null;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Version */
+            version: number;
+        };
+        /** CoursewareProfilesResponse */
+        CoursewareProfilesResponse: {
+            /** Items */
+            items: components["schemas"]["CoursewareProfileView"][];
+        };
+        /** CoursewareProfileView */
+        CoursewareProfileView: {
+            /** Label */
+            label: string;
+            /** Subjectid */
+            subjectId: string;
+        };
+        /** CoursewarePublicActivityBlock */
+        CoursewarePublicActivityBlock: {
+            /** Activityid */
+            activityId: string;
+            /**
+             * Activitykind
+             * @enum {string}
+             */
+            activityKind: "discussion" | "reflection" | "matching" | "choice" | "fill_blank" | "short_answer";
+            /**
+             * Assessmentmode
+             * @enum {string}
+             */
+            assessmentMode: "participation" | "teacher_review" | "objective" | "self_check";
+            /**
+             * Authorship
+             * @enum {string}
+             */
+            authorship: "teacher_authored" | "ai_supplement";
+            /** Blockid */
+            blockId: string;
+            /** Choices */
+            choices?: string[];
+            /** Instructions */
+            instructions: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "activity";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /** Practicereason */
+            practiceReason?: string | null;
+            /** Responseschema */
+            responseSchema?: {
+                [key: string]: string | number | boolean;
+            };
+            /**
+             * Selectionmode
+             * @default single
+             * @enum {string}
+             */
+            selectionMode: "single" | "multiple";
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+        };
+        /** CoursewarePublication */
+        CoursewarePublication: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Coursewareid */
+            coursewareId: string;
+            /**
+             * Distributionscope
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
+            /** Publicationid */
+            publicationId: string;
+            /** Publishedat */
+            publishedAt: number;
+            /** Reviewrecords */
+            reviewRecords?: {
+                [key: string]: string | number | boolean;
+            }[];
+            snapshot: components["schemas"]["CoursewareDocument"];
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Version */
+            version: number;
+        };
+        /** CoursewarePublicDocument */
+        CoursewarePublicDocument: {
+            /** Assets */
+            assets: components["schemas"]["CoursewareAsset"][];
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Durationminutes */
+            durationMinutes: number;
+            /** Pages */
+            pages: components["schemas"]["CoursewarePublicPage"][];
+            /** Publicationid */
+            publicationId: string;
+            /** Sections */
+            sections: components["schemas"]["CoursewareSection"][];
+            /**
+             * Sourcedistributionscope
+             * @enum {string}
+             */
+            sourceDistributionScope: "private" | "classroom" | "public";
+            /** Sourcelicense */
+            sourceLicense?: string | null;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /**
+             * Status
+             * @default published
+             * @constant
+             */
+            status: "published";
+            /** Subject */
+            subject: string;
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** CoursewarePublicPage */
+        CoursewarePublicPage: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Blocks */
+            blocks?: (components["schemas"]["CoursewareTextBlock"] | components["schemas"]["CoursewareImageBlock"] | components["schemas"]["CoursewareFormulaBlock"] | components["schemas"]["CoursewareWordCardsBlock"] | components["schemas"]["CoursewareInputBlock"] | components["schemas"]["CoursewareChecklistBlock"] | components["schemas"]["CoursewarePublicActivityBlock"])[];
+            /** Estimatedminutes */
+            estimatedMinutes: number;
+            /**
+             * Layout
+             * @enum {string}
+             */
+            layout: "hero_split" | "two_column" | "cards" | "text_focus" | "figure_focus";
+            /** Objectiveids */
+            objectiveIds?: string[];
+            /** Pageid */
+            pageId: string;
+            /**
+             * Pagekind
+             * @enum {string}
+             */
+            pageKind: "cover" | "explanation" | "vocabulary" | "reading" | "worked_example" | "activity" | "practice" | "summary";
+            /** Sectionid */
+            sectionId: string;
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /** Title */
+            title: string;
+        };
+        /** CoursewarePublishRequest */
+        CoursewarePublishRequest: {
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+        };
+        /** CoursewareRegenerateRequest */
+        CoursewareRegenerateRequest: {
+            /** Commandid */
+            commandId: string;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * CoursewareRegenerationResult
+         * @description Stable page-regeneration response composed from existing domain contracts.
+         */
+        CoursewareRegenerationResult: {
+            document: components["schemas"]["CoursewareDocument"];
+            job: components["schemas"]["CoursewareJobSummary"];
+        };
+        /**
+         * CoursewareRevealContent
+         * @description Editable reveal content without server-owned approval state.
+         */
+        CoursewareRevealContent: {
+            /** Content */
+            content: string;
+            /** Label */
+            label: string;
+            /** Revealid */
+            revealId: string;
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+        };
+        /** CoursewareRevealStep */
+        CoursewareRevealStep: {
+            /** Content */
+            content: string;
+            /** Label */
+            label: string;
+            /** Revealid */
+            revealId: string;
+            /**
+             * Reviewstatus
+             * @default pending
+             * @enum {string}
+             */
+            reviewStatus: "pending" | "approved" | "changes_requested";
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+        };
+        /** CoursewareReviewRequest */
+        CoursewareReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Pageids */
+            pageIds?: string[];
+        };
+        /** CoursewareSection */
+        CoursewareSection: {
+            /** Estimatedminutes */
+            estimatedMinutes: number;
+            /** Pageids */
+            pageIds?: string[];
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /** Sectionid */
+            sectionId: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewareSectionPlan */
+        CoursewareSectionPlan: {
+            /** Estimatedminutes */
+            estimatedMinutes: number;
+            /** Pages */
+            pages: components["schemas"]["CoursewarePageOutline"][];
+            /**
+             * Purpose
+             * @default
+             */
+            purpose: string;
+            /** Sectionid */
+            sectionId: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewareSessionPlan */
+        CoursewareSessionPlan: {
+            /** Durationminutes */
+            durationMinutes: number;
+            /** Sections */
+            sections: components["schemas"]["CoursewareSectionPlan"][];
+            /** Sessionid */
+            sessionId: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * CoursewareSourcePreparationRequest
+         * @description Explicitly classify a material before creating a source-only chapter.
+         */
+        CoursewareSourcePreparationRequest: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Confirmedmaterialkind */
+            confirmedMaterialKind?: "textbook" | null;
+            /**
+             * Distributionscope
+             * @default private
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
+            /** License */
+            license?: string | null;
+            /** Pageend */
+            pageEnd?: number | null;
+            /** Pagestart */
+            pageStart?: number | null;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Subject */
+            subject: string;
+            /** Title */
+            title?: string | null;
+        };
+        /** CoursewareSourceRef */
+        CoursewareSourceRef: {
+            /** Assetid */
+            assetId?: string | null;
+            /** Page */
+            page: number;
+            /** Regionids */
+            regionIds?: string[];
+            /** Sentenceids */
+            sentenceIds?: string[];
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** CoursewareTextBlock */
+        CoursewareTextBlock: {
+            /**
+             * Authorship
+             * @default ai_supplement
+             * @enum {string}
+             */
+            authorship: "source_excerpt" | "teacher_authored" | "ai_supplement";
+            /** Blockid */
+            blockId: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "text";
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /** Text */
+            text: string;
+        };
+        /** CoursewareWordCard */
+        CoursewareWordCard: {
+            /** Example */
+            example?: string | null;
+            /** Meaning */
+            meaning: string;
+            /** Sourcerefs */
+            sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
+            /** Term */
+            term: string;
+        };
+        /** CoursewareWordCardsBlock */
+        CoursewareWordCardsBlock: {
+            /** Blockid */
+            blockId: string;
+            /** Cards */
+            cards: components["schemas"]["CoursewareWordCard"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "word_cards";
         };
         /**
          * DependencyCheck
@@ -3043,6 +4893,202 @@ export interface components {
              * @default 1
              */
             version: number;
+        };
+        /** LessonMediaConsistencyReview */
+        LessonMediaConsistencyReview: {
+            /** Checkedat */
+            checkedAt: number;
+            /** Checks */
+            checks: {
+                [key: string]: boolean;
+            };
+            /** Issues */
+            issues: {
+                [key: string]: unknown;
+            }[];
+            /** Passed */
+            passed: boolean;
+        };
+        /** LessonMediaDraftCreate */
+        LessonMediaDraftCreate: {
+            /** Chapterid */
+            chapterId: string;
+            /** Lessonid */
+            lessonId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** LessonMediaListResponse */
+        LessonMediaListResponse: {
+            /** Items */
+            items: components["schemas"]["LessonMediaResponse"][];
+        };
+        /** LessonMediaPublishedItem */
+        LessonMediaPublishedItem: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Captionsdownloadurl */
+            captionsDownloadUrl: string;
+            /** Captionsurl */
+            captionsUrl: string;
+            /** Durationseconds */
+            durationSeconds: number;
+            /** Mediaid */
+            mediaId: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+            /** Videourl */
+            videoUrl: string;
+        };
+        /** LessonMediaPublishedResponse */
+        LessonMediaPublishedResponse: {
+            /** Chapterid */
+            chapterId: string;
+            /** Items */
+            items: components["schemas"]["LessonMediaPublishedItem"][];
+            /** Lessonid */
+            lessonId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** LessonMediaPublishRequest */
+        LessonMediaPublishRequest: {
+            /** Displayname */
+            displayName?: string | null;
+        };
+        /** LessonMediaRenderRequest */
+        LessonMediaRenderRequest: {
+            /** Expectedversion */
+            expectedVersion: number;
+        };
+        /** LessonMediaResponse */
+        LessonMediaResponse: {
+            /** Artifactsha256 */
+            artifactSha256?: string | null;
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Chapterid */
+            chapterId: string;
+            consistencyReview?: components["schemas"]["LessonMediaConsistencyReview"] | null;
+            /** Createdat */
+            createdAt: number;
+            /**
+             * Distributionscope
+             * @enum {string}
+             */
+            distributionScope: "student" | "local_only";
+            /** Durationseconds */
+            durationSeconds?: number | null;
+            /** Lessonid */
+            lessonId: string;
+            /** License */
+            license: string;
+            /** Mediaid */
+            mediaId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Publishedat */
+            publishedAt?: number | null;
+            /** Renderersnapshot */
+            rendererSnapshot: {
+                [key: string]: unknown;
+            };
+            /** Renderjob */
+            renderJob?: {
+                [key: string]: unknown;
+            } | null;
+            /** Reviews */
+            reviews?: {
+                [key: string]: unknown;
+            }[];
+            /** Scenes */
+            scenes: components["schemas"]["LessonMediaScene"][];
+            /** Seriesid */
+            seriesId: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Sourcesnapshot */
+            sourceSnapshot: {
+                [key: string]: unknown;
+            };
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Status */
+            status: string;
+            /**
+             * Subject
+             * @enum {string}
+             */
+            subject: "math" | "english";
+            /** Title */
+            title: string;
+            /** Version */
+            version: number;
+        };
+        /** LessonMediaReviewRequest */
+        LessonMediaReviewRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Displayname */
+            displayName?: string | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** LessonMediaRevisionCreate */
+        LessonMediaRevisionCreate: {
+            /** Expectedversion */
+            expectedVersion: number;
+            /** Sceneedits */
+            sceneEdits: components["schemas"]["LessonMediaSceneEdit"][];
+        };
+        /** LessonMediaScene */
+        LessonMediaScene: {
+            /** Kind */
+            kind: string;
+            /** Narration */
+            narration: string;
+            /** Order */
+            order: number;
+            /** Sceneid */
+            sceneId: string;
+            /** Sourcerefs */
+            sourceRefs: {
+                [key: string]: unknown;
+            }[];
+            /** Title */
+            title: string;
+        };
+        /** LessonMediaSceneEdit */
+        LessonMediaSceneEdit: {
+            /** Narration */
+            narration: string;
+            /** Sceneid */
+            sceneId: string;
         };
         /** MistakeArchiveRequest */
         MistakeArchiveRequest: {
@@ -3228,6 +5274,232 @@ export interface components {
              * @enum {string}
              */
             status: "draft" | "in_review" | "published" | "archived";
+        };
+        /** QualityReviewCaseImport */
+        QualityReviewCaseImport: {
+            /** Actual */
+            actual?: {
+                [key: string]: unknown;
+            };
+            /** Expected */
+            expected: {
+                [key: string]: unknown;
+            };
+            /** Id */
+            id: string;
+            /** Input */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** Source */
+            source: {
+                [key: string]: unknown;
+            };
+            /** Sourcelocator */
+            sourceLocator: {
+                [key: string]: unknown;
+            };
+            /** Sourcepage */
+            sourcePage: number;
+            /** Subject */
+            subject: string;
+        };
+        /** QualityReviewDecisionRequest */
+        QualityReviewDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected" | "needs_changes";
+            /**
+             * Displayname
+             * @default
+             */
+            displayName: string;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Verifiedquote
+             * @default
+             */
+            verifiedQuote: string;
+        };
+        /**
+         * QualityReviewInbox
+         * @description Counts describe all context-matched cases, regardless of includeReviewed.
+         */
+        QualityReviewInbox: {
+            /** Items */
+            items: components["schemas"]["QualityReviewInboxItem"][];
+            /** Mediapendingcount */
+            mediaPendingCount: number;
+            /** Mediatasks */
+            mediaTasks: components["schemas"]["QualityReviewInboxMediaTask"][];
+            /** Pendingcount */
+            pendingCount: number;
+            /** Reviewedcount */
+            reviewedCount: number;
+            /** Total */
+            total: number;
+            /** Unlinkedcount */
+            unlinkedCount: number;
+        };
+        /**
+         * QualityReviewInboxItem
+         * @description Case summary enriched only with server-derived material associations.
+         */
+        QualityReviewInboxItem: {
+            /** Assetverification */
+            assetVerification: string;
+            /** Caseid */
+            caseId: string;
+            /** Chapterids */
+            chapterIds: string[];
+            /** Counted */
+            counted: boolean;
+            /** Externalcaseid */
+            externalCaseId: string;
+            /** Inputfingerprint */
+            inputFingerprint: string;
+            /** Ordinal */
+            ordinal: number;
+            /** Outputfingerprint */
+            outputFingerprint: string;
+            /** Packageid */
+            packageId: string;
+            /** Recordversion */
+            recordVersion: number;
+            /**
+             * Reviewstatus
+             * @enum {string}
+             */
+            reviewStatus: "pending_source_verification" | "pending_human_review" | "decision_recorded_pending_source" | "human_accepted" | "human_rejected" | "needs_changes";
+            /** Sourcefingerprint */
+            sourceFingerprint: string;
+            /** Sourcekey */
+            sourceKey: string;
+            /** Sourcekind */
+            sourceKind: string;
+            /** Sourcepage */
+            sourcePage: number;
+            /** Sourcetitle */
+            sourceTitle: string;
+            /** Sourceverification */
+            sourceVerification: string;
+            /** Sourceverifiedat */
+            sourceVerifiedAt: number | null;
+            /** Sourceverifiedhash */
+            sourceVerifiedHash: string | null;
+            /** Subject */
+            subject: string;
+            /** Uploadid */
+            uploadId: string | null;
+        };
+        /**
+         * QualityReviewInboxMediaTask
+         * @description Current publication media revision awaiting review or still rendering.
+         */
+        QualityReviewInboxMediaTask: {
+            /** Chapterid */
+            chapterId: string;
+            /** Lessonid */
+            lessonId: string;
+            /** Mediaid */
+            mediaId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Sourcekey */
+            sourceKey: string;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "rendering" | "consistency_review_required" | "consistency_failed" | "changes_requested";
+            /** Title */
+            title: string;
+            /** Uploadid */
+            uploadId: string | null;
+            /** Version */
+            version: number;
+        };
+        /** QualityReviewModelSelection */
+        QualityReviewModelSelection: {
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+        };
+        /** QualityReviewPackageImport */
+        QualityReviewPackageImport: {
+            /** Cases */
+            cases: components["schemas"]["QualityReviewCaseImport"][];
+            /** Source */
+            source?: {
+                [key: string]: unknown;
+            };
+            /** Title */
+            title: string;
+        };
+        /** QualityReviewRevisionRequest */
+        QualityReviewRevisionRequest: {
+            /** Actual */
+            actual: {
+                [key: string]: unknown;
+            };
+            /** Expected */
+            expected: {
+                [key: string]: unknown;
+            };
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Input */
+            input: {
+                [key: string]: unknown;
+            };
+        };
+        /** QualityReviewRunCreate */
+        QualityReviewRunCreate: {
+            baseline: components["schemas"]["QualityReviewModelSelection"];
+            candidate: components["schemas"]["QualityReviewModelSelection"];
+            /** Caseids */
+            caseIds: string[];
+            /**
+             * Maxoutputtokens
+             * @default 500
+             */
+            maxOutputTokens: number;
+            /**
+             * Percalltimeoutseconds
+             * @default 30
+             */
+            perCallTimeoutSeconds: number;
+            /** Taskinstruction */
+            taskInstruction: string;
+            /**
+             * Totalbudgetseconds
+             * @default 240
+             */
+            totalBudgetSeconds: number;
+        };
+        /** QualityReviewRunRating */
+        QualityReviewRunRating: {
+            /** Apass */
+            aPass: boolean;
+            /** Bpass */
+            bPass: boolean;
+            /** Caseid */
+            caseId: string;
+            /**
+             * Preferred
+             * @enum {string}
+             */
+            preferred: "A" | "B" | "tie" | "neither";
+            /** Rationale */
+            rationale: string;
         };
         /**
          * QuestionEditRequest
@@ -3576,6 +5848,12 @@ export interface components {
              */
             instruct: string;
             /**
+             * Language
+             * @default Chinese
+             * @enum {string}
+             */
+            language: "Chinese" | "English";
+            /**
              * Speaker
              * @default Serena
              */
@@ -3765,6 +6043,53 @@ export interface components {
             interactionResult?: {
                 [key: string]: unknown;
             };
+        };
+        /** VoiceCancelRequest */
+        VoiceCancelRequest: {
+            /** Expectedgeneration */
+            expectedGeneration: number;
+        };
+        /** VoiceResponseRequest */
+        VoiceResponseRequest: {
+            /** Expectedgeneration */
+            expectedGeneration: number;
+            /** Transcriptrevision */
+            transcriptRevision: number;
+            /** Turnid */
+            turnId: string;
+        };
+        /** VoiceSessionCreate */
+        VoiceSessionCreate: {
+            /** Blockid */
+            blockId: string;
+            /** Chapterid */
+            chapterId: string;
+            /** Learnerid */
+            learnerId: string;
+            /** Lessonid */
+            lessonId: string;
+            /** Publicationid */
+            publicationId: string;
+        };
+        /** VoiceTranscriptConfirm */
+        VoiceTranscriptConfirm: {
+            /** Revision */
+            revision: number;
+            /** Text */
+            text: string;
+        };
+        /** VoiceTranscriptDraft */
+        VoiceTranscriptDraft: {
+            /** Browserconfidence */
+            browserConfidence?: number | null;
+            /**
+             * Source
+             * @default manual
+             * @enum {string}
+             */
+            source: "manual" | "browser_speech_recognition" | "speech_to_text";
+            /** Text */
+            text: string;
         };
     };
     responses: never;
@@ -4199,6 +6524,175 @@ export interface operations {
             };
         };
     };
+    list_chapter_documents_api_chapters__chapter_id__courseware_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareDocumentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_api_chapters__chapter_id__courseware_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_plan_api_chapters__chapter_id__courseware_plan_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePlanEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePlan"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_api_chapters__chapter_id__courseware_plan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePlanCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePlanResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_plan_api_chapters__chapter_id__courseware_plan_approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePlanApprove"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePlanApprovalResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_chapter_api_chapters__chapter_id__generate_post: {
         parameters: {
             query?: never;
@@ -4325,6 +6819,130 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ChapterResponse"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    published_for_student_api_chapters__chapter_id__media_published_get: {
+        parameters: {
+            query: {
+                lessonId: string;
+                publicationId: string;
+            };
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaPublishedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    published_asset_api_chapters__chapter_id__media_published__media_id__asset_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    published_captions_api_chapters__chapter_id__media_published__media_id__captions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    published_captions_download_api_chapters__chapter_id__media_published__media_id__captions_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4502,13 +7120,19 @@ export interface operations {
     create_courses_from_upload_api_chapters_from_upload__upload_id__post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+            };
             path: {
                 upload_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareSourcePreparationRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             202: {
@@ -5068,6 +7692,367 @@ export interface operations {
             };
         };
     };
+    get_document_api_courseware__courseware_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_draft_api_courseware__courseware_id__delete: {
+        parameters: {
+            query: {
+                expectedRecordVersion: number;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_asset_api_courseware__courseware_id__assets__asset_id__get: {
+        parameters: {
+            query?: {
+                publicationId?: string | null;
+            };
+            header?: never;
+            path: {
+                asset_id: string;
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_attempt_api_courseware__courseware_id__attempts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareAttemptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_page_api_courseware__courseware_id__pages__page_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePageEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    regenerate_page_api_courseware__courseware_id__pages__page_id__regenerate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+                page_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareRegenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareRegenerationResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_presentation_api_courseware__courseware_id__presentation_get: {
+        parameters: {
+            query?: {
+                publicationId?: string | null;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePresentation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_api_courseware__courseware_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePublication"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_published_api_courseware__courseware_id__published_get: {
+        parameters: {
+            query?: {
+                publicationId?: string | null;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewarePublicDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_document_api_courseware__courseware_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_profiles_api_courseware_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareProfilesResponse"];
+                };
+            };
+        };
+    };
     debug_errors_api_debug_errors_get: {
         parameters: {
             query?: {
@@ -5464,6 +8449,365 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_revision_api_lesson_media__media_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_asset_api_lesson_media__media_id__asset_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_captions_api_lesson_media__media_id__captions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_captions_download_api_lesson_media__media_id__captions_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_api_lesson_media__media_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMediaPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enqueue_render_api_lesson_media__media_id__render_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMediaRenderRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_render_api_lesson_media__media_id__render_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_api_lesson_media__media_id__review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMediaReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_revision_api_lesson_media__media_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMediaRevisionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_draft_api_lesson_media_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LessonMediaDraftCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_for_lesson_api_lesson_media_lessons__chapter_id___publication_id___lesson_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+                lesson_id: string;
+                publication_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LessonMediaListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6398,6 +9742,502 @@ export interface operations {
             header?: never;
             path: {
                 source_upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_runs_api_quality_review_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_run_api_quality_review_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityReviewRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_run_api_quality_review_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_quality_review_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rate_api_quality_review_runs__run_id__ratings_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityReviewRunRating"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    summary_api_quality_review_runs__run_id__summary_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gold_export_api_quality_review_runs_gold_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    models_api_quality_review_runs_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_case_api_quality_reviews_cases__case_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_api_quality_reviews_cases__case_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityReviewDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_case_api_quality_reviews_cases__case_id__revisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityReviewRevisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_source_page_api_quality_reviews_cases__case_id__source_page_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_inbox_api_quality_reviews_inbox_get: {
+        parameters: {
+            query?: {
+                chapterId?: string | null;
+                includeReviewed?: boolean;
+                uploadId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualityReviewInbox"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_packages_api_quality_reviews_packages_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    import_package_api_quality_reviews_packages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualityReviewPackageImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cases_api_quality_reviews_packages__package_id__cases_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                package_id: string;
             };
             cookie?: never;
         };
@@ -7762,6 +11602,293 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_session_api_voice_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceSessionCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_session_api_voice_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_api_voice_sessions__session_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_transcript_api_voice_sessions__session_id__confirm_transcript_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceTranscriptConfirm"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    respond_api_voice_sessions__session_id__responses_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceResponseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_api_voice_sessions__session_id__transcribe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_transcribe_api_voice_sessions__session_id__transcribe_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_transcript_api_voice_sessions__session_id__transcript_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Voice-Session-Token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceTranscriptDraft"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_status_api_voice_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

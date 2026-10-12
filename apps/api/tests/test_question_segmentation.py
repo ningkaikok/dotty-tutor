@@ -21,6 +21,99 @@ from domain.questions.source import (
 
 
 class QuestionSegmentationTests(unittest.TestCase):
+    def test_user_keeps_existing_ocr_corpus_number_boundaries(self) -> None:
+        """user Given a real OCR passage with a numbered prose list When split Then it preserves actual question boundaries.
+
+        This corpus entry protects Chinese textbook pages from OpenStax-only
+        exercise heuristics and confirms the known 3/8 question-number sequence
+        remains stable while all source questions are still present.
+        """
+        from evaluation.corpus import CORPUS
+
+        case = next(item for item in CORPUS if item["id"] == "duplicate-question-number-safety-net")
+        blocks = split_question_sources(case["ocr_markdown"])
+        numbers = [number for number, _, _ in blocks]
+        self.assertEqual(numbers, ["3", "4", "5", "6", "7", "8", "9"])
+        self.assertEqual([number for number in numbers if number in {"3", "8"}], ["3", "8"])
+        self.assertTrue(any("随机抽取一张卡片" in block for _, block, _ in blocks))
+
+    def test_user_can_extract_openstax_examples_try_its_and_wrapped_exercises(self) -> None:
+        """user Given an OpenStax lesson page When its activities are split Then labels stay source-bound.
+
+        The exercise sequence is intentionally flattened like pypdf's two-column
+        text output. The worked-example value ``-13.`` and an equation fragment
+        ``107.`` remain verbatim inside their source blocks rather than becoming
+        synthetic question boundaries.
+        """
+        source = """The text refers to Example 2.2 in ordinary prose.
+EXAMPLE 2.2
+Solve: y + 37 = -13.
+Solution: subtract 37.
+TRY IT : :2.3 Solve: x + 19 = -27.
+TRY IT 2.4 Solve: x + 16 = -34.
+2.1 EXERCISES
+In the following exercises, solve each equation.
+47. -1/4a = -3 48. -2/3d = -1 107. 49. 8(4x + 5)
+50. 6(9y - 1) 51. Nine more than x 52. The sum of x and -15
+"""
+        blocks = split_question_sources(source)
+        self.assertEqual(
+            [number for number, _, _ in blocks],
+            ["EXAMPLE 2.2", "TRY IT 2.3", "TRY IT 2.4", "47", "48", "49", "50", "51", "52"],
+        )
+        self.assertIn("Solve: y + 37", blocks[0][1])
+        self.assertNotIn("Example 2.2 in ordinary prose", blocks[0][1])
+        self.assertIn("-13.", blocks[0][1])
+        self.assertIn("107.", blocks[4][1])
+
+    def test_user_can_keep_openstax_exercise_bodies_inside_their_section_boundaries(self) -> None:
+        """user Given a page ending in new section headers When split Then each question excludes neighboring sections.
+
+        OpenStax puts subsection names between consecutive exercise items and a
+        Self Check plus running footer after the last item. Those labels must not
+        leak into the preceding prompt or become part of the last question.
+        """
+        source = """Everyday Math
+73. Construction Miguel wants to drill a hole. Let d be the size. Solve d - 1/12 = 5/8.
+74. Baking Kelsey needs 2/3 cup. She has 3/8 cup. Solve 3/8 + s = 2/3.
+Writing Exercises
+75. Is -8 a solution to 3x = 16 - 5x? Explain.
+76. What is the first step in the solution of 10x + 2 = 4x + 26?
+Self Check
+After completing the exercises, evaluate your mastery.
+Chapter 2 Solving Linear Equations and Inequalities 217
+"""
+        blocks = split_question_sources(source)
+        self.assertEqual([number for number, _, _ in blocks], ["73", "74", "75", "76"])
+        self.assertIn("d - 1/12 = 5/8", blocks[0][1])
+        self.assertIn("3/8 + s = 2/3", blocks[1][1])
+        self.assertNotIn("Writing Exercises", blocks[1][1])
+        self.assertNotIn("Writing Exercises", blocks[2][1])
+        self.assertIn("10x + 2 = 4x + 26", blocks[3][1])
+        self.assertNotIn("Self Check", blocks[3][1])
+        self.assertNotIn("Chapter 2", blocks[3][1])
+
+    def test_user_can_split_109_openstax_exercises_after_long_whitespace_prefix(self) -> None:
+        """user Given OCR with many tab-only lines before a real exercise heading When split Then all 109 labels remain available.
+
+        OpenStax pages can be preceded by large OCR whitespace runs. They must
+        not make the line-anchored exercise grammar cross line boundaries or
+        hide a valid section and its complete numbered sequence.
+        """
+        whitespace_prefix = "\n".join("\t" * 128 if index % 2 == 0 else "" for index in range(256))
+        malformed_activity = "TRY IT" + "\t" * 4096 + "not-a-number"
+        exercise_items = " ".join(
+            f"{number}. Solve x + {number} = {number + 1}." for number in range(1, 110)
+        )
+        source = (
+            f"{whitespace_prefix}\n{malformed_activity}\n2.1 EXERCISES\n"
+            f"In the following exercises, solve each equation.\n{exercise_items}"
+        )
+
+        blocks = split_question_sources(source)
+
+        self.assertEqual([number for number, _, _ in blocks], [str(number) for number in range(1, 110)])
+
     def test_ignores_numbered_exam_instructions_before_question_section(self) -> None:
         source = """
         注意事项：

@@ -11,7 +11,7 @@ import os
 import time
 from functools import lru_cache
 from threading import Lock
-from typing import Any
+from typing import Any, Literal
 
 import soundfile as sf
 import torch
@@ -42,6 +42,7 @@ class TtsRequest(BaseModel):
     text: str = Field(min_length=1, max_length=2_000)
     speaker: str = Field(default=DEFAULT_SPEAKER, max_length=40)
     instruct: str = Field(default=DEFAULT_INSTRUCT, max_length=200)
+    language: Literal["Chinese", "English"] = "Chinese"
 
 
 _generation_lock = Lock()
@@ -75,13 +76,13 @@ def get_model() -> tuple[Qwen3TTSModel, str]:
 
 
 @lru_cache(maxsize=128)
-def _synthesize_audio(text: str, speaker: str, instruct: str) -> bytes:
+def _synthesize_audio(text: str, speaker: str, instruct: str, language: str = "Chinese") -> bytes:
     """Generate once per narration and reuse audio during lesson replay."""
     with _generation_lock:
         model, _device_name = get_model()
         wavs, sample_rate = model.generate_custom_voice(
             text=text,
-            language="Chinese",
+            language=language,
             speaker=speaker,
             instruct=instruct,
         )
@@ -141,6 +142,7 @@ def health() -> dict[str, Any]:
     payload = {
         "provider": "qwen3-tts",
         "model": MODEL_NAME,
+        "supportedLanguages": ["Chinese", "English"],
         "device": _device(),
         "loaded": loaded,
         "ready": loaded and _warmup_state["completed"],
@@ -155,7 +157,7 @@ def tts(request: TtsRequest) -> Response:
     started = time.perf_counter()
     try:
         before = _synthesize_audio.cache_info().hits
-        audio = _synthesize_audio(request.text.strip(), request.speaker, request.instruct)
+        audio = _synthesize_audio(request.text.strip(), request.speaker, request.instruct, request.language)
         cache_hit = _synthesize_audio.cache_info().hits > before
         log_event(
             "tts.service.request.completed",

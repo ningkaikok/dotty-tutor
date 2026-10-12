@@ -10,6 +10,7 @@ import time
 import uuid
 from functools import wraps
 from typing import Any
+from urllib.parse import urlparse
 
 from answer_evaluator import evaluate_structured_answer
 from application.job_worker import CancellableJobResult
@@ -160,6 +161,7 @@ class ChapterCourseService:
 
     def run_ai_generation(
         self, payload: dict[str, Any], *, cancellation_check: Any = lambda: False,
+        execution_context: Any | None = None,
     ) -> dict[str, Any] | CancellableJobResult:
         """Generate outside chapter locks, then compare-and-write the reviewed draft."""
         from application.job_worker import (
@@ -251,10 +253,42 @@ class ChapterCourseService:
         prior_review_issues = copy.deepcopy(chapter.get("reviewIssues") or [])
         persisted_version = int(expected_version)
         with self.store.chapter_lock(chapter_id):
-            with self.store.atomic():
+            with self.store.atomic() as connection:
                 current_chapter = self.store.load_chapter(chapter_id)
                 if not current_chapter or current_chapter.get("recordVersion") != expected_version or current_chapter["sourceRevisions"][-1]["sourceRevisionId"] != revision_id:
                     raise TerminalJobError("生成期间章节或来源已变化，草稿未写入")
+                current_source = next(
+                    item for item in current_chapter["sourceRevisions"]
+                    if item["sourceRevisionId"] == revision_id
+                )
+                if current_source.get("uploadId"):
+                    from persistence.legacy_cleanup_guards import (
+                        lock_upload_for_legacy_write,
+                        tombstoned_ids,
+                    )
+
+                    _upload, marker = lock_upload_for_legacy_write(connection, str(current_source["uploadId"]))
+                    if (
+                        chapter_id in tombstoned_ids(marker, "chapterIds")
+                        or (execution_context is not None
+                            and execution_context.job_id in tombstoned_ids(marker, "jobIds"))
+                    ):
+                        raise TerminalJobError("该历史章节已撤回，旧生成任务不能重新写入")
+                if execution_context is not None:
+                    from sqlalchemy import select
+
+                    from persistence.schema import background_jobs
+
+                    current_job = connection.execute(select(background_jobs.c.job_id).where(
+                        background_jobs.c.job_id == execution_context.job_id,
+                        background_jobs.c.status == "running",
+                        background_jobs.c.lease_owner == execution_context.worker_id,
+                        background_jobs.c.attempt_count == execution_context.attempt_count,
+                        background_jobs.c.lease_expires_at > time.time(),
+                        background_jobs.c.cancel_requested.is_(False),
+                    ).with_for_update()).scalar_one_or_none()
+                    if current_job is None:
+                        raise TerminalJobError("生成任务租约已过期或已被接管，草稿未写入")
                 current_items = [item for item in current_chapter.get("lessons", []) if item.get("lessonId") in current_chapter.get("currentLessonIds", [])]
                 if any(item.get("status") not in {"in_review", "needs_review", "draft"} or item.get("reviews") for item in current_items):
                     raise TerminalJobError("生成期间教师已开始审核，草稿未覆盖现有课程")
@@ -365,16 +399,36 @@ class ChapterCourseService:
             })
         original = source_file(self.store, job) if job is not None else None
         original_hash = file_hash(original) if original is not None else None
+        source_url = str(raw.get("sourceUrl") or "").strip() or None
+        if source_url:
+            parsed_url = urlparse(source_url)
+            if parsed_url.scheme != "https" or not parsed_url.netloc:
+                raise ValueError("教材来源 URL 必须使用 HTTPS")
+        source_title = str(raw.get("sourceTitle") or "").strip() or None
+        attribution_text = str(raw.get("attributionText") or "").strip() or None
+        distribution_scope = str(raw.get("distributionScope") or "private")
+        if distribution_scope not in {"private", "classroom", "public"}:
+            raise ValueError("教材分发范围无效")
         return {
             "sourceFileSha256": original_hash,
             "uploadId": source.get("uploadId"), "sourceVersion": str(source.get("sourceVersion") or "1"),
             "license": source.get("license"),
+            "sourceTitle": source_title,
+            "sourceUrl": source_url,
+            "attributionText": attribution_text,
+            "distributionScope": distribution_scope,
             "pageStart": start, "pageEnd": end, "pages": normalized_pages,
-            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "pages": normalized_pages, "sourceFileSha256": original_hash}),
+            "fingerprint": fingerprint({"sourceVersion": source.get("sourceVersion") or "1", "license": source.get("license"), "sourceTitle": source_title, "sourceUrl": source_url, "attributionText": attribution_text, "distributionScope": distribution_scope, "pages": normalized_pages, "sourceFileSha256": original_hash}),
             "missingPages": missing,
         }
 
-    def create(self, request: dict[str, Any]) -> dict[str, Any]:
+    def create(
+        self,
+        request: dict[str, Any],
+        *,
+        execution_context: Any | None = None,
+        source_guard: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         source = self._normalize_source(request["source"])
         chapter_id = uuid.uuid4().hex
         revision_id = uuid.uuid4().hex
@@ -389,7 +443,11 @@ class ChapterCourseService:
             "lessons": [], "currentLessonIds": [], "reviewIssues": issues,
             "publicationId": None, "publications": [], "createdAt": time.time(),
         }
-        self.store.create_chapter(chapter)
+        if request.get("sourcePreparationJobId"):
+            chapter["sourcePreparationJobId"] = str(request["sourcePreparationJobId"])
+        self.store.create_chapter(
+            chapter, execution_context=execution_context, source_guard=source_guard,
+        )
         return chapter
 
     @_serialize_chapter_mutation

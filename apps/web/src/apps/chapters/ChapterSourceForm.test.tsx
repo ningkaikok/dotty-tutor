@@ -23,7 +23,7 @@ describe("ChapterSourceForm", () => {
     expect(onSubmit).toHaveBeenCalledWith({
       title: "分数比较",
       subject: "math",
-      source: { sourceVersion: "edition-2", license: "校内授权", pageStart: 12, pageEnd: 12, pages: [{ page: 12, text: "同分母分数比较分子。", regions: [], flags: [] }] },
+      source: { sourceVersion: "edition-2", license: "校内授权", distributionScope: "private", pageStart: 12, pageEnd: 12, pages: [{ page: 12, text: "同分母分数比较分子。", regions: [], flags: [] }] },
     });
   });
 

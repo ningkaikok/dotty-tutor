@@ -11,13 +11,19 @@ from collections.abc import Iterable
 from sqlalchemy import MetaData, Table
 
 from persistence.auth_store import auth_metadata
+from persistence.courseware_store import courseware_metadata
+from persistence.legacy_textbook_cleanup_store import legacy_cleanup_metadata
+from persistence.lesson_media_store import lesson_media_metadata
 from persistence.metrics_store import metadata as metrics_metadata
 from persistence.mistake_store import mistake_metadata
+from persistence.quality_review_runs_store import quality_review_runs_metadata
+from persistence.quality_review_store import quality_review_metadata
 from persistence.review_store import review_metadata
 from persistence.schema import metadata as core_metadata
 from persistence.search_store import metadata as search_metadata
 from persistence.tutoring_store import tutoring_metadata
 from persistence.variation_store import variation_metadata
+from persistence.voice_schema import voice_metadata
 
 SCHEMA_METADATA: tuple[MetaData, ...] = (
     core_metadata,
@@ -28,6 +34,12 @@ SCHEMA_METADATA: tuple[MetaData, ...] = (
     review_metadata,
     metrics_metadata,
     search_metadata,
+    quality_review_metadata,
+    quality_review_runs_metadata,
+    lesson_media_metadata,
+    voice_metadata,
+    courseware_metadata,
+    legacy_cleanup_metadata,
 )
 
 DOMAIN_METADATA: dict[str, MetaData] = {
@@ -39,6 +51,12 @@ DOMAIN_METADATA: dict[str, MetaData] = {
     "review": review_metadata,
     "metrics": metrics_metadata,
     "search": search_metadata,
+    "quality_review": quality_review_metadata,
+    "quality_review_runs": quality_review_runs_metadata,
+    "lesson_media": lesson_media_metadata,
+    "voice": voice_metadata,
+    "courseware": courseware_metadata,
+    "legacy_textbook_cleanup": legacy_cleanup_metadata,
 }
 
 
@@ -69,4 +87,4 @@ def iter_metadata(*, exclude_tables: Iterable[str] = ()) -> Iterable[tuple[MetaD
 
 # Runtime health uses this stable value without importing Alembic's command
 # layer. The migration files and the CLI use the same revision identifier.
-SCHEMA_HEAD_REVISION = "0016_chapter_courses"
+SCHEMA_HEAD_REVISION = "0024_legacy_textbook_cleanup"

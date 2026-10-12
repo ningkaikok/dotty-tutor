@@ -90,6 +90,17 @@ Python 依赖统一使用 [uv](https://docs.astral.sh/uv/) 与 `apps/api/uv.lock
 如果只需要开发，运行 `scripts/dev-local.sh` 即可；如果只需要验证完整容器链路，运行
 `docker compose up --build --detach` 并打开 `http://localhost:8080`。
 
+多个 worktree 并行运行时，Vite 可用 `DOTTY_WEB_PORT` 选择独立页面端口，
+用 `DOTTY_API_URL` 指向该 worktree 的 API（默认 `http://127.0.0.1:8010`）。例如，
+在已启动独立 API `59242` 后，在 `apps/web` 下运行：
+
+```bash
+DOTTY_WEB_PORT=59243 DOTTY_API_URL=http://127.0.0.1:59242 pnpm dev --host 127.0.0.1
+```
+
+每套独立运行时还须分别配置数据库、`DOTTY_DATA_DIR` 和 Worker；页面端口与代理地址不会隔离数据。
+E2E 用另一个空闲 `DOTTY_WEB_PORT`，测试配置不会复用已运行的页面服务器。
+
 ### 内容平台管理凭据
 
 `/studio/prompts` 的“内容平台凭据”填写维护者提供的内容管理访问令牌。
@@ -297,6 +308,9 @@ Playwright **不复用已存在的 dev server**（`reuseExistingServer: false`�
 | `http://localhost:59174/learn/papers/{id}` | 学生继续作答已发布互动试卷；错答自动进入错题本，讲解按需出现 |
 | <http://localhost:59174/studio> | 教材导入、OCR、内容生成与互动预览 |
 | <http://localhost:59174/studio/metrics> | 学习效果与模型成本联合报告 |
+| <http://localhost:59174/studio/metrics?tab=evaluation> | 高级模型盲评与已有运行记录；读取不会启动模型调用 |
+
+教材来源复核从「我的教材 → 待我复核」进入。关联当前来源的案例位于课程编辑第 2 步「复核内容」，未关联来源包也保留可读详情。视频审校在该章节内选择已发布版本；更新未发布草稿不会改变视频的冻结课时。来源接受、课程批准和媒体发布各自保留独立操作与历史，具体关联和计数口径见[整合说明](material-review-integration.md)。
 | <http://localhost:59174/teacher> | 班级、作业计划审阅、作业指派和掌握度看板 |
 | <http://localhost:59174/mistakes> | AI 错题本、图片录入和确认 |
 | <http://localhost:59174/mistakes/capture> | 手机拍照/相册上传与识别范围裁切 |

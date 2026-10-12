@@ -11,8 +11,8 @@ PostgreSQL；任何一个没配好，现状都是等到真正调用时才在业�
    能拿到完整报告。
 2. 每项都标注 ``optional``：MinerU 没装可以回退到 pypdf 文字层，Ollama/Codex CLI
    两个模型 Provider 只要有一个可用即可继续生成，Azure Speech/Qwen3-TTS 没配置
-   会回退到浏览器语音——这五项都标 ``optional``；pypdf 和 PostgreSQL 没有等价
-   回退路径，标记为必需。整体 ``ok`` = 所有非 optional 项都通过。
+   会回退到浏览器语音，媒体渲染链未安装时只禁用视频生成——这六项都标 ``optional``；
+   pypdf 和 PostgreSQL 没有等价回退路径，标记为必需。整体 ``ok`` = 所有非 optional 项都通过。
 3. 只做只读探测（读环境变量、找命令、探活网络端口/连接数据库），不写入任何状态、
    不修改任何配置。
 """
@@ -68,6 +68,24 @@ def _probe_pypdf() -> tuple[bool, str]:
     import pypdf
 
     return True, f"pypdf 已安装（版本 {getattr(pypdf, '__version__', '未知')}）"
+
+
+def _probe_lesson_media_renderer() -> tuple[bool, str]:
+    """Verify the bounded SVG/video toolchain without rendering user content."""
+    import cairosvg
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False, "未找到 ffmpeg；教学视频 Worker 无法渲染媒体"
+    if not shutil.which("ffprobe"):
+        return False, "未找到 ffprobe；教学视频无法验证音视频轨道和时长"
+    has_cjk = Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc").is_file() or Path("/System/Library/Fonts/Hiragino Sans GB.ttc").is_file()
+    has_math = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf").is_file() or Path("/System/Library/Fonts/Supplemental/STIXTwoMath.otf").is_file()
+    if not has_cjk:
+        return False, "未找到 Noto Sans CJK 或 macOS 中文字体"
+    if not has_math:
+        return False, "未找到 DejaVu Sans 或 STIX Two Math，数学符号字体不可用"
+    return True, f"CairoSVG {cairosvg.__version__}、FFmpeg、中文字体和数学符号字体可用"
 
 
 def _probe_mineru() -> tuple[bool, str]:
@@ -137,6 +155,7 @@ def run_dependency_preflight() -> dict[str, Any]:
     """
     checks = [
         _safe_check("pypdf", "pypdf 文字层解析", optional=False, probe=_probe_pypdf),
+        _safe_check("lesson_media_renderer", "教学视频渲染链", optional=True, probe=_probe_lesson_media_renderer),
         _safe_check("postgresql", "PostgreSQL 数据库", optional=False, probe=_probe_postgresql),
         _safe_check("mineru", "MinerU OCR", optional=True, probe=_probe_mineru),
         _safe_check("ollama", "Ollama 本地模型", optional=True, probe=_probe_ollama),

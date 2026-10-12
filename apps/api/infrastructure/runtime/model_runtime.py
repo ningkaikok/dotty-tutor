@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -20,7 +21,7 @@ import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -73,6 +74,18 @@ def _prompt_split_chars(prompt: str | PromptParts) -> tuple[int | None, int | No
     if isinstance(prompt, PromptParts):
         return len(prompt.stable), len(prompt.dynamic)
     return None, None
+
+
+def _effective_timeout(requested: float | None, default: float | None) -> float:
+    """Apply a validated per-call cap without widening existing provider limits."""
+    normal_limit = float(default or 240.0)
+    if requested is None:
+        return normal_limit
+    if isinstance(requested, bool) or not isinstance(requested, (int, float)):
+        raise ValueError("timeout_seconds must be a finite positive number")
+    if not math.isfinite(float(requested)) or requested <= 0:
+        raise ValueError("timeout_seconds must be a finite positive number")
+    return min(float(requested), normal_limit)
 
 
 class ModelRuntime:
@@ -290,6 +303,7 @@ class ModelRuntime:
         selection: ModelSelection | None = None,
         task: str | None = None,
         allow_fallback: bool = False,
+        timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """用当前或显式指定的模型返回满足 Schema 的对象及可追踪运行记录。
 
@@ -312,11 +326,13 @@ class ModelRuntime:
             prompt=prompt,
             runtime_name=self.runtime_name,
         )
+        effective_timeout = _effective_timeout(timeout_seconds, snapshot.timeout)
+        snapshot = replace(snapshot, timeout=effective_timeout)
         model_request = ModelRequest(
             task=task_name,
             provider=selection.provider,
             model=selection.model,
-            timeout=float(snapshot.timeout or 240.0),
+            timeout=effective_timeout,
             allow_fallback=allow_fallback,
             schema_version=str(snapshot.schema or "unknown"),
             runtime=self.runtime_name,
@@ -335,11 +351,20 @@ class ModelRuntime:
         )
         try:
             if selection.provider == "ollama":
-                result, usage = self._ollama_json(selection.model, prompt, schema, max_tokens)
+                result, usage = self._ollama_json(
+                    selection.model, prompt, schema, max_tokens,
+                    timeout_seconds=effective_timeout,
+                )
             elif selection.provider == "deepseek":
-                result, usage = self._deepseek_json(selection.model, prompt, schema, max_tokens)
+                result, usage = self._deepseek_json(
+                    selection.model, prompt, schema, max_tokens,
+                    timeout_seconds=effective_timeout,
+                )
             else:
-                result, usage = self._codex_json(selection.model, prompt, schema)
+                result, usage = self._codex_json(
+                    selection.model, prompt, schema,
+                    timeout_seconds=effective_timeout,
+                )
         except Exception as error:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型调用失败：{error}", snapshot=snapshot, cause=error
@@ -448,6 +473,7 @@ class ModelRuntime:
         image_paths: list[Path] | None = None,
         *,
         allow_fallback: bool = False,
+        timeout_seconds: float | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """用显式 provider/model 调用模型，供独立审核流程使用。
 
@@ -463,11 +489,13 @@ class ModelRuntime:
             prompt=prompt,
             runtime_name="review",
         )
+        effective_timeout = _effective_timeout(timeout_seconds, snapshot.timeout)
+        snapshot = replace(snapshot, timeout=effective_timeout)
         model_request = ModelRequest(
             task="review",
             provider=provider,
             model=model,
-            timeout=float(snapshot.timeout or 240.0),
+            timeout=effective_timeout,
             allow_fallback=allow_fallback,
             schema_version=str(snapshot.schema or "unknown"),
             runtime="review",
@@ -487,11 +515,20 @@ class ModelRuntime:
         )
         try:
             if provider == "ollama":
-                result, usage = self._ollama_json(model, prompt, schema, max_tokens, images)
+                result, usage = self._ollama_json(
+                    model, prompt, schema, max_tokens, images,
+                    timeout_seconds=effective_timeout,
+                )
             elif provider == "deepseek":
-                result, usage = self._deepseek_json(model, prompt, schema, max_tokens, images)
+                result, usage = self._deepseek_json(
+                    model, prompt, schema, max_tokens, images,
+                    timeout_seconds=effective_timeout,
+                )
             else:
-                result, usage = self._codex_json(model, prompt, schema, images)
+                result, usage = self._codex_json(
+                    model, prompt, schema, images,
+                    timeout_seconds=effective_timeout,
+                )
         except Exception as error:
             execution_error = error if isinstance(error, RuntimeExecutionError) else RuntimeExecutionError(
                 f"模型审核调用失败：{error}", snapshot=snapshot, cause=error
@@ -633,6 +670,8 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int,
         image_paths: list[Path] | None = None,
+        *,
+        timeout_seconds: float = 180.0,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         user_message: dict[str, Any] = {"role": "user", "content": prompt}
         if image_paths:
@@ -661,6 +700,8 @@ class ModelRuntime:
             },
         }
 
+        deadline = time.monotonic() + timeout_seconds
+
         def send() -> dict[str, Any]:
             request = urllib.request.Request(
                 f"{OLLAMA_BASE_URL}/api/chat",
@@ -669,7 +710,10 @@ class ModelRuntime:
                 method="POST",
             )
             try:
-                with urllib.request.urlopen(request, timeout=180) as response:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("模型评测调用超过单次超时预算")
+                with urllib.request.urlopen(request, timeout=remaining) as response:
                     response_payload = json.load(response)
             except urllib.error.HTTPError as error:
                 detail = error.read().decode("utf-8", errors="replace")
@@ -740,6 +784,8 @@ class ModelRuntime:
         schema: dict[str, Any],
         max_tokens: int,
         image_paths: list[Path] | None = None,
+        *,
+        timeout_seconds: float = 240.0,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Call DeepSeek's OpenAI-compatible REST API with JSON output."""
         api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
@@ -792,7 +838,7 @@ class ModelRuntime:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=240) as response:
+            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 response_payload = json.load(response)
         except urllib.error.HTTPError as error:
             raise RuntimeError(f"DeepSeek 请求失败：HTTP {error.code}") from error
@@ -831,6 +877,8 @@ class ModelRuntime:
         prompt: str,
         schema: dict[str, Any],
         image_paths: list[Path] | None = None,
+        *,
+        timeout_seconds: float = 240.0,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         with tempfile.TemporaryDirectory(prefix="dotty-codex-") as directory:
             root = Path(directory)
@@ -866,7 +914,7 @@ class ModelRuntime:
                     input=full_prompt,
                     capture_output=True,
                     text=True,
-                    timeout=240,
+                    timeout=timeout_seconds,
                     check=False,
                 )
             except (OSError, subprocess.TimeoutExpired) as error:

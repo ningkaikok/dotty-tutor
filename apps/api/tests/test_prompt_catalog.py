@@ -13,12 +13,23 @@ class PromptCatalogTests(unittest.TestCase):
     def test_rendered_text_matches_pre_migration_baselines(self):
         # 基线由迁移前的 f-string 文本生成，包含首尾空白。
         baselines = json.loads(Path(__file__).with_name("prompt_baseline_hashes.json").read_text())
-        self.assertEqual(set(baselines), set(CATALOG))
+        self.assertTrue(set(baselines).issubset(CATALOG))
         for key, expected in baselines.items():
             with self.subTest(template=key):
                 values = {name: f"样例_{name}" for name in CATALOG[key].variables}
                 text = render_prompt(key, **values)
                 self.assertEqual(hashlib.sha256(text.encode()).hexdigest(), expected)
+
+    def test_new_courseware_prompts_keep_source_and_controlled_asset_boundaries(self):
+        self.assertTrue({
+            "courseware.plan.english", "courseware.plan.math",
+            "courseware.page.english", "courseware.page.math",
+        }.issubset(CATALOG))
+        for key in ("courseware.page.english", "courseware.page.math"):
+            with self.subTest(template=key):
+                template = CATALOG[key]
+                self.assertIn("untrusted", template.text)
+                self.assertIn("assetId", template.text)
 
     def test_missing_and_unexpected_variables_fail(self):
         for values in ({}, {"question_ir": "题目", "repair": "", "extra": "错误变量"}):

@@ -11,6 +11,12 @@ from sqlalchemy import delete, select, update
 
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
+from persistence.legacy_cleanup_guards import (
+    active_cleanup_snapshot,
+    exact_id_is_tombstoned,
+    lock_upload_for_legacy_write,
+    tombstoned_ids,
+)
 from persistence.schema import (
     batch_questions,
     question_revisions,
@@ -21,6 +27,52 @@ from persistence.schema import (
 
 class TextbookStore(DatabaseStore):
     """Store import jobs, question batches and recoverable library records."""
+
+    @staticmethod
+    def _filter_retired_result(
+        value: Any, *, batch_ids: set[str], question_ids: set[str], field: str | None = None,
+    ) -> Any:
+        """Filter exact retired question snapshots while retaining OCR/source metadata."""
+        def retired(payload: Any) -> bool:
+            if not isinstance(payload, dict):
+                return False
+            question = payload.get("question")
+            question_id = question.get("id") if isinstance(question, dict) else payload.get("questionId")
+            if question_id is not None and str(question_id) in question_ids:
+                return True
+            batch_id = payload.get("batchId") or payload.get("batch_id")
+            return batch_id is not None and str(batch_id) in batch_ids
+
+        if field in {"questionPayload", "firstBatchJson"} and retired(value):
+            return None
+        if field in {"questionPayloads", "questions"} and isinstance(value, list):
+            return [item for item in value if not retired(item)]
+        if field in {"batchPayloads", "batchGuideCards", "batchCurrentRevisionIds", "batchQuestionKeys"} and isinstance(value, dict):
+            filtered: dict[str, Any] = {}
+            for key, child in value.items():
+                if str(key) in batch_ids:
+                    continue
+                if field == "batchPayloads" and retired(child):
+                    continue
+                filtered[str(key)] = child if field in {"batchGuideCards", "batchCurrentRevisionIds", "batchQuestionKeys"} else TextbookStore._filter_retired_result(
+                    child, batch_ids=batch_ids, question_ids=question_ids,
+                )
+            return filtered
+        if isinstance(value, dict):
+            return {
+                key: TextbookStore._filter_retired_result(
+                    child, batch_ids=batch_ids, question_ids=question_ids, field=str(key),
+                )
+                for key, child in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                TextbookStore._filter_retired_result(
+                    child, batch_ids=batch_ids, question_ids=question_ids,
+                )
+                for child in value
+            ]
+        return value
 
     def save_job(self, job: dict[str, Any]) -> None:
         self._ensure_initialized()
@@ -82,7 +134,22 @@ class TextbookStore(DatabaseStore):
                 .where(batch_questions.c.upload_id == upload_id)
                 .order_by(batch_questions.c.created_at, batch_questions.c.batch_id)
             ).mappings().all()
+            marker = active_cleanup_snapshot(connection, upload_id)
+        retired_batches = tombstoned_ids(marker, "batchIds")
+        retired_questions = tombstoned_ids(marker, "questionIds")
         result = decode_json(row["result_json"]) if row["result_json"] is not None else None
+        if result is not None and marker:
+            result = self._filter_retired_result(
+                result, batch_ids=retired_batches, question_ids=retired_questions,
+            )
+        visible_rows = []
+        for item in question_rows:
+            payload = decode_json(item["payload_json"])
+            question = payload.get("question") if isinstance(payload, dict) else None
+            question_id = question.get("id") if isinstance(question, dict) else None
+            if item["batch_id"] in retired_batches or (question_id is not None and str(question_id) in retired_questions):
+                continue
+            visible_rows.append(item)
         return {
             "uploadId": row["upload_id"],
             "importId": row["import_id"],
@@ -102,17 +169,17 @@ class TextbookStore(DatabaseStore):
             "result": result,
             "batchPayloads": {
                 item["batch_id"]: decode_json(item["payload_json"])
-                for item in question_rows
+                for item in visible_rows
             },
             "batchGuideCards": {
                 item["batch_id"]: decode_json(item["guide_cards_json"])
-                for item in question_rows
+                for item in visible_rows
             },
             # 每道题当前展示版本对应的 revision_id；人工编辑/回滚做乐观并发校验时
             # 直接读这份缓存，不需要为每次 PATCH 单独查一次数据库。
             "batchCurrentRevisionIds": {
                 item["batch_id"]: item["current_revision_id"]
-                for item in question_rows
+                for item in visible_rows
             },
             # The mapping is part of the persisted result, so a Worker restarted between
             # batches can still identify an already processed batch and skip it idempotently.
@@ -138,7 +205,11 @@ class TextbookStore(DatabaseStore):
         self._ensure_initialized()
         now = time.time()
         with self.engine.begin() as connection:
+            _upload, marker = lock_upload_for_legacy_write(connection, upload_id)
             for batch_id, payload, guide_cards in questions:
+                if (batch_id in tombstoned_ids(marker, "batchIds")
+                        or str(payload["question"]["id"]) in tombstoned_ids(marker, "questionIds")):
+                    raise ValueError("该历史题目已撤回，不能由旧任务重新写入")
                 self._upsert(
                     connection,
                     batch_questions,
@@ -254,6 +325,14 @@ class TextbookStore(DatabaseStore):
             "started_at": snapshot.get("startedAt", time.time()),
         }
         with self.engine.begin() as connection:
+            upload_id = values["target_upload_id"]
+            if upload_id:
+                _upload, marker = lock_upload_for_legacy_write(connection, str(upload_id))
+                target_question_key = values["target_question_key"]
+                if target_question_key and str(target_question_key) in tombstoned_ids(marker, "batchIds"):
+                    raise ValueError("该历史题目已撤回，不能继续创建运行快照")
+                if snapshot["runId"] in tombstoned_ids(marker, "runSnapshotIds"):
+                    raise ValueError("该历史运行快照已撤回，不能重新使用")
             connection.execute(run_snapshots.insert().values(**values))
         return self.get_run_snapshot(snapshot["runId"])  # type: ignore[return-value]
 
@@ -270,6 +349,13 @@ class TextbookStore(DatabaseStore):
             raise ValueError("运行只能从 running 结束为 succeeded 或 failed")
         self._ensure_initialized()
         with self.engine.begin() as connection:
+            preview = connection.execute(select(
+                run_snapshots.c.target_upload_id,
+            ).where(run_snapshots.c.run_id == run_id)).mappings().first()
+            if preview and preview["target_upload_id"]:
+                _upload, marker = lock_upload_for_legacy_write(connection, str(preview["target_upload_id"]))
+                if run_id in tombstoned_ids(marker, "runSnapshotIds"):
+                    raise ValueError("该历史运行快照已撤回，不能继续写入")
             changed = connection.execute(
                 update(run_snapshots)
                 .where(run_snapshots.c.run_id == run_id, run_snapshots.c.status == "running")
@@ -285,6 +371,14 @@ class TextbookStore(DatabaseStore):
             row = connection.execute(
                 select(run_snapshots).where(run_snapshots.c.run_id == run_id)
             ).mappings().first()
+            if row:
+                marker = (
+                    active_cleanup_snapshot(connection, str(row["target_upload_id"]))
+                    if row["target_upload_id"] else None
+                )
+                if (run_id in tombstoned_ids(marker, "runSnapshotIds")
+                        or exact_id_is_tombstoned(connection, run_id, "runSnapshotIds")):
+                    return None
         if not row:
             return None
         return {
@@ -321,6 +415,10 @@ class TextbookStore(DatabaseStore):
         self._ensure_initialized()
         revision_id = uuid.uuid4().hex
         with self.engine.begin() as connection:
+            _upload, marker = lock_upload_for_legacy_write(connection, upload_id)
+            if (source_question_key in tombstoned_ids(marker, "batchIds")
+                    or revision_id in tombstoned_ids(marker, "questionRevisionIds")):
+                raise ValueError("该历史题目已撤回，不能新增修订")
             previous = connection.execute(
                 select(question_revisions.c.revision_id, question_revisions.c.revision_number)
                 .where(
@@ -393,6 +491,17 @@ class TextbookStore(DatabaseStore):
             payload["question"]["id"]
         revisions: list[dict[str, Any]] = []
         with self.engine.begin() as connection:
+            _upload, marker = lock_upload_for_legacy_write(connection, upload_id)
+            batch_ids = tombstoned_ids(marker, "batchIds")
+            question_ids = tombstoned_ids(marker, "questionIds")
+            if any(key in batch_ids for key in (replace_keys or [])):
+                raise ValueError("该历史题目批次已撤回，不能由旧任务重新写入")
+            if any(
+                source_question_key in batch_ids
+                or str(payload["question"]["id"]) in question_ids
+                for source_question_key, payload, _guide_cards in questions
+            ):
+                raise ValueError("该历史题目已撤回，不能由旧任务重新写入")
             if replace_keys:
                 # 整批重生成必须移除本批次不再出现的旧题；否则内存看似已替换，进程
                 # 重启后却会从 batch_questions 重新加载“幽灵题目”。revision 历史保留。
@@ -451,11 +560,16 @@ class TextbookStore(DatabaseStore):
     def list_question_revisions(self, upload_id: str, source_question_key: str) -> list[dict[str, Any]]:
         self._ensure_initialized()
         with self.engine.connect() as connection:
+            marker = active_cleanup_snapshot(connection, upload_id)
+            retired_revisions = tombstoned_ids(marker, "questionRevisionIds")
+            if source_question_key in tombstoned_ids(marker, "batchIds"):
+                return []
             rows = connection.execute(
                 select(question_revisions)
                 .where(question_revisions.c.upload_id == upload_id, question_revisions.c.source_question_key == source_question_key)
                 .order_by(question_revisions.c.revision_number)
             ).mappings().all()
+        rows = [row for row in rows if str(row["revision_id"]) not in retired_revisions]
         return [{
             "revisionId": row["revision_id"], "uploadId": row["upload_id"], "sourceQuestionKey": row["source_question_key"],
             "revisionNumber": row["revision_number"], "operation": row["operation"],
@@ -468,6 +582,9 @@ class TextbookStore(DatabaseStore):
         """返回题目当前展示版本指向的 revision_id；从未创建过 revision 时为 None。"""
         self._ensure_initialized()
         with self.engine.connect() as connection:
+            marker = active_cleanup_snapshot(connection, upload_id)
+            if source_question_key in tombstoned_ids(marker, "batchIds"):
+                return None
             row = connection.execute(
                 select(batch_questions.c.current_revision_id)
                 .where(batch_questions.c.upload_id == upload_id, batch_questions.c.batch_id == source_question_key)
@@ -489,6 +606,10 @@ class TextbookStore(DatabaseStore):
         """
         self._ensure_initialized()
         with self.engine.begin() as connection:
+            _upload, marker = lock_upload_for_legacy_write(connection, upload_id)
+            if (source_question_key in tombstoned_ids(marker, "batchIds")
+                    or revision_id in tombstoned_ids(marker, "questionRevisionIds")):
+                raise ValueError("该历史题目或修订已撤回，不能恢复")
             target = connection.execute(
                 select(question_revisions).where(
                     question_revisions.c.revision_id == revision_id,

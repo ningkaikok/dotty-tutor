@@ -367,7 +367,7 @@ export function TextbookApp() {
         onExit={onExit}
         onContinue={(result) => {
           if (!result.questionPayload && !result.questionPayloads?.length) {
-            if (result.uploadId) navigate(`/studio/chapters/new?uploadId=${encodeURIComponent(result.uploadId)}`);
+            if (result.materialKind !== "paper" && result.uploadId) navigate(`/studio/courseware?uploadId=${encodeURIComponent(result.uploadId)}`);
             return;
           }
           resetLearningState();

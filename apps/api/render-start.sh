@@ -2,6 +2,7 @@
 set -eu
 
 python -m persistence.migration_cli upgrade
+python -m persistence.migration_cli verify
 python -m worker --registry app:job_registry &
 worker_pid=$!
 

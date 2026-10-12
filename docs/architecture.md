@@ -223,6 +223,9 @@ flowchart TB
 | 掌握度领域算法 | `apps/api/domain/learning/mastery.py` | 规范化旧知识点名称；按 `(publication_id, question_id)` 去重，正确/部分/错误映射为 1/0.55/0，并按 1–5 道不同题提供 0.6–1.0 证据置信度 |
 | 可观测性 | `apps/api/observability.py` | JSON 日志、请求 ID、耗时、异常和关键流水线事件 |
 | 本地语音 | `apps/api/infrastructure/runtime/qwen_tts_service.py` | 加载 Qwen3-TTS 并提供 `/health` 和 `/tts` |
+| 系统内质量复核 | `apps/api/routers/quality_review_routes.py`、`application/services/quality_review.py`、`persistence/quality_review_store.py` | 来源与输入输出指纹绑定的案例、版本冲突校验、追加式人工意见；单审不计独立双审金标准 |
+| 教学媒体 | `apps/api/application/services/lesson_media.py`、`application/lesson_media_renderer.py`、`persistence/lesson_media_store.py` | 已发布教程转换为来源分镜，复用 TTS 与 Job Worker，固定 SVG/CairoSVG/FFmpeg 渲染，人工审校后发布 |
+| 语音步骤追问 | `apps/api/application/services/voice_tutor.py`、`persistence/voice_store.py`、`infrastructure/runtime/voice_transcription.py` | 绑定学生及固定发布步骤，录音转写须确认；取消与旧响应隔离，不写作答或掌握度 |
 | 错题路由与契约 | `apps/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
 | 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
@@ -278,6 +281,37 @@ flowchart TB
 两者均不执行 OCR 或模型质量评测。人工决策导入验证材料、包与案例哈希，单次审核始终不计双审金标准。
 真实教材人工复核、跨模型质量和真实参与者学习效果仍需独立验证，见 [增强验收记录](chapter-source-quality-acceptance.md)。
 完整依赖和验收门槛见 [A/B 实施计划](chapter-ab-implementation-plan.md)。
+
+## 系统内复核、教学媒体与语音
+
+来源复核从 `/studio` 的「我的教材 → 待我复核」进入，关联章节后嵌入课程编辑的第 2 步「复核内容」。
+共享案例面板将来源定位、预期、实际和决定保存在 PostgreSQL，`/studio/quality-review` 保留旧案例链接及未关联来源的详情入口。
+收件箱按服务端已核验文件哈希和章节最新来源页码关联；同名文件不作为关联依据，未关联旧案例仍可发现。
+当前发布版本的媒体待办另按冻结来源与课时筛选，章节内媒体审校面板从指定已发布快照获取课时，避免混入新草稿。
+客户端不能通过姓名制造独立审核者，也不能把开放教材改名计入人工金标准。
+当前 shared teacher 凭据只能证明同一教师账号，演示模式身份也未经验证。
+未核验的来源决定保持临时状态；技术运行成功、单次人工复核和正式金标准分别呈现。
+工程门禁与人工待办见[本轮验收记录](quality-media-voice-acceptance.md)。
+
+模型盲评位于高级教学工具 `/studio/metrics?tab=evaluation`，普通来源复核无需先配置模型或导入 JSON。
+质量复核的模型对照由 `QualityReviewRunsService` 固定案例版本、指纹与匿名 A/B 分配，
+通过既有 JobStore/Worker 执行一次有界任务；GET 只查询，不恢复收费工作。
+每臂在真实 Provider 的 HTTP/CLI 超时边界内执行，无隐式回退；人工评分追加保存，成功案例全部评分后揭盲。
+`quality_review_runs_store.py` 保存审计状态，队列与租约仍归共享 JobStore。
+受管素材通过 `quality_review_sources.py` 校验文件哈希并复用原页渲染器；未核验摘录只作为声明。
+
+教学媒体固定引用已审核且发布的教程版本及原句。分镜修订创建新版本，旧视频、字幕及来源快照保留；
+正文与归属信息先做画幅预检，复杂公式明确要求人工改写，不静默删除符号。
+配音复用 Azure/Qwen 边界并记录实际模型；渲染使用受控 SVG 数据，经 CairoSVG 和 FFmpeg
+产生固定尺寸视频、轻量平移缩放及 VTT 侧车字幕。任务通过现有 Worker 的租约、取消、超时和重试边界执行。
+时长、字幕、音视频流和来源检查均通过后仍须教师审校，学生只读取符合分发范围的已发布投影。
+观看视频不改变学习证据。FFmpeg/Cairo/CJK 字体属于 API 与 Worker 的运行依赖。
+
+语音面板从课程播放器取得当前已发布内容块。录音可回放，转写支持显式配置的本地离线 Whisper、
+兼容云 API、浏览器识别和手动输入；低置信度或未知置信度均保留并要求确认。
+服务端绑定 learnerId 与恢复凭据哈希，响应按转写版本和 generation 条件提交，取消后旧响应不能覆盖当前步骤。
+音频只在有界转写中临时保存；持久化文本与辅导会话，不将未确认转写、口头追问或观看次数写入作答/掌握度。
+浏览器录音、转写服务和 TTS 的可用性分别处理，缺能力时提供可见回退。
 
 ## 错题录入与确认
 
@@ -364,7 +398,7 @@ erDiagram
 根路径显示角色导航；`/learn` 通过 `useStudentTodayQueue` 读取作业、练习、错题和复习队列，
 不加载模型/OCR 等生产配置。进入 `/studio` 后，上传页首次加载时并行调用：
 
-1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
+1. `GET /api/models`：探测 Ollama 模型并返回可用生成方式。目录同时携带能力元数据（`modelDetails`：角色、embeddings/json-schema/vision/math/long-context 能力标签、上下文上限、延迟与成本级别、回退建议）和轻量健康状态（连续失败计数 + 最近失败原因，成功即复位）；健康只影响候选筛选，绝不覆盖已开始运行的 `RunSnapshot`。
 2. `GET /api/ocr`：探测 MinerU，计算 `auto` 实际使用的解析器。
 3. `GET /api/library`：从 PostgreSQL 恢复已完成教材。
 
@@ -854,17 +888,32 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
 
-### 教材教程与练习分流
+### 教材互动课件与试卷分流
 
-教材上传沿用 OCR 和 `material.courses.create`，在章节 JSON 中保存 `teachingMode=tutorial`，
-无需新增数据库或 Store。章节仍是来源修订、任务重试与审核的边界；`MaterialsApp` 使用章节摘要的
-`uploadId/pageStart` 将同一本教材展示为一个教程，内部目录按原页码排序。旧版阅读练习保持 `practice`，
-归并展示时保留旧草稿和发布版本；生成新教程后，旧草稿进入折叠历史区，不计入教程章节数量。只有旧练习时提供显式制作讲解教程的入口。
+教材上传保留原 PDF 和逐页来源，`MaterialCourseService` 经 `courseware.source.prepare`
+创建来源章节。教师明确材料类型、已注册学科、完整教学页段和分发范围；不再自动制作前五章的旧讲解。
+一本教材仍按 upload 归并，章节在其中管理；试卷和已有练习继续原题目/课程链路。
 
-借鉴 [OpenMAIC 的课程规划与生成思路](https://github.com/THU-MAIC/OpenMAIC/tree/main)，
-当前复用 ModelRuntime 结构化生成与 LessonPlayer，教程按学习目标、讲解、教材示例、总结组织，
-每环节保留原句引用，默认不生成 Quiz。教程不使用答案判分，发布要求人工批准及内容引用校验；
-试卷与单独创建的练习课程继续使用原出题流程。当前不包含 OpenMAIC 的多角色课堂、幻灯片编辑或互动场景生成。
+借鉴本地 OpenMAIC 的规划、确认、页面生成与播放边界，采用共享课件契约及英语/数学 profile。
+`CoursewareService` 复用 ModelRuntime、PromptStore 和原页预览服务，先生成包含目标、课时、页面大纲与来源覆盖的规划，
+教师确认后才创建逐页生成任务。来源准备最多 80 页，一次规划最多 30 页/80,000 个序列化字符；超限显式拒绝，不能静默节选后声称完整覆盖。
+模型输出通过 `model_output.py` 转为严格 JSON 协议：模型传输中的 coverageMap 用有限字段条目列表，领域契约恢复为映射；对象关闭额外字段，生成规划按页面时长汇总环节和课时。已失败的规划可用新命令生成新版本，同一命令仍保持幂等。
+页面内容按受限块渲染，不接受模型生成可执行脚本。教材原页资产明确标记 `source_page`，不冒称已提取的插图区域。
 
-处理范围仍为前 5 章、单章最多 80 页；模型使用有界原句节选，超过节选预算时必须显示教学范围提示，
-不把有限草稿称为整本教材的完整教程。原文件、任务恢复、来源许可门禁与历史发布快照继续复用。
+`CoursewareStore` 使用同一 PostgreSQL Engine：`courseware_records` 保存规划和课件 JSONB，
+`courseware_publications` 保存不可变发布快照，`courseware_attempts` 保存按学习者/发布/命令幂等的可选互动。
+迁移 `0023_courseware` 与 `0024_legacy_textbook_cleanup` 注册到唯一 schema 链。
+共享 Worker 用 job ID、worker ID、认领次数、实时租约和来源/规划/页面版本保护检查点；单页失败保留已完成页面，迟到执行不能覆盖教师修改。
+
+页面编辑保留完整私有 DTO 中的句子/区域引用、作者属性和 ID。任何修改需重新审核，结构与来源检查不替代教师内容复核。标为 source_excerpt 的文字必须与引用原页一致（允许 PDF 换行差异），翻译或改写应标为补充讲解。
+发布校验每页审核、来源就绪、许可、署名与资产可解析性；讲解不强制包含练习。
+教师播放投影提供讲稿与逐步揭晓；学生只读安全发布投影。页面状态按发布和角色/学习者隔离恢复，可选回答不影响原数学试卷掌握度。封面与普通页复用输入、检查表和活动状态；多选由公开的 selectionMode 控制，单填空接受 text 输入；开放作答保持 needs_review。桌面长页在课件区内滚动，环节和翻页导航保持可见。
+
+旧错误教材产物经 `LegacyTextbookCleanupService` 和独立 CLI 精确撤回。
+先写只含 ID、版本、环境与来源指纹的 0600 manifest/恢复快照，阻止试卷、人工修改、发布或学生关联记录清理；
+保留 upload 完成状态、PDF、OCR 和来源修订，以墓碑及精确 ID marker 隐藏旧章节/生成题目/讲解。
+恢复只处理当前 manifest 拥有且内容未变的墓碑，递增版本，不重开取消任务。
+清理先锁目标 upload 行 `FOR UPDATE` 再盘点；旧派生产物写路径通过共用 guard 先取 `FOR SHARE`
+再检查 active marker。两侧按同一把行锁交接，不能单靠清理事务的隔离级别声称并发安全。
+数据库备份、真实数据恢复演练与普通读取/并发写门禁的实际验收状态见 [独立验收记录](textbook-courseware-acceptance.md)。
+英语真实样本接受后才运行数学代数/几何内容验收；新增 profile 的 smoke 不能视为全学科已支持。

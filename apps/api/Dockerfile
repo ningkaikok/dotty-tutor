@@ -8,9 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app/apps/api
 
-# poppler 提供 pdftoppm 页面渲染兜底；uv 提供与 CI/本地一致的精确锁安装。
+# poppler 提供 PDF 页面预览，Cairo 提供受限 SVG 栅格化，FFmpeg 输出动画视频，
+# Noto CJK 固定中文字体回退；uv 提供与 CI/本地一致的精确锁安装。
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends poppler-utils \
+    && apt-get install -y --no-install-recommends poppler-utils ffmpeg libcairo2 fonts-noto-cjk fonts-dejavu-core \
+    && test -s /usr/share/doc/ffmpeg/copyright \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir uv==0.12.5
 

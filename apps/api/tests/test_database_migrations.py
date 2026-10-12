@@ -12,6 +12,7 @@ from application import create_app
 from persistence.migration_cli import alembic_config, current_revision
 from persistence.migration_support import schema_report
 from persistence.mistake_store import mistake_items
+from persistence.quality_review_store import QualityReviewStore
 from persistence.review_store import review_tasks
 from persistence.schema import assignments, learning_sessions
 from persistence.schema_registry import SCHEMA_HEAD_REVISION, table_registry
@@ -73,6 +74,89 @@ class DatabaseMigrationTests(PostgresTestCase):
                 for table in first_counts
             }
         self.assertEqual(second_counts, first_counts)
+
+    def test_user_keeps_quality_review_records_when_an_old_0021_database_is_upgraded(self) -> None:
+        # Given a legacy 0021 database containing a source package, revision and decision
+        database = self.new_bare_database()
+        database_url = database.database_url
+        command.upgrade(alembic_config(database_url), "0021_quality_review_runs")
+        store = QualityReviewStore(
+            database_url=database.database_url,
+            engine=database.engine,
+            data_root=str(self.data_root),
+        )
+        package = store.create_package(
+            title="Legacy source review",
+            source_kind="real_open_material",
+            source={"counted": False},
+            actor_id="legacy-author",
+            cases=[{
+                "id": "legacy-case",
+                "subject": "math",
+                "sourcePage": 214,
+                "source": {
+                    "url": "https://openstax.org/details/books/elementary-algebra-2e",
+                    "license": "CC BY 4.0",
+                    "version": "2e",
+                    "contentSha256": "a" * 64,
+                    "assetVerification": "pending_managed_asset",
+                },
+                "sourceLocator": {"quote": "Legacy page quote"},
+                "input": {"question": "Legacy question"},
+                "expected": {"answer": "Legacy expected answer"},
+                "actual": {"answer": "Legacy observed answer"},
+            }],
+        )
+        case_id = store.list_cases(package["packageId"])["items"][0]["caseId"]
+        store.decide(
+            case_id=case_id,
+            expected_record_version=1,
+            actor={
+                "actorId": "legacy-author",
+                "actorKind": "demo",
+                "identityVerified": False,
+                "displayName": "Legacy reviewer",
+            },
+            decision="needs_changes",
+            rationale="留存旧版意见",
+            verified_quote="",
+            claimed_quote="user supplied quote",
+        )
+        store.close()
+
+        # When it represents the deployed 0021 shape before the additive source columns
+        with database.engine.begin() as connection:
+            for table, column in (
+                ("quality_review_cases", "source_verified_at"),
+                ("quality_review_cases", "source_verified_hash"),
+                ("quality_review_cases", "source_verified_quote"),
+                ("quality_review_packages", "created_by_identity_verified"),
+                ("quality_review_decisions", "claimed_quote"),
+                ("quality_review_case_revisions", "created_by"),
+                ("quality_review_case_revisions", "created_by_identity_verified"),
+            ):
+                connection.exec_driver_sql(f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "{column}"')
+            connection.execute(
+                text("UPDATE alembic_version SET version_num = '0021_quality_review_runs'")
+            )
+
+        # Then the new head adds compatibility fields without deleting or reclassifying review evidence
+        command.upgrade(alembic_config(database_url), "head")
+        with database.engine.connect() as connection:
+            package_row = connection.execute(text(
+                "SELECT created_by, created_by_identity_verified FROM quality_review_packages WHERE package_id = :id"
+            ), {"id": package["packageId"]}).one()
+            self.assertEqual(package_row, ("legacy-author", False))
+            decision = connection.execute(text(
+                "SELECT decision, decision_stage, claimed_quote FROM quality_review_decisions WHERE case_id = :id"
+            ), {"id": case_id}).one()
+            self.assertEqual(decision, ("needs_changes", "provisional", ""))
+            revision = connection.execute(text(
+                "SELECT created_by, created_by_identity_verified, input_json FROM quality_review_case_revisions WHERE case_id = :id"
+            ), {"id": case_id}).one()
+            self.assertEqual(revision[0:2], ("legacy-author", False))
+            self.assertEqual(revision[2], {"question": "Legacy question"})
+            self.assertEqual(current_revision(database_url), SCHEMA_HEAD_REVISION)
 
     def test_partial_legacy_schema_is_adopted_and_legacy_data_is_preserved(self) -> None:
         database = self.new_bare_database()

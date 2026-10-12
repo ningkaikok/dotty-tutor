@@ -30,24 +30,30 @@ class UploadRegistry:
         # API and Worker are separate processes. Always refresh the cached snapshot so
         # status polling observes Worker progress and terminal errors from PostgreSQL.
         cached = self.uploads.get(upload_id)
-        try:
-            job = self.store.load_job(upload_id)
-        except Exception:
-            # Focused in-memory callers/tests may provide a store that is unavailable;
-            # retain the already loaded upload rather than turning a local lookup into a
-            # database connectivity error. Production requests still use the refreshed
-            # persisted snapshot whenever the shared store is reachable.
-            if cached is None:
-                raise
-            job = cached
-        if job is None and cached is not None:
-            job = cached
+        # A persisted tombstone may have been applied by another process since this
+        # worker last refreshed. Failing closed on DB errors prevents stale cached
+        # question payloads from reappearing in the library.
+        job = self.store.load_job(upload_id)
+        if job is None:
+            # A missing durable row must not be resurrected from a stale process cache.
+            self.uploads.pop(upload_id, None)
         if job:
+            if cached:
+                for payload in cached.get("batchPayloads", {}).values():
+                    question = payload.get("question") if isinstance(payload, dict) else None
+                    question_id = question.get("id") if isinstance(question, dict) else None
+                    existing = self.lesson_store.get(str(question_id)) if question_id else None
+                    if existing and existing.get("payload") == payload:
+                        self.lesson_store.pop(str(question_id), None)
+            for key, item in list(self.lesson_store.items()):
+                if item.get("sourceUploadId") == upload_id:
+                    self.lesson_store.pop(key, None)
             self.uploads[upload_id] = job
             for source_question_key, payload in job.get("batchPayloads", {}).items():
                 self.lesson_store[payload["question"]["id"]] = {
                     "payload": payload,
                     "guideCards": job.get("batchGuideCards", {}).get(source_question_key) or self.default_guide_cards,
+                    "sourceUploadId": upload_id,
                 }
         if not job:
             raise HTTPException(status_code=404, detail="上传任务不存在")

@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from domain.contracts.courseware import CoursewareSubject
 from domain.contracts.lesson import LessonBlock
 
 
@@ -47,6 +48,10 @@ class ChapterSource(BaseModel):
     uploadId: str | None = Field(default=None, max_length=64)
     sourceVersion: str = Field(default="1", min_length=1, max_length=128)
     license: str | None = Field(default=None, max_length=256)
+    sourceTitle: str | None = Field(default=None, max_length=200)
+    sourceUrl: str | None = Field(default=None, max_length=500)
+    attributionText: str | None = Field(default=None, max_length=500)
+    distributionScope: Literal["private", "classroom", "public"] = "private"
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
     pageEnd: int | None = Field(default=None, ge=1, le=100_000)
     pages: list[ChapterPage] = Field(default_factory=list, max_length=80)
@@ -55,9 +60,15 @@ class ChapterSource(BaseModel):
 
 class ChapterCreate(BaseModel):
     teachingMode: Literal["practice", "tutorial"] = "practice"
-    subject: Literal["math", "english"]
+    subject: CoursewareSubject
     title: str = Field(min_length=1, max_length=200)
     source: ChapterSource
+
+    @model_validator(mode="after")
+    def validate_subject_for_teaching_mode(self) -> ChapterCreate:
+        if self.teachingMode == "practice" and self.subject not in {"math", "english"}:
+            raise ValueError("练习课目前只支持 math/english；其他学科请走已注册的 tutorial profile")
+        return self
 
 
 class ChapterRevisionCreate(BaseModel):
@@ -109,7 +120,7 @@ class ChapterAttempt(BaseModel):
 class ChapterResponse(BaseModel):
     teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
-    subject: Literal["math", "english"]
+    subject: CoursewareSubject
     title: str
     status: str
     version: int
@@ -147,7 +158,7 @@ class ChapterAttemptResponse(BaseModel):
 class ChapterPublishedResponse(BaseModel):
     teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
-    subject: Literal["math", "english"]
+    subject: CoursewareSubject
     title: str
     publicationId: str
     version: int
@@ -188,6 +199,9 @@ class ChapterSourceRevisionView(BaseModel):
     uploadId: str | None = None
     sourceVersion: str
     license: str | None = None
+    sourceTitle: str | None = None
+    sourceUrl: str | None = None
+    attributionText: str | None = None
     pageStart: int
     pageEnd: int
     sourceFileSha256: str | None = None
@@ -223,7 +237,7 @@ class ChapterSummaryView(BaseModel):
     pageStart: int | None = None
     teachingMode: Literal["practice", "tutorial"] = "practice"
     chapterId: str
-    subject: Literal["math", "english"]
+    subject: CoursewareSubject
     title: str
     status: str
     version: int
@@ -266,7 +280,7 @@ class ChapterAuthorQuestion(BaseModel):
     requiredEvidenceRefs: list[ChapterEvidenceRef] = Field(default_factory=list)
     rubric: dict[str, Any] | None = None
     evaluation: dict[str, Any] | None = None
-    subject: Literal["math", "english"] | None = None
+    subject: CoursewareSubject | None = None
     sourceRevisionId: str | None = None
     sourceLocator: ChapterSourceLocator | None = None
     options: list[dict[str, Any]] | None = None

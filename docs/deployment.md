@@ -470,6 +470,14 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。
 
+### v0.37.0 发布分支同步
+
+部署分支采用已发布 `v0.37.0` 的主分支代码，保留 Render Blueprint、MinerU 云端解析、DeepSeek 配置、公网配额与可信代理设置。教材进入来源范围确认、教学规划、互动课件制作和审核发布流程；试卷仍使用原题生产路径。英语和数学课件均已进行公开 OpenStax 页段的真实模型验收，教学质量仍需教师审核。
+
+已有数据库须升级到 `0024_legacy_textbook_cleanup`。发布前已只读备份当前线上 `public` 应用 schema，并在隔离库演练 `0016` → `0024`：38 张原业务表的记录与原字段内容保持一致。Render 启动脚本在升级后执行 `verify`，验证失败时不启动 API 或 Worker。迁移不会自动执行旧教材清理；清理仍需生成并核对可恢复清单。免费 Render 的上传目录是临时存储，数据库备份不包含上传文件，长期教材应按本文前面的持久存储方案部署。
+
+Git 合并、标签和 CI 仅证明交付代码；实际上线须另外核对 API 与 Static Site 的部署提交、健康状态、OpenAPI 版本及深层页面。
+
 ### v0.33.0 发布分支同步
 
 `deploy/render-supabase` 保留 Render 启动脚本、公网限流与 MinerU 云端配置，并同步 main 的提示词管理修复、章节课程与来源约束 AI 草稿。章节生成使用任务冻结的 DeepSeek 配置，计入昂贵请求限额；普通审核不占用模型请求额度。原页图片使用 `VITE_API_ORIGIN` 指向独立 API 域名。已有库须升级至 `0016_chapter_courses`，不能只替换应用镜像。Static Site 的 Node 固定为 22.22.2，满足前端依赖要求。当前 Render 配置仍为公开合成数据演示；启用 protected 模式前必须使用同源 HTTPS 代理，并配置教师密钥与安全 Cookie，不能直接将分离的 Static Site/API 域名视为已验收的会话部署。数据库迁移仍按 backup → preflight → upgrade → verify 执行。分支同步不代表生产迁移或服务上线已验证。

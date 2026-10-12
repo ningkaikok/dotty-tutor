@@ -18,12 +18,16 @@ const DependencyPreflightApp = lazy(() => import("./apps/metrics/DependencyPrefl
 const TeacherClassroomApp = lazy(() => import("./apps/teacher/TeacherClassroomApp").then((module) => ({ default: module.TeacherClassroomApp })));
 const ChapterStudioApp = lazy(() => import("./apps/chapters/ChapterStudioApp").then((module) => ({ default: module.ChapterStudioApp })));
 const PublishedChapterApp = lazy(() => import("./apps/student/PublishedChapterApp").then((module) => ({ default: module.PublishedChapterApp })));
+const QualityReviewApp = lazy(() => import("./apps/quality-review/QualityReviewApp").then((module) => ({ default: module.QualityReviewApp })));
+const CoursewareApp = lazy(() => import("./apps/courseware/CoursewareApp").then((module) => ({ default: module.CoursewareApp })));
 
 function PageTitle() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    document.title = pathname.startsWith("/studio")
+    document.title = pathname.startsWith("/studio/quality-review")
+      ? "质量复核 · Dotty Tutor"
+      : pathname.startsWith("/studio")
       ? "教材与课程 · Dotty Tutor"
       : pathname.startsWith("/learn")
         ? "学生学习空间 · Dotty Tutor"
@@ -46,17 +50,22 @@ function AppRoutes() {
       <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
         <Routes>
           <Route index element={<ProductHome />} />
+          <Route path="learn/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio" element={<MaterialsApp />} />
+          <Route path="studio/courseware" element={<CoursewareApp />} />
+          <Route path="studio/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="studio/import" element={<TextbookApp />} />
+          <Route path="studio/quality-review" element={<QualityReviewApp />} />
           <Route path="studio/chapters" element={<Navigate to="/studio" replace />} />
           <Route path="studio/chapters/new" element={<ChapterStudioApp />} />
           <Route path="studio/chapters/:chapterId" element={<ChapterStudioApp />} />
           <Route path="studio/prompts" element={<PromptManagerApp />} />
           <Route path="studio/metrics" element={<ModelMetricsApp />} />
           <Route path="studio/dependency-preflight" element={<DependencyPreflightApp />} />
+          <Route path="teacher/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="teacher/*" element={<TeacherClassroomApp />} />
           <Route path="studio/*" element={<Navigate to="/studio" replace />} />
           <Route path="mistakes/*" element={<MistakeCoachApp />} />

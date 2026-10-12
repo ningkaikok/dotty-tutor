@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { loadPublishedChapter } from "../../api/chapters";
 import { useLearnerId } from "../../api/identity";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
-import type { LessonDocument } from "../../types/lesson";
+import type { LessonBlock, LessonDocument } from "../../types/lesson";
 import type { PublishedChapter } from "../../types/chapter";
 import { ChapterAttemptPanel } from "../chapters/ChapterAttemptPanel";
 import { useChapterLearningSession } from "../chapters/useChapterLearningSession";
+import MediaPlayer from "../media/MediaPlayer";
+import { VoiceTutorPanel } from "../voice/VoiceTutorPanel";
 import "../chapters/chapters.css";
 
 export function PublishedChapterApp() {
@@ -34,11 +36,13 @@ export function PublishedChapterApp() {
   if (loading) return <main className="chapter-shell"><p role="status">正在载入已发布课程…</p></main>;
   if (error || !chapter) return <main className="chapter-shell"><header className="chapter-topbar"><button type="button" onClick={() => navigate("/learn")}>← 学生学习空间</button></header><div className="chapter-error" role="alert"><span>{error || "未找到已发布章节"}</span><button type="button" onClick={() => setRetryCount((value) => value + 1)}>重试</button></div></main>;
 
-  return <PublishedChapterLearning key={`${learnerId}:${chapter.publicationId}`} chapter={chapter} onBack={() => navigate("/learn")} />;
+  return <PublishedChapterLearning key={`${learnerId}:${chapter.publicationId}`} chapter={chapter} learnerId={learnerId} onBack={() => navigate("/learn")} />;
 }
 
-function PublishedChapterLearning({ chapter, onBack }: { chapter: PublishedChapter; onBack: () => void }) {
+function PublishedChapterLearning({ chapter, learnerId, onBack }: { chapter: PublishedChapter; learnerId: string; onBack: () => void }) {
   const { lesson, lessonIndex, lessonCount, draft, busy, error, changeAnswer, changeEvidence, submit, selectLesson } = useChapterLearningSession(chapter);
+  const [activeBlockId, setActiveBlockId] = useState("");
+  const onStepChange = useCallback((block: LessonBlock) => setActiveBlockId(block.id), []);
 
   if (!lesson) return <main className="chapter-shell"><header className="chapter-topbar"><button type="button" onClick={onBack}>← 学生学习空间</button></header><p>这个已发布课程暂时没有可学习内容。</p></main>;
   const playerDocument: LessonDocument = {
@@ -64,7 +68,19 @@ function PublishedChapterLearning({ chapter, onBack }: { chapter: PublishedChapt
           ? <blockquote key={`${option.page}-${option.sentenceId ?? option.regionId ?? option.quote}`}>{option.quote}</blockquote>
           : <p key={`${option.page}-${option.regionId ?? option.label}`}>第 {option.page} 页 · {option.label || `原文区域 ${option.regionId ?? "未命名"}`}</p>)}
       </section>
-      <section className="chapter-student-player"><div className="chapter-lesson-generated-label">审核后发布的课程内容</div><div className="chapter-course-player"><LessonPlayer document={playerDocument} studentMode /></div></section>
+      <section className="chapter-student-player"><div className="chapter-lesson-generated-label">审核后发布的课程内容</div>
+        <MediaPlayer chapterId={chapter.chapterId} publicationId={chapter.publicationId} lessonId={lesson.lessonId} sourceRevisionId={lesson.sourceRevisionId} />
+        <div className="chapter-course-player"><LessonPlayer document={playerDocument} studentMode onStepChange={onStepChange} /></div>
+      </section>
+      {lesson.blocks.find((block) => block.id === activeBlockId && block.type !== "quiz") && <VoiceTutorPanel
+        key={`${learnerId}:${chapter.publicationId}:${lesson.lessonId}:${activeBlockId}`}
+        learnerId={learnerId}
+        chapterId={chapter.chapterId}
+        publicationId={chapter.publicationId}
+        lessonId={lesson.lessonId}
+        blockId={activeBlockId}
+        blockTitle={lesson.blocks.find((block) => block.id === activeBlockId)?.title ?? "当前学习步骤"}
+      />}
       {lesson.questionPayload?.question && <ChapterAttemptPanel
         lesson={lesson}
         subject={chapter.subject}

@@ -16,6 +16,12 @@
 .metrics-funnel-card small { color: #77837b; font-size: 10px; }
 .metrics-effect-row { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; color: #5d6d63; font-size: 12px; }
 .metrics-effect-row strong { color: #183f31; }
+.metrics-tabs { display:flex; gap:8px; margin:0 0 20px; border-bottom:1px solid #dfe5de; }
+.metrics-tabs button { min-height:42px; padding:9px 15px; border:0; border-bottom:3px solid transparent; background:transparent; color:#52675a; font:inherit; cursor:pointer; }
+.metrics-tabs button[aria-selected="true"] { border-bottom-color:#267451; color:#183f31; font-weight:700; }
+.metrics-evaluation-panel > header { margin-bottom:20px; }
+.metrics-evaluation-panel > header h2 { margin:5px 0; }
+.metrics-evaluation-panel > header p { max-width:760px; color:#637467; line-height:1.6; }
 @media (max-width: 900px) { .metrics-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } .metrics-funnel-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .metrics-summary-grid, .metrics-funnel-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .metrics-section-heading { display: block; } .metrics-section-heading .muted { margin-top: 8px; text-align: left; } }
 

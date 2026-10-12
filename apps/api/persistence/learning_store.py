@@ -16,6 +16,11 @@ from domain.learning.mastery import (
 from observability import log_event
 from persistence.base import DatabaseStore
 from persistence.database import decode_json
+from persistence.legacy_cleanup_guards import (
+    active_cleanup_snapshot,
+    lock_upload_for_legacy_write,
+    tombstoned_ids,
+)
 from persistence.schema import (
     batch_questions,
     chapter_english_attempts,
@@ -54,6 +59,10 @@ class LearningStore(DatabaseStore):
             "updated_at": now,
         }
         with self.atomic() as connection:
+            if document.get("sourceUploadId"):
+                _upload, marker = lock_upload_for_legacy_write(connection, str(document["sourceUploadId"]))
+                if document["lessonId"] in tombstoned_ids(marker, "lessonIds"):
+                    raise ValueError("该历史课程已撤回，不能由旧任务重新写入")
             existing = connection.execute(
                 select(lesson_documents)
                 .where(lesson_documents.c.lesson_id == document["lessonId"])
@@ -103,6 +112,10 @@ class LearningStore(DatabaseStore):
             row = connection.execute(
                 select(lesson_documents).where(lesson_documents.c.lesson_id == lesson_id)
             ).mappings().first()
+            if row and row["source_upload_id"]:
+                marker = active_cleanup_snapshot(connection, str(row["source_upload_id"]))
+                if lesson_id in tombstoned_ids(marker, "lessonIds"):
+                    return None
         if not row:
             return None
         return {
@@ -127,7 +140,18 @@ class LearningStore(DatabaseStore):
             query = query.where(lesson_documents.c.status == status)
         with self.engine.connect() as connection:
             rows = connection.execute(query).mappings().all()
-        return [self._lesson_from_row(row) for row in rows]
+            visible = []
+            marker_cache: dict[str, set[str]] = {}
+            for row in rows:
+                upload_id = row["source_upload_id"]
+                retired = marker_cache.get(str(upload_id)) if upload_id else None
+                if upload_id and retired is None:
+                    marker = active_cleanup_snapshot(connection, str(upload_id))
+                    retired = tombstoned_ids(marker, "lessonIds")
+                    marker_cache[str(upload_id)] = retired
+                if not upload_id or row["lesson_id"] not in (retired or set()):
+                    visible.append(row)
+        return [self._lesson_from_row(row) for row in visible]
 
     @staticmethod
     def _lesson_from_row(row: Any) -> dict[str, Any]:
@@ -149,6 +173,13 @@ class LearningStore(DatabaseStore):
         """只改变课程发布状态，不重写题目正文和审核证据。"""
         self._ensure_initialized()
         with self.atomic() as connection:
+            row = connection.execute(select(
+                lesson_documents.c.source_upload_id,
+            ).where(lesson_documents.c.lesson_id == lesson_id)).mappings().first()
+            if row and row["source_upload_id"]:
+                _upload, marker = lock_upload_for_legacy_write(connection, str(row["source_upload_id"]))
+                if lesson_id in tombstoned_ids(marker, "lessonIds"):
+                    return None
             result = connection.execute(
                 lesson_documents.update()
                 .where(lesson_documents.c.lesson_id == lesson_id)
@@ -200,6 +231,19 @@ class LearningStore(DatabaseStore):
         if not allow_chapter and self.is_chapter_lesson_ids(lesson_ids):
             raise ValueError("章节课程只能通过章节审核与发布流程发布")
         with self.atomic() as connection:
+            upload_ids = {str(source_upload_id)} if source_upload_id else set()
+            source_rows = connection.execute(select(
+                lesson_documents.c.lesson_id, lesson_documents.c.source_upload_id,
+            ).where(lesson_documents.c.lesson_id.in_(lesson_ids))).mappings().all() if lesson_ids else []
+            upload_ids.update(str(item["source_upload_id"]) for item in source_rows if item["source_upload_id"])
+            markers: dict[str, dict[str, Any] | None] = {}
+            for upload_id in sorted(upload_ids):
+                _upload, marker = lock_upload_for_legacy_write(connection, upload_id)
+                markers[upload_id] = marker
+            for item in source_rows:
+                upload_id = item["source_upload_id"]
+                if upload_id and item["lesson_id"] in tombstoned_ids(markers[str(upload_id)], "lessonIds"):
+                    raise ValueError("该历史课程已撤回，不能重新发布")
             rows = connection.execute(
                 select(lesson_documents.c.lesson_id).where(
                     lesson_documents.c.lesson_id.in_(lesson_ids)
