@@ -15,6 +15,7 @@ from auth_context import learner_for_request
 from domain.contracts.courseware import (
     CoursewareAttemptRequest,
     CoursewareAttemptResponse,
+    CoursewareCoverage,
     CoursewareDocument,
     CoursewareDocumentsResponse,
     CoursewareJobSummary,
@@ -42,7 +43,7 @@ class CoursewareRegenerationResult(BaseModel):
     job: CoursewareJobSummary
 
 
-def build_courseware_router(service: Any) -> APIRouter:
+def build_courseware_router(service: Any, *, media_service: Any | None = None, voice_service: Any | None = None) -> APIRouter:
     """Build the typed API boundary around the courseware application service."""
     router = APIRouter(prefix="/api", tags=["courseware"])
 
@@ -91,6 +92,11 @@ def build_courseware_router(service: Any) -> APIRouter:
         if actor and actor.get("role") == "teacher" and actor.get("sessionId"):
             return str(actor["sessionId"])
         return "demo-teacher"
+
+    @router.get("/chapters/{chapter_id}/courseware-coverage", response_model=CoursewareCoverage)
+    def coverage(chapter_id: str, request: Request) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(service.get_coverage, chapter_id)
 
     @router.get("/courseware/profiles", response_model=CoursewareProfilesResponse)
     def list_profiles() -> dict[str, Any]:
@@ -285,6 +291,10 @@ def build_courseware_router(service: Any) -> APIRouter:
             expected_record_version=expectedRecordVersion,
         )
 
+    if media_service is not None and voice_service is not None:
+        from routers.courseware_delivery_routes import build_courseware_delivery_router
+
+        router.include_router(build_courseware_delivery_router(media_service, voice_service, call, teacher_actor_id))
     return router
 
 

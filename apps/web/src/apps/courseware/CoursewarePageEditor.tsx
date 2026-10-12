@@ -1,3 +1,4 @@
+import { Button } from "../../components/ui";
 import { useState } from "react";
 import { editablePage, type CoursewareAuthoringPage, type CoursewareEditableBlock, type CoursewarePageEditView } from "./coursewareAuthoringView";
 
@@ -84,13 +85,13 @@ export function CoursewarePageEditor({
     <section className="courseware-editor-blocks"><h3>页面内容</h3>{(draft.blocks ?? []).map((block, index) => <BlockEditor key={blockKey(block)} page={page} block={block} onChange={(change) => changeBlock(index, change)} />)}</section>
     <section className="courseware-editor-reveals"><h3>按步揭晓（{draft.revealSteps?.length ?? 0} 步）</h3>{(draft.revealSteps ?? []).map((step, index) => <fieldset key={step.revealId}><legend>{step.label || `第 ${index + 1} 步`}</legend><label>显示标签<input value={step.label} onChange={(event) => update((previous) => ({ ...previous, revealSteps: previous.revealSteps?.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) }))} /></label><label>揭晓内容<textarea rows={3} value={step.content} onChange={(event) => update((previous) => ({ ...previous, revealSteps: previous.revealSteps?.map((item, itemIndex) => itemIndex === index ? { ...item, content: event.target.value } : item) }))} /></label></fieldset>)}</section>
     <div className="courseware-editor-actions">
-      <button type="button" className="is-primary" disabled={busy || !dirty || !draft.title.trim() || draft.estimatedMinutes < 1} onClick={() => void save()}>{busy ? "正在保存…" : dirty ? "保存页面修改" : "页面已保存"}</button>
-      <button type="button" disabled={busy || dirty || page.generationStatus === "running" || page.generationStatus === "queued"} onClick={() => setRegenerateOpen((open) => !open)}>重做本页</button>
-      <button type="button" disabled={busy || dirty || !canReview || page.reviewStatus === "approved"} onClick={() => void review("approve")}>审核通过</button>
-      <button type="button" disabled={busy || dirty || !canReview} onClick={() => setReviewOpen((open) => !open)}>请求修改</button>
+      <Button type="button" className="is-primary" disabled={busy || !dirty || !draft.title.trim() || draft.estimatedMinutes < 1} onClick={() => void save()}>{busy ? "正在保存…" : dirty ? "保存页面修改" : "页面已保存"}</Button>
+      <Button type="button" disabled={busy || dirty || page.generationStatus === "running" || page.generationStatus === "queued"} onClick={() => setRegenerateOpen((open) => !open)}>重做本页</Button>
+      <Button type="button" disabled={busy || dirty || !canReview || page.reviewStatus === "approved"} onClick={() => void review("approve")}>审核通过</Button>
+      <Button type="button" disabled={busy || dirty || !canReview} onClick={() => setReviewOpen((open) => !open)}>请求修改</Button>
     </div>
-    {regenerateOpen && <div className="courseware-editor-command"><label>重做原因<textarea rows={2} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明本页需要修正的内容" /></label><button type="button" disabled={busy || !reason.trim()} onClick={() => void regenerate()}>确认重做这一页</button><button type="button" onClick={() => setRegenerateOpen(false)}>取消</button></div>}
-    {reviewOpen && <div className="courseware-editor-command"><label>审核意见<textarea rows={2} maxLength={2000} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="指出需要补充或核对的地方" /></label><button type="button" disabled={busy || !reviewNote.trim()} onClick={() => void review("request_changes")}>提交修改意见</button><button type="button" onClick={() => setReviewOpen(false)}>取消</button></div>}
+    {regenerateOpen && <div className="courseware-editor-command"><label>重做原因<textarea rows={2} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="说明本页需要修正的内容" /></label><Button type="button" disabled={busy || !reason.trim()} onClick={() => void regenerate()}>确认重做这一页</Button><Button type="button" onClick={() => setRegenerateOpen(false)}>取消</Button></div>}
+    {reviewOpen && <div className="courseware-editor-command"><label>审核意见<textarea rows={2} maxLength={2000} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="指出需要补充或核对的地方" /></label><Button type="button" disabled={busy || !reviewNote.trim()} onClick={() => void review("request_changes")}>提交修改意见</Button><Button type="button" onClick={() => setReviewOpen(false)}>取消</Button></div>}
   </section>;
 }
 

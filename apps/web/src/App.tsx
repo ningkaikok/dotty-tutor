@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router";
+// Bright 设计的拉丁字形与数字字体；中文仍走系统字体（见 --font-bright）。本地打包，不依赖外部字体 CDN。
+import "@fontsource-variable/nunito";
 import "./styles.css";
 import { PRODUCT_TERMS } from "./productTerms";
 import { ProtectedAccess } from "./auth/ProtectedAccess";
@@ -20,6 +22,8 @@ const ChapterStudioApp = lazy(() => import("./apps/chapters/ChapterStudioApp").t
 const PublishedChapterApp = lazy(() => import("./apps/student/PublishedChapterApp").then((module) => ({ default: module.PublishedChapterApp })));
 const QualityReviewApp = lazy(() => import("./apps/quality-review/QualityReviewApp").then((module) => ({ default: module.QualityReviewApp })));
 const CoursewareApp = lazy(() => import("./apps/courseware/CoursewareApp").then((module) => ({ default: module.CoursewareApp })));
+
+const ComponentCatalog = import.meta.env.DEV ? lazy(() => import("./components/ui/ComponentCatalog").then((module) => ({ default: module.ComponentCatalog }))) : null;
 
 function PageTitle() {
   const { pathname } = useLocation();
@@ -49,6 +53,7 @@ function AppRoutes() {
       <PageTitle />
       <Suspense fallback={<main className="center-state"><span>正在打开学习空间…</span></main>}>
         <Routes>
+          {ComponentCatalog && <Route path="dev/components" element={<ComponentCatalog />} />}
           <Route index element={<ProductHome />} />
           <Route path="learn/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />

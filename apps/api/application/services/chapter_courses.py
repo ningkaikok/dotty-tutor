@@ -369,6 +369,11 @@ class ChapterCourseService:
             raise ValueError("页标记必须位于本次导入页段内")
         for page in pages:
             page["flags"] = list(dict.fromkeys([*(page.get("flags") or []), *flag_map.get(int(page["page"]), [])]))
+            from ocr_quality import evaluate_page_quality
+
+            quality = evaluate_page_quality(str(page.get("text") or ""), page_number=int(page["page"]), provider="none", retry_count=2)
+            if quality.get("formulaReview") and "unreadable" not in page["flags"]:
+                page["flags"].append("unreadable")
         pages.sort(key=lambda item: int(item["page"]))
         page_numbers = [int(item["page"]) for item in pages]
         if len(page_numbers) != len(set(page_numbers)):

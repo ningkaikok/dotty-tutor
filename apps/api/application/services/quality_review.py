@@ -47,12 +47,14 @@ class QualityReviewService:
         source_store: Any | None = None,
         chapter_store: Any | None = None,
         media_store: Any | None = None,
+        courseware_store: Any | None = None,
     ) -> None:
         self.store = store
         self.auth_mode = auth_mode
         self.source_store = source_store
         self.chapter_store = chapter_store
         self.media_store = media_store
+        self.courseware_store = courseware_store
         self.source_assets = QualityReviewSourceAssets(
             source_root=source_root or (Path(store.root) / "quality-review" / "sources"),
             data_root=Path(store.root),
@@ -172,6 +174,11 @@ class QualityReviewService:
             if include_reviewed or item["reviewStatus"] not in _FINAL_REVIEW_STATUSES
         ]
         media_tasks = self._current_publication_media(chapter_id=chapter_id, upload_id=upload_id)
+        from application.services.quality_review_courseware import (
+            courseware_review_tasks,
+        )
+
+        courseware_tasks = courseware_review_tasks(self.chapter_store, self.courseware_store, chapter_id=chapter_id, upload_id=upload_id)
         return {
             "items": visible_cases,
             "total": len(visible_cases),
@@ -180,6 +187,8 @@ class QualityReviewService:
             "unlinkedCount": unlinked_count,
             "mediaTasks": media_tasks,
             "mediaPendingCount": sum(task["status"] in _MEDIA_REVIEW_STATUSES for task in media_tasks),
+            "coursewareTasks": courseware_tasks,
+            "coursewarePendingCount": len(courseware_tasks),
         }
 
     def _current_chapter_sources(self) -> dict[tuple[str, int], list[dict[str, Any]]]:

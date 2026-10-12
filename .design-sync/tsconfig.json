@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "katex/dist/katex.min.css": ["./katex.css"]
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { AppHeader, Badge, Button, PageShell } from "../../components/ui";
 import { useNavigate } from "react-router";
 import { PRODUCT_TERMS } from "../../productTerms";
 import { StudentNav } from "./StudentNav";
@@ -85,16 +86,8 @@ export function StudentLearningApp() {
   const taskCount = rows.length;
 
   return (
-    <main className="student-shell">
-      <header className="student-header">
-        <button className="route-back-button" onClick={() => navigate("/")}>← 返回入口</button>
-        <div className="brand-mark">D</div>
-        <div>
-          <strong>Dotty</strong>
-          <span>学生学习空间</span>
-        </div>
-        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
-      </header>
+    <PageShell className="student-shell">
+      <AppHeader backTo="/" subtitle="学生学习空间" actions={<Badge tone="brand">{PRODUCT_TERMS.demoBadge}</Badge>} />
 
       <StudentNav />
 
@@ -166,7 +159,7 @@ export function StudentLearningApp() {
           </ol>
         </section>
       )}
-    </main>
+    </PageShell>
   );
 }
 
@@ -176,9 +169,9 @@ function QueueItem({ row, index }: { row: QueueRow; index: number | string }) {
       <span className="today-queue-index" aria-hidden="true">{index}</span>
       <div className="today-queue-body"><h3>{row.title}</h3><p>{row.description}</p></div>
       <span className="today-queue-badge">{row.badge}</span>
-      <button className="today-queue-action" aria-label={`${row.actionLabel}：${row.title}`} onClick={row.onAction}>
+      <Button className="today-queue-action" aria-label={`${row.actionLabel}：${row.title}`} onClick={row.onAction}>
         {row.actionLabel}
-      </button>
+      </Button>
     </li>
   );
 }

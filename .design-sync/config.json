@@ -1,0 +1,30 @@
+{
+  "projectId": "93a316dc-cfad-4829-9488-19d467eaa7ae",
+  "shape": "package",
+  "pkg": "dotty-tutor",
+  "globalName": "DottyTutor",
+  "entry": ".design-sync/entry.tsx",
+  "buildCmd": "none (bundled from apps/web/src via .design-sync/entry.tsx)",
+  "srcDir": "apps/web/src",
+  "tsconfig": ".design-sync/tsconfig.json",
+  "componentSrcMap": {
+    "MathText": "apps/web/src/MathText.tsx",
+    "RichText": "apps/web/src/RichText.tsx",
+    "QuestionContent": "apps/web/src/QuestionContent.tsx",
+    "EvaluationEvidence": "apps/web/src/components/EvaluationEvidence.tsx"
+  },
+  "guidelinesGlob": ["docs/design-system.md"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "EvaluationEvidence": { "cardMode": "column" },
+    "MathText": { "cardMode": "column" },
+    "QuestionContent": { "cardMode": "column" },
+    "RichText": { "cardMode": "column" }
+  },
+  "dtsPropsFor": {
+    "MathText": "/** Plain text with explicit `$...$` (inline) / `$$...$$` (display) LaTeX, rendered via KaTeX. */\n  text: string;\n  className?: string;\n  /** Render as an <h2> heading instead of an inline <span>. */\n  block?: boolean;",
+    "RichText": "/** Multi-line plain text (\n becomes <br>) with `$...$` / `$$...$$` math fragments. Not Markdown/HTML. */\n  text: string;\n  className?: string;",
+    "QuestionContent": "/** Ordered question blocks (sorted by sourceOrder): text/math inline prompt, stem image, table, or A-D options. */\n  blocks: Array<\n    | { id: string; type: \"text\"; text: string; sourceOrder: number }\n    | { id: string; type: \"math\"; latex: string; display: boolean; sourceOrder: number }\n    | { id: string; type: \"image\"; url: string; assetId: string; sourceReference: string; role: \"stem\"; sourceOrder: number }\n    | { id: string; type: \"options\"; sourceOrder: number; items: Array<{ label: string; contentBlocks: Array<{ id: string; type: \"text\"; text: string; sourceOrder: number } | { id: string; type: \"math\"; latex: string; display: boolean; sourceOrder: number }>; imageUrl?: string; assetId?: string }> }\n    | { id: string; type: \"table\"; sourceOrder: number; rows: Array<{ cells: Array<{ contentBlocks: Array<{ id: string; type: \"text\"; text: string; sourceOrder: number } | { id: string; type: \"math\"; latex: string; display: boolean; sourceOrder: number }> }> }> }\n  >;\n  /** Selected option label in single-choice mode. */\n  selectedOption?: string | null;\n  /** Selected option labels when `multiple` is true. */\n  selectedOptions?: string[];\n  multiple?: boolean;\n  onSelectOption?: (label: string, answerText: string) => void;\n  /** Disable option buttons (review/history view). */\n  readOnly?: boolean;\n  /** Hide the options block (e.g. when the answer UI renders choices itself). */\n  showOptions?: boolean;",
+    "EvaluationEvidence": "/** Deterministic grading facts; renders nothing when empty or the strategy is unknown. Never contains the correct answer. */\n  evidence?:\n    | { strategy: \"choice-set-match\"; submittedLabels: string[]; expectedCount: number; evaluatorVersion?: string }\n    | { strategy: \"fill-blank-parts\"; totalBlanks: number; matchedCount: number; failedBlankIds: string[]; evaluatorVersion?: string }\n    | { strategy: \"numeric-tolerance\"; submittedRaw: string; tolerance: number; expectedCount: number; evaluatorVersion?: string }\n    | { strategy: \"short-answer-text-match\"; submittedRaw: string; expectedCount: number; evaluatorVersion?: string }\n    | { strategy: \"line-connections\"; submittedCount: number; requiredCount: number; evaluatorVersion?: string }\n    | { strategy: \"sub-question-parts\"; parts: Array<{ subQuestionId: string; status: \"correct\" | \"incorrect\" | \"tutor\" | \"incomplete\" | \"ungraded\"; feedbackRequired?: boolean }>; gradableCount: number; matchedCount: number; ungradedCount: number; complete: boolean; masteryEligible: boolean; evaluatorVersion?: string };\n  /** Optional question, used only to label blanks (`blanks[].label`) and sub-questions (\"第 N 小问\"). */\n  question?: { blanks?: Array<{ id: string; label?: string }>; subQuestions?: Array<{ id: string }> };"
+  }
+}

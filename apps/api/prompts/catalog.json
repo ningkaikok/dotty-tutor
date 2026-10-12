@@ -85,5 +85,30 @@
       "question_context",
       "explanation"
     ]
+  },
+  "courseware.plan.science": {
+    "version": "science-courseware-plan-v1",
+    "file": "courseware.plan.science.txt",
+    "variables": [
+      "chapter",
+      "audience",
+      "language_policy",
+      "duration_minutes",
+      "objectives",
+      "source"
+    ]
+  },
+  "courseware.page.science": {
+    "version": "science-courseware-page-v1",
+    "file": "courseware.page.science.txt",
+    "variables": [
+      "chapter",
+      "section",
+      "page_outline",
+      "objectives",
+      "audience",
+      "language_policy",
+      "source"
+    ]
   }
 }

@@ -427,6 +427,22 @@ def create_app() -> FastAPI:
                 # against immutable scope and source references.
                 teacher_only = False
                 student_only = False
+        if re.fullmatch(r"/api/courseware/[^/]+/voice-sessions", path) and method == "POST":
+            # Courseware voice uses the same learner-bound capability protocol as
+            # chapter voice; a page publication is not a teacher preview session.
+            teacher_only = False
+            student_only = True
+            if request.headers.get("X-Learner-ID") != actor.get("learnerId"):
+                return JSONResponse(status_code=403, content={"detail": "请求身份与当前学生会话不匹配"})
+        courseware_media_match = re.fullmatch(
+            r"/api/courseware/[^/]+/media/published(?:/[^/]+/(?:asset|captions(?:/download)?))?",
+            path,
+        )
+        if courseware_media_match and method == "GET":
+            # These handlers additionally verify the immutable courseware/media
+            # association; authoring and render endpoints remain teacher-only.
+            teacher_only = False
+            student_only = False
         if path.startswith("/api/publications"):
             teacher_only = method != "GET"
         if path.startswith("/api/publications/source/"):

@@ -1,6 +1,5 @@
-import { NavLink } from "react-router";
+import { Navigation } from "../../components/ui";
 import { StudentIdentityPicker } from "./StudentIdentityPicker";
-import "./student.css";
 
 const NAV_ITEMS = [
   { to: "/learn", label: "今日" },
@@ -21,18 +20,6 @@ const NAV_ITEMS = [
  */
 export function StudentNav() {
   return (
-    <nav className="student-nav" aria-label="学习导航">
-      {NAV_ITEMS.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end
-          className={({ isActive }) => `student-nav-link${isActive ? " active" : ""}`}
-        >
-          {item.label}
-        </NavLink>
-      ))}
-      <StudentIdentityPicker />
-    </nav>
+    <Navigation items={NAV_ITEMS} label="学习导航" className="student-nav"><StudentIdentityPicker /></Navigation>
   );
 }

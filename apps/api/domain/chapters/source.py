@@ -56,7 +56,7 @@ def sentences(text: str, page: int, revision_id: str) -> list[dict[str, str]]:
 def pages_from_ocr(text: str) -> list[dict[str, Any]]:
     """Split persisted OCR text at the repository's existing page markers."""
     markers = list(PAGE_MARKER.finditer(text))
-    return [
+    pages: list[dict[str, Any]] = [
         {
             "page": int(marker.group(1)),
             "text": text[
@@ -66,3 +66,12 @@ def pages_from_ocr(text: str) -> list[dict[str, Any]]:
         }
         for index, marker in enumerate(markers)
     ]
+    from ocr_quality import evaluate_page_quality
+
+    for page in pages:
+        quality = evaluate_page_quality(str(page["text"]), page_number=int(page["page"]), provider="none", retry_count=2)
+        if quality.get("formulaReview"):
+            # This durable source flag uses the existing source-edit/revision gate.
+            # Correct the original text against the PDF before creating a new revision.
+            page["flags"] = ["unreadable"]
+    return pages

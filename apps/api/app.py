@@ -88,6 +88,7 @@ app.include_router(build_auth_router(session_store=auth_session_store))
 app.include_router(build_dependency_preflight_router())
 quality_review_store = QualityReviewStore(engine=store.engine, data_root=str(store.root))
 lesson_media_store = LessonMediaStore(database_url=store.database_url, data_root=str(store.root))
+courseware_store = CoursewareStore(engine=store.engine)
 quality_review_service = QualityReviewService(
     quality_review_store,
     auth_mode=os.getenv("AUTH_MODE", "demo").strip().lower(),
@@ -95,6 +96,7 @@ quality_review_service = QualityReviewService(
     source_store=store,
     chapter_store=store,
     media_store=lesson_media_store,
+    courseware_store=courseware_store,
 )
 app.include_router(build_quality_review_router(quality_review_service))
 prompt_store = PromptStore(engine=store.engine)
@@ -161,7 +163,6 @@ app.include_router(build_publication_router(
 ))
 chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
 source_preparation_service = MaterialCourseService(chapter_course_service)
-courseware_store = CoursewareStore(engine=store.engine)
 courseware_service = CoursewareService(
     store=courseware_store,
     chapters=chapter_course_service,
@@ -175,13 +176,13 @@ app.include_router(build_chapter_router(
     chapter_course_service,
     source_preparation_service=source_preparation_service,
 ))
-app.include_router(build_courseware_router(courseware_service))
 app.include_router(textbook_router)
 
 # Media and voice reuse the published source service while keeping their durable
 # revisions and learner conversations in separate PostgreSQL domains.
 lesson_media_service = LessonMediaService(
     chapter_service=chapter_course_service,
+    courseware_service=courseware_service,
     media_store=lesson_media_store,
     jobs=background_job_store,
     speech_runtime=TtsRuntime(),
@@ -193,8 +194,10 @@ voice_service = VoiceTutorService(
     chapter_service=chapter_course_service,
     tutor_runtime=tutor_runtime,
     stt_runtime=VoiceTranscriptionRuntime(),
+    courseware_service=courseware_service,
 )
 app.include_router(build_voice_router(service=voice_service))
+app.include_router(build_courseware_router(courseware_service, media_service=lesson_media_service, voice_service=voice_service))
 
 # 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
 tutoring_store = TutoringStore(engine=store.engine)

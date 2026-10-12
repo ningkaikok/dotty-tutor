@@ -54,7 +54,7 @@ function recorderSupported(): boolean {
 }
 
 function localStorageKey(scope: VoiceSessionScope): string {
-  return `${LOCAL_STORAGE_PREFIX}${[scope.learnerId, scope.chapterId, scope.publicationId, scope.lessonId, scope.blockId].map(encodeURIComponent).join(":")}`;
+  return `${LOCAL_STORAGE_PREFIX}${[scope.learnerId, scope.sourceKind === "courseware" ? `courseware:${scope.coursewareId}` : scope.chapterId, scope.publicationId, scope.sourceKind === "courseware" ? scope.pageId : scope.lessonId, scope.blockId].map(encodeURIComponent).join(":")}`;
 }
 
 function fileExtension(blob: Blob): string {
@@ -68,8 +68,13 @@ function fileExtension(blob: Blob): string {
 }
 
 export function useVoiceTutor(props: VoiceTutorPanelProps) {
-  const { learnerId, chapterId, publicationId, lessonId, blockId } = props;
-  const scope = useMemo(() => ({ learnerId, chapterId, publicationId, lessonId, blockId }), [learnerId, chapterId, publicationId, lessonId, blockId]);
+  const { learnerId, publicationId, blockId } = props;
+  const sourceKind = props.sourceKind ?? "chapter";
+  const sourceId = props.sourceKind === "courseware" ? props.coursewareId : props.chapterId;
+  const stepId = props.sourceKind === "courseware" ? props.pageId : props.lessonId;
+  const scope = useMemo<VoiceSessionScope>(() => sourceKind === "courseware"
+    ? { learnerId, publicationId, blockId, sourceKind: "courseware", coursewareId: sourceId, pageId: stepId }
+    : { learnerId, publicationId, blockId, chapterId: sourceId, lessonId: stepId }, [learnerId, publicationId, blockId, sourceKind, sourceId, stepId]);
   const scopeKey = useMemo(() => localStorageKey(scope), [scope]);
   const [session, setSession] = useState<VoiceSession | null>(null);
   const [credential, setCredential] = useState<VoiceSessionCredential | null>(null);

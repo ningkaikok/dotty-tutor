@@ -1,7 +1,7 @@
 {
   "name": "dotty-tutor-web",
   "private": true,
-  "version": "0.37.0",
+  "version": "0.38.0",
   "type": "module",
   "engines": {
     "node": ">=22.22.2"
@@ -19,6 +19,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@fontsource-variable/nunito": "^5.3.0",
     "katex": "^0.18.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

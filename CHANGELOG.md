@@ -7,6 +7,22 @@ Semantic Versioning。
 
 后续改动写入此区域，发布时再整理到具体版本。
 
+## [0.38.0] - 2026-10-12
+
+### Added
+
+- 教材复核新增完整单元覆盖缺口、互动课件逐页待办及幂等恢复工具；历史材料恢复后仍等待教师审核。
+- 支持可信教材区域裁图、固定课件发布的教学视频与学生语音答疑适配，并新增科学教师复核试点。
+- 人工评测增加固定快照双审、身份核验登记和正式盲评门槛；不足 50 案或存在未裁决分歧时不提供正式比较结论。
+- 首页、学生“今日”、做题、错题本（拍照录入、确认、陪练）和复习页面换用明快的新视觉：淡紫底、白色圆角卡片、更大的触控按钮和选项，答错改用温和的橙色提示；教师、教材工作室、指标、复核、媒体和语音页面共用 Bright 基础组件和视觉 token；课堂播放器保留适合投影的深色布局。
+
+### Fixed
+
+- 撤回教材后，旧课件内容、裁图和互动入口停止向学生提供；语音生成期间撤回来源也不会保存或返回旧回复。
+- 历史上传缺少教材列表元数据时，不再导致整个教材列表读取失败。
+- 已发现的 OCR 公式数字断裂会保留原文并进入来源复核门禁，不再因客户端遗漏提示而直接通过。
+- 旧教材产物可恢复清理后，“我的教材”按实际可见题目显示数量，移除已撤回练习的旧入口；试卷计数保持不变。
+
 ## [0.37.0] - 2026-10-12
 
 ### Added
@@ -649,7 +665,8 @@ Semantic Versioning。
 - Azure、数据库和模型凭据只通过环境变量或密钥管理提供。
 - 当前版本是面向本地体验和受控内测的 MVP，公网部署限制见 `docs/roadmap.md`。
 
-[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.37.0...HEAD
+[Unreleased]: https://github.com/ningkaikok/dotty-tutor/compare/v0.38.0...HEAD
+[0.38.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.37.0...v0.38.0
 [0.37.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.36.0...v0.37.0
 [0.36.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.35.0...v0.36.0
 [0.35.0]: https://github.com/ningkaikok/dotty-tutor/compare/v0.34.0...v0.35.0
