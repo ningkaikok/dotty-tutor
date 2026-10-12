@@ -13,6 +13,7 @@ from persistence.base import DatabaseStore
 from persistence.database import decode_json
 from persistence.legacy_cleanup_guards import (
     active_cleanup_snapshot,
+    active_cleanup_snapshots,
     exact_id_is_tombstoned,
     lock_upload_for_legacy_write,
     tombstoned_ids,
@@ -226,6 +227,7 @@ class TextbookStore(DatabaseStore):
                 )
 
     def list_imports(self) -> list[dict[str, Any]]:
+        """Keep source metadata while counting only visible questions after withdrawal."""
         self._ensure_initialized()
         with self.engine.connect() as connection:
             rows = connection.execute(
@@ -246,10 +248,28 @@ class TextbookStore(DatabaseStore):
                 )
                 .order_by(upload_jobs.c.updated_at.desc())
             ).mappings().all()
+            cleaned_uploads = {
+                marker["uploadId"] for marker in active_cleanup_snapshots(connection)
+            }
         items = []
         for row in rows:
             result = decode_json(row["result_json"])
             extraction = result.get("extraction", {})
+            question_count = extraction.get("questionCount", 0)
+            if row["upload_id"] in cleaned_uploads:
+                # The original OCR/extraction snapshot stays recoverable. Reuse the
+                # ordinary read projection rather than rewriting its historical count.
+                visible = self.load_job(row["upload_id"]) or {}
+                visible_result = visible.get("result") or {}
+                payloads = list((visible.get("batchPayloads") or {}).values())
+                payloads.extend(visible_result.get("questionPayloads") or [])
+                if visible_result.get("questionPayload"):
+                    payloads.append(visible_result["questionPayload"])
+                question_count = len({
+                    payload["question"]["id"] for payload in payloads
+                    if isinstance(payload, dict) and isinstance(payload.get("question"), dict)
+                    and payload["question"].get("id")
+                })
             from domain.chapters.material import classify_material
             kind = result.get("materialKind", "unknown")
             if kind == "unknown":
@@ -260,7 +280,7 @@ class TextbookStore(DatabaseStore):
                 "filename": row["filename"],
                 "size": row["size"],
                 "status": row["status"],
-                "questionCount": extraction.get("questionCount", 0),
+                "questionCount": question_count,
                 "materialKind": kind,
                 "pageCount": extraction.get("pageCount"),
                 "chapter": extraction.get("chapter", "教材练习"),
