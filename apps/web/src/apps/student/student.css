@@ -404,6 +404,9 @@
 .student-paper-shell .selected-option { color: var(--c-brand); font-weight: 700; }
 .student-paper-shell .question-options li { min-height: 0; border-radius: 20px; background: transparent; }
 .student-paper-shell .question-options.exam-options { font-family: inherit; }
+/* Bright 选项带 38px 字母块和更大内边距，旧的 110px 紧凑列宽会把短选项挤成竖排；
+   220px 让四个短选项在中等宽度排成 2×2、整宽时排成一行，避免 3+1 的残行。 */
+.student-paper-shell .question-options.compact-options { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
 .student-paper-shell .question-options.exam-options li { border: 0; background: transparent; }
 .student-paper-shell .question-option,
 .student-paper-shell .question-options.exam-options .question-option { min-height: 64px; padding: 10px 14px; border: 3px solid var(--c-line); border-radius: 20px; color: var(--c-ink); background: var(--c-surface); font-size: 19px; font-weight: 700; }
