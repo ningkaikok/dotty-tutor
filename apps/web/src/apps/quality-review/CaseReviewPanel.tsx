@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Notice, SelectField, Skeleton, TextAreaField, TextField } from "../../components/ui";
 import { apiResourceUrl } from "../../api/client";
 import type { QualityReviewCase, QualityReviewInboxItem } from "../../api/qualityReviews";
+import { SourceCaseAiOpinion } from "./SourceCaseAiOpinion";
 import { useQualityReview } from "./useQualityReview";
 import "./qualityReview.css";
 
@@ -88,6 +89,7 @@ export function CaseReviewPanel({
             <article className="panel"><h3>预期结果</h3><ReviewSummary value={review.detail.expected} kind="expected" /></article>
             <article className="panel"><h3>实际观察</h3><ReviewSummary value={review.detail.actual} kind="actual" /></article>
           </section>
+          <SourceCaseAiOpinion key={review.detail.caseId} caseId={review.detail.caseId} recordVersion={review.detail.recordVersion} />
 
           <section className="panel quality-review-revisions">
             <h3>版本历史</h3><p>每次修订都会追加新版本；旧版决定仍绑定原有指纹。</p>

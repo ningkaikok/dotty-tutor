@@ -477,6 +477,9 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `PUT` | `/api/courseware/{courseware_id}/pages/{page_id}` | 编辑完整页面 DTO，保留 block ID、作者属性与句子/区域来源；修改使审核失效 |
 | `POST` | `/api/courseware/{courseware_id}/pages/{page_id}/regenerate` | 以版本、原因和 `commandId` 重生成单页，返回 `202`，保留其他已完成页面 |
 | `POST` | `/api/courseware/{courseware_id}/review` | 教师会话身份追加审核记录；全部页面通过后才进入待发布状态 |
+| `GET` | `/api/courseware/{courseware_id}/ai-review` | 教师读取 AI 初审：逐页结论、问题定位、分流（`needs_review` / `bulk_confirmable` / `stale` / `not_reviewed` / `decided`）、抽检比例、教师与 AI 的一致/漏报/误报统计；`countsAsHumanReview` 恒为 false |
+| `POST` | `/api/courseware/{courseware_id}/ai-review` | 教师按 `expectedRecordVersion` 发起 AI 初审，返回 `202` 与 `pagesToReview`（即将调用审核模型的次数）、`cachedPages`；相同输入不重复调用模型，AI 不批准任何页面 |
+| `GET` / `POST` | `/api/quality-review/cases/{case_id}/ai-opinion` | 教师读取或按 `expectedRecordVersion` 请求来源案例的 AI 参考意见（POST 返回 `202`）；不写入人工决定、不计入金标准，案例修订后旧意见标记 `stale` |
 | `POST` | `/api/courseware/{courseware_id}/publish` | 校验来源、结构、许可、资产与审核，保存不可变发布快照 |
 | `GET` | `/api/courseware/{courseware_id}/presentation` | 教师播放投影，包含讲稿与按步骤揭晓内容 |
 | `GET` | `/api/courseware/{courseware_id}/published` | 学生安全投影，不含答案、评分依据和教师讲稿；可指定 `publicationId` |
