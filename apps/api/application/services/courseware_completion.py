@@ -9,9 +9,11 @@ def completion_report(
     plan: dict[str, Any] | None, blocked_pages: list[int], active_generation: bool,
     max_pages_per_batch: int,
 ) -> dict[str, Any]:
-    """Split only ready, ungenerated, unplanned physical pages into consecutive ranges.
+    """Split only ready, ungenerated, unplanned, unpublished pages into consecutive ranges.
 
     Suggestions never authorize replacement of an existing current-source plan.
+    An open (unconfirmed) plan must be finished first; once it is approved and
+    generated, suggestions are created as supplements that retain its courseware.
     The chapter record version remains necessary when a teacher later starts the
     ordinary planning workflow; reading this report performs no generation.
     """
@@ -31,7 +33,11 @@ def completion_report(
         )}
         existing["stale"] = plan["sourceRevisionId"] != source["sourceRevisionId"] or plan["status"] == "superseded"
     current_plan = existing is not None and not existing["stale"]
-    candidates = sorted(required - blocked - generated - planned)
+    # An approved, fully generated plan is a finished batch, not open work.
+    open_plan = current_plan and not (
+        existing is not None and existing["status"] == "approved" and existing["generationStatus"] == "completed"
+    )
+    candidates = sorted(required - blocked - generated - planned - published)
     batches: list[dict[str, Any]] = []
     for number in candidates:
         if (batches and number == batches[-1]["pageEnd"] + 1
@@ -42,7 +48,7 @@ def completion_report(
             batches.append({"pageStart": number, "pageEnd": number, "sourcePages": [number]})
     if active_generation:
         action = "wait_generation"
-    elif current_plan:
+    elif open_plan:
         action = "continue_plan"
     elif batches:
         action = "create_plan"
@@ -52,12 +58,14 @@ def completion_report(
         action = "repair_source"
     else:
         action = "complete"
+    can_create = bool(batches) and not open_plan and not active_generation
     return {
         "chapterId": chapter["chapterId"], "sourceRevisionId": source["sourceRevisionId"],
         "expectedRecordVersion": int(chapter["recordVersion"]), "maxPagesPerBatch": max_pages_per_batch,
         "batches": batches, "blockedPages": sorted(blocked), "alreadyGeneratedPages": sorted(generated),
         "alreadyPlannedPages": sorted(planned), "pendingGenerationPages": sorted(planned - generated - blocked),
         "pendingReviewPages": sorted(generated - reviewed), "pendingPublicationPages": sorted(generated - published),
-        "existingPlan": existing, "canCreatePlan": bool(batches) and not current_plan and not active_generation,
+        "existingPlan": existing, "canCreatePlan": can_create,
+        "supplementsExistingPlan": can_create and current_plan,
         "action": action, "requiresHumanReview": True,
     }

@@ -40,7 +40,7 @@ class CoursewareCompletionScenarios(unittest.TestCase):
                 "status": "approved", "generationStatus": "completed", "planVersion": 2, "recordVersion": 4}
         # When reading the next missing ranges
         report = self._report(end=9, generated=[1, 5], reviewed=[5], planned=[2, 3], blocked=[4, 7], plan=plan)
-        # Then gaps split the ranges, approved planning remains protected, and page 1 still needs review
+        # Then gaps split the ranges and page 1 still needs review
         self.assertEqual(report["batches"], [
             {"pageStart": 6, "pageEnd": 6, "sourcePages": [6]},
             {"pageStart": 8, "pageEnd": 9, "sourcePages": [8, 9]},
@@ -48,8 +48,33 @@ class CoursewareCompletionScenarios(unittest.TestCase):
         self.assertEqual(report["pendingGenerationPages"], [2, 3])
         self.assertEqual(report["pendingReviewPages"], [1])
         self.assertEqual(report["blockedPages"], [4, 7])
+        # And the finished approved plan is kept: the next batch is a supplement, not a replacement
+        self.assertTrue(report["canCreatePlan"])
+        self.assertTrue(report["supplementsExistingPlan"])
+        self.assertEqual(report["action"], "create_plan")
+
+    def test_user_has_an_unconfirmed_plan_then_supplements_wait_for_that_plan(self) -> None:
+        # Given a plan for pages 1–2 that the teacher has not confirmed yet
+        plan = {"sourceRevisionId": "revision", "pageStart": 1, "pageEnd": 2,
+                "status": "awaiting_confirmation", "generationStatus": "completed", "planVersion": 3, "recordVersion": 5}
+        # When reading completion suggestions for the rest of the unit
+        report = self._report(end=6, planned=[1, 2], plan=plan)
+        # Then pages 3–6 are visible but creating another plan would discard the open one
+        self.assertEqual(report["batches"][0]["sourcePages"], [3, 4, 5, 6])
         self.assertFalse(report["canCreatePlan"])
+        self.assertFalse(report["supplementsExistingPlan"])
         self.assertEqual(report["action"], "continue_plan")
+
+    def test_user_already_published_pages_then_they_are_never_suggested_for_regeneration(self) -> None:
+        # Given pages 1–2 are live for students from an earlier, since-replaced draft
+        report = completion_report(
+            {"chapterId": "chapter", "recordVersion": 1},
+            {"sourceRevisionId": "revision", "pageStart": 1, "pageEnd": 4},
+            {"generatedPages": [], "reviewedPages": [], "plannedPages": [], "publishedPages": [1, 2]},
+            plan=None, blocked_pages=[], active_generation=False, max_pages_per_batch=5,
+        )
+        # When reading suggestions, Then only the unpublished pages are proposed
+        self.assertEqual(report["batches"], [{"pageStart": 3, "pageEnd": 4, "sourcePages": [3, 4]}])
 
     def test_user_opens_a_unit_while_generation_runs_then_suggestions_cannot_replace_the_active_plan(self) -> None:
         # Given queued work whose output has not yet reached physical-page coverage

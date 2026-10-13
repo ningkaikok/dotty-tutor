@@ -10,7 +10,11 @@ from application import create_app
 from application.services.chapter_courses import ChapterCourseService
 from application.services.courseware import CoursewareService
 from domain.chapters.source import pages_from_ocr
-from domain.contracts.courseware import CoursewarePlanCreate
+from domain.contracts.courseware import (
+    CoursewarePageContent,
+    CoursewarePlanCreate,
+    CoursewarePlanEdit,
+)
 from persistence.app_store import AppStore
 from persistence.auth_store import AuthSessionStore
 from persistence.courseware_store import CoursewareStore
@@ -79,7 +83,7 @@ class CoursewareCompletionPostgresTests(PostgresTestCase):
             record_id="document:completion-document", record_type="document", chapter_id=self.chapter["chapterId"],
             courseware_id="completion-document", source_revision_id=self.source["sourceRevisionId"],
             payload={"coursewareId": "completion-document", "sourceRevisionId": self.source["sourceRevisionId"],
-                     "generationStatus": "completed", "pages": [
+                     "planVersion": 1, "generationStatus": "completed", "pages": [
                          {"sourceRefs": [self._ref(1)], "generationStatus": "completed", "reviewStatus": "pending"},
                          {"sourceRefs": [self._ref(4)], "generationStatus": "completed", "reviewStatus": "approved"}]},
             status="in_review", expected_version=0,
@@ -95,7 +99,9 @@ class CoursewareCompletionPostgresTests(PostgresTestCase):
         self.assertEqual(first["blockedPages"], [5, 8])
         self.assertEqual(first["pendingReviewPages"], [1])
         self.assertEqual(first["pendingGenerationPages"], [2, 3])
-        self.assertFalse(first["canCreatePlan"])
+        # And the finished approved plan is offered a supplement rather than a replacement
+        self.assertTrue(first["canCreatePlan"])
+        self.assertTrue(first["supplementsExistingPlan"])
         self.assertEqual(self.store.load_plan(self.chapter["chapterId"]), plan)
         self.assertEqual(self.store.list_documents(self.chapter["chapterId"]), before)
         self.assertEqual(self.jobs.list_jobs(), before_jobs)
@@ -201,3 +207,128 @@ class CoursewareCompletionPostgresTests(PostgresTestCase):
         self.assertEqual(result.json()["maxPagesPerBatch"], 2)
         self.assertTrue(all(len(batch["sourcePages"]) <= 2 for batch in result.json()["batches"]))
         self.assertEqual(client.get(path, params={"maxPagesPerBatch": 21}).status_code, 422)
+
+    # --- Incremental unit completion (supplement) -------------------------------------------
+
+    def _request(self, start: int, end: int, *, supplement: bool) -> CoursewarePlanCreate:
+        chapter = self.chapters.get(self.chapter["chapterId"])
+        return CoursewarePlanCreate(
+            subject="science", audience="Teachers", languagePolicy="Chinese", durationMinutes=10,
+            objectives=["Observe evidence"], pageStart=start, pageEnd=end,
+            expectedRecordVersion=int(chapter["recordVersion"]), supplement=supplement,
+        )
+
+    def _approve(self, start: int, end: int, objective_id: str, *, supplement: bool) -> dict[str, Any]:
+        """Teacher creates a plan for a page range, fills the outline, and confirms it."""
+        chapter_id = self.chapter["chapterId"]
+        created = self.service.create_plan(chapter_id, self._request(start, end, supplement=supplement))["plan"]
+        numbers = list(range(start, end + 1))
+        minutes = 10 // len(numbers)
+        edited = self.service.edit_plan(chapter_id, CoursewarePlanEdit.model_validate({
+            "audience": "Teachers", "languagePolicy": "Chinese", "expectedRecordVersion": created["recordVersion"],
+            "pageStart": start, "pageEnd": end,
+            "objectives": [{"objectiveId": objective_id, "description": "Observe evidence",
+                            "sourceRefs": [self._ref(numbers[0])]}],
+            "sessions": [{"sessionId": f"session-{start}", "title": f"Pages {start}-{end}",
+                       "durationMinutes": minutes * len(numbers),
+                       "sections": [{"sectionId": f"section-{start}", "title": "Observe",
+                                     "estimatedMinutes": minutes * len(numbers),
+                                     "pages": [{"pageId": f"page-{number}", "title": f"Page {number}",
+                                                "pageKind": "explanation", "objectiveIds": [objective_id],
+                                                "sourceRefs": [self._ref(number)], "estimatedMinutes": minutes}
+                                               for number in numbers]}]}],
+        }))
+        return self.service.approve_plan(
+            chapter_id, plan_version=edited["planVersion"], expected_record_version=edited["recordVersion"],
+            command_id=f"approve-{start}-{end}",
+        )
+
+    def _mark_generated(self, courseware_id: str) -> dict[str, Any]:
+        """Stand-in for the model worker: the first batch has finished generating."""
+        document = self.store.load_document(courseware_id)
+        assert document is not None
+        for page in document["pages"]:
+            page["generationStatus"] = "completed"
+        document["generationStatus"] = "completed"
+        return self.store.save_record(
+            record_id=f"document:{courseware_id}", record_type="document", chapter_id=self.chapter["chapterId"],
+            courseware_id=courseware_id, source_revision_id=self.source["sourceRevisionId"], payload=document,
+            status="draft", expected_version=int(document["recordVersion"]),
+        )
+
+    def test_user_supplements_remaining_pages_then_confirmed_lessons_stay_editable_and_listed(self) -> None:
+        # Given a confirmed and generated lesson for pages 1–2
+        first = self._approve(1, 2, "objective-first", supplement=False)
+        first_id = first["documents"][0]["coursewareId"]
+        generated = self._mark_generated(first_id)
+        # When the teacher supplements the remaining ready pages 3–4
+        second = self._approve(3, 4, "objective-second", supplement=True)
+        second_id = second["documents"][0]["coursewareId"]
+        # Then both lessons are listed and the first is still readable with its own objectives
+        listed = {item["coursewareId"] for item in self.service.list_chapter_documents(self.chapter["chapterId"])["items"]}
+        self.assertEqual(listed, {first_id, second_id})
+        self.assertEqual(self.service.get_document(first_id)["coursewareId"], first_id)
+        plan = self.service.get_plan(self.chapter["chapterId"])
+        assert plan is not None
+        self.assertEqual([batch["planVersion"] for batch in plan["retainedBatches"]], [first["plan"]["planVersion"]])
+        self.assertEqual(plan["retainedBatches"][0]["objectives"][0]["objectiveId"], "objective-first")
+        # And editing the first lesson accepts its frozen objective but not the new batch's objective
+        page = generated["pages"][0]
+        content = {key: page[key] for key in ("title", "pageKind", "layout", "sourceRefs", "estimatedMinutes")}
+        edited = self.service.edit_page(first_id, page["pageId"], expected_record_version=generated["recordVersion"],
+                                        content=CoursewarePageContent(**content, objectiveIds=["objective-first"]))
+        self.assertEqual(edited["coursewareId"], first_id)
+        with self.assertRaisesRegex(ValueError, "已声明的教学目标"):
+            self.service.edit_page(first_id, page["pageId"], expected_record_version=edited["recordVersion"],
+                                   content=CoursewarePageContent(**content, objectiveIds=["objective-second"]))
+        # And completion now treats pages 1–4 as planned, leaving only 6–7 to suggest
+        report = self.service.get_completion(self.chapter["chapterId"])
+        self.assertEqual(report["alreadyPlannedPages"], [1, 2, 3, 4])
+
+    def test_user_supplements_pages_that_already_have_lessons_then_the_plan_is_unchanged(self) -> None:
+        # Given a confirmed lesson for pages 1–2
+        self._approve(1, 2, "objective-first", supplement=False)
+        before = self.store.load_plan(self.chapter["chapterId"])
+        jobs_before = self.jobs.list_jobs()
+        # When a supplement range overlaps page 2, Then it is rejected before any plan or model job is written
+        with self.assertRaisesRegex(ValueError, "补齐范围包含"):
+            self.service.create_plan(self.chapter["chapterId"], self._request(2, 3, supplement=True))
+        self.assertEqual(self.store.load_plan(self.chapter["chapterId"]), before)
+        self.assertEqual(self.jobs.list_jobs(), jobs_before)
+
+    def test_user_supplements_while_the_current_plan_is_unconfirmed_then_that_work_is_protected(self) -> None:
+        # Given an outline for pages 1–2 still awaiting the teacher's confirmation
+        self.service.create_plan(self.chapter["chapterId"], self._request(1, 2, supplement=False))
+        before = self.store.load_plan(self.chapter["chapterId"])
+        # When the teacher tries to supplement pages 3–4, Then the open plan is not discarded
+        with self.assertRaisesRegex(ValueError, "当前规划尚未确认"):
+            self.service.create_plan(self.chapter["chapterId"], self._request(3, 4, supplement=True))
+        self.assertEqual(self.store.load_plan(self.chapter["chapterId"]), before)
+
+    def test_user_edits_a_supplement_plan_into_retained_pages_then_the_edit_is_rejected(self) -> None:
+        # Given lessons for pages 1–2 and a supplement plan for pages 3–4
+        self._approve(1, 2, "objective-first", supplement=False)
+        draft = self.service.create_plan(self.chapter["chapterId"], self._request(3, 4, supplement=True))["plan"]
+        # When the teacher widens the supplement to page 2, Then the retained lesson's page cannot be reclaimed
+        with self.assertRaisesRegex(ValueError, "已保留课时"):
+            self.service.edit_plan(self.chapter["chapterId"], CoursewarePlanEdit.model_validate({
+                "audience": "Teachers", "languagePolicy": "Chinese", "expectedRecordVersion": draft["recordVersion"],
+                "pageStart": 2, "pageEnd": 4,
+                "objectives": [{"objectiveId": "o", "description": "Observe", "sourceRefs": [self._ref(3)]}],
+                "sessions": [{"sessionId": "s", "title": "S", "durationMinutes": 10, "sections": [
+                    {"sectionId": "x", "title": "X", "estimatedMinutes": 10, "pages": [
+                        {"pageId": "p", "title": "P", "pageKind": "explanation", "objectiveIds": ["o"],
+                         "sourceRefs": [self._ref(3)], "estimatedMinutes": 10}]}]}],
+            }))
+
+    def test_user_replaces_the_whole_plan_then_previous_drafts_are_superseded_as_before(self) -> None:
+        # Given a confirmed lesson for pages 1–2
+        first = self._approve(1, 2, "objective-first", supplement=False)
+        first_id = first["documents"][0]["coursewareId"]
+        # When the teacher creates an ordinary (non-supplement) plan
+        self.service.create_plan(self.chapter["chapterId"], self._request(1, 4, supplement=False))
+        # Then the old draft is superseded and its pages become gaps again
+        with self.assertRaisesRegex(LookupError, "已被新版本取代"):
+            self.service.get_document(first_id)
+        self.assertEqual(self.service.list_chapter_documents(self.chapter["chapterId"])["items"], [])
+        self.assertEqual(self.service.get_coverage(self.chapter["chapterId"])["generatedPages"], [])

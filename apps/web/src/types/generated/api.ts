@@ -4045,6 +4045,11 @@ export interface components {
             requiresHumanReview: true;
             /** Sourcerevisionid */
             sourceRevisionId: string;
+            /**
+             * Supplementsexistingplan
+             * @default false
+             */
+            supplementsExistingPlan: boolean;
         };
         /** CoursewareCompletionBatch */
         CoursewareCompletionBatch: {
@@ -4538,6 +4543,8 @@ export interface components {
             requestedObjectives?: string[];
             /** Requesthash */
             requestHash?: string | null;
+            /** Retainedbatches */
+            retainedBatches?: components["schemas"]["CoursewareRetainedBatch"][];
             /**
              * Schemaversion
              * @default 1
@@ -4597,6 +4604,11 @@ export interface components {
             pageStart?: number | null;
             /** Subject */
             subject: string;
+            /**
+             * Supplement
+             * @default false
+             */
+            supplement: boolean;
         };
         /** CoursewarePlanEdit */
         CoursewarePlanEdit: {
@@ -4821,6 +4833,25 @@ export interface components {
         CoursewareRegenerationResult: {
             document: components["schemas"]["CoursewareDocument"];
             job: components["schemas"]["CoursewareJobSummary"];
+        };
+        /**
+         * CoursewareRetainedBatch
+         * @description An earlier approved plan whose courseware stays editable after a supplement.
+         *
+         *     Objectives are frozen with the batch because its pages reference these IDs,
+         *     not the objectives of whichever plan is currently open.
+         */
+        CoursewareRetainedBatch: {
+            /** Coursewareids */
+            coursewareIds?: string[];
+            /** Objectives */
+            objectives?: components["schemas"]["CoursewareObjective"][];
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
         };
         /**
          * CoursewareRevealContent

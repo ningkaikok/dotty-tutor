@@ -1,6 +1,7 @@
 import type { CoursewareCompletion } from "../../api/courseware";
 
-export interface CompletionRange { pageStart: number; pageEnd: number }
+/** `supplement` keeps the approved plan's lessons as a retained batch instead of replacing them. */
+export interface CompletionRange { pageStart: number; pageEnd: number; supplement: boolean }
 
 /** Compress consecutive source pages for reading; batching remains exclusively a server responsibility. */
 export function sourcePageLabel(pages: readonly number[]): string {
@@ -15,16 +16,21 @@ export function sourcePageLabel(pages: readonly number[]): string {
   return ranges.join("、");
 }
 
-/** A read-only suggestion cannot replace an existing plan or cross a source/version boundary. */
+/**
+ * A read-only suggestion cannot replace an existing plan or cross a source/version boundary.
+ * With an approved plan it may only start a supplement, which the server also re-validates.
+ */
 export function completionState(report: CoursewareCompletion, context: { chapterId: string; sourceRevisionId?: string; expectedRecordVersion?: number; planStatus?: string }) {
   const sourceChanged = report.chapterId !== context.chapterId || !context.sourceRevisionId || report.sourceRevisionId !== context.sourceRevisionId;
   const versionChanged = context.expectedRecordVersion !== undefined && report.expectedRecordVersion !== context.expectedRecordVersion;
   const hasPlan = Boolean(context.planStatus || report.existingPlan);
+  const supplement = hasPlan && report.supplementsExistingPlan && (context.planStatus ?? report.existingPlan?.status) === "approved";
   return {
     sourceChanged,
     versionChanged,
     hasPlan,
-    canSelect: !sourceChanged && !versionChanged && !hasPlan && report.canCreatePlan && report.action === "create_plan",
+    supplement,
+    canSelect: !sourceChanged && !versionChanged && (!hasPlan || supplement) && report.canCreatePlan && report.action === "create_plan",
     planStatus: context.planStatus ?? report.existingPlan?.status,
     planStale: report.existingPlan?.stale ?? false,
   };

@@ -25,6 +25,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection, Engine
 
+from domain.courseware.batches import active_plan_versions
 from persistence.database import decode_json
 from persistence.schema import json_document
 
@@ -286,7 +287,7 @@ class CoursewareStore:
         if plan is None or plan["deleted_at"] is not None:
             raise CoursewareStaleExecution("课件规划不存在或已删除")
         plan_payload = decode_json(plan["record_json"])
-        if int(plan_payload.get("planVersion", 0)) != plan_version:
+        if plan_version not in active_plan_versions(plan_payload, source_revision_id):
             raise CoursewareStaleExecution("课件规划已变化，旧页面生成结果未写入")
         record = connection.execute(select(courseware_records).where(
             courseware_records.c.record_id == f"document:{courseware_id}",
@@ -465,7 +466,9 @@ class CoursewareStore:
             plan_row = connection.execute(select(courseware_records).where(
                 courseware_records.c.record_id == f"plan:{chapter_id}",
             ).with_for_update()).mappings().first()
-            if plan_row is None or int(decode_json(plan_row["record_json"]).get("planVersion", 0)) != plan_version:
+            if plan_row is None or plan_version not in active_plan_versions(
+                decode_json(plan_row["record_json"]), source_revision_id,
+            ):
                 raise CoursewareStaleExecution("课件规划已变化，课件结果未写入")
             row = connection.execute(select(courseware_records).where(
                 courseware_records.c.record_id == f"document:{courseware_id}",
@@ -534,7 +537,7 @@ class CoursewareStore:
             plan_row = connection.execute(select(courseware_records.c.record_json).where(
                 courseware_records.c.record_id == f"plan:{chapter_id}",
             ).with_for_update()).scalar_one_or_none()
-            if plan_row is None or decode_json(plan_row).get("planVersion") != plan_version:
+            if plan_row is None or plan_version not in active_plan_versions(decode_json(plan_row), source_revision_id):
                 return None
             row = connection.execute(select(courseware_records).where(
                 courseware_records.c.record_id == f"document:{courseware_id}",

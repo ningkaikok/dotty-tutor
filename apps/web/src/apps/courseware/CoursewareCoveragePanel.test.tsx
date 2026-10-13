@@ -26,10 +26,10 @@ function setup(report: Record<string, unknown> = completion, completionStatus = 
 }
 it("user Given an unplanned unit with a missing source page When selecting a bounded gap Then only its safe range is offered to the existing planning form", async () => {
   setup();
-  const ranges: Array<{ pageStart: number; pageEnd: number }> = [];
+  const ranges: Array<{ pageStart: number; pageEnd: number; supplement: boolean }> = [];
   render(<CoursewareCoveragePanel chapterId="chapter-1" sourceRevisionId="source-1" onSelectRange={(range) => ranges.push(range)} />);
   await userEvent.click(await screen.findByRole("button", { name: "规划教材原页 4–8" }));
-  expect(ranges).toEqual([{ pageStart: 4, pageEnd: 8 }]);
+  expect(ranges).toEqual([{ pageStart: 4, pageEnd: 8, supplement: false }]);
   expect(screen.getByText(/原页 9.*来源/)).toBeVisible();
   expect(screen.queryByRole("button", { name: /规划教材原页 9/ })).not.toBeInTheDocument();
 });
@@ -69,4 +69,14 @@ it("user Given a coverage request failure When opening the unit Then the failure
   render(<CoursewareCoveragePanel chapterId="chapter-1" sourceRevisionId="source-1" />);
   expect(await screen.findByText(/完整单元覆盖暂时无法读取/)).toBeVisible();
   expect(screen.queryByText("结构覆盖完整")).not.toBeInTheDocument();
+});
+it("user Given a finished approved plan When the server offers a supplement Then the gap is completed without replacing confirmed lessons", async () => {
+  const existingPlan = { sourceRevisionId: "source-1", planVersion: 2, recordVersion: 4, status: "approved", generationStatus: "completed", pageStart: 1, pageEnd: 3, stale: false };
+  setup({ ...completion, existingPlan, supplementsExistingPlan: true });
+  const ranges: Array<{ pageStart: number; pageEnd: number; supplement: boolean }> = [];
+  render(<CoursewareCoveragePanel chapterId="chapter-1" sourceRevisionId="source-1" expectedRecordVersion={1} planStatus="approved" onSelectRange={(range) => ranges.push(range)} />);
+  await userEvent.click(await screen.findByRole("button", { name: "补齐教材原页 10–12" }));
+  expect(ranges).toEqual([{ pageStart: 10, pageEnd: 12, supplement: true }]);
+  expect(screen.getByText(/已确认的课时会保留/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: /规划教材原页/ })).not.toBeInTheDocument();
 });
