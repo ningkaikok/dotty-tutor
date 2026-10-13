@@ -20,7 +20,7 @@ token 定义在 `apps/web/src/components/ui/tokens.css` 的 `:root` 中，命名
 | 教师工作台 `/teacher` | 已迁移；状态与网络在 useTeacherClassroomWorkspace；macOS/Linux/Windows 视觉基线已更新 |
 | 教材工作室 `/studio` 及子页面 | 教材、章节、课件编辑、复核、指标、提示词与媒体换用共享 token；指标 macOS/Linux/Windows 基线已更新 |
 
-`styles.css` 与 `chapters.css` 已无硬编码色值；`courseware.css` 中的 `--cw-*` 是课堂投影的有意例外。
+`styles.css` 与 `chapters.css` 已无硬编码色值；`courseware.css` 中的 `--cw-*` 是课堂投影的有意例外。Canvas 绘制（`GeometryCanvas`）无法直接引用 CSS 变量，绘制时用 `getComputedStyle` 读取同名 token。
 新增样式需要表示失败/警告时，按下表选 token，必要时用 `color-mix(in srgb, <token> N%, var(--c-surface))`
 派生描边或浅底，不要再引入新的十六进制色值。
 
