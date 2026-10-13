@@ -279,6 +279,40 @@ class CoursewareService:
         chapter, source = self._chapter(chapter_id)
         return coverage_report(chapter, source, self.store)
 
+    def get_completion(self, chapter_id: str, *, max_pages_per_batch: int = 5) -> dict[str, Any]:
+        """Suggest missing ranges while source and chapter identity remain guarded."""
+        from application.services.courseware_completion import completion_report
+        from application.services.courseware_coverage import coverage_report
+
+        # Reuse the mutation serialization boundary only to stabilize reads. No
+        # plan, job, review, or publication is created by this preparation API.
+        with self.chapters.store.chapter_lock(chapter_id):
+            with self.store.atomic():
+                chapter, source = self._chapter(chapter_id, lock=True)
+                blocked = []
+                for number in range(int(source["pageStart"]), int(source["pageEnd"]) + 1):
+                    try:
+                        self._selected_pages(source, number, number)
+                    except ValueError:
+                        blocked.append(number)
+                plan = self.store.load_plan(chapter_id)
+                documents = [item for item in self.store.list_documents(chapter_id)
+                             if not item.get("deletedAt") and item.get("status") != "deleted"]
+                current_records = [item for item in ([plan] if plan else []) + documents
+                                   if item.get("sourceRevisionId") == source["sourceRevisionId"]]
+                active = False
+                for item in current_records:
+                    job = self.jobs.get_job(item["generationJobId"]) if self.jobs is not None and item.get("generationJobId") else None
+                    active = active or (
+                        job.get("status") in {"queued", "running"} if job
+                        else item.get("generationStatus") in {"queued", "running"}
+                    )
+                return completion_report(
+                    chapter, source, coverage_report(chapter, source, self.store),
+                    plan=plan, blocked_pages=blocked, active_generation=active,
+                    max_pages_per_batch=max_pages_per_batch,
+                )
+
     def get_plan(self, chapter_id: str) -> dict[str, Any] | None:
         chapter, source = self._chapter(chapter_id)
         plan = self.store.load_plan(chapter_id)

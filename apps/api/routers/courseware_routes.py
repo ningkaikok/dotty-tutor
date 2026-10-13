@@ -15,6 +15,7 @@ from auth_context import learner_for_request
 from domain.contracts.courseware import (
     CoursewareAttemptRequest,
     CoursewareAttemptResponse,
+    CoursewareCompletion,
     CoursewareCoverage,
     CoursewareDocument,
     CoursewareDocumentsResponse,
@@ -97,6 +98,14 @@ def build_courseware_router(service: Any, *, media_service: Any | None = None, v
     def coverage(chapter_id: str, request: Request) -> dict[str, Any]:
         teacher_actor_id(request)
         return call(service.get_coverage, chapter_id)
+
+    @router.get("/chapters/{chapter_id}/courseware-completion", response_model=CoursewareCompletion)
+    def completion(
+        chapter_id: str, request: Request,
+        maxPagesPerBatch: int = Query(default=5, ge=1, le=20),
+    ) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(service.get_completion, chapter_id, max_pages_per_batch=maxPagesPerBatch)
 
     @router.get("/courseware/profiles", response_model=CoursewareProfilesResponse)
     def list_profiles() -> dict[str, Any]:

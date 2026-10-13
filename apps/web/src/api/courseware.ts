@@ -155,3 +155,8 @@ export type CoursewareCoverage = components["schemas"]["CoursewareCoverage"];
 export async function loadCoursewareCoverage(chapterId: string, signal?: AbortSignal): Promise<CoursewareCoverage> {
   return parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/courseware-coverage`, { cache: "no-store", signal }));
 }
+
+export type CoursewareCompletion = components["schemas"]["CoursewareCompletion"];
+export async function loadCoursewareCompletion(chapterId: string, maxPagesPerBatch = 5, signal?: AbortSignal): Promise<CoursewareCompletion> {
+  return parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/courseware-completion?maxPagesPerBatch=${maxPagesPerBatch}`, { cache: "no-store", signal }));
+}

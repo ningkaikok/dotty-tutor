@@ -22,7 +22,7 @@ def coverage_report(chapter: dict[str, Any], source: dict[str, Any], store: Any)
     reviewed: set[int] = set()
     published: set[int] = set()
     for doc in store.list_documents(chapter["chapterId"]):
-        if doc.get("sourceRevisionId") != revision:
+        if doc.get("deletedAt") or doc.get("status") == "deleted" or doc.get("sourceRevisionId") != revision:
             continue
         for page in doc.get("pages", []):
             if page.get("generationStatus") == "completed":

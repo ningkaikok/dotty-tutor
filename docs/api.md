@@ -700,6 +700,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
 | GET | `/api/chapters/{chapter_id}/courseware-coverage` | 教师读取当前来源完整物理页段的覆盖及缺口；不能视为教学质量验收 |
+| GET | `/api/chapters/{chapter_id}/courseware-completion` | 教师只读取得连续缺口分批与后续动作；`maxPagesPerBatch` 默认 5、范围 1–20，不创建规划/任务 |
 | POST / GET | `/api/courseware/{courseware_id}/media` | 教师创建或列出固定 publicationId 的课件媒体；创建需 sourceRevisionId 和 3–8 个不同 pageIds |
 | GET | `/api/courseware/{courseware_id}/media/published` | 按 publicationId 查询仅已批准、可分发的课件媒体 |
 | GET | `/api/courseware/{courseware_id}/media/published/{media_id}/asset` | 绑定课件和发布版本的受控 MP4 |
@@ -709,4 +710,6 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 Coverage 返回 source/planned/generated/reviewed/publishedPages 和 missingSource/unplanned/ungenerated/unreviewed/unpublishedPages，`complete` 是结构交集，`qualityAcceptance=requires_teacher_validation`。
 课件 Asset 增加 sourceRegionId/sourceFileSha256/crop/fallbackReason；crop 必须与冻结原页区域完全匹配，缺可信坐标只返回整页。
 QualityReviewInbox 增加 `coursewareTasks`（当前规划版本的未发布课件及 pendingPageCount）和 `coursewarePendingCount`，与来源意见、旧课程、视频分别计数。语音持久化会话增加 `sourceKind` 和 `coursewareId`，历史 chapter 会话保持原恢复协议。
+
+`CoursewareCompletion` 返回 `chapterId/sourceRevisionId/expectedRecordVersion`、`maxPagesPerBatch`、`batches`（pageStart/pageEnd/sourcePages）、`blockedPages`、`alreadyGeneratedPages`、`alreadyPlannedPages`、`pendingGenerationPages`、`pendingReviewPages`、`pendingPublicationPages`，以及 `existingPlan`、`canCreatePlan`、`action`、固定为 true 的 `requiresHumanReview`。action 为 create_plan/continue_plan/wait_generation/review_generated/repair_source/complete。既有规划身份含来源修订、规划/记录版本、状态、页段和 stale；不构成替换规划授权。客户端选批次仅填写现有表单，实际创建仍走原 POST 的章节版本校验、Worker 和教师确认流程。撤回章节或原 PDF 哈希变化拒绝读取建议。
 渲染、审校、发布与后续语音轮次仍使用既有 `/api/lesson-media`、`/api/voice` 接口。

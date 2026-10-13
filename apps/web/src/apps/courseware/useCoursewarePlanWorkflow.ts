@@ -9,6 +9,7 @@ import type { ChapterManagement, ChapterSummary } from "../../types/chapter";
 import type { LibraryItem } from "../../types/textbook";
 import type { CoursewareSourcePreparationInput } from "./CoursewareSourcePrepare";
 import { planView, type CoursewarePlanEditView, type CoursewarePlanView } from "./coursewarePlanView";
+import type { CompletionRange } from "./coursewareCompletionView";
 import { coursewareErrorMessage } from "./coursewareErrors";
 
 type Profile = components["schemas"]["CoursewareProfileView"];
@@ -28,6 +29,7 @@ export function useCoursewarePlanWorkflow() {
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [upload, setUpload] = useState<LibraryItem | null>(null);
   const [chapter, setChapter] = useState<ChapterManagement | null>(null);
+  const [planLoaded, setPlanLoaded] = useState(false);
   const [plan, setPlan] = useState<CoursewarePlanView | null>(null);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [job, setJob] = useState<JobView | null>(null);
@@ -49,6 +51,7 @@ export function useCoursewarePlanWorkflow() {
     setError("");
     setChapter(null);
     setPlan(null);
+    setPlanLoaded(false);
     try {
       const loadedChapter = await loadChapter(id);
       setChapter(loadedChapter);
@@ -60,11 +63,13 @@ export function useCoursewarePlanWorkflow() {
         setLanguagePolicy(current.languagePolicy);
         setPageStart(String(current.pageStart));
         setPageEnd(String(current.pageEnd));
+        setPlanLoaded(true);
       } else if (!(planResult.reason instanceof ApiRequestError && planResult.reason.status === 404)) {
         throw planResult.reason;
       } else {
         setPageStart("");
         setPageEnd("");
+        setPlanLoaded(true);
       }
       if (documentResult.status === "fulfilled") setDocuments(documentResult.value.items);
       else setDocuments([]);
@@ -152,7 +157,7 @@ export function useCoursewarePlanWorkflow() {
     }
   };
 
-  const checkRange = (startValue: number | undefined, endValue: number | undefined) => {
+  const checkRange = (startValue: number | undefined, endValue: number | undefined, maxPages = 80) => {
     const source = chapter?.sourceRevisions[chapter.sourceRevisions.length - 1];
     if (!source || !Number.isInteger(startValue) || !Number.isInteger(endValue) || startValue === undefined || endValue === undefined) {
       return "请明确填写教材起始页和结束页。";
@@ -160,16 +165,25 @@ export function useCoursewarePlanWorkflow() {
     if (startValue < source.pageStart || endValue > source.pageEnd || endValue < startValue) {
       return `规划范围必须位于教材来源第 ${source.pageStart}–${source.pageEnd} 页内。`;
     }
-    if (endValue - startValue + 1 > 80) return "单份课件规划最多处理 80 页，请缩小教材页码范围。";
+    if (endValue - startValue + 1 > maxPages) return `单份课件规划最多处理 ${maxPages} 页，请缩小教材页码范围。`;
     return "";
   };
 
+  const selectCompletionRange = (range: CompletionRange) => {
+    if (!chapter || !planLoaded || plan || busy) return;
+    const rangeError = checkRange(range.pageStart, range.pageEnd, 30);
+    if (rangeError) { setError(rangeError); return; }
+    setPageStart(String(range.pageStart));
+    setPageEnd(String(range.pageEnd));
+    setNotice(`已选择教材原页 ${range.pageStart}–${range.pageEnd}；请核对下方规划范围、学习对象与目标，再生成规划供教师确认。`);
+  };
+
   const startPlan = async () => {
-    if (!chapter) return;
+    if (!chapter || !planLoaded || plan) return;
     const requested = objectives.split(/\n+/).map((item) => item.trim()).filter(Boolean);
     const start = pageStart.trim() ? Number(pageStart) : undefined;
     const end = pageEnd.trim() ? Number(pageEnd) : undefined;
-    const rangeError = checkRange(start, end);
+    const rangeError = checkRange(start, end, 30);
     if (rangeError || !audience.trim() || !languagePolicy.trim() || requested.length === 0) {
       setError(rangeError || "请填写学习对象、授课语言策略和至少一个学习目标。");
       return;
@@ -248,14 +262,14 @@ export function useCoursewarePlanWorkflow() {
     clearWorkflow();
     setParams({ chapterId: id });
   };
-  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
+  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
 
   return {
     uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,
     languagePolicy, setLanguagePolicy, durationMinutes, setDurationMinutes, objectives, setObjectives,
     pageStart, setPageStart, pageEnd, setPageEnd, startSourcePreparation, startPlan, savePlan, approvePlan,
-    chooseUpload, chooseChapter,
+    chooseUpload, chooseChapter, planLoaded, selectCompletionRange, reloadWorkspace: () => chapterId && refreshWorkspace(chapterId),
   };
 }
 

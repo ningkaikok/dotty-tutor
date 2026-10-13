@@ -195,6 +195,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chapters/{chapter_id}/courseware-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Completion */
+        get: operations["completion_api_chapters__chapter_id__courseware_completion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chapters/{chapter_id}/courseware-coverage": {
         parameters: {
             query?: never;
@@ -3988,6 +4005,85 @@ export interface components {
             label: string;
         };
         /**
+         * CoursewareCompletion
+         * @description Read-only preparation advice; human decisions stay in the existing workflow.
+         */
+        CoursewareCompletion: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create_plan" | "continue_plan" | "wait_generation" | "review_generated" | "repair_source" | "complete";
+            /** Alreadygeneratedpages */
+            alreadyGeneratedPages: number[];
+            /** Alreadyplannedpages */
+            alreadyPlannedPages: number[];
+            /** Batches */
+            batches: components["schemas"]["CoursewareCompletionBatch"][];
+            /** Blockedpages */
+            blockedPages: number[];
+            /** Cancreateplan */
+            canCreatePlan: boolean;
+            /** Chapterid */
+            chapterId: string;
+            existingPlan?: components["schemas"]["CoursewareCompletionPlan"] | null;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Maxpagesperbatch */
+            maxPagesPerBatch: number;
+            /** Pendinggenerationpages */
+            pendingGenerationPages: number[];
+            /** Pendingpublicationpages */
+            pendingPublicationPages: number[];
+            /** Pendingreviewpages */
+            pendingReviewPages: number[];
+            /**
+             * Requireshumanreview
+             * @default true
+             * @constant
+             */
+            requiresHumanReview: true;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+        };
+        /** CoursewareCompletionBatch */
+        CoursewareCompletionBatch: {
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Sourcepages */
+            sourcePages: number[];
+        };
+        /**
+         * CoursewareCompletionPlan
+         * @description Existing workflow identity, retained when suggestions describe another range.
+         */
+        CoursewareCompletionPlan: {
+            /**
+             * Generationstatus
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "awaiting_confirmation" | "approved" | "superseded";
+        };
+        /**
          * CoursewareCoverage
          * @description Physical-page coverage reports structural gaps, never learning quality.
          */
@@ -6773,6 +6869,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoursewareDocumentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    completion_api_chapters__chapter_id__courseware_completion_get: {
+        parameters: {
+            query?: {
+                maxPagesPerBatch?: number;
+            };
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareCompletion"];
                 };
             };
             /** @description Validation Error */
