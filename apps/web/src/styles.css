@@ -267,8 +267,8 @@ button:disabled { cursor: not-allowed; }
 .file-type { display: block; margin-bottom: 8px; color: var(--c-brand); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
 .file-details strong { display: block; overflow: hidden; margin-bottom: 8px; font-size: 19px; text-overflow: ellipsis; white-space: nowrap; }
 .file-details small { display: block; }
-.source-text-field { display: block; margin: 18px 0; }
-.source-text-field > span { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--c-ink); font-size: 12px; font-weight: 700; }
+.source-text-field { margin: 18px 0; }
+.source-text-field > label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; color: var(--c-ink); font-size: 12px; font-weight: 700; }
 .source-text-field small { color: var(--c-ink-muted); font-weight: 400; }
 .source-text-field textarea { min-height: 92px; font-size: 13px; }
 .text-button { margin-top: 15px; padding: 0; border: 0; color: var(--c-brand); background: transparent; font-weight: 600; }

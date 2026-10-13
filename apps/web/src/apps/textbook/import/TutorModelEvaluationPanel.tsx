@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button, Notice } from "../../../components/ui";
 import type { ModelCatalog, ModelProvider, TutorModelEvaluation, TutorModelRef } from "../../../types/index";
 
 interface TutorModelEvaluationPanelProps {
@@ -63,7 +64,7 @@ export function TutorModelEvaluationPanel({
         当前模型：{models ? `${models.selected.provider} · ${models.selected.model}` : "正在读取…"}
       </div>
       {models && models.selected.provider !== "mock" && !currentTutorAvailable && (
-        <p className="tutor-evaluation-error" role="alert">当前陪练模型不可用或不支持陪练任务，刷新模型目录后再评测。</p>
+        <Notice tone="danger" className="tutor-evaluation-error">当前陪练模型不可用或不支持陪练任务，刷新模型目录后再评测。</Notice>
       )}
       <select
         className="tutor-select"
@@ -81,24 +82,23 @@ export function TutorModelEvaluationPanel({
         ))}
       </select>
       <div className="tutor-evaluation-actions">
-        <button
-          type="button"
+        <Button
           className="tutor-evaluation-button"
           disabled={!candidate || !currentTutorAvailable || models?.selected.provider === "mock" || candidateTutorId === currentTutorId || disabled || selectionLoading || evaluationLoading}
           onClick={() => candidate && onEvaluate(candidate.provider, candidate.model)}
         >
           {evaluationLoading ? "正在评测…" : "比较当前与候选模型"}
-        </button>
+        </Button>
         {evaluation?.status === "completed" && candidate && (
-          <button
-            type="button"
+          <Button
+            variant="primary"
             className="tutor-evaluation-button primary"
             disabled={!matchesEvaluation || disabled || selectionLoading}
             title={matchesEvaluation ? "将候选模型设为后续学生陪练使用的模型" : "请对当前模型组合重新评测后应用"}
             onClick={() => onApply(candidate.provider, candidate.model)}
           >
             应用候选模型
-          </button>
+          </Button>
         )}
       </div>
       <p className="tutor-evaluation-note">
@@ -109,7 +109,7 @@ export function TutorModelEvaluationPanel({
           {evaluation.status === "queued" ? "评测排队中" : "评测进行中"}：已完成 {evaluation.completedCases}/{evaluation.totalCases} 组对照
         </p>
       )}
-      {evaluationError && <p className="tutor-evaluation-error" role="alert">{evaluationError}</p>}
+      {evaluationError && <Notice tone="danger" className="tutor-evaluation-error">{evaluationError}</Notice>}
       {evaluation?.status === "completed" && summary && (
         <section className="tutor-evaluation-report" aria-label="陪练模型评测结果">
           <h3>模型对照结果</h3>

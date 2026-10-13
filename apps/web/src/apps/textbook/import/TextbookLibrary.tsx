@@ -1,4 +1,5 @@
 import type { LibraryItem } from "../../../types/index";
+import { Button } from "../../../components/ui";
 
 interface TextbookLibraryProps {
   items: LibraryItem[];
@@ -33,7 +34,7 @@ export function TextbookLibrary({ items, loadingId, deletingId, onOpen, onDelete
               </span>
               <b>{loadingId === item.uploadId ? "读取中…" : "继续学习 →"}</b>
             </button>
-            <button
+            <Button
               className="library-delete"
               disabled={busy}
               title="从教材库移除"
@@ -41,7 +42,7 @@ export function TextbookLibrary({ items, loadingId, deletingId, onOpen, onDelete
               onClick={() => onDelete(item)}
             >
               {deletingId === item.uploadId ? "删除中…" : "删除"}
-            </button>
+            </Button>
           </div>
         ))}
       </div>

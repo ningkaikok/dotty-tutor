@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Button, Notice, TextAreaField } from "../../../components/ui";
 import { ACCEPTED_TEXTBOOK_FILES, formatFileSize } from "./fileValidation";
 import type { TextbookUploadItem, UploadPhase } from "./useTextbookImport";
 
@@ -116,10 +117,10 @@ export function UploadPanel({
                   {item.processingTask?.elapsedSeconds ? <small>已耗时 {Math.round(item.processingTask.elapsedSeconds)} 秒</small> : null}
                 </div>
                 <div className="upload-item-actions">
-                  {itemBusy && item.phase === "uploading" && <button className="text-button" onClick={() => onPause(item.id)}>暂停</button>}
-                  {itemBusy && item.phase === "processing" && <button className="text-button" onClick={() => void onCancelProcessing(item.id)}>取消</button>}
-                  {item.phase === "error" && item.processingTask?.jobId && <button className="text-button" onClick={() => void onRetryProcessing(item.id)}>重试</button>}
-                  {!itemBusy && item.phase !== "done" && <button className="text-button" onClick={() => onRemoveUpload(item.id)}>移除</button>}
+                  {itemBusy && item.phase === "uploading" && <Button variant="quiet" className="text-button" onClick={() => onPause(item.id)}>暂停</Button>}
+                  {itemBusy && item.phase === "processing" && <Button variant="quiet" className="text-button" onClick={() => void onCancelProcessing(item.id)}>取消</Button>}
+                  {item.phase === "error" && item.processingTask?.jobId && <Button variant="quiet" className="text-button" onClick={() => void onRetryProcessing(item.id)}>重试</Button>}
+                  {!itemBusy && item.phase !== "done" && <Button variant="quiet" className="text-button" onClick={() => onRemoveUpload(item.id)}>移除</Button>}
                   {item.phase === "done" && <span className="upload-done-mark">✓</span>}
                 </div>
               </article>
@@ -128,20 +129,21 @@ export function UploadPanel({
         </div>
       )}
 
-      <details><summary>补充原文（可选）</summary><label className="source-text-field">
-        <span>题目原文 <small>可选；会作为所有新任务的补充文本</small></span>
-        <textarea
+      <details><summary>补充原文（可选）</summary>
+        <TextAreaField
+          className="source-text-field"
+          label={<>题目原文 <small>可选；会作为所有新任务的补充文本</small></>}
           value={sourceText}
           onChange={(event) => onSourceTextChange(event.target.value)}
           disabled={busy}
           placeholder="例如：已知 A、B 是两个定点，点 P 满足 PA = PB……"
         />
-      </label></details>
+      </details>
 
-      <button className="import-button" disabled={!pendingCount || busy} onClick={onUpload}>
+      <Button variant="primary" className="import-button" busy={busy} disabled={!pendingCount} onClick={onUpload}>
         {busy ? `正在处理 ${uploads.filter((item) => itemBusy(item)).length} 个任务…` : pendingCount < uploads.length ? `继续未完成的 ${pendingCount} 个文件` : `开始识别 ${pendingCount} 个文件`}
-      </button>
-      {error && <p className="import-error" role="alert">{error}</p>}
+      </Button>
+      {error && <Notice tone="danger" className="import-error">{error}</Notice>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button, Notice, SelectField, TextAreaField, TextField } from "../../components/ui";
 import {
   activateQuestionRevision,
   editQuestion,
@@ -141,31 +142,19 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
         置信度：{typeof provenance.confidence === "number" ? provenance.confidence : "—"}
       </div>
       {issues.length > 0 && <ul className="question-review-issues">{issues.map((issue) => <li key={`${issue.code}-${issue.message}`}>{issue.code}：{issue.message}</li>)}</ul>}
-      {error && <p className="question-review-error" role="alert">{error}</p>}
+      {error && <Notice tone="danger" className="question-review-error">{error}</Notice>}
       <div className="question-review-actions">
-        {STAGES.map(([stage, label]) => <button key={stage} type="button" disabled={Boolean(busy)} onClick={() => void rerun(stage)}>{busy === stage ? "处理中…" : label}</button>)}
-        {!editing && <button type="button" disabled={Boolean(busy)} onClick={beginEdit}>人工编辑</button>}
+        {STAGES.map(([stage, label]) => <Button key={stage} disabled={Boolean(busy)} onClick={() => void rerun(stage)}>{busy === stage ? "处理中…" : label}</Button>)}
+        {!editing && <Button disabled={Boolean(busy)} onClick={beginEdit}>人工编辑</Button>}
       </div>
 
       {editing && (
         <div className="question-review-edit">
-          <label>
-            题干
-            <textarea
-              value={promptDraft}
-              onChange={(event) => setPromptDraft(event.target.value)}
-              rows={4}
-            />
-          </label>
-          <label>
-            标准答案
-            <input value={correctAnswerDraft} onChange={(event) => setCorrectAnswerDraft(event.target.value)} />
-          </label>
+          <TextAreaField label="题干" value={promptDraft} onChange={(event) => setPromptDraft(event.target.value)} rows={4} />
+          <TextField label="标准答案" value={correctAnswerDraft} onChange={(event) => setCorrectAnswerDraft(event.target.value)} />
           <fieldset>
             <legend>掌握目标（可选，需由老师明确选择）</legend>
-            <label>
-              目标类型
-              <select value={objectiveDraft || ""} onChange={(event) => {
+            <SelectField label="目标类型" value={objectiveDraft || ""} onChange={(event) => {
                 const next = event.target.value as typeof objectiveDraft;
                 setObjectiveDraft(next || undefined);
                 if (next === "memory" || next === "procedural") {
@@ -188,15 +177,14 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
                 <option value="conceptual">概念</option>
                 <option value="design">设计</option>
                 <option value="unknown">未知（legacy）</option>
-              </select>
-            </label>
+            </SelectField>
             {objectiveDraft && <small>gate：{gateDraft} · policy：{policyVersionDraft}</small>}
           </fieldset>
           <div className="question-review-edit-actions">
-            <button type="button" disabled={busy === "edit"} onClick={() => void submitEdit()}>
+            <Button variant="primary" busy={busy === "edit"} onClick={() => void submitEdit()}>
               {busy === "edit" ? "保存中…" : "保存编辑"}
-            </button>
-            <button type="button" className="ghost" disabled={busy === "edit"} onClick={() => setEditing(false)}>取消</button>
+            </Button>
+            <Button className="ghost" disabled={busy === "edit"} onClick={() => setEditing(false)}>取消</Button>
           </div>
         </div>
       )}
@@ -213,9 +201,9 @@ export function QuestionReviewPanel({ uploadId, payload, onPayload }: Props) {
                   {isCurrent ? " · 当前版本" : ""}
                 </span>
                 {!isCurrent && (
-                  <button type="button" disabled={Boolean(busy)} onClick={() => void activate(revision.revisionId)}>
+                  <Button disabled={Boolean(busy)} onClick={() => void activate(revision.revisionId)}>
                     {activating ? "回滚中…" : "设为当前版本"}
-                  </button>
+                  </Button>
                 )}
               </li>
             );
