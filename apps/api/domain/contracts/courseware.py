@@ -822,6 +822,45 @@ class CoursewareCoverage(BaseModel):
     qualityAcceptance: Literal["requires_teacher_validation"] = "requires_teacher_validation"
 
 
+class CoursewareCompletionBatch(BaseModel):
+    pageStart: int = Field(ge=1, le=100_000)
+    pageEnd: int = Field(ge=1, le=100_000)
+    sourcePages: list[int] = Field(min_length=1, max_length=20)
+
+
+class CoursewareCompletionPlan(BaseModel):
+    """Existing workflow identity, retained when suggestions describe another range."""
+
+    sourceRevisionId: str
+    planVersion: int
+    recordVersion: int
+    status: Literal["draft", "awaiting_confirmation", "approved", "superseded"]
+    generationStatus: Literal["queued", "running", "completed", "failed", "cancelled"]
+    pageStart: int
+    pageEnd: int
+    stale: bool
+
+
+class CoursewareCompletion(BaseModel):
+    """Read-only preparation advice; human decisions stay in the existing workflow."""
+
+    chapterId: str
+    sourceRevisionId: str
+    expectedRecordVersion: int
+    maxPagesPerBatch: int = Field(ge=1, le=20)
+    batches: list[CoursewareCompletionBatch]
+    blockedPages: list[int]
+    alreadyGeneratedPages: list[int]
+    alreadyPlannedPages: list[int]
+    pendingGenerationPages: list[int]
+    pendingReviewPages: list[int]
+    pendingPublicationPages: list[int]
+    existingPlan: CoursewareCompletionPlan | None = None
+    canCreatePlan: bool
+    action: Literal["create_plan", "continue_plan", "wait_generation", "review_generated", "repair_source", "complete"]
+    requiresHumanReview: Literal[True] = True
+
+
 class CoursewareMediaCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
