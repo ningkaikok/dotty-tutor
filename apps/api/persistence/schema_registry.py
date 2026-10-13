@@ -10,6 +10,7 @@ from collections.abc import Iterable
 
 from sqlalchemy import MetaData, Table
 
+from persistence.ai_review_store import ai_review_metadata
 from persistence.auth_store import auth_metadata
 from persistence.courseware_store import courseware_metadata
 from persistence.legacy_textbook_cleanup_store import legacy_cleanup_metadata
@@ -40,6 +41,7 @@ SCHEMA_METADATA: tuple[MetaData, ...] = (
     voice_metadata,
     courseware_metadata,
     legacy_cleanup_metadata,
+    ai_review_metadata,
 )
 
 DOMAIN_METADATA: dict[str, MetaData] = {
@@ -57,6 +59,7 @@ DOMAIN_METADATA: dict[str, MetaData] = {
     "voice": voice_metadata,
     "courseware": courseware_metadata,
     "legacy_textbook_cleanup": legacy_cleanup_metadata,
+    "ai_review": ai_review_metadata,
 }
 
 
@@ -87,4 +90,4 @@ def iter_metadata(*, exclude_tables: Iterable[str] = ()) -> Iterable[tuple[MetaD
 
 # Runtime health uses this stable value without importing Alembic's command
 # layer. The migration files and the CLI use the same revision identifier.
-SCHEMA_HEAD_REVISION = "0025_courseware_voice_context"
+SCHEMA_HEAD_REVISION = "0026_ai_reviews"

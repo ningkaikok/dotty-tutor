@@ -110,5 +110,15 @@
       "language_policy",
       "source"
     ]
+  },
+  "courseware.ai_review": {
+    "version": "courseware-ai-review-v1",
+    "file": "courseware.ai_review.txt",
+    "variables": ["subject", "page", "source"]
+  },
+  "quality_review.ai_opinion": {
+    "version": "quality-review-ai-opinion-v1",
+    "file": "quality_review.ai_opinion.txt",
+    "variables": ["case", "source"]
   }
 }

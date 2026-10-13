@@ -12,6 +12,12 @@ from sqlalchemy.exc import IntegrityError
 
 from application.errors import AppError
 from auth_context import learner_for_request
+from domain.contracts.ai_review import (
+    CoursewareAiReviewRequest,
+    CoursewareAiReviewStart,
+    CoursewareAiReviewStatus,
+    SourceCaseAiOpinion,
+)
 from domain.contracts.courseware import (
     CoursewareAttemptRequest,
     CoursewareAttemptResponse,
@@ -44,7 +50,8 @@ class CoursewareRegenerationResult(BaseModel):
     job: CoursewareJobSummary
 
 
-def build_courseware_router(service: Any, *, media_service: Any | None = None, voice_service: Any | None = None) -> APIRouter:
+def build_courseware_router(service: Any, *, media_service: Any | None = None, voice_service: Any | None = None,
+                            ai_review_service: Any | None = None) -> APIRouter:
     """Build the typed API boundary around the courseware application service."""
     router = APIRouter(prefix="/api", tags=["courseware"])
 
@@ -216,6 +223,32 @@ def build_courseware_router(service: Any, *, media_service: Any | None = None, v
             expected_record_version=payload.expectedRecordVersion,
             actor_id=actor_id,
         )
+
+    def ai_service() -> Any:
+        if ai_review_service is None:
+            raise AppError("AI 初审未启用", status_code=404, error_code="AI_REVIEW_DISABLED")
+        return ai_review_service
+
+    # AI pre-review is advisory: these endpoints never approve pages or decide cases.
+    @router.get("/courseware/{courseware_id}/ai-review", response_model=CoursewareAiReviewStatus)
+    def ai_review_status(courseware_id: str, request: Request) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(ai_service().status, courseware_id)
+
+    @router.post("/courseware/{courseware_id}/ai-review", response_model=CoursewareAiReviewStart, status_code=202)
+    def request_ai_review(courseware_id: str, payload: CoursewareAiReviewRequest, request: Request) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(ai_service().request, courseware_id, expected_record_version=payload.expectedRecordVersion)
+
+    @router.get("/quality-review/cases/{case_id}/ai-opinion", response_model=SourceCaseAiOpinion)
+    def source_case_ai_opinion(case_id: str, request: Request) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(ai_service().case_opinion, case_id)
+
+    @router.post("/quality-review/cases/{case_id}/ai-opinion", response_model=SourceCaseAiOpinion, status_code=202)
+    def request_source_case_ai_opinion(case_id: str, payload: CoursewareAiReviewRequest, request: Request) -> dict[str, Any]:
+        teacher_actor_id(request)
+        return call(ai_service().request_case_opinion, case_id, expected_record_version=payload.expectedRecordVersion)
 
     @router.post("/courseware/{courseware_id}/publish", response_model=CoursewarePublication)
     def publish(
