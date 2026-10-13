@@ -27,7 +27,11 @@ bash scripts/test-backend-postgres.sh
 先升级到当前 Alembic head，再运行整个 `apps/api/tests` 发现；结束时只终止自己创建的数据库
 连接并删除自己前缀下的数据库，不会把 `DATABASE_URL` 当作 admin 地址，也不会输出凭据。
 
-`PostgresTestCase` 为每个数据库测试类创建独立数据库，先升级到 Alembic head；每个测试通过
+`PostgresTestCase` 为每个数据库测试类创建独立数据库：从已升级到 Alembic head 的模板库
+`dotty_ci_test_tpl_<hash>` 复制，再校验 head 与注册表齐全。模板名的哈希覆盖 `migrations/` 与
+`persistence/` 的全部 Python 文件，任何可能影响迁移结果的改动都会重建模板；模板在 advisory
+lock 下先建临时库、迁移完成后再改名，并发运行不会复制到迁移一半的库。7 天未重建的旧模板会被
+清理（多个 worktree 共用一个本地 PostgreSQL 时不会互删正在使用的模板）。每个测试通过
 可信 schema registry 生成的 `TRUNCATE ... RESTART IDENTITY CASCADE` 清理业务表，并保留
 `alembic_version`。adoption、legacy 和 preflight 测试显式创建未迁移的空数据库，不与普通 Store
 测试夹具混用。`test_postgres_integration.py` 覆盖 current/head、adoption、preflight、upgrade、
