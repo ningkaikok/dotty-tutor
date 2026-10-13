@@ -67,6 +67,7 @@ dotty-tutor/
 │   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
 │   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
 │   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
+│   │   │   ├── courseware_completion.py # 当前来源连续缺口分批建议，不创建任务或覆盖已有规划
 │   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
 │   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
 │   │   │   ├── review_restore.py # 待审案例包恢复指纹与事务锁
@@ -134,7 +135,7 @@ dotty-tutor/
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
 │   │   │   ├── chapter/        # 合成基线与 real_sources.py 真实材料待复核包/人工决策导入
-│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
+│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验、只读 readiness 诊断和配对统计
 │   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
@@ -681,7 +682,10 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 ### 课件扩展链路（2026-10-12）
 
 `courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划版本的未发布课件加入“我的教材 → 待我复核”。
+`courseware_completion` 在相同来源/章节锁下读取覆盖与任务状态，按连续、可用、未规划且未生成的原页分批；已有任务/规划引导继续原流程，不写入规划或审批。前端 `useCoursewareCoverage` 管理请求与来源变化，`coursewareCompletionView` 负责建议可选状态；选择页段仅填写既有规划表单。规划读取失败时不将其当作“没有规划”。
 `courseware_publication` 读取不可变发布 → 白名单讲解 → 既有 LessonMediaService/VoiceTutorService；不复制渲染、语音轮次或答案规则。
 `courseware_assets` 从保存的 ChapterRegion 推导裁图；缺坐标明确回退原页。恢复命令为 `scripts/restore-quality-review.py` 和 `scripts/restore-courseware-drafts.py`，只恢复待审，不复建批准。
 
 人工评测位于 `evaluation/benchmark/admission.py`（快照双审与独立身份登记）和 `formal.py`（50 案覆盖、完整两臂、离线盲审与分歧阻断），继续复用 `blind_review.py` 和 `statistics.py`。流程见 [执行与验收](frontend-quality-expansion-acceptance.md)。
+`evaluation/benchmark/readiness.py` 只读检查候选、身份与已有审批，复用入集和覆盖校验，输出安全原因码与缺口；不会创建人工批准或排名。命令见[评测准备诊断](benchmark-readiness.md)。
+`evaluation/chapter/material_candidates.py` 用既有 pypdf、来源句子和 ChapterCreate 协议准备受限页段，固定 PDF/来源哈希并保留原始文字层；粘连、空文本与公式风险仅标待核对，不自动修正。候选保持 private/pending/count=false，原 PDF 和产物只放忽略目录。来源准备命令见[候选教材说明](material-candidate-preparation.md)。
