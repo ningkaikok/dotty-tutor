@@ -1,5 +1,6 @@
 import { RichText } from "../../../RichText";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { Button, Dialog } from "../../../components/ui";
 import type { MistakeItem } from "../../../types/index";
 import { displayedPrompt } from "../../../questionPresentation";
 import { errorReasonLabel } from "../errorReasons";
@@ -18,50 +19,12 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
   const [activeBook, setActiveBook] = useState<"mistakes" | "advanced">("mistakes");
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
   const [pendingArchive, setPendingArchive] = useState<MistakeItem | null>(null);
-  const archiveTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const archiveCancelRef = useRef<HTMLButtonElement | null>(null);
-  const archiveDialogRef = useRef<HTMLElement | null>(null);
   const pendingCount = items.filter((item) => item.status === "pending_confirmation").length;
   const unmasteredCount = items.filter((item) => item.status === "unmastered").length;
   const masteredCount = items.filter((item) => item.status === "mastered").length;
   const visibleItems = items.filter((item) => activeBook === "advanced"
     ? item.status === "mastered"
     : item.status !== "mastered");
-
-  useEffect(() => {
-    if (!pendingArchive) {
-      archiveTriggerRef.current?.focus();
-      return;
-    }
-
-    archiveCancelRef.current?.focus();
-    const handleDialogKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setPendingArchive(null);
-        return;
-      }
-      if (event.key !== "Tab") return;
-
-      const dialog = archiveDialogRef.current;
-      if (!dialog) return;
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-        "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-      ));
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleDialogKeyDown);
-    return () => document.removeEventListener("keydown", handleDialogKeyDown);
-  }, [pendingArchive]);
 
   const cancelArchive = () => setPendingArchive(null);
 
@@ -144,10 +107,7 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
                   <button onClick={() => onOpen(item)}>{item.status === "pending_confirmation" ? "继续确认" : "查看并编辑"}</button>
                   <button
                     className="danger"
-                    onClick={(event) => {
-                      archiveTriggerRef.current = event.currentTarget;
-                      setPendingArchive(item);
-                    }}
+                    onClick={() => setPendingArchive(item)}
                   >归档</button>
                 </div>
               </article>
@@ -155,31 +115,25 @@ export function MistakeLibrary({ items, loading, error, onCapture, onOpen, onTut
           })}
         </section>
       )}
-      {pendingArchive && (
-        <div className="mistake-dialog-backdrop" role="presentation">
-          <section
-            className="mistake-dialog"
-            ref={archiveDialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="archive-mistake-title"
-            aria-describedby="archive-mistake-description"
-          >
-            <h2 id="archive-mistake-title">确认归档这道错题？</h2>
-            <p id="archive-mistake-description">归档后会清除这道题的辅导记录，但题目和学习证据仍会保留。</p>
-            <div className="mistake-dialog-actions">
-              <button ref={archiveCancelRef} onClick={cancelArchive}>取消</button>
-              <button
-                className="danger"
-                onClick={() => {
-                  onArchive(pendingArchive);
-                  setPendingArchive(null);
-                }}
-              >确认归档</button>
-            </div>
-          </section>
-        </div>
-      )}
+      {/* Stays mounted so closing the native dialog returns focus to the archive trigger. */}
+      <Dialog
+        open={pendingArchive !== null}
+        onClose={cancelArchive}
+        title="确认归档这道错题？"
+        description="归档后会清除这道题的辅导记录，但题目和学习证据仍会保留。"
+        closeButton={false}
+        actions={<>
+          <Button onClick={cancelArchive}>取消</Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (pendingArchive) onArchive(pendingArchive);
+              cancelArchive();
+            }}
+          >确认归档</Button>
+        </>}
+      />
+
     </>
   );
 }

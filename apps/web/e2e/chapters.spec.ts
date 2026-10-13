@@ -200,9 +200,15 @@ test("user Given a chapter page backed by an uploaded source When a teacher open
     requestAnimationFrame(settle);
   }));
   await expect(region).toBeInViewport();
-  await page.getByRole("button", { name: "放大查看原页" }).click();
-  await expect(page.getByRole("dialog", { name: "教材原页，第 12 页" })).toBeVisible();
+  const enlarge = page.getByRole("button", { name: "放大查看原页" });
+  await enlarge.click();
+  const preview = page.getByRole("dialog", { name: "教材原页，第 12 页" });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole("img", { name: "教材原页，第 12 页" })).toBeVisible();
   await page.screenshot({ path: "/tmp/dotty-chapter-source-preview.png", fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+  await expect(enlarge).toBeFocused();
 });
 
 test("user Given a math chapter source When a teacher reviews and publishes it Then the student can answer with evidence and restore the attempt after refresh", async ({ page }) => {

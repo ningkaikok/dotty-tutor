@@ -98,6 +98,6 @@ token 定义在 `apps/web/src/components/ui/tokens.css` 的 `:root` 中，命名
 
 ## 可复用组件目录
 
-从 `components/ui` 导入 Button/ButtonLink、TextField/SelectField/TextAreaField、Badge/Notice、PageShell/PageHeader/Card/EmptyState/Skeleton、AppHeader/Navigation/Dialog。页面保留业务组合，重复视觉状态交给这些组件；不引入第二套路由、公式渲染或网络状态。表单组件保留原生约束、显式标签和 aria 描述；Dialog 使用原生 `<dialog>`。
+从 `components/ui` 导入 Button/ButtonLink、TextField/SelectField/TextAreaField、Badge/Notice、PageShell/PageHeader/Card/EmptyState/Skeleton、AppHeader/Navigation/Dialog。页面保留业务组合，重复视觉状态交给这些组件；不引入第二套路由、公式渲染或网络状态。表单组件保留原生约束、显式标签和 aria 描述；Dialog 使用原生 `<dialog>`，确认类对话框传 `description`（关联 aria-describedby）和 `closeButton={false}`，把“取消”放在操作区首位以获得初始焦点。错题归档确认与章节原页放大预览已改用 Dialog，页面里不应再手写 `role="dialog"`、焦点圈定或 Escape 监听。
 
 开发模式 `/dev/components` 可检查禁用/忙碌/错误、键盘、模态焦点与窄屏；生产不注册该路由。组件 DOM 用 RTL，真实路由与布局用 Playwright。当前库提供基础系统，领域控件不为形式统一而泛化。后续扩展组件时同步目录、使用页面和可观察行为验证。

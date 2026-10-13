@@ -1116,6 +1116,28 @@ test.describe("产品入口", () => {
     await expect(page.getByText("待掌握", { exact: true }).first()).toBeVisible();
   });
 
+  test("user Given a mistake in the library When the student opens archive confirmation by keyboard Then focus stays in the dialog and returns to the trigger", async ({ page }) => {
+    await mockMistakeApi(page, true);
+    await page.goto("/mistakes");
+
+    const trigger = page.getByRole("button", { name: "归档", exact: true });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "确认归档这道错题？" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "取消" })).toBeFocused();
+
+    // 模态对话框让页面其余部分 inert：Tab 只能在对话框内（或浏览器自身界面）流转，不会落到背后的错题卡片。
+    for (const shift of [false, false, true, true]) {
+      await page.keyboard.press(shift ? "Shift+Tab" : "Tab");
+      expect(await page.evaluate(() => document.activeElement === document.body || Boolean(document.activeElement?.closest("dialog")))).toBe(true);
+    }
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+  });
+
   test("可从错题本恢复单题线程并完成一轮有状态陪练", async ({ page }) => {
     await mockMistakeApi(page, true);
     await page.goto("/mistakes");

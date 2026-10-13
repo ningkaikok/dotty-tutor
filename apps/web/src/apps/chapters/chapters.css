@@ -59,9 +59,12 @@
 .chapter-region-overlay button span { position: absolute; left: 1px; top: 0; color: var(--c-ink); font-size: 11px; font-weight: 800; text-shadow: 0 1px var(--c-surface); }
 .chapter-preview-enlarge { position: absolute; right: 6px; bottom: 6px; border: 1px solid var(--c-ink-muted); border-radius: var(--radius-sm); padding: 5px 8px; background: color-mix(in srgb, var(--c-surface) 94%, transparent); color: var(--c-ink); font: inherit; font-size: 11px; cursor: pointer; }
 .chapter-preview-unavailable { padding: 9px 10px; border-radius: var(--radius-sm); background: var(--c-accent-soft); color: var(--c-on-accent-soft) !important; font-size: 12px !important; }
-.chapter-preview-dialog { position: fixed; z-index: 1000; inset: 4vh 4vw; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; padding: 12px; border: 1px solid var(--c-line-strong); border-radius: 12px; background: var(--c-surface); box-shadow: 0 12px 45px rgb(28 20 66 / 25%); }
-.chapter-preview-dialog img { display: block; width: 100%; height: calc(100% - 44px); object-fit: contain; }
-.chapter-preview-dialog button { border: 1px solid var(--c-line-strong); border-radius: var(--radius-sm); padding: 7px 10px; background: var(--c-surface); color: var(--c-ink); cursor: pointer; }
+/* Large original-page preview on the shared native dialog; [open] keeps the closed dialog hidden. */
+.chapter-preview-dialog { width: min(1200px, calc(100% - 32px)); height: calc(100dvh - 40px); }
+.chapter-preview-dialog[open] { display: flex; flex-direction: column; }
+.chapter-preview-dialog h2 { font-size: 16px; }
+.chapter-preview-dialog .ui-dialog-body { flex: 1; min-height: 0; margin: 12px 0 0; }
+.chapter-preview-dialog img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .chapter-source-regions { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .chapter-source-regions button { border: 0; padding: 4px 0; background: transparent; color: var(--c-brand); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
 .chapter-source-regions button.active { color: var(--c-on-accent-soft); font-weight: 700; }

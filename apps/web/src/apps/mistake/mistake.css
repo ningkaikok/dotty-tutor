@@ -61,13 +61,6 @@
 .mistake-list-actions button, .mistake-change-photo { padding: 8px 14px; border: 2px solid var(--c-line-strong); border-radius: 14px; color: var(--c-ink); background: var(--c-surface); font-size: 13px; font-weight: 800; }
 .mistake-list-actions button, .mistake-change-photo, .mistake-primary-action { min-height: var(--touch-min); }
 .mistake-list-actions button.danger { color: var(--c-danger); border-color: var(--c-danger-soft); background: var(--c-surface); }
-.mistake-dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(28, 20, 66, .45); }
-.mistake-dialog { width: min(440px, 100%); padding: 24px; border-radius: var(--radius-lg); background: var(--c-surface); box-shadow: 0 22px 70px rgba(28, 20, 66, .25); }
-.mistake-dialog h2 { margin: 0; color: var(--c-ink); font-size: 20px; font-weight: 900; }
-.mistake-dialog p { margin: 12px 0 20px; color: var(--c-ink-soft); line-height: 1.6; }
-.mistake-dialog-actions { display: flex; justify-content: flex-end; gap: 9px; }
-.mistake-dialog-actions button { padding: 9px 16px; border: 2px solid var(--c-line-strong); border-radius: var(--radius-pill); color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
-.mistake-dialog-actions button.danger { color: var(--c-surface); border-color: var(--c-danger); background: var(--c-danger); }
 .mistake-section-heading { max-width: 760px; margin: 20px 0 20px; }
 .mistake-capture-page { max-width: 900px; margin: 0 auto; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
@@ -272,7 +265,7 @@
   .tutor-stage-list { grid-template-columns: repeat(3, 1fr); }
   .tutor-message { max-width: 94%; }
   .mistake-book-tabs button, .mistake-hero-actions > button:first-child, .tutor-actions button,
-  .tutor-photo-action button, .mistake-dialog-actions button, .mistake-import-job button { min-height: var(--touch-min); }
+  .tutor-photo-action button, .mistake-import-job button { min-height: var(--touch-min); }
   .error-reason-fieldset label { min-height: var(--touch-min); }
 }
 

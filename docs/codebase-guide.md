@@ -619,7 +619,7 @@ Python 公共模块和复杂函数使用 docstring；TypeScript 状态机 Hook�
 - 纯函数：直接单元测试，不启动 FastAPI。
 - Runtime：仅在模型/OCR/TTS 等外部边界使用替身；Store 使用隔离 PostgreSQL 夹具。
 - API：FastAPI `TestClient` 验证协议、状态码、持久化结果和状态转换。
-- DOM：Vitest + Testing Library，纯逻辑用 node、组件按文件用 jsdom。
+- DOM：Vitest + Testing Library，纯逻辑用 node、组件按文件用 jsdom；`src/test/setupDom.ts` 只补 jsdom 缺失的 `<dialog>` 方法，Escape、焦点圈定与焦点返回等原生模态行为放在 Playwright 断言。
 - 用户路径：Playwright 固定 API 数据，验证真实浏览器中的跨组件流程。
 - Docker：只验证镜像、网络、健康检查和启动配置，不在其中重复所有业务测试。
 
