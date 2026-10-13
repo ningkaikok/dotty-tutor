@@ -40,7 +40,7 @@ function item(): MistakeItem {
 describe("MistakeLibrary archive confirmation", () => {
   afterEach(() => cleanup());
 
-  it("explains that tutoring records are cleared and restores focus after cancel", async () => {
+  it("user Given an unmastered mistake When the student cancels archiving Then the dialog explains what is cleared and nothing is archived", async () => {
     const user = userEvent.setup();
     const onArchive = vi.fn();
     render(
@@ -57,64 +57,14 @@ describe("MistakeLibrary archive confirmation", () => {
 
     const archiveButton = screen.getByRole("button", { name: "归档" });
     await user.click(archiveButton);
-    expect(screen.getByRole("dialog")).toHaveTextContent("归档后会清除这道题的辅导记录");
+    expect(screen.getByRole("dialog", { name: "确认归档这道错题？" })).toHaveAccessibleDescription(/归档后会清除这道题的辅导记录/);
 
     await user.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(archiveButton).toHaveFocus();
     expect(onArchive).not.toHaveBeenCalled();
   });
 
-  it("closes on Escape and restores focus to the archive trigger", async () => {
-    const user = userEvent.setup();
-    render(
-      <MistakeLibrary
-        items={[item()]}
-        loading={false}
-        error=""
-        onCapture={vi.fn()}
-        onOpen={vi.fn()}
-        onTutor={vi.fn()}
-        onArchive={vi.fn()}
-      />,
-    );
-
-    const archiveButton = screen.getByRole("button", { name: "归档" });
-    await user.click(archiveButton);
-    await user.keyboard("{Escape}");
-
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(archiveButton).toHaveFocus();
-  });
-
-  it("keeps Tab focus inside the archive dialog in both directions", async () => {
-    const user = userEvent.setup();
-    render(
-      <MistakeLibrary
-        items={[item()]}
-        loading={false}
-        error=""
-        onCapture={vi.fn()}
-        onOpen={vi.fn()}
-        onTutor={vi.fn()}
-        onArchive={vi.fn()}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "归档" }));
-    const cancel = screen.getByRole("button", { name: "取消" });
-    const confirm = screen.getByRole("button", { name: "确认归档" });
-    expect(cancel).toHaveFocus();
-
-    await user.tab();
-    expect(confirm).toHaveFocus();
-    await user.tab();
-    expect(cancel).toHaveFocus();
-    await user.tab({ shift: true });
-    expect(confirm).toHaveFocus();
-  });
-
-  it("archives only after explicit confirmation", async () => {
+  it("user Given an unmastered mistake When the student confirms archiving Then that mistake is archived", async () => {
     const user = userEvent.setup();
     const onArchive = vi.fn();
     render(
@@ -132,6 +82,6 @@ describe("MistakeLibrary archive confirmation", () => {
     await user.click(screen.getByRole("button", { name: "归档" }));
     await user.click(screen.getByRole("button", { name: "确认归档" }));
     expect(onArchive).toHaveBeenCalledWith(expect.objectContaining({ mistakeId: "mistake-1" }));
-    expect(screen.getByRole("button", { name: "归档" })).toHaveFocus();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

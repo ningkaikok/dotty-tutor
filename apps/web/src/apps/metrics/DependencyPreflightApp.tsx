@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Button, Notice, Skeleton } from "../../components/ui";
 import { useNavigate } from "react-router";
 import { loadDependencyPreflight, type DependencyPreflightReport } from "../../api/dependencyPreflight";
 import { PRODUCT_TERMS } from "../../productTerms";
@@ -52,14 +53,14 @@ export function DependencyPreflightApp() {
               一次性检查这台机器上的 OCR、模型和数据库依赖是否配置就绪；只读探测，不修改任何配置。
             </p>
           </div>
-          <button type="button" disabled={loading} onClick={() => void refresh()}>
+          <Button busy={loading} onClick={() => void refresh()}>
             {loading ? "检查中…" : "重新检查"}
-          </button>
+          </Button>
         </div>
 
         <div className="metrics-body">
-          {loading && !report && <p role="status" className="muted">正在检查依赖…</p>}
-          {error && <p role="alert" className="error-text">{error}</p>}
+          {loading && !report && <Skeleton label="正在检查依赖…" rows={4} />}
+          {error && <Notice tone="danger">{error}</Notice>}
           {report && (
             <>
               <div

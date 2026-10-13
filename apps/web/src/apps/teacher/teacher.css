@@ -15,7 +15,7 @@
 .teacher-section-heading > span { padding: 6px 9px; border-radius: 999px; color: var(--c-brand); background: var(--c-brand-soft); font-size: 11px; white-space: nowrap; }
 .teacher-class-list { display: grid; gap: 7px; }
 .teacher-class-list button { padding: 12px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); color: var(--c-ink); background: var(--c-surface-tint); text-align: left; }
-.teacher-class-list button.selected { border-color: var(--c-brand); background: var(--c-brand-soft); box-shadow: 0 0 0 2px rgba(27, 154, 114, .1); }
+.teacher-class-list button.selected { border-color: var(--c-brand); background: var(--c-brand-soft); box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-brand) 12%, transparent); }
 .teacher-class-list strong, .teacher-class-list small { display: block; }
 .teacher-class-list small { margin-top: 4px; color: var(--c-ink-muted); font-size: 11px; }
 .teacher-main { display: grid; gap: 18px; min-width: 0; }
@@ -40,7 +40,7 @@
 .assignment-goal-list small { margin-top: 3px; color: var(--c-ink-muted); }
 .assignment-plan-coverage { display: flex; flex-wrap: wrap; gap: 7px; }
 .assignment-plan-coverage span { padding: 5px 8px; border-radius: 999px; background: var(--c-brand-soft); color: var(--c-ink); font-size: 12px; }
-.teacher-plan-warning { margin: 8px 0; padding: 8px 10px; border-radius: var(--radius-sm); background: #fff6dd; color: #765c21; font-size: 12px; }
+.teacher-plan-warning { margin: 8px 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--c-accent-soft); color: var(--c-on-accent-soft); font-size: 12px; }
 .assignment-plan-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
 .secondary-button { border: 1px solid var(--c-line-strong); color: var(--c-ink); background: transparent; }
 .assignment-list { display: grid; gap: 7px; margin: 16px 0 0; padding: 0; list-style: none; }
@@ -63,8 +63,8 @@
 .dashboard-table thead th { color: var(--c-ink-muted); font-size: 11px; font-weight: 700; }
 .student-status { padding: 4px 7px; border-radius: 999px; font-size: 10px; }
 .student-status.completed { color: var(--c-ink); background: var(--c-brand-soft); }
-.student-status.in_progress { color: #8a5a24; background: #f8ead7; }
-.student-status.overdue { color: #a44c42; background: #fae4e0; }
+.student-status.in_progress { color: var(--c-on-accent-soft); background: var(--c-accent-soft); }
+.student-status.overdue { color: var(--c-danger); background: var(--c-danger-soft); }
 .student-status.not_started { color: var(--c-ink-muted); background: var(--c-surface-tint); }
 .knowledge-point-grid { display: grid; gap: 9px; margin-top: 20px; }
 .knowledge-point-grid article { padding: 13px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); }
@@ -97,7 +97,7 @@
 .teacher-field-hint code { padding: 1px 5px; border-radius: 5px; background: var(--c-brand-soft); font-size: 11px; }
 
 .dashboard-assignment-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; color: var(--c-ink-muted); font-size: 12px; font-weight: 600; }
-.dashboard-assignment-picker select { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-sm); color: var(--c-ink); background: #f7f7f2; font-size: 13px; font-weight: 500; }
+.dashboard-assignment-picker select { flex: 1 1 auto; min-width: 0; padding: 7px 10px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-sm); color: var(--c-ink); background: var(--c-surface-tint); font-size: 13px; font-weight: 500; }
 
 .teacher-retry { margin-left: 10px; padding: 4px 12px; border: 1px solid currentColor; border-radius: 999px; color: inherit; background: transparent; font-size: 12px; font-weight: 700; }
 .lecture-checklist { overflow: hidden; }

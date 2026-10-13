@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Notice } from "../../components/ui";
 import { useNavigate } from "react-router";
 import {
   cancelBackgroundJob,
@@ -439,24 +440,24 @@ export function TextbookApp() {
       {(publicationError || fullPaperError || publicationNotice || lastRun || publicationRun
         || fullPaperJob || fullPaperSummary) && (
       <section className="studio-notice-stack">
-        {publicationError && <p className="studio-notice studio-notice-alert" role="alert">{publicationError}</p>}
+        {publicationError && <Notice tone="danger" className="studio-notice studio-notice-alert">{publicationError}</Notice>}
         {fullPaperError && (
-          <p className="studio-notice studio-notice-alert" role="alert">{fullPaperError}</p>
+          <Notice tone="danger" className="studio-notice studio-notice-alert">{fullPaperError}</Notice>
         )}
-        {publicationNotice && <p className="studio-notice studio-notice-muted" role="status">{publicationNotice}</p>}
+        {publicationNotice && <Notice tone="neutral" className="studio-notice studio-notice-muted">{publicationNotice}</Notice>}
 
         {(lastRun || publicationRun) && (() => {
           const run = lastRun || publicationRun;
           return run ? (
-            <p className="studio-notice studio-notice-muted" role="status">
+            <Notice tone="neutral" className="studio-notice studio-notice-muted">
               审计：{run.operation} · run_id {run.runId.slice(0, 12)} · {run.status}
               {run.config?.model && typeof run.config.model === "object" ? " · 已冻结模型配置" : ""}
-            </p>
+            </Notice>
           ) : null;
         })()}
 
         {(fullPaperJob || fullPaperSummary) && (
-          <p className="studio-notice studio-notice-muted" aria-live="polite">
+          <Notice tone="neutral" className="studio-notice studio-notice-muted">
             <strong>整套练习</strong>
             {fullPaperJob && <span> · {fullPaperJob.message}</span>}
             {fullPaperSummary && (
@@ -468,7 +469,7 @@ export function TextbookApp() {
                 {fullPaperSummary.limitReached ? `（已达到 ${fullPaperSummary.questionLimit || FULL_PAPER_QUESTION_LIMIT} 题安全上限）` : ""}
               </span>
             )}
-          </p>
+          </Notice>
         )}
       </section>
       )}

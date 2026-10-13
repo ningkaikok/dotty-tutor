@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { apiResourceUrl } from "../../api/client";
+import { Dialog } from "../../components/ui";
 import type { ChapterSourceLocator, ChapterSourceRevision } from "../../types/chapter";
 
 interface ChapterSourceReviewProps {
@@ -91,10 +92,15 @@ export function ChapterSourceReview({ revisions, locator }: ChapterSourceReviewP
         </div>
       ))}
       {revisions.length === 0 && <p>还没有可回看的来源版本。</p>}
-      {enlarged && <div className="chapter-preview-dialog" role="dialog" aria-modal="true" aria-label={enlarged.label}>
-        <button type="button" onClick={() => setEnlarged(null)}>关闭原页放大预览</button>
-        <img src={enlarged.url} alt={enlarged.label} />
-      </div>}
+      {/* Stays mounted so closing the native dialog returns focus to the enlarge button. */}
+      <Dialog
+        open={enlarged !== null}
+        onClose={() => setEnlarged(null)}
+        title={enlarged?.label ?? "教材原页"}
+        className="chapter-preview-dialog"
+      >
+        {enlarged && <img src={enlarged.url} alt={enlarged.label} />}
+      </Dialog>
     </section>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button, Notice, TextAreaField } from "../../../components/ui";
 import {
   cancelMistakeImportJob,
   loadMistakeImportJob,
@@ -267,30 +268,26 @@ export function MistakeCapture({ onCreated }: MistakeCaptureProps) {
       ) : (
         <>
           <ImageCropper file={file} selection={crop} onChange={setCrop} />
-          <button className="mistake-change-photo" onClick={() => inputRef.current?.click()}>重新选择图片</button>
+          <Button className="mistake-change-photo" onClick={() => inputRef.current?.click()}>重新选择图片</Button>
         </>
       )}
 
       <section className="mistake-capture-details">
-        <label>
-          <span>你当时写的答案 <small>可选</small></span>
-          <textarea
-            value={originalAnswer}
-            onChange={(event) => setOriginalAnswer(event.target.value)}
-            placeholder="例如：我算出 x = 2，或上传照片后在这里补充步骤"
-          />
-        </label>
-        <label>
-          <span>题目文字 <small>可选，用于 OCR 不可用或图片不清晰时</small></span>
-          <textarea
-            value={sourceText}
-            onChange={(event) => setSourceText(event.target.value)}
-            placeholder="可以直接粘贴题干；留空时由 OCR 自动识别"
-          />
-        </label>
+        <TextAreaField
+          label={<>你当时写的答案 <small>可选</small></>}
+          value={originalAnswer}
+          onChange={(event) => setOriginalAnswer(event.target.value)}
+          placeholder="例如：我算出 x = 2，或上传照片后在这里补充步骤"
+        />
+        <TextAreaField
+          label={<>题目文字 <small>可选，用于 OCR 不可用或图片不清晰时</small></>}
+          value={sourceText}
+          onChange={(event) => setSourceText(event.target.value)}
+          placeholder="可以直接粘贴题干；留空时由 OCR 自动识别"
+        />
       </section>
 
-      {error && <p className="mistake-error" role="alert">{error}</p>}
+      {error && <Notice tone="danger">{error}</Notice>}
       {job && (
         <div className="mistake-import-job" role="status" aria-live="polite">
           <strong>
@@ -301,16 +298,22 @@ export function MistakeCapture({ onCreated }: MistakeCaptureProps) {
           </strong>
           <span>{job.message || `进度 ${job.progress}%`}</span>
           {(job.status === "queued" || job.status === "running") && (
-            <button type="button" onClick={() => void cancel()}>取消识别</button>
+            <Button variant="quiet" onClick={() => void cancel()}>取消识别</Button>
           )}
           {job.status === "failed" && manualRetries < MAX_MANUAL_RETRIES && (
-            <button type="button" onClick={() => void retry()}>重试识别（剩余 {MAX_MANUAL_RETRIES - manualRetries} 次）</button>
+            <Button variant="quiet" onClick={() => void retry()}>重试识别（剩余 {MAX_MANUAL_RETRIES - manualRetries} 次）</Button>
           )}
         </div>
       )}
-      <button className="mistake-primary-action" disabled={!file || loading || Boolean(job && ["queued", "running"].includes(job.status))} onClick={() => void submit()}>
+      <Button
+        variant="primary"
+        className="mistake-primary-action"
+        busy={loading}
+        disabled={!file || Boolean(job && ["queued", "running"].includes(job.status))}
+        onClick={() => void submit()}
+      >
         {loading ? "正在加入队列…" : "加入识别队列"}
-      </button>
+      </Button>
       {loading && <p className="mistake-loading-note">OCR 与结构化模型会在后台处理，页面刷新后可恢复任务。</p>}
     </section>
   );

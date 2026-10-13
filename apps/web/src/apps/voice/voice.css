@@ -23,7 +23,7 @@
 .voice-tutor-confidence,
 .voice-tutor-empty,
 .voice-tutor-footer > span {
-  color: var(--muted, var(--c-ink-muted));
+  color: var(--c-ink-muted);
   font-size: 0.9rem;
 }
 
@@ -44,7 +44,7 @@
   gap: 8px;
   padding: 12px;
   border-radius: 12px;
-  background: color-mix(in srgb, var(--surface, var(--c-surface)) 88%, #8097bd 12%);
+  background: color-mix(in srgb, var(--c-info-soft) 45%, var(--c-surface));
 }
 
 .voice-tutor-history p {
@@ -54,7 +54,7 @@
 }
 
 .voice-tutor-history b,
-.voice-tutor-transcript > span {
+.voice-tutor-transcript > label {
   font-size: 0.82rem;
 }
 
@@ -74,9 +74,9 @@
 .voice-tutor-upload {
   min-height: 38px;
   padding: 8px 12px;
-  border: 1px solid var(--border, #d8deea);
+  border: 1px solid var(--c-line-strong);
   border-radius: 10px;
-  background: var(--surface, var(--c-surface));
+  background: var(--c-surface);
   color: inherit;
   font: inherit;
   cursor: pointer;
@@ -90,8 +90,8 @@
 
 .voice-tutor-controls button.danger,
 .voice-tutor-footer button.danger {
-  border-color: #efb6ae;
-  color: #9b3024;
+  border-color: color-mix(in srgb, var(--c-danger) 30%, var(--c-surface));
+  color: var(--c-danger);
 }
 
 .voice-tutor-upload input {
@@ -114,14 +114,14 @@
   box-sizing: border-box;
   resize: vertical;
   padding: 10px 12px;
-  border: 1px solid var(--border, #d8deea);
+  border: 1px solid var(--c-line-strong);
   border-radius: 10px;
   font: inherit;
 }
 
 .voice-tutor-error {
   margin: 0;
-  color: #a62c22;
+  color: var(--c-danger);
 }
 
 .voice-tutor-note,

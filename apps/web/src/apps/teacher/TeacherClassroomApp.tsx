@@ -1,4 +1,4 @@
-import { AppHeader, Badge, Button, PageShell } from "../../components/ui";
+import { AppHeader, Badge, Button, Notice, PageShell } from "../../components/ui";
 import "./teacher.css";
 import { AssignmentComposer } from "./AssignmentComposer";
 import { AssignmentPlanReview } from "./AssignmentPlanReview";
@@ -33,7 +33,7 @@ export function TeacherClassroomApp() {
         <p>布置一套作业，然后从完成情况和知识点掌握分布里找到需要帮助的学生。</p>
       </section>
 
-      {error && <p className="teacher-notice error-text" role="alert">{error}</p>}
+      {error && <Notice tone="danger" className="teacher-notice">{error}</Notice>}
       {loading && <p role="status" className="muted">教师工作台加载中…</p>}
 
       {!loading && (
@@ -156,7 +156,7 @@ export function TeacherClassroomApp() {
                 {!classDetail.members.length && (
                   <small className="teacher-field-hint">班级还没有学生，先添加成员才能布置作业。</small>
                 )}
-                {planning.error && <p className="teacher-notice error-text" role="alert">{planning.error}</p>}
+                {planning.error && <Notice tone="danger" className="teacher-notice">{planning.error}</Notice>}
                 {planning.plan && (
                   <AssignmentPlanReview
                     plan={planning.plan}
@@ -334,12 +334,12 @@ export function TeacherClassroomApp() {
               )}
 
               {!dashboard && dashboardError && (
-                <p className="teacher-notice error-text" role="alert">
+                <Notice tone="danger" className="teacher-notice">
                   掌握度看板加载失败：{dashboardError}
                   <Button className="teacher-retry" onClick={() => void refreshDashboard(selectedClassId, selectedAssignmentId)}>
                     重试
                   </Button>
-                </p>
+                </Notice>
               )}
               {!dashboard && !dashboardError && classDetail.assignments.length === 0 && (
                 <p className="teacher-empty-note">先布置一份作业，班级掌握度看板会显示在这里。</p>

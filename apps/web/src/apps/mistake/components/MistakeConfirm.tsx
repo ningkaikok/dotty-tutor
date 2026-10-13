@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, Notice, SelectField, TextAreaField, TextField } from "../../../components/ui";
 import { confirmMistake } from "../../../api/mistakes";
 import { RichText } from "../../../RichText";
 import type { MistakeConfirmation, MistakeItem } from "../../../types/index";
@@ -81,19 +82,20 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
         </aside>
 
         <div className="mistake-confirm-form">
-          <label className="full-field">
-            <span>题干与公式</span>
-            <textarea value={form.prompt} onChange={(event) => update("prompt", event.target.value)} />
-            <small>公式可保留 `$...$` 或 `$$...$$` LaTeX 格式。</small>
-          </label>
-          <label className="full-field">
-            <span>我当时的答案或步骤</span>
-            <textarea
-              value={form.originalAnswer}
-              onChange={(event) => update("originalAnswer", event.target.value)}
-              placeholder="没有记录时可以留空"
-            />
-          </label>
+          <TextAreaField
+            className="full-field"
+            label="题干与公式"
+            hint="公式可保留 `$...$` 或 `$$...$$` LaTeX 格式。"
+            value={form.prompt}
+            onChange={(event) => update("prompt", event.target.value)}
+          />
+          <TextAreaField
+            className="full-field"
+            label="我当时的答案或步骤"
+            value={form.originalAnswer}
+            onChange={(event) => update("originalAnswer", event.target.value)}
+            placeholder="没有记录时可以留空"
+          />
 
           <details className="collapse-drawer panel">
             <summary className="collapse-drawer-summary">
@@ -101,21 +103,26 @@ export function MistakeConfirm({ item, onSaved }: MistakeConfirmProps) {
               <i className="drawer-caret" aria-hidden="true" />
             </summary>
             <div className="classification-grid">
-              <label><span>学段</span><select value={form.gradeBand} onChange={(event) => update("gradeBand", event.target.value)}><option>小学</option><option>初中</option><option>普高</option><option>中职</option></select></label>
-              <label><span>学科</span><input value={form.subject} onChange={(event) => update("subject", event.target.value)} /></label>
-              <label><span>教材章节</span><input value={form.chapter} onChange={(event) => update("chapter", event.target.value)} /></label>
-              <label><span>知识点</span><input value={form.knowledgePoint} onChange={(event) => update("knowledgePoint", event.target.value)} /></label>
+              <SelectField label="学段" value={form.gradeBand} onChange={(event) => update("gradeBand", event.target.value)}>
+                <option>小学</option><option>初中</option><option>普高</option><option>中职</option>
+              </SelectField>
+              <TextField label="学科" value={form.subject} onChange={(event) => update("subject", event.target.value)} />
+              <TextField label="教材章节" value={form.chapter} onChange={(event) => update("chapter", event.target.value)} />
+              <TextField label="知识点" value={form.knowledgePoint} onChange={(event) => update("knowledgePoint", event.target.value)} />
             </div>
           </details>
 
-          <label className="full-field">
-            <span>补充备注 <small>可选</small></span>
-            <textarea value={form.notes} onChange={(event) => update("notes", event.target.value)} placeholder="例如：移项时忘记变号" />
-          </label>
-          {error && <p className="mistake-error" role="alert">{error}</p>}
-          <button className="mistake-primary-action" disabled={saving} onClick={() => void save()}>
+          <TextAreaField
+            className="full-field"
+            label={<>补充备注 <small>可选</small></>}
+            value={form.notes}
+            onChange={(event) => update("notes", event.target.value)}
+            placeholder="例如：移项时忘记变号"
+          />
+          {error && <Notice tone="danger">{error}</Notice>}
+          <Button variant="primary" className="mistake-primary-action" busy={saving} onClick={() => void save()}>
             {saving ? "正在保存…" : "确认并保存到错题本"}
-          </button>
+          </Button>
         </div>
       </section>
     </section>
