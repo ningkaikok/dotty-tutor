@@ -102,6 +102,20 @@ docstring/JSDoc；显而易见的展示组件不需要堆叠注释。详细边�
 失败 PR 就会挂。**交付前必须自己真的执行，不要凭印象报告通过**——只跑了单元测试就声称
 "检查通过"是本仓库反复出现的问题。
 
+### 分层验证
+
+不必每次修改都跑全量（后端全量含数据库测试需要数分钟），但跑了什么必须如实报告：
+
+1. **开发过程中**：lint、类型检查，加上受影响的测试。在仓库根执行
+   `python scripts/test-changed.py`：后端按 `apps/api` 的真实导入关系（含函数内延迟导入）
+   选出受影响的测试模块，前端调用 `vitest related`；`--list` 只列出选择，`--base HEAD`
+   只看未提交改动。改到迁移、`persistence/schema*`、测试夹具或依赖锁文件时它会自动退回全量。
+2. **准备交付 / 开 PR 前**：跑下方完整命令。改动涉及迁移、存储层、共享契约、测试设施或依赖
+   时，本地必须跑后端全量（需要 `DOTTY_TEST_POSTGRES_ADMIN_URL`）；其他改动可以只跑第 1 层，
+   但交付说明里要写明"后端/前端全量交给 PR CI"，并在 CI 结果出来后再报告通过。
+3. **CI**：按改动路径跳过不受影响的 job（规则见 `scripts/ci-changed-areas.sh`），PR 上后端只跑
+   Python 3.12；推送到 main 时所有 job 与 3.12/3.14 全部运行，作为合并后兜底。
+
 后端（在 `apps/api` 下）：
 
 ```bash
@@ -109,6 +123,9 @@ uv run ruff check .
 uv run pyright
 uv run python -m unittest discover -s tests -p 'test_*.py'
 ```
+
+数据库测试从按迁移文件内容哈希命名的模板库复制（`dotty_ci_test_tpl_<hash>`），迁移或
+`persistence/` 变化时自动重建，不需要手工清理。
 
 用 `uv run` 而不是直接写 `.venv/bin/...`：venv 的位置随 `uv sync` 的执行目录而变
 （仓库根生成 `<root>/.venv`，`apps/api` 下生成 `apps/api/.venv`），而本仓库常态使用
