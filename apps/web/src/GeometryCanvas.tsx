@@ -9,14 +9,30 @@ interface GeometryCanvasProps {
   text: string;
 }
 
-const COLORS = {
-  ink: "#17251f",
-  muted: "#8b968e",
-  blue: "#4361ee",
-  orange: "#dc7d26",
-  mint: "#1b9a72",
-  paper: "#fbfaf6",
-};
+/**
+ * Canvas 不能直接引用 CSS 变量，绘制时从元素的计算样式读取 Bright token；
+ * 回退值与 tokens.css 一致，保证样式表未加载（如测试环境）时仍能画出来。
+ */
+const TOKENS = {
+  ink: ["--c-ink", "#1c1442"],
+  muted: ["--c-ink-muted", "#5a5280"],
+  brand: ["--c-brand", "#3a2bc4"],
+  brandSoft: ["--c-brand-soft", "#eeeafd"],
+  accent: ["--c-accent", "#ff9f1c"],
+  locus: ["--c-on-success-soft", "#0b5537"],
+  paper: ["--c-surface-tint", "#f7f6fe"],
+  ground: ["--c-ground", "#f1effc"],
+  font: ["--font-bright", "system-ui, sans-serif"],
+} as const;
+
+type Palette = Record<keyof typeof TOKENS, string>;
+
+function readPalette(element: Element): Palette {
+  const style = getComputedStyle(element);
+  return Object.fromEntries(Object.entries(TOKENS).map(([name, [token, fallback]]) => [
+    name, style.getPropertyValue(token).trim() || fallback,
+  ])) as Palette;
+}
 
 export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -36,28 +52,30 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
 
     const w = box.width;
     const h = box.height;
+    const colors = readPalette(canvas);
+    const font = (weight: number, size: number) => `${weight} ${size}px ${colors.font}`;
     context.clearRect(0, 0, w, h);
-    context.fillStyle = COLORS.paper;
+    context.fillStyle = colors.paper;
     context.fillRect(0, 0, w, h);
 
     if (!geometryMode) {
       const stepIndex = CANVAS_STEP[action];
       const padding = Math.max(28, w * 0.07);
-      context.fillStyle = "#e7f1ec";
+      context.fillStyle = colors.brandSoft;
       context.fillRect(padding, 42, w - padding * 2, 5);
-      context.fillStyle = COLORS.mint;
+      context.fillStyle = colors.brand;
       context.fillRect(padding, 42, (w - padding * 2) * ((stepIndex + 1) / 4), 5);
 
-      context.fillStyle = COLORS.mint;
-      context.font = "700 13px Inter, system-ui, sans-serif";
+      context.fillStyle = colors.brand;
+      context.font = font(800, 13);
       context.fillText(`STEP ${stepIndex + 1} / 4`, padding, 82);
-      context.fillStyle = COLORS.ink;
-      context.font = `700 ${Math.min(30, Math.max(22, w / 22))}px Inter, system-ui, sans-serif`;
+      context.fillStyle = colors.ink;
+      context.font = font(900, Math.min(30, Math.max(22, w / 22)));
       drawWrappedText(context, title, padding, 125, w - padding * 2, 40, 2);
-      context.fillStyle = "#eff0eb";
+      context.fillStyle = colors.ground;
       context.fillRect(padding, h - 58, w - padding * 2, 30);
-      context.fillStyle = "#748078";
-      context.font = "600 12px Inter, system-ui, sans-serif";
+      context.fillStyle = colors.muted;
+      context.font = font(700, 12);
       context.fillText(topic, padding + 12, h - 38);
       return;
     }
@@ -70,7 +88,7 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
     const line = (
       from: { x: number; y: number },
       to: { x: number; y: number },
-      color = COLORS.muted,
+      color = colors.muted,
       width = 2,
       dash: number[] = [],
     ) => {
@@ -84,25 +102,25 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
       context.setLineDash([]);
     };
 
-    const point = (position: { x: number; y: number }, label: string, color = COLORS.orange) => {
+    const point = (position: { x: number; y: number }, label: string, color = colors.accent) => {
       context.beginPath();
       context.arc(position.x, position.y, 5, 0, Math.PI * 2);
       context.fillStyle = color;
       context.fill();
-      context.font = "600 15px Inter, system-ui, sans-serif";
-      context.fillStyle = COLORS.ink;
+      context.font = font(700, 15);
+      context.fillStyle = colors.ink;
       context.fillText(label, position.x + 9, position.y - 9);
     };
 
-    line(A, B, COLORS.muted, 2, [6, 6]);
+    line(A, B, colors.muted, 2, [6, 6]);
     point(A, "A");
     point(B, "B");
-    point(M, "M", COLORS.ink);
+    point(M, "M", colors.ink);
 
     if (action !== "show-base") {
-      line(P, A, COLORS.blue, 2.5);
-      line(P, B, COLORS.blue, 2.5);
-      point(P, "P", COLORS.blue);
+      line(P, A, colors.brand, 2.5);
+      line(P, B, colors.brand, 2.5);
+      point(P, "P", colors.brand);
     }
 
     if (action === "show-triangles" || action === "show-bisector") {
@@ -111,19 +129,21 @@ export function GeometryCanvas({ action, topic, title, text }: GeometryCanvasPro
       context.lineTo(A.x, A.y);
       context.lineTo(B.x, B.y);
       context.closePath();
-      context.fillStyle = "rgba(67, 97, 238, 0.07)";
+      context.globalAlpha = 0.08;
+      context.fillStyle = colors.brand;
       context.fill();
-      line(P, M, COLORS.mint, 4);
+      context.globalAlpha = 1;
+      line(P, M, colors.locus, 4);
 
-      context.strokeStyle = COLORS.ink;
+      context.strokeStyle = colors.ink;
       context.lineWidth = 1.5;
       context.strokeRect(M.x, M.y - 12, 12, 12);
     }
 
     if (action === "show-bisector") {
-      line({ x: M.x, y: h * 0.06 }, { x: M.x, y: h * 0.92 }, COLORS.mint, 2, [7, 6]);
-      context.fillStyle = COLORS.mint;
-      context.font = "600 13px Inter, system-ui, sans-serif";
+      line({ x: M.x, y: h * 0.06 }, { x: M.x, y: h * 0.92 }, colors.locus, 2, [7, 6]);
+      context.fillStyle = colors.locus;
+      context.font = font(700, 13);
       context.fillText("P 的运动轨迹", M.x + 12, h * 0.11);
     }
   }, [action, geometryMode, text, title, topic]);

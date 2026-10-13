@@ -1,4 +1,5 @@
 import type { PublicationSummary } from "../../types/index";
+import { Button } from "../../components/ui";
 
 interface PublicationStatusBarProps {
   publication: PublicationSummary | null;
@@ -65,39 +66,39 @@ export function PublicationStatusBar({
 
       <div className="publication-actions">
         {hasUploadId && !hasFullPaper && !publication && (
-          <button
+          <Button
             className="ghost compact"
             disabled={fullPaperRunning || fullPaperJobStatus === "succeeded"}
             onClick={onGenerateWholePaper}
           >
             {fullPaperJobStatus === "succeeded" ? "整套练习已生成" : fullPaperJobStatus === "failed" ? "重试生成整套练习" : "生成整套练习"}
-          </button>
+          </Button>
         )}
         {fullPaperRunning && (
-          <button className="ghost compact" onClick={onCancelWholePaper}>
+          <Button className="ghost compact" onClick={onCancelWholePaper}>
             {fullPaperJobCancelRequested ? "正在取消…" : "取消整套生成"}
-          </button>
+          </Button>
         )}
         {!publication && (
-          <button className="ghost compact" disabled={publicationBusy || fullPaperRunning} onClick={onSubmitForReview}>
+          <Button className="ghost compact" disabled={publicationBusy || fullPaperRunning} onClick={onSubmitForReview}>
             {publicationBusy ? "提交中…" : "提交练习审核"}
-          </button>
+          </Button>
         )}
         {publication?.status === "in_review" && (
           <>
-            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={onRegenerateWholePaper}>
+            <Button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={onRegenerateWholePaper}>
               {publicationBusy || loadingQuestion ? "生成新版中…" : "整套重新审核"}
-            </button>
-            <button className="lesson-button" disabled={publicationBusy} onClick={onPublish}>
+            </Button>
+            <Button className="lesson-button" disabled={publicationBusy} onClick={onPublish}>
               {publicationBusy ? "发布中…" : `发布练习 v${publication.version || 1}`}
-            </button>
+            </Button>
           </>
         )}
         {publication?.status === "published" && (
           <>
-            <button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={onRegenerateWholePaper}>
+            <Button className="ghost compact" disabled={publicationBusy || loadingQuestion} onClick={onRegenerateWholePaper}>
               {publicationBusy || loadingQuestion ? "生成新版中…" : "生成审核新版"}
-            </button>
+            </Button>
             <span className="active-model live">已发布 v{publication.version || 1}</span>
           </>
         )}

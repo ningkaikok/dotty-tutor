@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Button, Notice, Skeleton } from "../../../components/ui";
 import { confirmMistake } from "../../../api/mistakes";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { RichText } from "../../../RichText";
@@ -65,8 +66,8 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
     messagesEnd.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [state.thread?.messageCount]);
 
-  if (state.loading) return <div className="mistake-empty">正在恢复这道题的辅导上下文…</div>;
-  if (!state.thread) return <p className="mistake-error" role="alert">{state.error || "无法创建辅导记录"}</p>;
+  if (state.loading) return <Skeleton label="正在恢复这道题的辅导上下文…" />;
+  if (!state.thread) return <Notice tone="danger">{state.error || "无法创建辅导记录"}</Notice>;
 
   const thread = state.thread;
   const question = item.questionPayload.question;
@@ -219,16 +220,18 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
                 ))}
               </div>
             </fieldset>
-            {reasonError && <p className="mistake-error" role="alert">{reasonError}</p>}
+            {reasonError && <Notice tone="danger">{reasonError}</Notice>}
             <div className="tutor-actions">
-              <button
+              <Button
+                variant="accent"
                 className="mistake-primary-action compact"
-                disabled={!selectedReason || savingReason}
+                busy={savingReason}
+                disabled={!selectedReason}
                 onClick={() => selectedReason && void submitSelfAssessment(selectedReason)}
               >
                 {savingReason ? "正在保存…" : "确定，开始辅导"}
-              </button>
-              <button disabled={savingReason} onClick={skipSelfAssessment}>我说不好，直接开始</button>
+              </Button>
+              <Button disabled={savingReason} onClick={skipSelfAssessment}>我说不好，直接开始</Button>
             </div>
           </div>
         ) : (
@@ -265,12 +268,12 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
               onCanvasChange={setCanvasState}
             />}
             {understanding && inputState.input?.status === "needs_confirmation" && <TutorObservationReview input={inputState.input} disabled={inputState.sending} onDecision={(decision, text) => void decidePhoto(decision, text)} />}
-            {understanding && (state.error || inputState.error) && <p className="mistake-error" role="alert">{state.error || inputState.error}</p>}
+            {understanding && (state.error || inputState.error) && <Notice tone="danger">{state.error || inputState.error}</Notice>}
             {understanding && <div className="tutor-actions">
-              <button disabled={state.sending || inputState.sending} onClick={() => void submitTurn("help")}>给我一点提示</button>
-              <button className="mistake-primary-action compact" disabled={state.sending || inputState.sending} onClick={() => void submitTurn("answer")}>
+              <Button disabled={state.sending || inputState.sending} onClick={() => void submitTurn("help")}>给我一点提示</Button>
+              <Button variant="accent" className="mistake-primary-action compact" busy={state.sending} disabled={inputState.sending} onClick={() => void submitTurn("answer")}>
                 {state.sending ? "正在思考…" : hasSubmittedTurn ? "重新提交" : "提交这一轮"}
-              </button>
+              </Button>
             </div>}
             {understanding && <small className="tutor-context-note">仅保存结构化状态、摘要和必要消息；不会无限重放全部对话。</small>}
             {(thread.stage === "practice" || thread.stage === "verify") && (

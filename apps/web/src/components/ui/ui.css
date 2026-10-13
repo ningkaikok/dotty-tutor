@@ -42,6 +42,8 @@
 .ui-dialog header { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
 .ui-dialog h2 { margin: 0; }
 .ui-dialog-body { margin: 20px 0; line-height: 1.7; }
+.ui-dialog-description { margin: 12px 0 20px; color: var(--c-ink-soft); line-height: 1.6; }
+.ui-dialog > footer { justify-content: flex-end; }
 .ui-spinner { width: 16px; height: 16px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .8s linear infinite; }
 .student-identity { display: flex; gap: 7px; align-items: center; margin-left: auto; color: var(--c-ink-muted); font-size: 12px; }
 .student-identity-select { min-height: var(--touch-min); max-width: 100%; padding: 8px 12px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-pill); background: var(--c-surface); color: var(--c-ink); font: inherit; }

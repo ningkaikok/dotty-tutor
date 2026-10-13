@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Button, TextAreaField } from "../../../components/ui";
 import { InteractiveMathCanvas } from "../../../InteractiveMathCanvas";
 import type { TutorCanvasState } from "../../../types/tutoring";
 
@@ -28,19 +29,22 @@ export function TutorInputComposer({
   const activeCanvas = canvasState ?? DEFAULT_CANVAS;
   return (
     <div className="tutor-input-composer">
-      <label className="tutor-input">
-        <span>继续回答或描述你的想法</span>
-        <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="例如：我觉得要先比较这些数和 1 的大小……" disabled={disabled} />
-      </label>
+      <TextAreaField
+        className="tutor-input"
+        label="继续回答或描述你的想法"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="例如：我觉得要先比较这些数和 1 的大小……"
+        disabled={disabled}
+      />
       <div className="tutor-photo-action">
         <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
           const file = event.target.files?.[0];
           if (file) onPhoto(file);
           event.target.value = "";
         }} />
-        <button type="button" disabled={disabled} onClick={() => fileInput.current?.click()}>附加一张步骤照片</button>
-        <button
-          type="button"
+        <Button disabled={disabled} onClick={() => fileInput.current?.click()}>附加一张步骤照片</Button>
+        <Button
           className="tutor-canvas-toggle"
           disabled={disabled}
           onClick={() => {
@@ -48,7 +52,7 @@ export function TutorInputComposer({
             setShowCanvas(next);
             onCanvasChange(next ? activeCanvas : null);
           }}
-        >{showCanvas ? "收起数学画布" : "打开数学画布"}</button>
+        >{showCanvas ? "收起数学画布" : "打开数学画布"}</Button>
       </div>
       {showCanvas && <InteractiveMathCanvas value={activeCanvas} onChange={onCanvasChange} readOnly={disabled} />}
     </div>

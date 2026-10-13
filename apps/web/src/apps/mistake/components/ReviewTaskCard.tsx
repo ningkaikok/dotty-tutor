@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, Notice } from "../../../components/ui";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { RichText } from "../../../RichText";
@@ -54,9 +55,9 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
         </span>
       </header>
       {task.status === "scheduled" && (
-        <button className="mistake-primary-action compact" disabled={busy} onClick={() => void onStart(task.taskId)}>
+        <Button variant="primary" className="mistake-primary-action compact" busy={busy} onClick={() => void onStart(task.taskId)}>
           {busy ? "正在生成…" : isDue ? "开始复习" : "提前复习"}
-        </button>
+        </Button>
       )}
       {task.status === "ready" && question && (
         <>
@@ -73,10 +74,10 @@ export function ReviewTaskCard({ task, serverTime, busy, onStart, onAnswer }: Re
               onDrawConnectionsChange={() => undefined}
             />
           </div>
-          {localError && <p className="mistake-error">{localError}</p>}
-          <button className="mistake-primary-action compact" disabled={busy} onClick={() => void submit()}>
+          {localError && <Notice tone="danger">{localError}</Notice>}
+          <Button variant="primary" className="mistake-primary-action compact" busy={busy} onClick={() => void submit()}>
             {busy ? "正在判定…" : "提交复习答案"}
-          </button>
+          </Button>
         </>
       )}
       {task.status === "completed" && (

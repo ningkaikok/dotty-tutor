@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Notice, Skeleton } from "../../components/ui";
 import { useMatch, useNavigate } from "react-router";
 import { archiveMistake, loadMistake, loadMistakes } from "../../api/mistakes";
 import { StudentNav } from "../student/StudentNav";
@@ -121,8 +122,8 @@ export function MistakeCoachApp() {
         />
       )}
 
-      {screen.name === "confirm" && loading && <div className="mistake-empty">正在读取识别结果…</div>}
-      {screen.name === "confirm" && error && <p className="mistake-error" role="alert">{error}</p>}
+      {screen.name === "confirm" && loading && <Skeleton label="正在读取识别结果…" />}
+      {screen.name === "confirm" && error && <Notice tone="danger">{error}</Notice>}
       {screen.name === "confirm" && !loading && selected?.mistakeId === screen.mistakeId && (
         <MistakeConfirm
           key={selected.mistakeId}
@@ -134,8 +135,8 @@ export function MistakeCoachApp() {
           }}
         />
       )}
-      {screen.name === "tutor" && loading && <div className="mistake-empty">正在读取错题…</div>}
-      {screen.name === "tutor" && error && <p className="mistake-error" role="alert">{error}</p>}
+      {screen.name === "tutor" && loading && <Skeleton label="正在读取错题…" />}
+      {screen.name === "tutor" && error && <Notice tone="danger">{error}</Notice>}
       {screen.name === "tutor" && !loading && selected?.mistakeId === screen.mistakeId && (
         <MistakeTutor key={selected.mistakeId} item={selected} />
       )}

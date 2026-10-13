@@ -1,10 +1,11 @@
 import { useReviewProgress } from "../useReviewProgress";
+import { Notice, Skeleton } from "../../../components/ui";
 import { ReviewTaskCard } from "./ReviewTaskCard";
 
 export function MistakeProgress() {
   const state = useReviewProgress();
-  if (state.loading) return <div className="mistake-empty">正在计算学习进度…</div>;
-  if (!state.progress) return <p className="mistake-error">{state.error || "无法读取学习进度"}</p>;
+  if (state.loading) return <Skeleton label="正在计算学习进度…" />;
+  if (!state.progress) return <Notice tone="danger">{state.error || "无法读取学习进度"}</Notice>;
   const displayRate = (value: number | null) => value == null ? "暂无" : `${Math.round(value * 100)}%`;
   const intervals = Array.from(new Set(state.tasks.map((task) => task.intervalDays))).sort((a, b) => a - b);
   const scheduleLabel = intervals.length ? `${intervals.join(" · ")} 天复习任务` : "按策略安排的复习任务";
@@ -23,7 +24,7 @@ export function MistakeProgress() {
         <div><strong>{displayRate(state.progress.verificationAccuracy)}</strong><span>掌握验证正确率</span></div>
         <div><strong>{displayRate(state.progress.reviewCompletionRate)}</strong><span>复习完成率</span></div>
       </div>
-      {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
+      {state.error && <Notice tone="danger">{state.error}</Notice>}
       <div className="progress-grid">
         <section>
           <h2>{scheduleLabel}</h2>
