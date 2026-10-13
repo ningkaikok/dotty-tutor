@@ -1,4 +1,5 @@
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
+import { Button, Notice, Skeleton } from "../../../components/ui";
 import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
 import { RichText } from "../../../RichText";
 import type { TutorStage } from "../../../types/index";
@@ -20,17 +21,17 @@ interface VariationPracticeProps {
 export function VariationPractice({ mistakeId, autoStart = false, onStageChange }: VariationPracticeProps) {
   const state = useVariationPractice(mistakeId, autoStart, onStageChange);
 
-  if (state.loading) return <div className="variation-practice loading">正在恢复掌握验证记录…</div>;
+  if (state.loading) return <Skeleton label="正在恢复掌握验证记录…" />;
   if (!state.active) {
     return (
       <section className="variation-practice">
         <span className="eyebrow">掌握验证</span>
         <h3>先做一道掌握验证题</h3>
         <p>系统会根据错误原因生成巩固练习，并按掌握策略累计独立证据；达到领域门槛后才会进入下一阶段。</p>
-        {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
-        <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
+        {state.error && <Notice tone="danger">{state.error}</Notice>}
+        <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.generate()}>
           {state.submitting ? "正在生成…" : "开始巩固练习"}
-        </button>
+        </Button>
       </section>
     );
   }
@@ -82,16 +83,16 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
         </div>
       )}
       {answered && <EvaluationEvidence evidence={state.active.evaluationEvidence as Record<string, unknown> | undefined} question={question} />}
-      {state.error && <p className="mistake-error" role="alert">{state.error}</p>}
+      {state.error && <Notice tone="danger">{state.error}</Notice>}
       <div className="variation-actions">
         {!locked ? (
-          <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.submit()}>
+          <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.submit()}>
             {state.submitting ? "正在判定…" : retryable ? "重新提交" : "提交验证答案"}
-          </button>
+          </Button>
         ) : !mastered ? (
-          <button className="mistake-primary-action compact" disabled={state.submitting} onClick={() => void state.generate()}>
+          <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.generate()}>
             {state.submitting ? "正在生成…" : "开始下一道巩固练习"}
-          </button>
+          </Button>
         ) : null}
       </div>
     </section>

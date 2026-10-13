@@ -9,8 +9,9 @@ export function PageHeader({ title, description, eyebrow, actions, className, ..
 export function Card({ className, ...props }: HTMLAttributes<HTMLElement>) {
   return <section {...props} className={classes("ui-card", className)} />;
 }
-export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
-  return <Card className="ui-empty"><h2>{title}</h2>{children && <p>{children}</p>}{action}</Card>;
+/** `icon` is decorative and hidden from assistive tech; the title carries the meaning. */
+export function EmptyState({ title, children, action, icon, className }: { title: string; children?: ReactNode; action?: ReactNode; icon?: ReactNode; className?: string }) {
+  return <Card className={classes("ui-empty", className)}>{icon && <span className="ui-empty-icon" aria-hidden="true">{icon}</span>}<h2>{title}</h2>{children && <p>{children}</p>}{action}</Card>;
 }
 export function Skeleton({ label = "正在读取…", rows = 3 }: { label?: string; rows?: number }) {
   return <div role="status" aria-busy="true" aria-label={label} className="ui-skeleton">{Array.from({ length: rows }, (_, index) => <span aria-hidden="true" key={index} />)}</div>;
