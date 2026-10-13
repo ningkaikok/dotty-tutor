@@ -93,6 +93,7 @@
 技术契约、OpenMAIC 本地参考与验收见 [教材互动课件实施计划](textbook-courseware-plan.md)。
 2026-10-12：工程第一版已随 v0.37.0 交付；英语、代数与几何小范围真实模型试点通过，
 本机旧英语教材产物已可恢复撤回。教师内容复核、整单元覆盖与后续扩展仍待完成，见 [独立验收记录](textbook-courseware-acceptance.md)。
+OCR 公式发布保护已加入：结构损坏或被标记为“公式与原页不一致”的来源会阻止题目、章节和课件发布，修订后须重新审核；该保护不代表识别模型语义质量已修复，真实 OCR 仍待复测，见[实施记录](quality-review-implementation.md#ocr-公式发布保护2026-10-12)。
 本节保留历史批次与验收依据，已完成条目不重开；C/D 的媒体/步骤语音工程基础已随 #282 接入，
 新课件的媒体/语音适配在课件批次后续评估，真实内容与真人语音质量仍需人工验收。
 产品范围见 [产品路线图](product-roadmap.md#当前优先级调整教材章节与英语阅读2026-10-02)。
@@ -644,3 +645,7 @@ Redis、OpenTelemetry、LangGraph 与 MCP 均不是当前章节/英语计划的�
 真实 MinerU、Whisper、Qwen 配音与 Luna 已执行有界技术验收，发现的 OCR 公式错误仍保留待审。
 18 个教材案例由用户在系统内复核；50+ 独立双审人工金标准、真人语音质量与正式跨模型排名继续待完成。
 完整批次与失败判据见[交付计划](quality-media-voice-delivery-plan.md)，实际门禁见[验收记录](quality-media-voice-acceptance.md)。
+
+2026-10-12～13：已补共享公式结构门禁及来源错识标记，并合并到最新 main 复验；尚未部署。
+相关回归通过；Windows 本机缺 Cairo 与 PostgreSQL，完整后端门禁以 CI 为准。原页参考已恢复，历史 OCR 原始输出及本机 MinerU 环境仍缺失，未重跑真实 OCR。
+实现、命令结果及语义边界统一见[公式发布保护记录](quality-review-implementation.md#ocr-公式发布保护2026-10-12)。

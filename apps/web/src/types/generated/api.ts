@@ -3502,7 +3502,7 @@ export interface components {
         /** ChapterPageFlag */
         ChapterPageFlag: {
             /** Flags */
-            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable")[];
+            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable" | "formula_mismatch")[];
             /** Page */
             page: number;
         };

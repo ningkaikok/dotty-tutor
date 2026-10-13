@@ -33,7 +33,7 @@ from domain.contracts.courseware import (
 from domain.courseware.assessment import assess_activity
 from domain.courseware.model_output import generation_schema
 from domain.courseware.profiles import CoursewareProfileRegistry, courseware_profiles
-from domain.courseware.quality import document_page_issues
+from domain.courseware.quality import document_page_issues, source_readiness_issues
 from infrastructure.runtime.job_snapshot import (
     current_job_runtime_snapshot,
     use_job_runtime_snapshot,
@@ -120,10 +120,9 @@ class CoursewareService:
         if missing:
             raise ValueError("课件范围包含缺失来源页：" + ", ".join(map(str, missing[:12])))
         pages = [by_page[number] for number in range(start, end + 1)]
-        blocked_flags = {"missing_page", "unreadable", "missing_conditions", "wrong_figure"}
-        for page in pages:
-            if not str(page.get("text") or "").strip() or set(page.get("flags") or []) & blocked_flags:
-                raise ValueError(f"第 {page['page']} 页来源未就绪，不能确认或发布课件")
+        issues = source_readiness_issues(pages)
+        if issues:
+            raise ValueError("来源未就绪，不能确认或发布课件：" + issues[0]["message"])
         return pages
 
     @staticmethod
