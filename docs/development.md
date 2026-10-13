@@ -210,7 +210,8 @@ bash scripts/test-backend-postgres.sh
 
 测试设施只接受这个显式 admin 变量，不会把 `DATABASE_URL`、`POSTGRES_*` 或 `DOTTY_DATA_DIR`
 猜作测试管理入口。每次运行会创建带固定安全前缀和随机后缀的临时数据库，迁移到当前 head 后
-运行完整后端测试，最后只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
+按模块并行运行完整后端测试（`--workers N` 调整进程数，也可只传 `tests.test_x` 模块名），最后
+只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
 正在使用的库作为 admin 目标；命令不会打印连接凭据。
 
 没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，需要数据库的测试会跳过，纯逻辑测试仍可运行。CI
@@ -575,11 +576,11 @@ mock 真正的外部边界（模型/OCR/TTS/审校 Runtime），时间相关行�
 [apps/api/tests/README.md](../apps/api/tests/README.md)。
 
 后端和前端都接入了覆盖率报告（`coverage`/`@vitest/coverage-v8`），CI 日志里会打印分支/行覆盖率
-明细，但目前**只出报告、不设门槛**——先看真实分布再决定基线，而不是让 AI 或人为了凑数字写
+明细（后端只在推送到 main 时收集，PR 不收集以节省时间），但目前**只出报告、不设门槛**——先看真实分布再决定基线，而不是让 AI 或人为了凑数字写
 无意义测试：
 
 ```bash
-(cd apps/api && uv run coverage run -m unittest discover -s tests -p 'test_*.py' && uv run coverage report -m)
+DOTTY_TEST_COVERAGE=1 bash scripts/test-backend-postgres.sh   # 并行子进程数据会自动 combine
 cd apps/web && pnpm test:coverage
 ```
 

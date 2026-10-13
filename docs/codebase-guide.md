@@ -166,7 +166,7 @@ dotty-tutor/
 │   │       └── versions/         # adoption、mastery、assignment、review/variation、题目编辑与身份会话迁移
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
-│   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
+│   │       ├── postgres_test_runner.py # 按模块多进程并行运行后端测试，每个进程独立运行时库
 │   │       └── test_postgres_integration.py # 迁移、JSONB、外键、锁和 Store 契约
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
@@ -207,7 +207,7 @@ dotty-tutor/
 ├── scripts/seed_demo_bundle.py # 固定 ID 的合成三人课堂 bundle，支持 --verify
 ├── scripts/cleanup_legacy_textbook_content.py # 默认 dry-run，精确 manifest 的 apply/restore
 ├── examples/demo-pack/manifest.json # demo bundle 的隐私声明和固定数据契约
-├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
+├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库并行运行后端测试，可选覆盖率
 ├── scripts/test-changed.py # 本地按导入关系只跑受影响的后端测试与 vitest related；不确定时退回全量
 ├── scripts/ci-changed-areas.sh # CI 按改动路径决定 backend/frontend/e2e/docker 与 Python 版本
 ├── docs/                       # 面向维护者和使用者的文档
