@@ -9,18 +9,46 @@ permissions:
   contents: read
 
 jobs:
+  # 按改动路径决定后续 job 是否运行（规则见 scripts/ci-changed-areas.sh）。推送到 main
+  # 一律全跑，作为合并后的最终兜底。必需检查 backend/frontend/docker 被条件跳过时
+  # GitHub 记为通过，因此本 job 失败时下游不能被当成通过（见 backend 聚合 job）。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      docker: ${{ steps.filter.outputs.docker }}
+      python-versions: ${{ steps.filter.outputs.python-versions }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Detect affected areas
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bash scripts/ci-changed-areas.sh "$BASE_SHA" | tee -a "$GITHUB_OUTPUT"
+          else
+            bash scripts/ci-changed-areas.sh --all | tee -a "$GITHUB_OUTPUT"
+          fi
+
   # 真正跑门禁的矩阵 job。它不叫 backend：矩阵会把检查名变成
   # "backend (3.12)"/"backend (3.14)"，而仓库 ruleset 要求的必需检查名是
   # 恰好的 "backend"，改名会让那个检查永远不出现、PR 永远无法合并。
   backend-matrix:
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.backend == 'true'
     strategy:
       fail-fast: false
-      # pyproject 声明 requires-python = ">=3.12"，但门禁此前只验证 3.12，
-      # 而本地开发实际跑在 3.14。矩阵覆盖支持区间的两个端点，避免"本地过
-      # CI 挂"或反过来的情况只能在运行时才发现。
+      # pyproject 声明 requires-python = ">=3.12"，矩阵覆盖支持区间的两个端点。
+      # PR 默认只跑 3.12（3.14 仅在依赖或 CI 变化时加入）；每次推送到 main 都跑两个
+      # 版本，3.14 的兼容问题最晚在合并后的 main 上暴露。
       matrix:
-        python-version: ["3.12", "3.14"]
+        python-version: ${{ fromJSON(needs.changes.outputs.python-versions) }}
     services:
       postgres:
         image: postgres:17
@@ -75,35 +103,45 @@ jobs:
   # 而不只是产生一个未被强制的旁路信号。
   backend:
     runs-on: ubuntu-latest
-    needs: [backend-matrix]
+    needs: [changes, backend-matrix]
     if: always()
     env:
       UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
+      # 后端未改动时矩阵被跳过，聚合视为通过，重放也无需再跑。
+      BACKEND_RAN: ${{ needs.backend-matrix.result == 'success' }}
     steps:
       - name: Require every backend matrix leg to pass
         run: |
+          changes='${{ needs.changes.result }}'
           result='${{ needs.backend-matrix.result }}'
-          echo "backend-matrix result: $result"
-          test "$result" = success
+          echo "changes result: $changes; backend-matrix result: $result"
+          # 路径判断失败时矩阵也会是 skipped，必须先确认判断本身成功。
+          test "$changes" = success
+          test "$result" = success -o "$result" = skipped
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: env.BACKEND_RAN == 'true'
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        if: env.BACKEND_RAN == 'true'
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        if: env.BACKEND_RAN == 'true'
         with:
           enable-cache: true
           cache-dependency-glob: apps/api/uv.lock
       - name: Install backend dependencies (frozen lock)
+        if: env.BACKEND_RAN == 'true'
         working-directory: apps/api
         run: uv sync --frozen
       # 确定性金标准语料重放：纯函数、不触模型/数据库，作为真正的质量回归门禁。
       # judge.py/judge_cli.py/leaderboard.py 需要真实模型调用，不放进 CI（见
       # docs/runtime-governance-plan.md §G4 与 docs/engineering-roadmap.md）。
       - name: Replay deterministic golden-corpus evaluation
+        if: env.BACKEND_RAN == 'true'
         working-directory: apps/api
         run: uv run python -m evaluation.replay --check
       - name: Upload evaluation replay report
-        if: always()
+        if: always() && env.BACKEND_RAN == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: eval-replay-report
@@ -112,6 +150,8 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -152,6 +192,8 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.e2e == 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -180,7 +222,11 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    needs: [changes, backend, frontend]
+    # 上游 frontend 被跳过时默认会连带跳过本 job，因此显式判断上游结果。
+    if: >-
+      always() && needs.changes.outputs.docker == 'true' && needs.backend.result == 'success'
+      && (needs.frontend.result == 'success' || needs.frontend.result == 'skipped')
     env:
       POSTGRES_PASSWORD: ci-only-password
       WEB_PORT: "8080"
