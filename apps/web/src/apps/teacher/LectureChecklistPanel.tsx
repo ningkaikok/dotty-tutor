@@ -1,4 +1,5 @@
 import { errorReasonLabel } from "../mistake/errorReasons";
+import { Notice } from "../../components/ui";
 import type { LectureChecklist, LectureChecklistMistake } from "../../types/classroom";
 import { useLectureChecklist } from "./useLectureChecklist";
 
@@ -61,7 +62,7 @@ function ChecklistItem({ item }: { item: LectureChecklistMistake }) {
 export function LectureChecklistPanel({ classId, assignmentId }: { classId: string; assignmentId: string }) {
   const { checklist, error, loading } = useLectureChecklist(classId, assignmentId);
   if (loading) return <section className="teacher-card panel lecture-checklist"><p role="status" className="muted">讲评清单加载中…</p></section>;
-  if (error) return <section className="teacher-card panel lecture-checklist"><p className="teacher-notice error-text" role="alert">讲评清单加载失败：{error}</p></section>;
+  if (error) return <section className="teacher-card panel lecture-checklist"><Notice tone="danger" className="teacher-notice">讲评清单加载失败：{error}</Notice></section>;
   if (!checklist) return null;
   return <section className="teacher-card panel lecture-checklist">
     <div className="teacher-section-heading">

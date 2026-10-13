@@ -20,7 +20,7 @@ token 定义在 `apps/web/src/components/ui/tokens.css` 的 `:root` 中，命名
 | 教师工作台 `/teacher` | 已迁移；状态与网络在 useTeacherClassroomWorkspace；macOS/Linux/Windows 视觉基线已更新 |
 | 教材工作室 `/studio` 及子页面 | 教材、章节、课件编辑、复核、指标、提示词与媒体换用共享 token；指标 macOS/Linux/Windows 基线已更新 |
 
-`styles.css` 与 `chapters.css` 已无硬编码色值；`courseware.css` 中的 `--cw-*` 是课堂投影的有意例外。Canvas 绘制（`GeometryCanvas`）无法直接引用 CSS 变量，绘制时用 `getComputedStyle` 读取同名 token。
+除 `tokens.css` 外，各页面样式表已无硬编码色值；`courseware.css` 中的 `--cw-*` 是课堂投影的有意例外。Canvas 绘制（`GeometryCanvas`）无法直接引用 CSS 变量，绘制时用 `getComputedStyle` 读取同名 token。
 新增样式需要表示失败/警告时，按下表选 token，必要时用 `color-mix(in srgb, <token> N%, var(--c-surface))`
 派生描边或浅底，不要再引入新的十六进制色值。
 
@@ -100,6 +100,6 @@ token 定义在 `apps/web/src/components/ui/tokens.css` 的 `:root` 中，命名
 
 从 `components/ui` 导入 Button/ButtonLink、TextField/SelectField/TextAreaField、Badge/Notice、PageShell/PageHeader/Card/EmptyState/Skeleton、AppHeader/Navigation/Dialog。页面保留业务组合，重复视觉状态交给这些组件；不引入第二套路由、公式渲染或网络状态。表单组件保留原生约束、显式标签和 aria 描述；Dialog 使用原生 `<dialog>`，确认类对话框传 `description`（关联 aria-describedby）和 `closeButton={false}`，把“取消”放在操作区首位以获得初始焦点。错题归档确认与章节原页放大预览已改用 Dialog，页面里不应再手写 `role="dialog"`、焦点圈定或 Escape 监听。
 
-`EmptyState` 可传装饰性 `icon`（自动 aria-hidden）和页面布局用的 `className`。组件样式是 `:where` 零优先级，迁移时保留页面原有类名（如 `mistake-primary-action`）来维持页面外形，只删除与共享样式重复的声明；错题本（列表、拍照、确认、陪练、复习、掌握验证）的通用按钮、表单字段、错误提示、加载骨架和空状态已改用共享组件，分类页签、拍照选择区、裁切滑块和错因单选卡属于领域控件，保持原样。教材导入与预览 `/studio/import`（上传、教材库、发布状态栏、题目复核、陪练模型评测）同样已迁移；拖放区、上传行与教材库卡片保持领域样式，`RuntimeSettings` 的模型下拉依赖 `model-switcher` 网格定位，暂不包进 Field。
+`EmptyState` 可传装饰性 `icon`（自动 aria-hidden）和页面布局用的 `className`。组件样式是 `:where` 零优先级，迁移时保留页面原有类名（如 `mistake-primary-action`）来维持页面外形，只删除与共享样式重复的声明；错题本（列表、拍照、确认、陪练、复习、掌握验证）的通用按钮、表单字段、错误提示、加载骨架和空状态已改用共享组件，分类页签、拍照选择区、裁切滑块和错因单选卡属于领域控件，保持原样。教材导入与预览 `/studio/import`（上传、教材库、发布状态栏、题目复核、陪练模型评测）同样已迁移；拖放区、上传行与教材库卡片保持领域样式，`RuntimeSettings` 的模型下拉依赖 `model-switcher` 网格定位，暂不包进 Field。质量复核、模型评测、提示词管理、媒体工作台、语音陪练和依赖自检也已改用共享按钮、字段、提示与加载骨架；案例列表、勾选清单、页签和指标页“统计窗口”下拉（处于截图基线内）保持原样。
 
 开发模式 `/dev/components` 可检查禁用/忙碌/错误、键盘、模态焦点与窄屏；生产不注册该路由。组件 DOM 用 RTL，真实路由与布局用 Playwright。当前库提供基础系统，领域控件不为形式统一而泛化。后续扩展组件时同步目录、使用页面和可观察行为验证。

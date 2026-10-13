@@ -42,7 +42,7 @@ describe("DependencyPreflightApp", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => okReport })));
     renderPage();
 
-    expect(screen.getByRole("status")).toHaveTextContent("正在检查依赖");
+    expect(screen.getByRole("status", { name: "正在检查依赖…" })).toBeInTheDocument();
     expect(await screen.findByText("必需依赖全部就绪")).toBeVisible();
     expect(screen.getByText("MinerU OCR")).toBeVisible();
     expect(screen.getByText("未找到 MinerU 命令；会回退到 pypdf 文字层")).toBeVisible();
