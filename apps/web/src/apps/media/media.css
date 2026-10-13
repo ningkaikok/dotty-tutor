@@ -10,9 +10,9 @@
 
 .lesson-media-player-card {
   padding: 16px;
-  border: 1px solid var(--border, var(--c-line-strong));
+  border: 1px solid var(--c-line-strong);
   border-radius: var(--radius-md);
-  background: var(--surface, var(--c-surface));
+  background: var(--c-surface);
 }
 
 .lesson-media-player-card h3 {
@@ -37,12 +37,12 @@
 
 .lesson-media-player-footer {
   justify-content: space-between;
-  color: var(--muted, var(--c-ink-muted));
+  color: var(--c-ink-muted);
   font-size: 0.9rem;
 }
 
 .lesson-media-player-footer a {
-  color: var(--link, var(--c-brand));
+  color: var(--c-brand);
 }
 
 @media (max-width: 680px) {
@@ -61,9 +61,9 @@
   gap: 16px;
   margin: 20px 0;
   padding: 20px;
-  border: 1px solid var(--border, var(--c-line-strong));
+  border: 1px solid var(--c-line-strong);
   border-radius: var(--radius-md);
-  background: var(--surface, var(--c-surface));
+  background: var(--c-surface);
 }
 
 .media-studio-heading,
@@ -91,7 +91,7 @@
 .media-citation,
 .media-job-status,
 .media-review-record {
-  color: var(--muted, var(--c-ink-muted));
+  color: var(--c-ink-muted);
   font-size: 0.88rem;
 }
 
@@ -108,9 +108,9 @@
 .media-studio-panel button {
   min-height: 38px;
   padding: 8px 10px;
-  border: 1px solid var(--border, var(--c-line-strong));
+  border: 1px solid var(--c-line-strong);
   border-radius: var(--radius-sm);
-  background: var(--surface, var(--c-surface));
+  background: var(--c-surface);
   color: inherit;
   font: inherit;
 }
@@ -147,7 +147,7 @@
 
 .media-version span,
 .media-status {
-  color: var(--muted, var(--c-ink-muted));
+  color: var(--c-ink-muted);
   font-size: 0.82rem;
 }
 
@@ -162,7 +162,7 @@
 .media-review,
 .media-preview {
   padding: 14px;
-  border: 1px solid var(--border, var(--c-line-strong));
+  border: 1px solid var(--c-line-strong);
   border-radius: 12px;
 }
 
@@ -195,7 +195,7 @@
 
 .media-error {
   margin: 0;
-  color: #a62c22;
+  color: var(--c-danger);
 }
 
 @media (max-width: 760px) {

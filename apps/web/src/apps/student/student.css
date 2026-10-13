@@ -17,7 +17,7 @@
   width: 44px;
   height: 44px;
   border-radius: 14px 14px 14px 4px;
-  color: #fff;
+  color: var(--c-surface);
   background: var(--c-brand);
   font-size: 22px;
   font-weight: 900;
@@ -91,7 +91,7 @@
   margin: 8px 0 24px;
   padding: 14px 16px;
   border-radius: var(--radius-md);
-  color: #3f2300;
+  color: var(--c-ink);
   background: var(--c-accent-soft);
   font-size: 14px;
 }
@@ -146,7 +146,7 @@
   padding: 6px 16px;
   border: 0;
   border-radius: 14px;
-  color: #fff;
+  color: var(--c-surface);
   background: var(--c-ink);
   font-weight: 800;
   white-space: nowrap;
@@ -187,7 +187,7 @@
 .student-paper-shell { color: var(--c-ink); font-family: var(--font-bright); }
 .student-paper-shell .panel { border: 0; border-radius: var(--radius-xl); background: var(--c-surface); box-shadow: none; }
 .student-paper-shell .eyebrow { color: var(--c-brand); letter-spacing: .08em; }
-.student-paper-topbar .brand-mark { border-radius: 14px 14px 14px 4px; color: #fff; background: var(--c-brand); font-weight: 900; }
+.student-paper-topbar .brand-mark { border-radius: 14px 14px 14px 4px; color: var(--c-surface); background: var(--c-brand); font-weight: 900; }
 .student-paper-topbar strong { font-weight: 900; }
 .student-paper-topbar span { color: var(--c-ink-muted); }
 .student-paper-topbar .product-home-button { border: 0; color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
@@ -231,7 +231,7 @@
 }
 
 .paper-question-progress-item.todo { color: var(--c-ink-muted); background: var(--c-ground); }
-.paper-question-progress-item.correct { color: #fff; background: var(--c-brand); }
+.paper-question-progress-item.correct { color: var(--c-surface); background: var(--c-brand); }
 .paper-question-progress-item.needs-fix { color: var(--c-ink); background: var(--c-accent); }
 /* 当前题必须能在一排题号里被一眼认出，因此用实心描边而不是浅色阴影。 */
 .paper-question-progress-item.current { box-shadow: 0 0 0 2px var(--c-surface), 0 0 0 4px var(--c-ink); }
@@ -333,7 +333,7 @@
   border: 2px solid var(--c-line);
   border-radius: var(--radius-md);
   color: var(--c-ink);
-  background: #fff;
+  background: var(--c-surface);
   font: inherit;
   resize: vertical;
 }
@@ -360,11 +360,11 @@
   margin: 0 28px 28px;
   padding: 14px 18px;
   border-radius: 20px;
-  color: #3f2300;
+  color: var(--c-ink);
   background: var(--c-accent-soft);
 }
 
-.student-mistake-notice button { flex: 0 0 auto; border-color: var(--c-ink); color: #fff; background: var(--c-ink); }
+.student-mistake-notice button { flex: 0 0 auto; border-color: var(--c-ink); color: var(--c-surface); background: var(--c-ink); }
 .student-auto-advance { display: flex; justify-content: flex-end; margin: 0 28px 22px; }
 
 /* 题目作答区的共享组件（QuestionAnswer）在做题页内的 Bright 覆盖。 */
@@ -382,7 +382,7 @@
 .student-paper-shell .question-option.selected { border-color: var(--c-brand); background: var(--c-brand-soft); box-shadow: none; }
 .student-paper-shell .question-option:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 2px; }
 .student-paper-shell .question-options .option-label { display: grid; place-items: center; flex: 0 0 38px; height: 38px; border-radius: var(--radius-sm); color: var(--c-brand); background: var(--c-brand-soft); font-weight: 900; }
-.student-paper-shell .question-option.selected .option-label { color: #fff; background: var(--c-brand); }
+.student-paper-shell .question-option.selected .option-label { color: var(--c-surface); background: var(--c-brand); }
 .student-paper-shell .true-false-options .option-label { flex-basis: 44px; height: 44px; font-size: 22px; }
 .student-paper-shell .fill-blank-field,
 .student-paper-shell .numeric-answer-field { color: var(--c-ink); font-weight: 800; }

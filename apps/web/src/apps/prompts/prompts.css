@@ -23,7 +23,7 @@
 .prompt-shell input::placeholder { color: var(--c-ink-muted); }
 .prompt-shell button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--c-line-strong); border-radius: 999px; background: var(--c-brand-soft); color: var(--c-ink); font-size: 13px; font-weight: 600; }
 .prompt-shell button:hover:not(:disabled) { border-color: var(--c-ink-muted); background: var(--c-brand-soft); }
-.prompt-shell button.prompt-primary { background: var(--c-ink); border-color: var(--c-ink); color: #fbfaf6; }
+.prompt-shell button.prompt-primary { background: var(--c-ink); border-color: var(--c-ink); color: var(--c-surface); }
 .prompt-shell button.prompt-primary:hover:not(:disabled) { background: var(--c-ink); }
 .prompt-shell button:disabled { cursor: not-allowed; opacity: .55; }
 .prompt-login > button { width: 100%; margin-top: 10px; }
@@ -34,7 +34,7 @@
 .prompt-shell details { margin: 24px 0; }
 .prompt-shell summary { cursor: pointer; color: var(--c-ink); font-size: 13px; font-weight: 600; }
 .prompt-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.prompt-error { color: #a33e32; border: 1px solid #e7c6c2; background: #fbeeec; padding: 14px 16px; border-radius: 12px; font-size: 13px; }
+.prompt-error { color: var(--c-danger); border: 1px solid color-mix(in srgb, var(--c-danger) 30%, var(--c-surface)); background: var(--c-danger-soft); padding: 14px 16px; border-radius: 12px; font-size: 13px; }
 .prompt-shell > [role="status"] { color: var(--c-ink); font-size: 13px; }
 @media (max-width: 760px) {
   .prompt-layout, .prompt-compare { grid-template-columns: 1fr; }
