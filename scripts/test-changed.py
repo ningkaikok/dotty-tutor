@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import os
 import shutil
 import subprocess
 import sys
@@ -125,16 +124,20 @@ def run_backend(selection: list[str] | None, *, list_only: bool) -> int:
     if selection == []:
         print("后端：没有受影响的测试。")
         return 0
-    command = [sys.executable, "-m", "unittest"]
-    command += selection if selection is not None else ["discover", "-s", "tests", "-p", "test_*.py"]
     label = "全量（改动涉及迁移/存储结构/测试设施/依赖）" if selection is None else f"{len(selection)} 个测试模块"
     print(f"后端：{label}")
     if selection:
         print("  " + "\n  ".join(selection))
     if list_only:
         return 0
-    if not os.getenv("DOTTY_TEST_POSTGRES_ADMIN_URL"):
-        print("  提示：未设置 DOTTY_TEST_POSTGRES_ADMIN_URL，数据库测试会被跳过。")
+    # Run inside the backend's uv environment: this script is usually launched with a
+    # system Python that lacks the backend dependencies. The runner parallelises modules
+    # and skips database tests itself when DOTTY_TEST_POSTGRES_ADMIN_URL is unset.
+    uv = shutil.which("uv")
+    if uv is None:
+        print("后端：找不到 uv，请先把 uv 加入 PATH。")
+        return 1
+    command = [uv, "run", "python", "-m", "tests.postgres_test_runner", *(selection or [])]
     return subprocess.run(command, cwd=API).returncode
 
 

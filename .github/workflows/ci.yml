@@ -90,7 +90,25 @@ jobs:
         run: uv --directory apps/api run pyright
       - name: Install PDF and lesson media renderers
         run: sudo apt-get update && sudo apt-get install -y poppler-utils ffmpeg libcairo2 fonts-noto-cjk fonts-dejavu-core
+      # 这个 postgres 服务容器用完即弃，不需要崩溃安全。测试频繁建库/删库，刷盘是主要
+      # 开销；这三项都可以热加载（pg_reload_conf），service 容器无法改启动参数。
+      # 本地实测关闭后后端全量约快一倍。
+      - name: Disable durability on the throwaway CI PostgreSQL
+        working-directory: apps/api
+        run: |
+          uv run python - <<'EOF'
+          import os, psycopg
+          url = os.environ["DOTTY_TEST_POSTGRES_ADMIN_URL"].replace("+psycopg", "")
+          with psycopg.connect(url, autocommit=True) as connection:
+              for setting in ("fsync", "synchronous_commit", "full_page_writes"):
+                  connection.execute(f"ALTER SYSTEM SET {setting} = off")
+              connection.execute("SELECT pg_reload_conf()")
+          EOF
+      # 测试按模块分给多个进程并行（tests/postgres_test_runner.py）。覆盖率只出报告、
+      # 不设门槛，跟踪本身会明显拖慢测试，因此只在推送到 main 时收集，PR 不收集。
       - name: Run backend tests in isolated PostgreSQL databases
+        env:
+          DOTTY_TEST_COVERAGE: ${{ github.event_name == 'push' && '1' || '0' }}
         run: bash scripts/test-backend-postgres.sh
 
   # 聚合 job：ruleset 要求的必需检查名。只有全部矩阵分支成功它才成功，
