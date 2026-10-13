@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from application.services.courseware import CoursewareService
 from ocr_quality import (
     MAX_OCR_RETRIES,
     evaluate_page_quality,
@@ -12,6 +13,44 @@ from ocr_quality import (
 
 
 class OcrQualityTests(unittest.TestCase):
+    def test_user_flags_semantic_ocr_error_then_courseware_cannot_use_the_source(self) -> None:
+        # Given a syntactically valid synthetic sign error explicitly flagged by a reviewer
+        source = {"pages": [{"page": 214, "text": "$y+37=13$", "flags": ["formula_mismatch"]}]}
+        # When courseware selects that page for planning, review or publication
+        with self.assertRaisesRegex(ValueError, "formula_mismatch"):
+            CoursewareService._selected_pages(source, 214, 214)
+        # Then only a corrected revision with the review flag resolved is usable
+        corrected = {"pages": [{"page": 214, "text": "$y+37=-13$", "flags": []}]}
+        self.assertEqual(CoursewareService._selected_pages(corrected, 214, 214), corrected["pages"])
+
+    def test_user_uses_old_source_without_cached_issues_then_courseware_rechecks_formula_integrity(self) -> None:
+        # Given an old source revision lacking any previously computed issue or flag
+        source = {"pages": [{"page": 1, "text": r"$x=\frac{1}{2$", "flags": []}]}
+        # When it is selected by the publication workflow
+        with self.assertRaisesRegex(ValueError, "formula_group_unbalanced"):
+            CoursewareService._selected_pages(source, 1, 1)
+
+    def test_user_receives_truncated_formula_then_ocr_is_quarantined_without_guessing(self) -> None:
+        # Given synthetic OCR with paired dollars but a truncated fraction group
+        damaged = r"Solve $x = \frac{12}{3$ and check the original page."
+        # When the highest-fidelity provider has exhausted its retry budget
+        decision = evaluate_page_quality(
+            damaged, page_number=214, provider="mineru", retry_count=MAX_OCR_RETRIES,
+        )
+        # Then the source cannot be marked ready or silently repaired
+        self.assertEqual(decision["status"], "quarantine")
+        self.assertIn("formula_group_unbalanced", decision["problems"])
+
+    def test_formula_group_check_accepts_nested_groups_and_escaped_set_braces(self) -> None:
+        for formula in (r"$\frac{1}{\sqrt{4}}$", r"$\{x \mid x>0\}$", r"Budget \$5; $x=1$", "Text {without math}"):
+            with self.subTest(formula=formula):
+                self.assertEqual(evaluate_page_quality(formula, page_number=1, provider="mineru")["status"], "ready")
+
+    def test_backslash_formula_delimiters_cannot_hide_truncated_groups(self) -> None:
+        for formula in (r"\[\frac{1}{2\]", r"\(x^{2\)", r"\[x+1", r"\(x+1", "$}x{$"):
+            with self.subTest(formula=formula):
+                self.assertNotEqual(evaluate_page_quality(formula, page_number=1, provider="mineru")["status"], "ready")
+
     def test_accepts_chinese_question_marker_and_inline_choices(self) -> None:
         decision = evaluate_question_quality(
             "第 12 题 下列正确的是（ ）A. 1 B. 2 C. 3 D. 4",

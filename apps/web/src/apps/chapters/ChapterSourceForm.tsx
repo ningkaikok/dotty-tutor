@@ -15,6 +15,7 @@ interface ChapterSourceFormProps {
 const sourceFlags: Array<[ChapterSourceFlag, string]> = [
   ["missing_conditions", "可能缺少条件"],
   ["wrong_figure", "图文归属或图片可能错误"],
+  ["formula_mismatch", "公式识别与原页不一致"],
   ["unreadable", "页面难以辨认"],
 ];
 

@@ -6,6 +6,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChapterSourceForm } from "./ChapterSourceForm";
 
 describe("ChapterSourceForm", () => {
+  it("user Given an OCR formula differs from its page When flagging it Then the source carries the publication blocker", () => {
+    const onSubmit = vi.fn();
+    render(<ChapterSourceForm libraries={[]} submitLabel="创建章节" onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByLabelText("课程名称"), { target: { value: "公式复核" } });
+    fireEvent.change(screen.getByLabelText("来源许可说明"), { target: { value: "原创场景" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "OCR 原文" }), { target: { value: "$x=2$" } });
+    fireEvent.click(screen.getByLabelText("公式识别与原页不一致"));
+    fireEvent.click(screen.getByRole("button", { name: "创建章节" }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      source: expect.objectContaining({ pages: [expect.objectContaining({ page: 1, flags: ["formula_mismatch"] })] }),
+    }));
+  });
   afterEach(cleanup);
 
   it("user Given one page of existing OCR When creating a chapter Then it keeps the page and source version attached", () => {

@@ -25,6 +25,7 @@ from domain.chapters.quality import (
 from domain.chapters.source import fingerprint, pages_from_ocr, sentences
 from domain.chapters.templates import build_chapter_lessons
 from domain.questions.student_view import student_question_payload
+from ocr_quality import formula_problems
 
 
 def _serialize_chapter_mutation(method):
@@ -543,10 +544,13 @@ class ChapterCourseService:
         for page in source["pages"]:
             if not page["text"]:
                 issues.append({"code": "missing_source_text", "message": f"第 {page['page']} 页没有可核对文本"})
+            for problem in formula_problems(page["text"]):
+                issues.append({"code": problem, "message": f"第 {page['page']} 页公式结构损坏，请对照原页修订来源：{problem}"})
             for flag in page["flags"]:
                 mapped = {
                     "missing_conditions": "missing_condition", "wrong_figure": "wrong_figure",
                     "missing_page": "missing_page", "unreadable": "unreadable_source",
+                    "formula_mismatch": "formula_mismatch",
                 }.get(flag)
                 if mapped:
                     issues.append({"code": mapped, "message": f"第 {page['page']} 页需要复核：{flag}"})
@@ -746,7 +750,7 @@ class ChapterCourseService:
         source = chapter["sourceRevisions"][-1]
         if chapter.get("publicationId") and chapter.get("status") == "published" and chapter["currentLessonIds"]:
             return {"chapterId": chapter_id, "publicationId": chapter["publicationId"], "version": chapter["version"], "status": "published"}
-        if source.get("issues") or not chapter.get("currentLessonIds"):
+        if source.get("issues") or self._source_issues(source) or not chapter.get("currentLessonIds"):
             raise ValueError("来源缺页、缺文本或含待处理视觉/条件问题，不能发布")
         if chapter.get("reviewIssues"):
             raise ValueError("课程存在待处理复核项，不能发布")

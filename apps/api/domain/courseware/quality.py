@@ -5,7 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-BLOCKING_SOURCE_FLAGS = frozenset({"missing_page", "unreadable", "missing_conditions", "wrong_figure"})
+from ocr_quality import formula_problems
+
+BLOCKING_SOURCE_FLAGS = frozenset({"missing_page", "unreadable", "missing_conditions", "wrong_figure", "formula_mismatch"})
 
 
 def source_readiness_issues(pages: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -13,6 +15,7 @@ def source_readiness_issues(pages: list[dict[str, Any]]) -> list[dict[str, str]]
     for page in pages:
         number = int(page.get("page", 0))
         flags = set(page.get("flags") or []) & BLOCKING_SOURCE_FLAGS
+        flags.update(formula_problems(str(page.get("text") or "")))
         if not str(page.get("text") or "").strip():
             flags.add("unreadable")
         for flag in sorted(flags):

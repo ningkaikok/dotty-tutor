@@ -97,7 +97,7 @@ dotty-tutor/
 │   │   ├── application/lesson_media_renderer.py # 固定 SVG 数据、CairoSVG/FFmpeg、动画与 VTT 字幕
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
-│   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
+│   │   ├── ocr_quality.py      # 页面/题块公式结构门禁和有限重试；题目、章节、课件共用
 │   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要（检查内容）
 │   │   ├── public_protection.py # 显式启用的进程内请求/模型配额与并发保护
 │   │   ├── dependency_preflight.py # 运行环境依赖自检：MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL（检查环境，与 ocr_preflight 不合并）
@@ -219,6 +219,9 @@ dotty-tutor/
 `apps/api/persistence`；跨领域组合只在明确的应用入口完成。
 
 教材课件领域链路与试卷生成分开：
+
+OCR 公式结构检查由 `ocr_quality.formula_problems` 统一提供，题目发布、章节来源 issues 与课件来源就绪检查复用。
+`formula_mismatch` 是来源页人工标记，经章节来源修订进入课件规划、审核和发布边界；修订不改写历史发布内容。
 
 ```mermaid
 flowchart LR
