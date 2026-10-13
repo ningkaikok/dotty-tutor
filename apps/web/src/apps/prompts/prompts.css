@@ -16,7 +16,8 @@
 .prompt-layout nav { display: flex; flex-direction: column; gap: 10px; }
 .prompt-layout nav button { text-align: left; }
 .prompt-layout nav [aria-current="page"] { border-color: var(--c-ink); color: var(--c-surface); background: var(--c-ink); }
-.prompt-shell label { display: grid; gap: 8px; margin: 20px 0 10px; color: var(--c-ink); font-size: 13px; font-weight: 600; }
+.prompt-shell .ui-field { gap: 8px; margin: 20px 0 10px; }
+.prompt-shell .ui-field label { color: var(--c-ink); font-size: 13px; font-weight: 600; }
 .prompt-shell textarea, .prompt-shell input, .prompt-shell select { width: 100%; min-width: 0; border: 1px solid var(--c-line-strong); padding: 12px 14px; border-radius: 12px; background: var(--c-surface); color: var(--c-ink); font: inherit; font-weight: 400; }
 .prompt-shell input { min-height: 48px; }
 .prompt-shell textarea { resize: vertical; line-height: 1.7; }
@@ -35,7 +36,7 @@
 .prompt-shell summary { cursor: pointer; color: var(--c-ink); font-size: 13px; font-weight: 600; }
 .prompt-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .prompt-error { color: var(--c-danger); border: 1px solid color-mix(in srgb, var(--c-danger) 30%, var(--c-surface)); background: var(--c-danger-soft); padding: 14px 16px; border-radius: 12px; font-size: 13px; }
-.prompt-shell > [role="status"] { color: var(--c-ink); font-size: 13px; }
+.prompt-notice { margin-top: 16px; font-size: 13px; }
 @media (max-width: 760px) {
   .prompt-layout, .prompt-compare { grid-template-columns: 1fr; }
   .prompt-layout nav { flex-direction: row; flex-wrap: wrap; }

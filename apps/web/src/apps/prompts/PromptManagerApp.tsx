@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Button, Notice, SelectField, TextAreaField, TextField } from "../../components/ui";
 import { Link, useSearchParams } from "react-router";
 import type { PromptDetail, PromptRevision } from "../../api/prompts";
 import { usePromptManager } from "./usePromptManager";
@@ -49,7 +50,7 @@ export function PromptManagerApp() {
       <div className="brand-mark" aria-hidden="true">D</div>
       <div className="prompt-brand"><strong>Dotty</strong><span>内容平台 · 教学策略管理</span></div>
       <span className="status">{manager.connected ? manager.canPublish ? "内容发布权限" : "内容编辑权限" : "内容管理入口"}</span>
-      {manager.connected && <div className="prompt-actions"><button disabled={manager.busy || dirty} onClick={() => void manager.refresh()}>刷新版本</button><button disabled={manager.busy} onClick={manager.disconnect}>退出管理</button></div>}
+      {manager.connected && <div className="prompt-actions"><Button disabled={manager.busy || dirty} onClick={() => void manager.refresh()}>刷新版本</Button><Button disabled={manager.busy} onClick={manager.disconnect}>退出管理</Button></div>}
     </header>
     <section className="prompt-intro">
       <span className="eyebrow">教学策略</span>
@@ -64,33 +65,33 @@ export function PromptManagerApp() {
         <strong>凭据从哪里获取？</strong>
         <p>请向项目维护者获取内容管理访问令牌。编辑凭据可保存和预览草稿；发布凭据还可发布与回滚版本。</p>
       </div>
-      <label>内容平台凭据<input type="password" autoComplete="off" aria-describedby="prompt-credential-help prompt-credential-privacy" placeholder="输入维护者提供的访问令牌" disabled={manager.busy} value={manager.token} onChange={(event) => manager.setToken(event.target.value)} /></label>
+      <TextField label="内容平台凭据" type="password" autoComplete="off" aria-describedby="prompt-credential-help prompt-credential-privacy" placeholder="输入维护者提供的访问令牌" disabled={manager.busy} value={manager.token} onChange={(event) => manager.setToken(event.target.value)} />
       <p className="muted" id="prompt-credential-privacy">凭据仅保留在当前页面内存中，刷新页面或退出管理后需重新输入。</p>
-      <button className="prompt-primary" disabled={manager.busy || !manager.token.trim()}>{manager.busy ? "正在验证…" : "进入管理"}</button>
+      <Button type="submit" variant="primary" className="prompt-primary" busy={manager.busy} disabled={!manager.token.trim()}>{manager.busy ? "正在验证…" : "进入管理"}</Button>
     </form> : <div className="prompt-layout">
       <nav aria-label="教学提示词">{manager.items.map((item) => <button key={item.id} disabled={manager.busy || dirty} aria-current={item.id === selectedId ? "page" : undefined} onClick={() => choose(item)}>{LABELS[item.id] || item.id}</button>)}</nav>
       {detail && revision && active && <section className="prompt-editor panel">
         <h2>{LABELS[detail.id] || detail.id}</h2><p>当前生效：{active.version}。保存草稿不会影响学生；发布后的新任务才使用新版本。</p>
-        {historicalMissing && <p role="alert">记录中的历史版本尚未归档，无法定位原文。下方为当前版本，请勿把它当作当时使用的版本。</p>}
+        {historicalMissing && <Notice tone="warning" role="alert">记录中的历史版本尚未归档，无法定位原文。下方为当前版本，请勿把它当作当时使用的版本。</Notice>}
         {!detail.editable && <p>评测评分标准由开发维护者管理，内容平台只读。</p>}
-        <label>查看版本<select aria-label="查看版本" disabled={manager.busy || dirty} value={revision.revisionId} onChange={(event) => {
+        <SelectField label="查看版本" disabled={manager.busy || dirty} value={revision.revisionId} onChange={(event) => {
           const next = detail.revisions.find((item) => item.revisionId === event.target.value); if (next) choose(detail, next);
-        }}>{detail.revisions.map((item) => <option key={item.revisionId} value={item.revisionId}>{item.version} · {item.revisionId === detail.activeRevisionId ? "生效中" : item.published ? "曾发布" : "草稿"}</option>)}</select></label>
+        }}>{detail.revisions.map((item) => <option key={item.revisionId} value={item.revisionId}>{item.version} · {item.revisionId === detail.activeRevisionId ? "生效中" : item.published ? "曾发布" : "草稿"}</option>)}</SelectField>
         <small>内容摘要：{revision.contentHash}</small>
-        <label>提示词正文<textarea aria-label="提示词正文" rows={15} value={text} readOnly={!detail.editable} disabled={manager.busy} onChange={(event) => { setText(event.target.value); manager.setPreview(""); }} /></label>
+        <TextAreaField label="提示词正文" rows={15} value={text} readOnly={!detail.editable} disabled={manager.busy} onChange={(event) => { setText(event.target.value); manager.setPreview(""); }} />
         <p>保留变量：{detail.variables.map((name) => `\${${name}}`).join("、")}</p>
-        <div className="prompt-actions">{dirty && <button disabled={manager.busy} onClick={() => setText(revision.text)}>放弃未保存修改</button>}<button className="prompt-primary" disabled={manager.busy || !detail.editable || !dirty} onClick={() => void manager.save(detail, text, revision.revisionId, (saved) => setSelectedRevisionId(saved.revisionId))}>保存为新草稿</button>
-          <button disabled={manager.busy || dirty} onClick={() => void manager.render(detail, revision, variables)}>预览已保存版本</button>
-          {manager.canPublish && detail.editable && <button disabled={manager.busy || dirty || revision.revisionId === detail.activeRevisionId || (!revision.published && !revision.previewed)} onClick={() => void manager.activate(detail, revision, revision.published ? "rollback" : "publish")}>{revision.published ? "回滚到此版本" : "发布此草稿"}</button>}
+        <div className="prompt-actions">{dirty && <Button disabled={manager.busy} onClick={() => setText(revision.text)}>放弃未保存修改</Button>}<Button variant="primary" className="prompt-primary" disabled={manager.busy || !detail.editable || !dirty} onClick={() => void manager.save(detail, text, revision.revisionId, (saved) => setSelectedRevisionId(saved.revisionId))}>保存为新草稿</Button>
+          <Button disabled={manager.busy || dirty} onClick={() => void manager.render(detail, revision, variables)}>预览已保存版本</Button>
+          {manager.canPublish && detail.editable && <Button disabled={manager.busy || dirty || revision.revisionId === detail.activeRevisionId || (!revision.published && !revision.previewed)} onClick={() => void manager.activate(detail, revision, revision.published ? "rollback" : "publish")}>{revision.published ? "回滚到此版本" : "发布此草稿"}</Button>}
         </div>
         <details><summary>与当前生效版本比较</summary><div className="prompt-compare"><div><h3>当前生效</h3><pre>{active.text}</pre></div><div><h3>当前编辑</h3><pre>{text}</pre></div></div></details>
-        <label>样例变量<textarea aria-label="样例变量" rows={6} value={variables} disabled={manager.busy} onChange={(event) => setVariables(event.target.value)} /></label>
+        <TextAreaField label="样例变量" rows={6} value={variables} disabled={manager.busy} onChange={(event) => setVariables(event.target.value)} />
         <p>默认样例为合成数据，可替换为脱敏样例。变量预览不调用模型，不代表教学效果验证。</p>
         {manager.preview && <section aria-label="渲染预览"><h3>渲染预览</h3><pre>{manager.preview}</pre></section>}
         <details><summary>发布记录（{detail.events.length}）</summary>{detail.events.map((event, index) => <p key={index}>{event.action === "rollback" ? "回滚" : "发布"} · {new Date(event.createdAt * 1000).toLocaleString()} · {event.createdBy} · {event.revisionId}</p>)}</details>
       </section>}
     </div>}
-    {manager.error && <p className="prompt-error" role="alert">{manager.error}</p>}
-    {manager.notice && <p role="status">{manager.notice}</p>}
+    {manager.error && <Notice tone="danger" className="prompt-error">{manager.error}</Notice>}
+    {manager.notice && <Notice tone="info" className="prompt-notice">{manager.notice}</Notice>}
   </main>;
 }

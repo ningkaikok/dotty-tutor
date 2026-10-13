@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button, Notice, SelectField, Skeleton, TextAreaField, TextField } from "../../components/ui";
 import { apiResourceUrl } from "../../api/client";
 import type { QualityReviewCase, QualityReviewInboxItem } from "../../api/qualityReviews";
 import { useQualityReview } from "./useQualityReview";
@@ -38,29 +39,29 @@ export function CaseReviewPanel({
       </div>
       <div className="quality-review-panel-actions">
         {review.hasCounts && <span>{review.counts.pendingCount} 项待复核 · {review.counts.reviewedCount} 项已复核</span>}
-        <button type="button" disabled={review.busy || review.transitioning || review.inboxLoading} onClick={() => void review.refresh()}>刷新来源案例</button>
-        {showReturn && <button type="button" onClick={onReturn}>{returnLabel}</button>}
+        <Button disabled={review.busy || review.transitioning || review.inboxLoading} onClick={() => void review.refresh()}>刷新来源案例</Button>
+        {showReturn && <Button onClick={onReturn}>{returnLabel}</Button>}
       </div>
     </header>
 
-    {review.inboxError && <p className="quality-review-alert" role="alert">来源案例列表无法读取：{review.inboxError}</p>}
-    {review.error && <p className="quality-review-alert" role="alert">{review.error}{review.selectedCaseId && <button type="button" disabled={review.transitioning || review.busy} onClick={() => void review.openCase(review.selectedCaseId)}>重试打开案例</button>}</p>}
-    {review.notice && <p className="quality-review-notice" role="status">{review.notice}</p>}
-    {review.requestedCaseMissing && <p className="quality-review-alert" role="alert">当前复核上下文中找不到这个案例；请返回“我的教材”重新打开，或调整教材与章节筛选。</p>}
+    {review.inboxError && <Notice tone="danger" className="quality-review-alert">来源案例列表无法读取：{review.inboxError}</Notice>}
+    {review.error && <Notice tone="danger" className="quality-review-alert">{review.error}{review.selectedCaseId && <Button variant="quiet" disabled={review.transitioning || review.busy} onClick={() => void review.openCase(review.selectedCaseId)}>重试打开案例</Button>}</Notice>}
+    {review.notice && <Notice tone="info" className="quality-review-notice">{review.notice}</Notice>}
+    {review.requestedCaseMissing && <Notice tone="danger" className="quality-review-alert">当前复核上下文中找不到这个案例；请返回“我的教材”重新打开，或调整教材与章节筛选。</Notice>}
 
     <div className="quality-review-layout">
       <aside className="quality-review-sidebar" aria-label="来源复核案例">
         {!chapterId && <div className="quality-review-list-filters">
-          <label>按教材或来源筛选<select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+          <SelectField label="按教材或来源筛选" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
             <option value="">全部来源</option>{sourceOptions.map(([key, title]) => <option key={key} value={key}>{title}</option>)}
-          </select></label>
-          <label>按章节筛选<select value={chapterFilter} onChange={(event) => setChapterFilter(event.target.value)}>
+          </SelectField>
+          <SelectField label="按章节筛选" value={chapterFilter} onChange={(event) => setChapterFilter(event.target.value)}>
             <option value="">全部章节</option>{chapterOptions.map((id) => <option key={id} value={id}>{id}</option>)}
-          </select></label>
+          </SelectField>
         </div>}
         <section className="panel">
           <h3>{chapterId ? "本章来源案例" : "来源案例"}</h3>
-          {review.inboxLoading && <p role="status">正在读取来源案例…</p>}
+          {review.inboxLoading && <Skeleton label="正在读取来源案例…" rows={2} />}
           {!review.inboxLoading && !review.inboxError && visibleCases.length === 0 && <p>{chapterId ? "当前来源尚未关联复核案例。" : "没有符合筛选条件的来源案例。"}</p>}
           <ul className="quality-review-case-list">{visibleCases.map((item) => <li key={item.caseId}>
             <button type="button" aria-current={item.caseId === review.selectedCaseId ? "true" : undefined} aria-label={`复核来源案例 ${item.externalCaseId}`} onClick={() => void review.openCase(item.caseId)}>
@@ -104,11 +105,11 @@ export function CaseReviewPanel({
             <h3>{packageSource.assetVerification === "server_hash_verified" ? "提交你的最终单人教材决定" : "记录待核验意见"}</h3><p>当前身份未验证为独立复核者。显示姓名仅用于记录；不同姓名不会被视为不同审阅者。</p>
             {review.detail.decisions.map((item) => <article className="quality-review-prior-decision" key={item.reviewId}><strong>{item.displayName || item.actorId} · {item.stage === "provisional" ? "临时" : "最终"}{decisionLabels[item.decision]}</strong><span>版本 {item.reviewedRecordVersion} · {item.stage === "provisional" ? "原页未核验" : "原页已核验"} · {new Date(item.createdAt * 1000).toLocaleString()}</span>{item.claimedQuote && <blockquote>用户自报摘录（未由服务端核验）：{item.claimedQuote}</blockquote>}{item.verifiedQuote && <blockquote>服务端核对摘录：{item.verifiedQuote}</blockquote>}<p>{item.rationale}</p></article>)}
             <div className="quality-review-decision-form">
-              <label>显示姓名<input value={review.displayName} maxLength={128} onChange={(event) => review.setDisplayName(event.target.value)} placeholder="仅作显示，身份未验证" /></label>
-              <label>意见<select value={review.decision} onChange={(event) => review.setDecision(event.target.value as "accepted" | "rejected" | "needs_changes")}><option value="accepted">初步认可</option><option value="rejected">初步拒绝</option><option value="needs_changes">待补充依据</option></select></label>
-              <label>复核理由<textarea rows={4} value={review.rationale} onChange={(event) => review.setRationale(event.target.value)} placeholder="说明你查看了哪些来源证据以及仍需核对的内容" /></label>
-              <label>{packageSource.assetVerification === "server_hash_verified" ? "原文核对摘录（系统会与受管教材原页比对）" : "用户自报原文摘录（未接入教材原页，不会标为已核验）"}<textarea rows={2} value={review.verifiedQuote} onChange={(event) => review.setVerifiedQuote(event.target.value)} placeholder="复制原页中与你的决定相关的准确文字" /></label>
-              <button type="button" className="quality-review-primary" disabled={!review.rationale.trim() || review.busy || review.transitioning} onClick={() => void review.saveDecision()}>{review.busy ? "保存中…" : (review.verifiedQuote.trim() && packageSource.assetVerification === "server_hash_verified") || review.detail.sourceVerification === "human_quote_verified" ? "提交最终单人决定" : "保存待核验意见"}</button>
+              <TextField label="显示姓名" value={review.displayName} maxLength={128} onChange={(event) => review.setDisplayName(event.target.value)} placeholder="仅作显示，身份未验证" />
+              <SelectField label="意见" value={review.decision} onChange={(event) => review.setDecision(event.target.value as "accepted" | "rejected" | "needs_changes")}><option value="accepted">初步认可</option><option value="rejected">初步拒绝</option><option value="needs_changes">待补充依据</option></SelectField>
+              <TextAreaField label="复核理由" rows={4} value={review.rationale} onChange={(event) => review.setRationale(event.target.value)} placeholder="说明你查看了哪些来源证据以及仍需核对的内容" />
+              <TextAreaField label={packageSource.assetVerification === "server_hash_verified" ? "原文核对摘录（系统会与受管教材原页比对）" : "用户自报原文摘录（未接入教材原页，不会标为已核验）"} rows={2} value={review.verifiedQuote} onChange={(event) => review.setVerifiedQuote(event.target.value)} placeholder="复制原页中与你的决定相关的准确文字" />
+              <Button variant="primary" className="quality-review-primary" busy={review.busy} disabled={!review.rationale.trim() || review.transitioning} onClick={() => void review.saveDecision()}>{review.busy ? "保存中…" : (review.verifiedQuote.trim() && packageSource.assetVerification === "server_hash_verified") || review.detail.sourceVerification === "human_quote_verified" ? "提交最终单人决定" : "保存待核验意见"}</Button>
             </div>
           </section>
         </>}
@@ -188,12 +189,12 @@ function QualityReviewQuickRevision({ detail, onSubmit, busy }: {
   };
   return <section className="quality-review-quick-revision">
     <h4>修订案例要点</h4><p>用普通字段追加新快照；系统保留其他来源与 OCR 记录，不覆盖旧版决定。</p>
-    <label>问题或题目<textarea rows={2} value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={4000} /></label>
-    <label>原文或输入段落<textarea rows={3} value={passage} onChange={(event) => setPassage(event.target.value)} maxLength={12000} /></label>
-    <label>预期答案（每行一项）<textarea rows={3} value={answers} onChange={(event) => setAnswers(event.target.value)} maxLength={4000} /></label>
-    <label>预期原文依据<textarea rows={2} value={evidence} onChange={(event) => setEvidence(event.target.value)} maxLength={4000} /></label>
-    <label>实际观察补充<textarea rows={2} value={observation} onChange={(event) => setObservation(event.target.value)} maxLength={4000} /></label>
-    <button type="button" disabled={busy} onClick={submit}>保存内容修订</button>
+    <TextAreaField label="问题或题目" rows={2} value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={4000} />
+    <TextAreaField label="原文或输入段落" rows={3} value={passage} onChange={(event) => setPassage(event.target.value)} maxLength={12000} />
+    <TextAreaField label="预期答案（每行一项）" rows={3} value={answers} onChange={(event) => setAnswers(event.target.value)} maxLength={4000} />
+    <TextAreaField label="预期原文依据" rows={2} value={evidence} onChange={(event) => setEvidence(event.target.value)} maxLength={4000} />
+    <TextAreaField label="实际观察补充" rows={2} value={observation} onChange={(event) => setObservation(event.target.value)} maxLength={4000} />
+    <Button disabled={busy} onClick={submit}>保存内容修订</Button>
   </section>;
 }
 
@@ -221,9 +222,9 @@ function QualityReviewRevisionEditor({ detail, onSubmit, busy }: {
   };
   return <details className="quality-review-revision-editor"><summary>高级：结构化快照修订</summary>
     <p>仅在需要调整非标准字段时使用；编辑会产生新版本并保留原始决定。</p>
-    {(["input", "expected", "actual"] as const).map((key) => <label key={key}>{key === "input" ? "案例输入" : key === "expected" ? "预期结果" : "实际观察"}<textarea rows={7} value={snapshot[key]} onChange={(event) => setSnapshot((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
-    {error && <p className="quality-review-alert" role="alert">{error}</p>}
-    <button type="button" className="quality-review-primary" disabled={busy} onClick={() => void submit()}>追加结构化版本</button>
+    {(["input", "expected", "actual"] as const).map((key) => <TextAreaField key={key} label={key === "input" ? "案例输入" : key === "expected" ? "预期结果" : "实际观察"} rows={7} value={snapshot[key]} onChange={(event) => setSnapshot((current) => ({ ...current, [key]: event.target.value }))} />)}
+    {error && <Notice tone="danger" className="quality-review-alert">{error}</Notice>}
+    <Button variant="primary" className="quality-review-primary" disabled={busy} onClick={() => void submit()}>追加结构化版本</Button>
   </details>;
 }
 

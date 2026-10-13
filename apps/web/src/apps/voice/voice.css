@@ -54,7 +54,7 @@
 }
 
 .voice-tutor-history b,
-.voice-tutor-transcript > span {
+.voice-tutor-transcript > label {
   font-size: 0.82rem;
 }
 

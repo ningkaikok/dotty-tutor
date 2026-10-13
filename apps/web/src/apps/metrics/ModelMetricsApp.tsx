@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Notice, Skeleton } from "../../components/ui";
 import { useNavigate, useSearchParams } from "react-router";
 import { loadLearningCostReport, type LearningCostReport } from "../../api/metrics";
 import { PRODUCT_TERMS } from "../../productTerms";
@@ -78,8 +79,8 @@ export function ModelMetricsApp() {
       {evaluationSelected ? (
         <section id="metrics-content-panel" className="panel metrics-panel metrics-evaluation-panel" role="tabpanel" aria-labelledby="metrics-tab-evaluation">
           <header><span className="eyebrow">高级教学工具 · 来源案例</span><h2>模型评测</h2><p>可选用各来源包中的冻结案例开展两模型匿名对比、人工评分和历史复查。打开此页不会自动启动运行。</p></header>
-          {evaluation.loading && <p role="status">正在读取所有来源案例…</p>}
-          {evaluation.error && <p role="alert">评测案例读取失败：{evaluation.error}</p>}
+          {evaluation.loading && <Skeleton label="正在读取所有来源案例…" />}
+          {evaluation.error && <Notice tone="danger">评测案例读取失败：{evaluation.error}</Notice>}
           {!evaluation.loading && !evaluation.error && <QualityReviewRunsPanel cases={evaluation.items} />}
         </section>
       ) : (
@@ -107,8 +108,8 @@ export function ModelMetricsApp() {
         </div>
 
         <div className="metrics-body">
-          {loading && <p role="status" className="muted">报告加载中…</p>}
-          {error && <p role="alert" className="error-text">{error}</p>}
+          {loading && <Skeleton label="报告加载中…" rows={4} />}
+          {error && <Notice tone="danger">{error}</Notice>}
           {!loading && !error && report && learning && (
             <>
               <div className="metrics-scope-note" role="note">

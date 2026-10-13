@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Button, Notice, SelectField, TextAreaField } from "../../components/ui";
 import type { QualityReviewRunCase } from "../../api/qualityReviewRuns";
 import type { QualityReviewCaseSummary } from "../../api/qualityReviews";
 import { useQualityReviewRuns } from "./useQualityReviewRuns";
@@ -50,7 +51,7 @@ export function QualityReviewRunsPanel({ cases: availableCases }: Props) {
 
   return <section className="quality-runs panel" aria-label="有界模型对比">
     <div className="quality-runs-heading"><div><span className="eyebrow">持久化运行 · 匿名 A/B</span><h2>模型对比与人工评分</h2></div>
-      <button type="button" onClick={() => void refresh()} disabled={busy}>刷新</button></div>
+      <Button onClick={() => void refresh()} disabled={busy}>刷新</Button></div>
     <p className="quality-runs-description">每次最多运行 6 案，单次模型调用最多 60 秒，总时间最多 300 秒。人工评分前隐藏模型身份；失败臂不能评分或排名。</p>
     <div className="quality-runs-launch">
       <fieldset><legend>选择冻结案例（最多 6 项）</legend>
@@ -60,17 +61,17 @@ export function QualityReviewRunsPanel({ cases: availableCases }: Props) {
           <span>{item.externalCaseId} · {item.subject} · PDF 第 {item.sourcePage} 页 · 版本 {item.recordVersion}</span>
         </label>)}
       </fieldset>
-      <label>任务要求<textarea rows={3} value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={4000} /></label>
-      <label>基线模型<select value={baseline} onChange={(event) => setBaseline(event.target.value)}>{choices.map((item) => <option key={`${item.provider}/${item.model}`} value={`${item.provider}/${item.model}`}>{item.label}</option>)}</select></label>
-      <label>候选模型<select value={candidate} onChange={(event) => setCandidate(event.target.value)}>{choices.map((item) => <option key={`${item.provider}/${item.model}`} value={`${item.provider}/${item.model}`}>{item.label}</option>)}</select></label>
-      <button className="quality-review-primary" type="button" disabled={busy || selectedCaseIds.length === 0 || !choices.length || baseline === candidate} onClick={onStart}>启动有界运行</button>
+      <TextAreaField label="任务要求" rows={3} value={instruction} onChange={(event) => setInstruction(event.target.value)} maxLength={4000} />
+      <SelectField label="基线模型" value={baseline} onChange={(event) => setBaseline(event.target.value)}>{choices.map((item) => <option key={`${item.provider}/${item.model}`} value={`${item.provider}/${item.model}`}>{item.label}</option>)}</SelectField>
+      <SelectField label="候选模型" value={candidate} onChange={(event) => setCandidate(event.target.value)}>{choices.map((item) => <option key={`${item.provider}/${item.model}`} value={`${item.provider}/${item.model}`}>{item.label}</option>)}</SelectField>
+      <Button variant="primary" className="quality-review-primary" disabled={busy || selectedCaseIds.length === 0 || !choices.length || baseline === candidate} onClick={onStart}>启动有界运行</Button>
     </div>
-    {error && <p role="alert" className="quality-review-alert">{error}</p>}
-    {notice && <p role="status" className="quality-review-notice">{notice}</p>}
+    {error && <Notice tone="danger" className="quality-review-alert">{error}</Notice>}
+    {notice && <Notice tone="info" className="quality-review-notice">{notice}</Notice>}
     {run && <RunResult run={run} caseById={caseById} busy={busy} onCancel={() => void cancel()} onRate={(value) => void rate(value)} onStatistics={() => void loadStatistics()} />}
     {statistics && <section className="quality-runs-result"><h3>探索性统计</h3><pre>{JSON.stringify(statistics, null, 2)}</pre><p>此运行最多 6 案，统计仅供单次探索，不代表正式模型排名。</p></section>}
     <section className="quality-runs-gold"><div><h3>正式人工金标准</h3><p>需要受信人工作者、同一冻结版本上两位不同且身份已验证的最终审核者，并达到 50 案及覆盖门槛。</p></div>
-      <button type="button" onClick={() => void loadGoldExport()}>检查导出门槛</button>
+      <Button onClick={() => void loadGoldExport()}>检查导出门槛</Button>
       {goldExport && <pre>{JSON.stringify(goldExport, null, 2)}</pre>}
     </section>
   </section>;
@@ -87,11 +88,11 @@ function RunResult({ run, caseById, busy, onCancel, onRate, onStatistics }: {
   return <section className="quality-runs-result" aria-live="polite">
     <div className="quality-runs-heading"><div><h3>运行 {run.status === "queued" ? "排队中" : run.status === "running" ? "执行中" : run.status === "completed" ? "已完成" : run.status === "cancelled" ? "已取消" : "失败"}</h3>
       <p>记录 {run.runId.slice(0, 12)}… · {run.cases.length} 案 · 每次调用最多 {run.perCallTimeoutSeconds}s</p></div>
-      {run.status === "queued" || run.status === "running" ? <button type="button" onClick={onCancel} disabled={busy}>取消运行</button> : <button type="button" onClick={onStatistics}>查看统计</button>}
+      {run.status === "queued" || run.status === "running" ? <Button onClick={onCancel} disabled={busy}>取消运行</Button> : <Button onClick={onStatistics}>查看统计</Button>}
     </div>
     <p className="quality-runs-task"><strong>本次任务要求：</strong>{run.taskInstruction}</p>
     {run.models && <p>揭盲：基线 {run.models.baseline.provider}/{run.models.baseline.model} · 候选 {run.models.candidate.provider}/{run.models.candidate.model}</p>}
-    {run.error && <p className="quality-review-alert">{run.error.message}</p>}
+    {run.error && <Notice tone="danger" className="quality-review-alert">{run.error.message}</Notice>}
     {run.cases.map((item) => <RunCase key={item.caseId} item={item} caseSummary={caseById.get(item.caseId)} run={run} busy={busy} onRate={onRate} />)}
   </section>;
 }
@@ -162,8 +163,8 @@ function RatingForm({ caseId, busy, onRate }: {
     <h5>提交你的匿名评分</h5>
     <label><input type="checkbox" checked={aPass} onChange={(event) => setAPass(event.target.checked)} />A 满足任务要求</label>
     <label><input type="checkbox" checked={bPass} onChange={(event) => setBPass(event.target.checked)} />B 满足任务要求</label>
-    <label>偏好<select value={preferred} onChange={(event) => setPreferred(event.target.value as typeof preferred)}><option value="A">A</option><option value="B">B</option><option value="tie">相同</option><option value="neither">都不合格</option></select></label>
-    <label>评分理由<textarea required minLength={1} maxLength={2000} value={rationale} onChange={(event) => setRationale(event.target.value)} /></label>
-    <button className="quality-review-primary" disabled={busy || !rationale.trim()}>保存评分</button>
+    <SelectField label="偏好" value={preferred} onChange={(event) => setPreferred(event.target.value as typeof preferred)}><option value="A">A</option><option value="B">B</option><option value="tie">相同</option><option value="neither">都不合格</option></SelectField>
+    <TextAreaField label="评分理由" required minLength={1} maxLength={2000} value={rationale} onChange={(event) => setRationale(event.target.value)} />
+    <Button type="submit" variant="primary" className="quality-review-primary" disabled={busy || !rationale.trim()}>保存评分</Button>
   </form>;
 }
