@@ -45,6 +45,8 @@ export function useCoursewarePlanWorkflow() {
   const [objectives, setObjectives] = useState("");
   const [pageStart, setPageStart] = useState("");
   const [pageEnd, setPageEnd] = useState("");
+  // Supplementing opens a new plan form over an approved plan; its lessons are retained server-side.
+  const [supplementing, setSupplementing] = useState(false);
 
   const refreshWorkspace = useCallback(async (id: string) => {
     setLoading(true);
@@ -52,6 +54,7 @@ export function useCoursewarePlanWorkflow() {
     setChapter(null);
     setPlan(null);
     setPlanLoaded(false);
+    setSupplementing(false);
     try {
       const loadedChapter = await loadChapter(id);
       setChapter(loadedChapter);
@@ -170,16 +173,30 @@ export function useCoursewarePlanWorkflow() {
   };
 
   const selectCompletionRange = (range: CompletionRange) => {
-    if (!chapter || !planLoaded || plan || busy) return;
+    if (!chapter || !planLoaded || busy) return;
+    // Only a finished approved plan can be supplemented; any other plan must be finished first.
+    if (plan && !(range.supplement && plan.status === "approved")) return;
     const rangeError = checkRange(range.pageStart, range.pageEnd, 30);
     if (rangeError) { setError(rangeError); return; }
+    setSupplementing(range.supplement);
     setPageStart(String(range.pageStart));
     setPageEnd(String(range.pageEnd));
-    setNotice(`已选择教材原页 ${range.pageStart}–${range.pageEnd}；请核对下方规划范围、学习对象与目标，再生成规划供教师确认。`);
+    if (range.supplement) setObjectives("");
+    setNotice(range.supplement
+      ? `已选择补齐教材原页 ${range.pageStart}–${range.pageEnd}；已确认的课时会保留。请填写本批学习目标，再生成规划供教师确认。`
+      : `已选择教材原页 ${range.pageStart}–${range.pageEnd}；请核对下方规划范围、学习对象与目标，再生成规划供教师确认。`);
+  };
+
+  const cancelSupplement = () => {
+    if (!plan) return;
+    setSupplementing(false);
+    setPageStart(String(plan.pageStart));
+    setPageEnd(String(plan.pageEnd));
+    setNotice("");
   };
 
   const startPlan = async () => {
-    if (!chapter || !planLoaded || plan) return;
+    if (!chapter || !planLoaded || (plan && !supplementing)) return;
     const requested = objectives.split(/\n+/).map((item) => item.trim()).filter(Boolean);
     const start = pageStart.trim() ? Number(pageStart) : undefined;
     const end = pageEnd.trim() ? Number(pageEnd) : undefined;
@@ -200,8 +217,10 @@ export function useCoursewarePlanWorkflow() {
         pageStart: start,
         pageEnd: end,
         expectedRecordVersion: chapter.recordVersion,
+        supplement: supplementing,
       });
       setPlan(planView(result.plan));
+      setSupplementing(false);
       if (result.job) {
         setJob(result.job);
         setJobPurpose("plan");
@@ -245,7 +264,9 @@ export function useCoursewarePlanWorkflow() {
         commandId: crypto.randomUUID(),
       });
       setPlan(planView(result.plan));
-      setDocuments(result.documents.map((item) => ({ coursewareId: item.coursewareId, title: item.title, status: item.status, generationStatus: item.generationStatus, pageCount: item.pages?.length ?? 0, recordVersion: item.recordVersion, publicationId: item.publicationId })));
+      // Append: lessons of retained batches stay listed next to the newly confirmed ones.
+      const confirmed = result.documents.map((item) => ({ coursewareId: item.coursewareId, title: item.title, status: item.status, generationStatus: item.generationStatus, pageCount: item.pages?.length ?? 0, recordVersion: item.recordVersion, publicationId: item.publicationId }));
+      setDocuments((current) => [...current.filter((item) => !confirmed.some((next) => next.coursewareId === item.coursewareId)), ...confirmed]);
       setNotice("规划已确认；每个课时已建立独立课件页面任务。可打开页面查看生成进度。");
     } catch (requestError) {
       setError(coursewareErrorMessage(requestError, "确认规划失败；请刷新后检查版本冲突。"));
@@ -262,14 +283,15 @@ export function useCoursewarePlanWorkflow() {
     clearWorkflow();
     setParams({ chapterId: id });
   };
-  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
+  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setSupplementing(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
 
   return {
     uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,
     languagePolicy, setLanguagePolicy, durationMinutes, setDurationMinutes, objectives, setObjectives,
     pageStart, setPageStart, pageEnd, setPageEnd, startSourcePreparation, startPlan, savePlan, approvePlan,
-    chooseUpload, chooseChapter, planLoaded, selectCompletionRange, reloadWorkspace: () => chapterId && refreshWorkspace(chapterId),
+    chooseUpload, chooseChapter, planLoaded, selectCompletionRange, supplementing, cancelSupplement,
+    reloadWorkspace: () => chapterId && refreshWorkspace(chapterId),
   };
 }
 

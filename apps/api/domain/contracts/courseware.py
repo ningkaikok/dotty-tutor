@@ -246,6 +246,10 @@ class CoursewarePlanCreate(BaseModel):
     expectedRecordVersion: int = Field(ge=1)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
     pageEnd: int | None = Field(default=None, ge=1, le=100_000)
+    # True keeps the approved plan's courseware as a retained batch and only
+    # accepts pages outside every planned/generated range. False replaces the
+    # whole plan, which is the original single-plan behaviour.
+    supplement: bool = False
 
     @model_validator(mode="after")
     def validate_page_range(self) -> CoursewarePlanCreate:
@@ -254,6 +258,20 @@ class CoursewarePlanCreate(BaseModel):
         if self.pageStart is not None and self.pageEnd is not None and self.pageEnd < self.pageStart:
             raise ValueError("pageEnd 不能早于 pageStart")
         return self
+
+
+class CoursewareRetainedBatch(BaseModel):
+    """An earlier approved plan whose courseware stays editable after a supplement.
+
+    Objectives are frozen with the batch because its pages reference these IDs,
+    not the objectives of whichever plan is currently open.
+    """
+
+    planVersion: int = Field(ge=1)
+    pageStart: int = Field(ge=1, le=100_000)
+    pageEnd: int = Field(ge=1, le=100_000)
+    objectives: list[CoursewareObjective] = Field(default_factory=list, max_length=12)
+    coursewareIds: list[str] = Field(default_factory=list, max_length=120)
 
 
 class CoursewarePlan(BaseModel):
@@ -278,6 +296,7 @@ class CoursewarePlan(BaseModel):
     generationAudit: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=24)
     generationStatus: Literal["queued", "running", "completed", "failed", "cancelled"] = "completed"
     coursewareIds: list[str] = Field(default_factory=list, max_length=120)
+    retainedBatches: list[CoursewareRetainedBatch] = Field(default_factory=list, max_length=50)
     createdAt: float
     updatedAt: float
 
@@ -316,6 +335,11 @@ class CoursewarePlan(BaseModel):
             raise ValueError("session、section 和 page ID 必须唯一")
         if len(objective_ids) != len(set(objective_ids)):
             raise ValueError("教学目标 ID 必须唯一")
+        retained_versions = [batch.planVersion for batch in self.retainedBatches]
+        if len(retained_versions) != len(set(retained_versions)) or any(
+            version >= self.planVersion for version in retained_versions
+        ):
+            raise ValueError("保留批次必须是更早且互不重复的规划版本")
         return self
 
 
@@ -857,6 +881,9 @@ class CoursewareCompletion(BaseModel):
     pendingPublicationPages: list[int]
     existingPlan: CoursewareCompletionPlan | None = None
     canCreatePlan: bool
+    # When true the suggested batch must be created with supplement=True so the
+    # approved plan's courseware is retained instead of replaced.
+    supplementsExistingPlan: bool = False
     action: Literal["create_plan", "continue_plan", "wait_generation", "review_generated", "repair_source", "complete"]
     requiresHumanReview: Literal[True] = True
 

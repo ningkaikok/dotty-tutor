@@ -30,7 +30,8 @@ export function CoursewareCoveragePanel({ chapterId, revisionKey, sourceRevision
       {completionError ? <Notice tone="danger">补齐建议暂时无法读取：{completionError} <Button onClick={refresh}>重试补齐建议</Button></Notice> : !completion ? <Skeleton label="正在整理补齐建议…" rows={1} /> : <>
         {state?.sourceChanged ? <Notice tone="warning" role="alert">来源版本已变化，请刷新教材章节后重新读取建议；当前页段不能用于规划。</Notice> : state?.versionChanged ? <Notice tone="warning" role="alert">章节版本已变化，请刷新页面核对现有规划，避免覆盖其他修改。</Notice> : <>
           <p>按连续教材原页分批，每批最多 {completion.maxPagesPerBatch} 页；已生成和已有规划覆盖的原页不会再列入建议。</p>
-          {state?.hasPlan && <Notice tone="info">{state.planStale ? "现有规划引用旧来源，请先核对来源与规划版本。" : state.planStatus === "approved" ? "已确认规划请从下方课时课件继续生成与复核。" : "已有规划请在下方编辑器核对、保存并确认。"} 补齐建议不会覆盖现有规划；扩展单元须遵循原规划生命周期。</Notice>}
+          {state?.supplement ? <Notice tone="info">已确认的课时会保留，可继续编辑、审核和发布；选择下方页段只补齐其余原页，不会重做已规划、已生成或已发布的页面。</Notice>
+            : state?.hasPlan && <Notice tone="info">{state.planStale ? "现有规划引用旧来源，请先核对来源与规划版本。" : state.planStatus === "approved" ? "已确认规划请从下方课时课件继续生成与复核。" : "已有规划请在下方编辑器核对、保存并确认。"} 补齐建议不会覆盖现有规划；扩展单元须遵循原规划生命周期。</Notice>}
           {completion.action === "wait_generation" && <Notice tone="info">现有生成任务仍在处理中，请等待任务结束再核对补齐建议。</Notice>}
           {Boolean(completion.alreadyPlannedPages?.length) && <p>已纳入规划：原页 {sourcePageLabel(completion.alreadyPlannedPages ?? [])}。</p>}
           {Boolean(completion.alreadyGeneratedPages?.length) && <p>已生成：原页 {sourcePageLabel(completion.alreadyGeneratedPages ?? [])}。</p>}
@@ -38,7 +39,7 @@ export function CoursewareCoveragePanel({ chapterId, revisionKey, sourceRevision
           {Boolean(completion.pendingReviewPages?.length) && <p>待教师复核：原页 {sourcePageLabel(completion.pendingReviewPages ?? [])}；补齐来源不能替代逐页复核。</p>}
           {Boolean(completion.pendingPublicationPages?.length) && <p>尚未发布：原页 {sourcePageLabel(completion.pendingPublicationPages ?? [])}；请完成审核后从原课件工作台发布。</p>}
           {Boolean(completion.blockedPages?.length) && <Notice tone="warning">原页 {sourcePageLabel(completion.blockedPages ?? [])} 的来源缺失、为空或带阻断标记，请先修复来源再规划。</Notice>}
-          {completion.batches?.length ? <ol className="courseware-completion-batches" aria-label="连续缺口补齐页段">{completion.batches.map((batch) => <li key={`${batch.pageStart}-${batch.pageEnd}`}><span>教材原页 {sourcePageLabel(batch.sourcePages)}（{batch.sourcePages.length} 页）</span>{state?.canSelect && onSelectRange && <Button disabled={busy} onClick={() => onSelectRange({ pageStart: batch.pageStart, pageEnd: batch.pageEnd })}>规划教材原页 {sourcePageLabel(batch.sourcePages)}</Button>}</li>)}</ol> : <p>{completion.action === "complete" ? "来源范围内没有待补齐页段。" : "当前没有可新建规划的连续页段，请先处理来源或继续现有任务。"}</p>}
+          {completion.batches?.length ? <ol className="courseware-completion-batches" aria-label="连续缺口补齐页段">{completion.batches.map((batch) => <li key={`${batch.pageStart}-${batch.pageEnd}`}><span>教材原页 {sourcePageLabel(batch.sourcePages)}（{batch.sourcePages.length} 页）</span>{state?.canSelect && onSelectRange && <Button disabled={busy} onClick={() => onSelectRange({ pageStart: batch.pageStart, pageEnd: batch.pageEnd, supplement: state.supplement })}>{state.supplement ? "补齐" : "规划"}教材原页 {sourcePageLabel(batch.sourcePages)}</Button>}</li>)}</ol> : <p>{completion.action === "complete" ? "来源范围内没有待补齐页段。" : "当前没有可新建规划的连续页段，请先处理来源或继续现有任务。"}</p>}
           {state?.canSelect && onSelectRange && <p>选择页段只填写下方规划范围；仍需填写学习目标并由教师确认，不会自动生成页面、审核或发布。</p>}
         </>}
       </>}

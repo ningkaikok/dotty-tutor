@@ -1,6 +1,8 @@
 """Read current courseware drafts into the ordinary material review inbox."""
 from typing import Any
 
+from domain.courseware.batches import owns_document
+
 
 def courseware_review_tasks(chapter_store: Any, courseware_store: Any, *, chapter_id: str | None, upload_id: str | None) -> list[dict[str, Any]]:
     if chapter_store is None or courseware_store is None:
@@ -19,7 +21,7 @@ def courseware_review_tasks(chapter_store: Any, courseware_store: Any, *, chapte
         for document in courseware_store.list_documents(chapter["chapterId"]):
             if document.get("sourceRevisionId") != source["sourceRevisionId"] or document.get("status") == "published":
                 continue
-            if not plan or document.get("planVersion") != plan.get("planVersion"):
+            if not owns_document(plan, document):
                 continue
             pending = sum(page.get("reviewStatus") != "approved" for page in document.get("pages", []))
             tasks.append({"coursewareId": document["coursewareId"], "chapterId": chapter["chapterId"],

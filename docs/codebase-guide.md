@@ -106,7 +106,7 @@ dotty-tutor/
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   │                   # courseware.py、quality_review.py、quality_review_runs.py、lesson_media.py、voice.py 定义新增协议
 │   │   │   ├── chapters/       # material.py 文档分类与章节边界；source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
-│   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议
+│   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议；batches.py 当前规划与保留批次的课件归属
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -686,8 +686,9 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 
 ### 课件扩展链路（2026-10-12）
 
-`courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划版本的未发布课件加入“我的教材 → 待我复核”。
+`courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划及保留批次的未发布课件加入“我的教材 → 待我复核”。
 `courseware_completion` 在相同来源/章节锁下读取覆盖与任务状态，按连续、可用、未规划且未生成的原页分批；已有任务/规划引导继续原流程，不写入规划或审批。前端 `useCoursewareCoverage` 管理请求与来源变化，`coursewareCompletionView` 负责建议可选状态；选择页段仅填写既有规划表单。规划读取失败时不将其当作“没有规划”。
+已确认且生成完成的规划可按建议“补齐”：`create_plan(supplement=True)` 把旧规划转入 `retainedBatches`，`domain/courseware/batches.py` 让列表、读取、编辑、重做、发布、复核收件箱与任务回写同时接受当前规划和保留批次；前端 `useCoursewarePlanWorkflow` 的补齐模式在已确认规划之上打开新建表单并保留已有课时列表。
 `courseware_publication` 读取不可变发布 → 白名单讲解 → 既有 LessonMediaService/VoiceTutorService；不复制渲染、语音轮次或答案规则。
 `courseware_assets` 从保存的 ChapterRegion 推导裁图；缺坐标明确回退原页。恢复命令为 `scripts/restore-quality-review.py` 和 `scripts/restore-courseware-drafts.py`，只恢复待审，不复建批准。
 

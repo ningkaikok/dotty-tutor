@@ -469,7 +469,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/courseware/profiles` | 列出已注册学科配置，当前内置英语、数学和科学教师复核试点 |
-| `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202` |
+| `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202`；`supplement: true` 时保留已确认规划的课时为 `retainedBatches`，只接受未规划、未生成、未发布的原页，当前规划未确认时拒绝 |
 | `GET` / `PUT` | `/api/chapters/{chapter_id}/courseware-plan` | 读取或修改完整教学目标、课时、页面大纲和覆盖映射；修改要求 `expectedRecordVersion` |
 | `POST` | `/api/chapters/{chapter_id}/courseware-plan/approve` | 明确确认 `planVersion` 与 `expectedRecordVersion`，以 `commandId` 幂等创建课件及逐页生成任务，返回 `202` |
 | `GET` | `/api/chapters/{chapter_id}/courseware` | 列出该章节的课件制作记录 |
@@ -704,7 +704,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
 | GET | `/api/chapters/{chapter_id}/courseware-coverage` | 教师读取当前来源完整物理页段的覆盖及缺口；不能视为教学质量验收 |
-| GET | `/api/chapters/{chapter_id}/courseware-completion` | 教师只读取得连续缺口分批与后续动作；`maxPagesPerBatch` 默认 5、范围 1–20，不创建规划/任务 |
+| GET | `/api/chapters/{chapter_id}/courseware-completion` | 教师只读取得连续缺口分批与后续动作；`maxPagesPerBatch` 默认 5、范围 1–20，不创建规划/任务；已确认且生成完成的规划返回 `supplementsExistingPlan: true`，前端以补齐方式新建规划 |
 | POST / GET | `/api/courseware/{courseware_id}/media` | 教师创建或列出固定 publicationId 的课件媒体；创建需 sourceRevisionId 和 3–8 个不同 pageIds |
 | GET | `/api/courseware/{courseware_id}/media/published` | 按 publicationId 查询仅已批准、可分发的课件媒体 |
 | GET | `/api/courseware/{courseware_id}/media/published/{media_id}/asset` | 绑定课件和发布版本的受控 MP4 |

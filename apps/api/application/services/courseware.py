@@ -31,6 +31,13 @@ from domain.contracts.courseware import (
     CoursewareSourceRef,
 )
 from domain.courseware.assessment import assess_activity
+from domain.courseware.batches import (
+    active_plan_versions,
+    batches_after_supplement,
+    objectives_for_version,
+    owns_document,
+    retained_page_ranges,
+)
 from domain.courseware.model_output import generation_schema
 from domain.courseware.profiles import CoursewareProfileRegistry, courseware_profiles
 from domain.courseware.quality import document_page_issues, source_readiness_issues
@@ -263,7 +270,10 @@ class CoursewareService:
         for document in self.store.list_documents(chapter_id):
             if document.get("status") == "deleted":
                 continue
-            if plan and int(document.get("planVersion", 0)) != int(plan.get("planVersion", 0)):
+            # Retained batches stay listed; only drafts of replaced plans drop out.
+            if plan and int(document.get("planVersion", 0)) not in active_plan_versions(
+                plan, str(plan.get("sourceRevisionId")),
+            ):
                 continue
             items.append({key: document.get(key) for key in (
                 "coursewareId", "title", "status", "generationStatus", "recordVersion",
@@ -343,6 +353,10 @@ class CoursewareService:
                 if len(serialized_source) > 80_000:
                     raise ValueError("所选来源范围过长，请选择更小的完整教学范围")
                 existing = self.store.load_plan(chapter_id, lock=True)
+                retained_batches = (
+                    self._supplement_batches(chapter, source, existing, page_start, page_end)
+                    if request.supplement else []
+                )
                 existing_version = int(existing.get("recordVersion", 0)) if existing else 0
                 existing_plan_version = int(existing.get("planVersion", 0)) if existing else 0
                 next_plan_version = existing_plan_version + 1
@@ -384,6 +398,7 @@ class CoursewareService:
                     "coverageMap": {}, "status": "draft", "planVersion": next_plan_version,
                     "recordVersion": max(1, next_record_version), "generationJobId": job_id,
                     "generationStatus": "queued", "coursewareIds": [], "requestHash": request_hash,
+                    "retainedBatches": retained_batches,
                     "createdAt": existing.get("createdAt", now) if existing else now, "updatedAt": now,
                 }).model_dump()
                 saved_plan = self.store.save_record(
@@ -397,6 +412,33 @@ class CoursewareService:
                     idempotency_key=job_key, connection=connection, reject_payload_mismatch=True,
                 )
                 return {"plan": saved_plan, "job": self._job_summary(job)}
+
+    def _supplement_batches(
+        self, chapter: dict[str, Any], source: dict[str, Any], existing: dict[str, Any] | None,
+        page_start: int, page_end: int,
+    ) -> list[dict[str, Any]]:
+        """Validate a supplement range and return the batches it must retain.
+
+        A supplement never regenerates a page that already has live courseware,
+        an open plan, or a student-visible publication; redoing those pages stays
+        an explicit single-page regeneration or a full replacement plan.
+        """
+        from application.services.courseware_coverage import coverage_report
+
+        revision = source["sourceRevisionId"]
+        current = existing if existing and existing.get("sourceRevisionId") == revision else None
+        if current and current.get("status") != "approved":
+            raise ValueError("当前规划尚未确认，请先确认或修改当前规划后再补齐其余原页")
+        coverage = coverage_report(chapter, source, self.store)
+        claimed = (set(coverage["plannedPages"]) | set(coverage["generatedPages"])
+                   | set(coverage["publishedPages"]) | retained_page_ranges(current))
+        if current:
+            claimed.update(range(int(current["pageStart"]), int(current["pageEnd"]) + 1))
+        overlap = sorted(claimed & set(range(page_start, page_end + 1)))
+        if overlap:
+            shown = "、".join(str(number) for number in overlap[:10])
+            raise ValueError(f"补齐范围包含已规划、已生成或已发布的原页（{shown}），请只选择尚未覆盖的原页")
+        return batches_after_supplement(current, revision)
 
     def run_plan_generation(
         self, payload: dict[str, Any], cancellation_check: Any, context: JobExecutionContext,
@@ -485,6 +527,8 @@ class CoursewareService:
                 selected_pages = self._selected_pages(source, start, end)
                 if len(selected_pages) > 30:
                     raise ValueError("一次规划最多选择 30 个物理页；请拆分教学范围")
+                if retained_page_ranges(plan) & set(range(start, end + 1)):
+                    raise ValueError("规划范围不能包含已保留课时的原页；请只编辑本次补齐的页段")
                 self._validate_refs(edit.objectives, source, selected_pages)
                 self._validate_refs(edit.sessions, source, selected_pages)
                 coverage = {
@@ -675,8 +719,7 @@ class CoursewareService:
         if doc.get("sourceRevisionId") != source.get("sourceRevisionId"):
             raise ValueError("教材来源已变化，旧课件不能继续编辑")
         plan = self.store.load_plan(str(doc["chapterId"]), lock=lock)
-        if (not plan or plan.get("sourceRevisionId") != doc.get("sourceRevisionId")
-                or int(plan.get("planVersion", 0)) != int(doc.get("planVersion", -1))):
+        if not owns_document(plan, doc):
             raise LookupError("课件规划已更新，此草稿已被新版本取代")
         return chapter, source, doc
 
@@ -826,7 +869,7 @@ class CoursewareService:
                             document.get("assets", []), page_source_numbers,
                         ),
                     },
-                    "objectives": (plan or {}).get("objectives", []),
+                    "objectives": objectives_for_version(plan, int(document["planVersion"])),
                     "audience": document.get("audience", ""), "languagePolicy": document.get("languagePolicy", ""),
                     "frozenTemplate": self._frozen_template(template),
                     "runtimeSnapshot": current_job_runtime_snapshot(), "regenerationReason": reason.strip(),
@@ -1001,7 +1044,7 @@ class CoursewareService:
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         self._validate_refs(content, source, selected)
         plan = self.store.load_plan(chapter["chapterId"], lock=True)
-        objectives = {item["objectiveId"] for item in (plan or {}).get("objectives", [])}
+        objectives = {item["objectiveId"] for item in objectives_for_version(plan, int(document["planVersion"]))}
         if not set(content.objectiveIds).issubset(objectives):
             raise ValueError("页面只能引用已声明的教学目标")
         asset_ids = {item["assetId"] for item in document.get("assets", []) if item.get("status") == "available"}
@@ -1100,8 +1143,7 @@ class CoursewareService:
             with self.store.atomic() as connection:
                 chapter, source, document = self._document(courseware_id, lock=True)
                 plan = self.store.load_plan(chapter_id, lock=True)
-                if (not plan or plan.get("sourceRevisionId") != source["sourceRevisionId"]
-                        or int(plan.get("planVersion", 0)) != int(document.get("planVersion", -1))):
+                if not owns_document(plan, document) or document.get("sourceRevisionId") != source["sourceRevisionId"]:
                     raise ValueError("教材来源或课件规划已变化，不能发布旧草稿")
                 if int(document["recordVersion"]) != expected_record_version:
                     raise ValueError("课件已更新，请刷新后重新发布")
