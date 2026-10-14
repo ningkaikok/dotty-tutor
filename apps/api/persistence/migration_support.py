@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
 import time
 from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import Index, inspect, select, text
 from sqlalchemy.engine import Connection, Engine
 
 from domain.learning.mastery import (
@@ -22,6 +24,46 @@ from persistence.schema_registry import (
     iter_metadata,
     table_registry,
 )
+
+# One process migrates at a time; others wait on this session-level advisory lock.
+MIGRATION_LOCK_KEY = 734291507
+DEFAULT_MIGRATION_LOCK_TIMEOUT = "5s"
+_LOCK_TIMEOUT_PATTERN = re.compile(r"^[1-9][0-9]{0,5}(ms|s)$")
+
+
+def migration_lock_timeout() -> str:
+    """Bound how long one DDL statement may wait for a table lock during upgrade.
+
+    Without it an ALTER queues behind any long transaction and every request that
+    touches the table queues behind the ALTER, freezing the app. Failing fast lets
+    the deploy retry; the migration transaction rolls back cleanly.
+    """
+    value = os.getenv("DOTTY_MIGRATION_LOCK_TIMEOUT", DEFAULT_MIGRATION_LOCK_TIMEOUT).strip()
+    if not _LOCK_TIMEOUT_PATTERN.fullmatch(value):
+        raise ValueError("DOTTY_MIGRATION_LOCK_TIMEOUT 必须是如 500ms 或 5s 的时长")
+    return value
+
+
+def create_index_concurrently(index: Index) -> None:
+    """Build an index on an existing table without blocking its writes.
+
+    Use this (not ``op.create_index``) when adding an index to a table that may
+    already hold data. CONCURRENTLY cannot run inside a transaction, so it runs in
+    an autocommit block: revision steps before it are committed first. The
+    session-level migration lock in ``migrations/env.py`` keeps other migrators out.
+    """
+    from alembic import op
+
+    table = index.table
+    if table is None:
+        raise ValueError("索引必须绑定到表")
+    columns = ", ".join(quote_identifier(str(column.name)) for column in index.columns)
+    unique = "UNIQUE " if index.unique else ""
+    statement = (f"CREATE {unique}INDEX CONCURRENTLY IF NOT EXISTS {quote_identifier(str(index.name))} "
+                 f"ON {quote_identifier(table.name)} ({columns})")
+    with op.get_context().autocommit_block():
+        op.get_bind().execute(text(statement))
+
 
 LEGACY_MASTERY_TABLE = "mastery_states_legacy"
 LEGACY_PUBLICATION_ID = "legacy-mastery-v2"

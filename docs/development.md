@@ -377,6 +377,15 @@ schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表
 backup → preflight → upgrade → verify → deploy/restart
 ```
 
+Windows 本机（免安装 PostgreSQL + 手动启动的 8010 API）用一条命令完成以上流程：
+
+```powershell
+pwsh scripts/upgrade-local.ps1              # 已是最新则什么都不做；否则备份 → 预检 → 升级 → 校验
+pwsh scripts/upgrade-local.ps1 -RestartApi  # 另外只重启命令行为 uvicorn app:app 的 8010 进程，并等健康检查通过
+```
+
+脚本读取 `.env.local` 的 `POSTGRES_*`，用 `pg_dump -Fc` 备份到 `%LOCALAPPDATA%\dotty-tutor\backups`（保留最近 10 份）并用 `pg_restore --list` 确认可读；任一步失败即停止并打印对应的 `pg_restore` 恢复命令，不会自动恢复。升级被长事务锁住时会在 `DOTTY_MIGRATION_LOCK_TIMEOUT` 内失败回滚，版本不前进。请在终端直接运行，不要把输出接到管道。
+
 `mistake_items.error_reason`、`ai_error_reason` 和 `ai_error_reason_confidence` 仍是旧 API 兼容投影；
 `mistake_attributions` 记录追加式历史，旧列要经过观察窗口后才单独评估 contract/drop。
 
