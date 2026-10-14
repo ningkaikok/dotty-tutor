@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { studentPlaybackDocument, teacherPlaybackDocument } from "./coursewarePresentation";
+import { draftPlaybackDocument, studentPlaybackDocument, teacherPlaybackDocument } from "./coursewarePresentation";
 import type { components } from "../../types/generated/api";
 
 const sourceRef = { sourceRevisionId: "revision-1", page: 23, sentenceId: "sentence-1", quote: "source quote" };
@@ -25,6 +25,16 @@ const publicDocument = {
 } as unknown as components["schemas"]["CoursewarePublicDocument"];
 
 describe("courseware player projections", () => {
+  it("user previews a pending tutorial privately without creating a student publication", () => {
+    const source = { ...privateDocument, status: "in_review" as const, publicationId: null, reviewStatus: "pending" as const };
+    const preview = draftPlaybackDocument(source);
+    expect(preview.publicationId).toBe("draft:course-1");
+    expect(preview.distributionScope).toBe("private");
+    expect(preview.canRevealAnswers).toBe(true);
+    expect(preview.pages[0].teacherNotes).toBe("Private teacher notes.");
+    expect(source.status).toBe("in_review");
+    expect(source.publicationId).toBeNull();
+  });
   it("keeps teacher notes, reveal steps, and answer guidance out of student playback while retaining verified source assets", () => {
     const teacher = teacherPlaybackDocument({ coursewareId: "course-1", publicationId: "pub-1", version: 1, distributionScope: "classroom", document: privateDocument } as components["schemas"]["CoursewarePresentation"]);
     const student = studentPlaybackDocument(publicDocument);

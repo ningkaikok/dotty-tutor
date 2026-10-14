@@ -44,7 +44,7 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
       <section className="import-intro">
         <span className="eyebrow">教材数字化</span>
         <h1>上传试卷或教材</h1>
-        <p>无需选择类型。试卷自动识别题目，教材自动识别章节，最多制作前 5 章课程；支持 PDF 与图片。</p>
+        <p>支持 PDF 与图片。试卷继续识别原题；教材上传后选择学科和页码范围，自动制作教程，最后一次预览确认即可。</p>
       </section>
 
       <details className="chapter-advanced"><summary>识别与模型设置</summary>

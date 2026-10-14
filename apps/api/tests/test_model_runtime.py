@@ -136,22 +136,57 @@ class DeepSeekProviderTests(unittest.TestCase):
         # Given the command-line provider and a bounded review call
         import subprocess
 
-        def complete(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-            output_path = command[command.index("--output-last-message") + 1]
-            from pathlib import Path
+        class CommandProcess:
+            returncode = 0
 
-            Path(output_path).write_text('{"reply":"ok"}', encoding="utf-8")
-            return subprocess.CompletedProcess(command, 0, "", "")
+            def __init__(self, command: list[str], **kwargs: object):
+                self.output_path = command[command.index("--output-last-message") + 1]
+
+            def communicate(self, prompt: str, *, timeout: float):
+                if timeout < 5:
+                    raise subprocess.TimeoutExpired("codex-test", timeout)
+                from pathlib import Path
+
+                Path(self.output_path).write_text('{"reply":"ok"}', encoding="utf-8")
+                return "", ""
 
         with patch.dict(os.environ, {"CODEX_COMMAND": "/bin/echo"}, clear=True), patch(
-            "subprocess.run", side_effect=complete
-        ) as run:
+            "subprocess.Popen", side_effect=CommandProcess
+        ):
             # When the adapter starts Codex
-            ModelRuntime()._codex_json(
-                "default", "prompt", {"type": "object"}, timeout_seconds=4.5
+            result, _usage = ModelRuntime()._codex_json(
+                "default", "prompt", {"type": "object"}, timeout_seconds=5
             )
-        # Then subprocess.run enforces the timeout instead of a detached future timer
-        self.assertEqual(run.call_args.kwargs["timeout"], 4.5)
+        # Then the real boundary's result is parsed under the finite call budget
+        self.assertEqual(result, {"reply": "ok"})
+
+    @unittest.skipUnless(os.name == "posix", "Process-group cleanup is POSIX-specific")
+    def test_user_times_out_codex_then_the_child_process_group_is_stopped_and_prompt_is_not_in_error(self) -> None:
+        import subprocess
+
+        class CommandProcess:
+            pid = 12345
+            stopped = False
+
+            def communicate(self, prompt=None, *, timeout=None):
+                if prompt is not None:
+                    raise subprocess.TimeoutExpired("codex", timeout)
+                if not self.stopped:
+                    raise AssertionError("native model process was left running")
+                return "", ""
+
+        process = CommandProcess()
+
+        def stop_group(pid, _signal):
+            if pid == process.pid:
+                process.stopped = True
+
+        # Given a model launcher whose native child outlives a request budget
+        with patch("subprocess.Popen", return_value=process), patch("os.killpg", side_effect=stop_group):
+            # When the adapter times out, Then the process boundary closes and returns an actionable error
+            with self.assertRaisesRegex(RuntimeError, "已停止本次模型进程") as failed:
+                ModelRuntime()._codex_json("default", "private textbook prompt", {"type": "object"}, timeout_seconds=1)
+        self.assertNotIn("private textbook prompt", str(failed.exception))
 
     def test_user_calls_deepseek_then_gateway_keeps_provider_identity_and_usage(self) -> None:
         # Given the existing cloud provider at the external model boundary
@@ -231,3 +266,75 @@ class DeepSeekProviderTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "DEEPSEEK_API_KEY"):
                 ModelRuntime()._deepseek_json("deepseek-flash", "prompt", {"type": "object"}, 80)
+
+
+class OpenAICompatibleProviderTests(unittest.TestCase):
+    """A generic Chat Completions endpoint lets benchmarks compare models across vendors."""
+
+    COMPATIBLE_ENV = {
+        "OPENAI_COMPATIBLE_BASE_URL": "https://gateway.example/v1/",
+        "OPENAI_COMPATIBLE_API_KEY": "secret",
+        "OPENAI_COMPATIBLE_MODELS": "qwen-max, claude-sonnet ,",
+    }
+
+    def test_user_sees_compatible_endpoint_only_when_fully_configured(self) -> None:
+        # Given only a base URL without key or model list
+        with patch.dict(os.environ, {"OPENAI_COMPATIBLE_BASE_URL": "https://gateway.example/v1"}, clear=True):
+            partial = next(item for item in ModelRuntime().providers() if item["id"] == "openai_compatible")
+        # When the endpoint, key and models are all configured
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True):
+            complete = next(item for item in ModelRuntime().providers() if item["id"] == "openai_compatible")
+        # Then the catalog hides the incomplete endpoint and lists the configured models
+        self.assertFalse(partial["available"])
+        self.assertTrue(complete["available"])
+        self.assertEqual(complete["models"], ["qwen-max", "claude-sonnet"])
+
+    def test_user_selects_compatible_model_and_it_persists_as_selection(self) -> None:
+        # Given a configured compatible endpoint
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True), \
+                patch("infrastructure.runtime.model_runtime.selection_store.save"):
+            runtime = ModelRuntime()
+            # When the user picks one of its models
+            catalog = runtime.select("openai_compatible", "qwen-max")
+        # Then it becomes the active selection
+        self.assertEqual(catalog["selected"], {"provider": "openai_compatible", "model": "qwen-max"})
+
+    def test_user_compares_compatible_model_and_request_targets_configured_endpoint(self) -> None:
+        response_payload = {
+            "choices": [{"message": {"content": '{"reply":"先通分"}'}}],
+            "usage": {"prompt_tokens": 21, "completion_tokens": 4},
+        }
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+            def read(self, *_: object) -> bytes:
+                return json.dumps(response_payload).encode("utf-8")
+
+        # Given a configured gateway at the external model boundary
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True), \
+                patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            # When an evaluation calls a compatible model explicitly
+            result, run = ModelRuntime().generate_json_as(
+                "openai_compatible", "qwen-max", "private prompt", {"type": "object"}
+            )
+        # Then the answer, provider identity and token usage are preserved
+        self.assertEqual(result, {"reply": "先通分"})
+        self.assertEqual(run["modelResult"]["actualModel"], "qwen-max")
+        self.assertEqual(run["modelResult"]["usage"], {"promptTokens": 21, "outputTokens": 4})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://gateway.example/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+        sent = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent["model"], "qwen-max")
+        # DeepSeek-only parameters must not leak to other vendors.
+        self.assertNotIn("thinking", sent)
+
+    def test_user_sees_missing_configuration_before_any_request(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "OPENAI_COMPATIBLE_BASE_URL"):
+                ModelRuntime()._openai_compatible_json("qwen-max", "prompt", {"type": "object"}, 80)

@@ -94,7 +94,7 @@ it("user Given an unsaved page When requesting regeneration or review Then the e
   await user.clear(within(editor).getByLabelText("页面标题"));
   await user.type(within(editor).getByLabelText("页面标题"), "A changed title");
   expect(within(editor).getByRole("button", { name: "重做本页" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "发布课件" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "确认并发布教程" })).toBeDisabled();
 
   await user.click(within(editor).getByRole("button", { name: "保存页面修改" }));
   await user.click(within(editor).getByRole("button", { name: "重做本页" }));

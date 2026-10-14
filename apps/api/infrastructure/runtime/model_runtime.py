@@ -1,6 +1,6 @@
 """题目生成模型的统一适配层。
 
-本模块把 Ollama、Codex CLI、DeepSeek 和 Mock 暴露为相同的 JSON 生成接口。业务层只关心
+本模块把 Ollama、Codex CLI、DeepSeek、通用 OpenAI 兼容接口和 Mock 暴露为相同的 JSON 生成接口。业务层只关心
 ``generate_json`` 返回的结构化数据，不需要知道 HTTP、子进程或模型登录细节。
 
 需要特别注意：这里的 ``selection`` 是进程级演示配置，不是用户偏好。生产环境如果需要
@@ -14,6 +14,7 @@ import json
 import math
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -37,9 +38,28 @@ from infrastructure.runtime.contracts import (
 )
 from observability import log_event
 
-Provider = Literal["ollama", "codex", "deepseek", "mock"]
+Provider = Literal["ollama", "codex", "deepseek", "openai_compatible", "mock"]
+# Providers that issue real model calls; jobs and quality comparisons reject anything else.
+CALLABLE_PROVIDERS = frozenset({"ollama", "codex", "deepseek", "openai_compatible"})
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+
+
+def openai_compatible_config() -> tuple[str, str, list[str]]:
+    """Read the generic Chat Completions endpoint used for cross-vendor model comparison.
+
+    One endpoint keeps configuration simple: point it at a gateway such as OpenRouter,
+    or at a single vendor (Qwen/Doubao/Gemini/Claude compatibility layers). Read per call
+    so tests and restarts never see a stale module-level value.
+    """
+    base_url = os.getenv("OPENAI_COMPATIBLE_BASE_URL", "").strip()
+    api_key = os.getenv("OPENAI_COMPATIBLE_API_KEY", "").strip()
+    models = [
+        item.strip()
+        for item in os.getenv("OPENAI_COMPATIBLE_MODELS", "").split(",")
+        if item.strip()
+    ]
+    return base_url, api_key, models
 
 
 def codex_command() -> str:
@@ -161,6 +181,8 @@ class ModelRuntime:
             if item.strip()
         ]
         deepseek_available = bool(os.getenv("DEEPSEEK_API_KEY", "").strip())
+        compatible_url, compatible_key, compatible_models = openai_compatible_config()
+        compatible_available = bool(compatible_url and compatible_key and compatible_models)
         provider_specs = [
             {
                 "id": "ollama",
@@ -186,6 +208,17 @@ class ModelRuntime:
                 "available": deepseek_available,
                 "models": deepseek_models,
                 "detail": "使用后端 DEEPSEEK_API_KEY 调用 DeepSeek API" if deepseek_available else "未配置 DEEPSEEK_API_KEY",
+            },
+            {
+                "id": "openai_compatible",
+                "label": "OpenAI 兼容接口",
+                "available": compatible_available,
+                "models": compatible_models,
+                "detail": (
+                    "调用 OPENAI_COMPATIBLE_BASE_URL 指向的 Chat Completions 接口"
+                    if compatible_available else
+                    "未配置 OPENAI_COMPATIBLE_BASE_URL、OPENAI_COMPATIBLE_API_KEY 或 OPENAI_COMPATIBLE_MODELS"
+                ),
             },
             {
                 "id": "mock",
@@ -360,6 +393,11 @@ class ModelRuntime:
                     selection.model, prompt, schema, max_tokens,
                     timeout_seconds=effective_timeout,
                 )
+            elif selection.provider == "openai_compatible":
+                result, usage = self._openai_compatible_json(
+                    selection.model, prompt, schema, max_tokens,
+                    timeout_seconds=effective_timeout,
+                )
             else:
                 result, usage = self._codex_json(
                     selection.model, prompt, schema,
@@ -521,6 +559,11 @@ class ModelRuntime:
                 )
             elif provider == "deepseek":
                 result, usage = self._deepseek_json(
+                    model, prompt, schema, max_tokens, images,
+                    timeout_seconds=effective_timeout,
+                )
+            elif provider == "openai_compatible":
+                result, usage = self._openai_compatible_json(
                     model, prompt, schema, max_tokens, images,
                     timeout_seconds=effective_timeout,
                 )
@@ -791,7 +834,61 @@ class ModelRuntime:
         api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
         if not api_key:
             raise RuntimeError("未配置 DEEPSEEK_API_KEY")
+        return self._chat_completions_json(
+            label="DeepSeek",
+            base_url=DEEPSEEK_BASE_URL,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            schema=schema,
+            max_tokens=max_tokens,
+            image_paths=image_paths,
+            timeout_seconds=timeout_seconds,
+            # DeepSeek-specific: keep the fast non-reasoning path for structured output.
+            extra_payload={"thinking": {"type": "disabled"}},
+        )
 
+    def _openai_compatible_json(
+        self,
+        model: str,
+        prompt: str,
+        schema: dict[str, Any],
+        max_tokens: int,
+        image_paths: list[Path] | None = None,
+        *,
+        timeout_seconds: float = 240.0,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Call the configured generic Chat Completions endpoint with JSON output."""
+        base_url, api_key, _ = openai_compatible_config()
+        if not base_url or not api_key:
+            raise RuntimeError("未配置 OPENAI_COMPATIBLE_BASE_URL 或 OPENAI_COMPATIBLE_API_KEY")
+        return self._chat_completions_json(
+            label="OpenAI 兼容接口",
+            base_url=base_url,
+            api_key=api_key,
+            model=model,
+            prompt=prompt,
+            schema=schema,
+            max_tokens=max_tokens,
+            image_paths=image_paths,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def _chat_completions_json(
+        self,
+        *,
+        label: str,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+        schema: dict[str, Any],
+        max_tokens: int,
+        image_paths: list[Path] | None,
+        timeout_seconds: float,
+        extra_payload: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Shared OpenAI Chat Completions transport; errors never echo response bodies."""
         schema_text = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
         system_text = (
             "你是严谨的中文中学辅导老师。只输出符合 JSON Schema 的 JSON；"
@@ -823,13 +920,13 @@ class ModelRuntime:
                 {"role": "system", "content": system_text},
                 {"role": "user", "content": user_content},
             ],
-            "thinking": {"type": "disabled"},
             "temperature": 0.2,
             "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
+            **(extra_payload or {}),
         }
         request = urllib.request.Request(
-            f"{DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions",
+            f"{base_url.rstrip('/')}/chat/completions",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
@@ -841,20 +938,20 @@ class ModelRuntime:
             with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
                 response_payload = json.load(response)
         except urllib.error.HTTPError as error:
-            raise RuntimeError(f"DeepSeek 请求失败：HTTP {error.code}") from error
+            raise RuntimeError(f"{label} 请求失败：HTTP {error.code}") from error
         except (OSError, ValueError, urllib.error.URLError) as error:
-            raise RuntimeError(f"无法连接 DeepSeek：{error}") from error
+            raise RuntimeError(f"无法连接 {label}：{error}") from error
         if not isinstance(response_payload, dict):
-            raise RuntimeError("DeepSeek 返回值不是 JSON 对象")
+            raise RuntimeError(f"{label} 返回值不是 JSON 对象")
 
         choices = response_payload.get("choices")
         if not isinstance(choices, list) or not choices:
-            raise RuntimeError("DeepSeek 没有返回候选内容")
+            raise RuntimeError(f"{label} 没有返回候选内容")
         candidate = choices[0]
         message = candidate.get("message", {}) if isinstance(candidate, dict) else {}
         response_text = message.get("content", "") if isinstance(message, dict) else ""
         if not isinstance(response_text, str) or not response_text:
-            raise RuntimeError("DeepSeek 返回内容为空，可能被安全策略拦截")
+            raise RuntimeError(f"{label} 返回内容为空，可能被安全策略拦截")
         response_usage = response_payload.get("usage")
         if not isinstance(response_usage, dict):
             response_usage = {}
@@ -909,15 +1006,33 @@ class ModelRuntime:
             )
             command.append("-")
             try:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     command,
-                    input=full_prompt,
-                    capture_output=True,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=timeout_seconds,
-                    check=False,
+                    start_new_session=os.name == "posix",
                 )
-            except (OSError, subprocess.TimeoutExpired) as error:
+                try:
+                    stdout, stderr = process.communicate(full_prompt, timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    # npm's Codex launcher starts a native child. Killing only the
+                    # launcher leaves that model call alive after the run timed out.
+                    if os.name == "posix":
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+                        process.kill()
+                    process.communicate()
+                    raise
+                completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError(f"Codex 调用超过 {timeout_seconds:g} 秒，已停止本次模型进程；可重试或缩小教材范围") from error
+            except OSError as error:
                 raise RuntimeError(f"Codex 运行失败：{error}") from error
             if completed.returncode != 0:
                 detail = completed.stderr.strip() or completed.stdout.strip()

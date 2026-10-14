@@ -3,7 +3,8 @@
 前端可通过 `VITE_API_ORIGIN` 指向独立后端：`api/client.ts` 在入口装配请求地址，教材原页图片也通过同一地址解析。未设置时保留 `/api` 同源请求和本地 Vite 代理；跨域受保护会话仍需另行验证 Cookie 与 CORS，配置地址不代表完成身份部署。
 
 可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
-DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+DeepSeek；配置 OPENAI_COMPATIBLE_BASE_URL/API_KEY/MODELS 后显示通用 OpenAI 兼容接口（provider
+`openai_compatible`，用于跨厂商模型评测）。JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
 MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
 启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
 现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
@@ -211,7 +212,7 @@ flowchart TB
 | 确定性判题 | `apps/api/answer_evaluator.py` | 多选集合、填空答案、数值容差和公式文本的可解释核对 |
 | 运行时路由 | `apps/api/routers/runtime_routes.py` | 健康检查、模型/OCR 选择、陪练模型切换前评测、TTS 和学习效果/模型成本联合报告 |
 | 陪练模型评测 | `apps/api/application/services/tutor_model_evaluation.py` | 从 50 条用户确认的合成案例中选 42 条文本案例，显式调用当前/候选模型，返回配对结构匹配、延迟、Token 和逐题预览；8 条图像案例待实际传图后再纳入，调用指标单独标记 `tutor-model-evaluation`，不修改当前模型，也不计入人工金标准 |
-| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、DeepSeek、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
+| 模型适配与后台配置快照 | `apps/api/infrastructure/runtime/model_runtime.py`、`review_runtime.py`、`job_snapshot.py` | Ollama、Codex CLI、DeepSeek、通用 OpenAI 兼容接口、Mock 和 JSON Schema 调用；支持评测显式指定模型不改写进程默认选择，排队时快照 generation/review provider-model 与 OCR provider，Worker 用任务局部上下文执行，凭证仍取受控环境变量 |
 | 离线评测 | `apps/api/evaluation/` | 确定性语料重放、Badcase 登记、按需 LLM-as-Judge 报告和前后版本比较；不写生产状态 |
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
@@ -248,9 +249,8 @@ flowchart TB
 我的教材与自动制作课程页共用 `MaterialsHeader`，沿用工作台的品牌导航和返回按钮；材料卡片、任务状态和课程列表在 `materials.css` 维护一致的布局与移动端样式。`MaterialDeleteAction` 提供就地确认与失败重试，`useMaterials` 在接口成功后移除对应卡片；试卷、教材课程与待识别材料可筛选。章节软删除写入现有 JSON 中的删除时间，保留发布与作答记录并取消当前生成任务。
 
 上传入口统一为“上传试卷或教材”，通过首批 OCR 自动识别类型。教材不会先拆成考试题；原文件与 OCR
-保存后，可直接自动制作课程，不要求先填学科、页码、名称和版本。
-`MaterialCourseService` 优先读取 PDF 章节书签，再用已有页面 OCR 路由识别真实标题；最多创建前五章，
-以第六章起点确定第五章结尾。嵌套目录优先选择章而不是大单元，读取时复用同一个 PDF 解析器；任务内自动 OCR 优先使用文本层，逐页保存来源并报告章与页码，经预检确认的空白页保留且提示复核。无书签时最多扫描前 80 页，每章最多 80 页；边界缺失或截断在结果中提示。
+保存后，从 `/studio/courseware?uploadId=...` 选择学科及物理页段。默认自动模式一次最多 30 页，串联来源准备、规划与页面生成，最终预览时一次确认发布；详细规划和逐页修订保持可选。
+`MaterialCourseService` 复用保存的逐页来源；首批 MinerU 整段文本不能确定物理页码时，从受管原 PDF 对所选页逐页使用既有 OCR 路由与内容缓存。`ChapterStore.checkpoint_courseware_source` 在活跃 Worker 租约与上传版本保护下保存 `coursewareSource` 页快照和 OCR 记录；原始上传文本不被替换。手动来源模式最多 80 页，不自动生成页面。
 准备任务及子章节生成任务共享现有持久化 Worker、运行选择快照、幂等与取消机制；重试复用来源记录。
 许可默认未确认，发布前仍需补齐授权依据并由教师复核；自动识别结果不代表教材质量或授权已审核。
 
@@ -901,7 +901,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 
 借鉴本地 OpenMAIC 的规划、确认、页面生成与播放边界，采用共享课件契约及英语/数学 profile。
 `CoursewareService` 复用 ModelRuntime、PromptStore 和原页预览服务，先生成包含目标、课时、页面大纲与来源覆盖的规划，
-教师确认后才创建逐页生成任务。来源准备最多 80 页，一次规划最多 30 页/80,000 个序列化字符；超限显式拒绝，不能静默节选后声称完整覆盖。
+默认自动模式经结构校验后创建逐页生成任务；手动模式仍可确认或修改规划。来源准备最多 80 页，自动制作/一次规划最多 30 页/80,000 个序列化字符；超限显式拒绝，不能静默节选后声称完整覆盖。
 模型输出通过 `model_output.py` 转为严格 JSON 协议：模型传输中的 coverageMap 用有限字段条目列表，领域契约恢复为映射；对象关闭额外字段，生成规划按页面时长汇总环节和课时。已失败的规划可用新命令生成新版本，同一命令仍保持幂等。
 页面内容按受限块渲染，不接受模型生成可执行脚本。教材原页资产标记 `source_page`；只有冻结来源中已保存合法 ChapterRegion 坐标的素材才生成 `source_image` 裁图，缺失坐标标记回退原因。
 
@@ -911,7 +911,9 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 共享 Worker 用 job ID、worker ID、认领次数、实时租约和来源/规划/页面版本保护检查点；单页失败保留已完成页面，迟到执行不能覆盖教师修改。
 
 页面编辑保留完整私有 DTO 中的句子/区域引用、作者属性和 ID。任何修改需重新审核，结构与来源检查不替代教师内容复核。标为 source_excerpt 的文字必须与引用原页一致（允许 PDF 换行差异），翻译或改写应标为补充讲解。
-发布校验每页审核、来源就绪、许可、署名与资产可解析性；讲解不强制包含练习。
+最终预览复用既有课件播放器，草稿预览不创建发布或学习作答。一次确认在同一事务内保存审核记录与不可变发布，失败全部回滚。课堂/公开分发仍校验许可和署名；私有教程可以不先登记分发许可，但学生无法读取私有发布。讲解不强制包含练习。
+
+生成协议按当前冻结原页限制 revision、页码、句子、区域与素材 ID，仍保留生成后的来源校验。模型输出的页面建议时长合计不足十分钟时，按页面均匀补足现有课时下限并记录 `minimumTimingAdjusted`，原始输入不修改；手工编辑继续校验完整时长关系。Codex 子进程超时会停止整个进程组，错误不回显教材提示词。
 教师播放投影提供讲稿与逐步揭晓；学生只读安全发布投影。页面状态按发布和角色/学习者隔离恢复，可选回答不影响原数学试卷掌握度。封面与普通页复用输入、检查表和活动状态；多选由公开的 selectionMode 控制，单填空接受 text 输入；开放作答保持 needs_review。桌面长页在课件区内滚动，环节和翻页导航保持可见。
 
 旧错误教材产物经 `LegacyTextbookCleanupService` 和独立 CLI 精确撤回。

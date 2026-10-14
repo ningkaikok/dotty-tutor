@@ -8,6 +8,7 @@ four-markdown lesson generator.
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -19,8 +20,14 @@ from application.job_worker import (
 )
 from application.services.chapter_source_preview import file_hash, source_file
 from domain.chapters.material import classify_material
-from domain.chapters.source import pages_from_ocr
+from domain.chapters.source import pages_from_ocr, pages_from_upload
+from domain.contracts.courseware import CoursewarePlanCreate
 from domain.courseware.profiles import CoursewareProfileRegistry, courseware_profiles
+from infrastructure.runtime.job_snapshot import (
+    current_job_runtime_snapshot,
+    use_job_runtime_snapshot,
+)
+from textbook_ocr_pipeline import resolve_routed_ocr_source
 
 
 class MaterialCourseService:
@@ -28,11 +35,13 @@ class MaterialCourseService:
 
     JOB_TYPE = "courseware.source.prepare"
 
-    def __init__(self, chapters: Any, ocr: Any | None = None, *, profiles: CoursewareProfileRegistry = courseware_profiles) -> None:
+    def __init__(self, chapters: Any, ocr: Any | None = None, *, courseware: Any | None = None, profiles: CoursewareProfileRegistry = courseware_profiles) -> None:
         self.chapters = chapters
         self.store = chapters.store
         self.jobs = chapters.jobs
         self.profiles = profiles
+        self.ocr = ocr
+        self.courseware = courseware
 
     def enqueue(
         self,
@@ -58,22 +67,25 @@ class MaterialCourseService:
             raise ValueError("材料类型尚未确认；请先明确选择教材")
         profile = self.profiles.get(request.subject)
 
-        pages = pages_from_ocr(str(upload.get("sourceText") or ""))
-        if not pages:
-            raise ValueError("上传材料没有可复用的逐页 OCR 来源")
+        pages = pages_from_upload(upload)
+        if not pages and (request.pageStart is None or request.pageEnd is None):
+            raise ValueError("请明确选择教材起始页和结束页，系统将识别所选原页")
         start = int(request.pageStart if request.pageStart is not None else min(int(p["page"]) for p in pages))
         end = int(request.pageEnd if request.pageEnd is not None else max(int(p["page"]) for p in pages))
         if end < start or end - start + 1 > 80:
             raise ValueError("请明确选择不超过 80 页的教材来源范围")
+        page_count = (result.get("extraction") or {}).get("pageCount")
+        if page_count and end > int(page_count):
+            raise ValueError("所选页码超出教材原文件范围")
         by_page = {int(page["page"]): page for page in pages}
         missing = sorted(set(range(start, end + 1)) - set(by_page))
-        if missing:
+        path = source_file(self.store, upload)
+        if missing and (self.ocr is None or path is None):
             raise ValueError("教材来源缺少所选页：" + ", ".join(map(str, missing[:12])))
-        selected = [by_page[number] for number in range(start, end + 1)]
-        if any(not str(page.get("text") or "").strip() for page in selected):
+        selected = [by_page[number] for number in range(start, end + 1) if number in by_page]
+        if self.ocr is None and any(not str(page.get("text") or "").strip() for page in selected):
             raise ValueError("所选页包含未识别页面，请先完成 OCR")
 
-        path = source_file(self.store, upload)
         source_file_sha256 = file_hash(path) if path else None
         source_text_sha256 = hashlib.sha256(str(upload.get("sourceText") or "").encode()).hexdigest()
         request_data = request.model_dump(mode="json")
@@ -95,6 +107,7 @@ class MaterialCourseService:
             "requestHash": request_hash,
             "title": request.title or Path(str(upload.get("filename") or "教材")).stem[:200],
             "subject": profile.subject_id,
+            "runtimeSnapshot": current_job_runtime_snapshot(),
         }
         return self.jobs.create_job(
             self.JOB_TYPE,
@@ -134,12 +147,44 @@ class MaterialCourseService:
             source = (existing.get("sourceRevisions") or [{}])[-1]
             if source.get("sourceFileSha256") != payload.get("sourceFileSha256"):
                 raise ValueError("已准备来源与当前文件版本不一致")
-            return CancellableJobResult(self._result(existing, source, payload))
+            return CancellableJobResult(self._prepared_result(existing, source, payload))
 
         request = payload["request"]
-        pages = pages_from_ocr(str(upload.get("sourceText") or ""))
+        pages = pages_from_upload(upload)
         by_page = {int(page["page"]): page for page in pages}
         start, end = int(payload["pageStart"]), int(payload["pageEnd"])
+        with use_job_runtime_snapshot(payload):
+            for number in range(start, end + 1):
+                if cancellation_check():
+                    raise JobCancelled()
+                if number in by_page and str(by_page[number].get("text") or "").strip():
+                    continue
+                if self.ocr is None or path is None or current_file_hash is None:
+                    raise ValueError("所选页缺少可识别的教材原件")
+                markdown, run = resolve_routed_ocr_source(
+                    runtime=self.ocr, source_text="", source_path=path,
+                    start_page=number - 1, end_page=number - 1,
+                    asset_dir=Path(upload["directory"]) / "assets" / f"courseware-page-{number}",
+                    asset_url_prefix=f"/api/uploads/{payload['uploadId']}/assets/courseware-page-{number}",
+                    cache_dir=Path(upload["directory"]) / "ocr-cache", content_hash=current_file_hash,
+                )
+                # A single-page request provides a real physical-page boundary even
+                # when MinerU returns aggregate Markdown without page markers.
+                markdown = re.sub(r"<!--\s*pages\s+\d+-\d+\s*-->\s*", "", markdown).strip()
+                parsed_pages = pages_from_ocr(markdown)
+                if parsed_pages and {page["page"] for page in parsed_pages} != {number}:
+                    raise ValueError("OCR 返回页码与所选物理页不一致")
+                page = parsed_pages[0] if parsed_pages else pages_from_ocr(f"<!-- page {number} -->\n{markdown}")[0]
+                if not str(page["text"]).strip():
+                    raise ValueError(f"教材第 {number} 页未能识别，请核对原页或重新选择范围")
+                if file_hash(path) != current_file_hash:
+                    raise ValueError("教材原文件在识别期间已变化")
+                self.store.checkpoint_courseware_source(
+                    context=context, upload_id=str(payload["uploadId"]),
+                    source_text_sha256=str(payload["sourceTextSha256"]),
+                    source_file_sha256=current_file_hash, page={**page, "ocrRun": run}, now=time.time(),
+                )
+                by_page[number] = page
         selected_pages = [by_page[number] for number in range(start, end + 1)]
         chapter_request = {
             "title": payload["title"],
@@ -180,7 +225,30 @@ class MaterialCourseService:
                     latest["deletedAt"] = time.time()
                     self.store.save_chapter(latest)
 
-        return CancellableJobResult(self._result(created, source, payload), on_cancel=rollback_cancelled)
+        return CancellableJobResult(self._prepared_result(created, source, payload), on_cancel=rollback_cancelled)
+
+    def _prepared_result(self, chapter: dict[str, Any], source: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+        """Continue the explicitly requested automatic path without approving content."""
+        result = self._result(chapter, source, payload)
+        if not payload["request"].get("autoGenerate"):
+            return result
+        if self.courseware is None:
+            raise ValueError("自动课件生成服务尚未就绪")
+        existing = self.courseware.get_plan(chapter["chapterId"])
+        if existing:
+            result["planJobId"] = existing.get("generationJobId")
+            return result
+        request = CoursewarePlanCreate(
+            subject=chapter["subject"], expectedRecordVersion=chapter["recordVersion"],
+            audience="依据教材内容与难度适配的学习者",
+            languagePolicy="中文讲解；保留教材原文、术语与公式，英语例句保留英文",
+            durationMinutes=20, objectives=["根据所选教材原页提炼并覆盖核心概念、示例与学习目标"],
+            pageStart=source["pageStart"], pageEnd=source["pageEnd"], autoGeneratePages=True,
+        )
+        with use_job_runtime_snapshot(payload):
+            planned = self.courseware.create_plan(chapter["chapterId"], request, idempotency_key=f"auto-source-{chapter['sourcePreparationJobId']}")
+        result["planJobId"] = planned["job"]["jobId"]
+        return result
 
     @staticmethod
     def _result(chapter: dict[str, Any], source: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
