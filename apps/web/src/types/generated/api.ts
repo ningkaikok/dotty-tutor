@@ -5664,7 +5664,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "ollama" | "codex" | "deepseek" | "mock";
+            provider: "ollama" | "codex" | "deepseek" | "openai_compatible" | "mock";
         };
         /** OcrSelectionRequest */
         OcrSelectionRequest: {

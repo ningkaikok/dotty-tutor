@@ -626,7 +626,9 @@ gh secret set FEISHU_WEBHOOK_SECRET
 
 三份环境模板均列出 DeepSeek 和 MinerU 云端参数，默认密钥为空，不会自动切换本机模型。
 DeepSeek 需选择 MODEL_PROVIDER=deepseek 和目录中的模型；陪练可独立设置
-TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。MinerU 在本机命令不可用且配置
+TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。跨厂商评测可填写 OPENAI_COMPATIBLE_BASE_URL、
+OPENAI_COMPATIBLE_API_KEY 和逗号分隔的 OPENAI_COMPATIBLE_MODELS（三项缺一则不显示），一个网关
+（如 OpenRouter）即可覆盖多家模型；provider 为 `openai_compatible`。MinerU 在本机命令不可用且配置
 MINERU_API_KEY 时使用云端解析，上传的原文件及返回的 OCR 产物仍保存在现有数据目录。
 Compose 将同样的云端参数传给 API 和 Worker。测试使用外部服务替身，不证明真实模型/OCR质量。
 
