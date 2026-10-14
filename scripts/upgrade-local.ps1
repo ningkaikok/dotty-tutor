@@ -95,7 +95,29 @@ if ($needsUpgrade) {
     # --- 2. read-only preflight ----------------------------------------------------------
     Step "迁移预检（只读）"
     $preflight = Invoke-Migration "preflight"
-    if ($preflight.Code -ne 0) { Fail "预检未通过，未做任何修改：`n$($preflight.Text)" }
+    # The CLI exits 1 whenever the schema is not yet ready, which is always true before an
+    # upgrade that adds something. Only items needing manual action may block the upgrade;
+    # autoFixable items are exactly what the upgrade will create.
+    if ($preflight.Code -notin 0, 1 -or -not $preflight.Json) { Fail "预检无法完成，未做任何修改：`n$($preflight.Text)" }
+    $manual = $preflight.Json.manualActionRequired
+    $blocking = @()
+    if ($manual) {
+        foreach ($property in $manual.PSObject.Properties) {
+            $value = $property.Value
+            if ($property.Name -eq "orphanCounts") {
+                foreach ($count in $value.PSObject.Properties) { if ([int]$count.Value -gt 0) { $blocking += "orphanCounts.$($count.Name)=$($count.Value)" } }
+            } elseif ($value -is [System.Array]) {
+                if ($value.Count -gt 0) { $blocking += "$($property.Name): $($value -join ', ')" }
+            } elseif ($value -and @($value.PSObject.Properties).Count -gt 0) {
+                $blocking += "$($property.Name): $(($value | ConvertTo-Json -Compress -Depth 5))"
+            }
+        }
+    }
+    if ($blocking.Count -gt 0) { Fail "预检发现需要人工处理的问题，未做任何修改：`n  $($blocking -join "`n  ")" }
+    $auto = $preflight.Json.autoFixable
+    $pending = @()
+    if ($auto) { foreach ($property in $auto.PSObject.Properties) { if (@($property.Value).Count -gt 0) { $pending += "$($property.Name): $(@($property.Value) -join ', ')" } } }
+    Write-Host "    无需人工处理；本次升级将补齐：$(if ($pending) { $pending -join '；' } else { '仅更新版本号' })"
 
     # --- 3. backup, then prove the dump is readable --------------------------------------
     New-Item -ItemType Directory -Force -Path $BackupDir | Out-Null
