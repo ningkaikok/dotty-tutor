@@ -76,6 +76,27 @@
 .materials-review-task-list li { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 0; border-top:1px solid var(--c-line-strong); }
 .materials-review-task-list li:first-child { border-top:0; }
 .materials-review-task-list a { font-weight:700; }
+.materials-source-review-grid { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+.material-source-review-card { gap:16px; }
+.material-source-review-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; width:100%; }
+.material-source-review-total { color:var(--c-ink-muted); font-size:13px; }
+.material-source-review-card h3 { margin:0; font-size:20px; line-height:1.4; overflow-wrap:anywhere; }
+.material-source-review-card > p { margin:0; line-height:1.6; }
+.material-source-review-list { align-self:stretch; display:grid; margin:0; padding:0; list-style:none; }
+.material-source-review-list li { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:center; padding:18px 0; border-top:1px solid var(--c-line-strong); }
+.material-source-review-list li:last-child { padding-bottom:0; }
+.material-source-review-info { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; min-width:0; }
+.material-source-review-info strong { flex:1 0 100%; min-width:0; font-size:14px; line-height:1.5; overflow-wrap:anywhere; }
+.material-source-review-info > span:not(.ui-badge) { color:var(--c-ink-muted); font-size:13px; line-height:1.5; }
+.material-source-review-action { padding-left:16px; border-left:1px solid var(--c-line-strong); }
+.materials-shell .material-source-review-action a { white-space:nowrap; color:var(--c-brand); border-color:var(--c-brand); font-size:13px; }
+.materials-shell .material-source-review-action a:hover { text-decoration:none; background:var(--c-brand-soft); }
+@media(max-width:1100px) { .materials-source-review-grid { grid-template-columns:1fr; } }
+@media(max-width:600px) {
+  .material-source-review-list li { grid-template-columns:minmax(0,1fr); gap:12px; }
+  .material-source-review-action { border-left:0; padding-left:0; }
+  .material-source-review-action a { width:100%; box-sizing:border-box; }
+}
 @media(max-width:600px) { .materials-review-heading, .materials-review-task-list li { align-items:flex-start; flex-direction:column; } }
 @media(min-width:601px) and (max-width:900px) {
   .materials-heading { align-items:flex-start; flex-wrap:wrap; }
