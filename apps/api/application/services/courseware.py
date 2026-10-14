@@ -371,6 +371,7 @@ class CoursewareService:
                     "durationMinutes": request.durationMinutes, "requestedObjectives": request.objectives,
                     "expectedPlanRecordVersion": next_record_version, "planVersion": next_plan_version,
                     "runtimeSnapshot": runtime_snapshot,
+                    "autoGeneratePages": request.autoGeneratePages,
                     "frozenTemplate": self._frozen_template(template), "requestHash": request_hash,
                 }
                 previous_job = self.jobs.get_by_idempotency_key(job_key, connection=connection, lock=True)
@@ -398,6 +399,7 @@ class CoursewareService:
                     "coverageMap": {}, "status": "draft", "planVersion": next_plan_version,
                     "recordVersion": max(1, next_record_version), "generationJobId": job_id,
                     "generationStatus": "queued", "coursewareIds": [], "requestHash": request_hash,
+                    "generationAudit": {"automaticGeneration": request.autoGeneratePages},
                     "retainedBatches": retained_batches,
                     "createdAt": existing.get("createdAt", now) if existing else now, "updatedAt": now,
                 }).model_dump()
@@ -453,7 +455,7 @@ class CoursewareService:
         if (existing_plan and existing_plan.get("generationJobId") == context.job_id
                 and existing_plan.get("generationStatus") == "completed"
                 and existing_plan.get("status") in {"awaiting_confirmation", "approved"}):
-            return {"chapterId": payload["chapterId"], "planVersion": existing_plan["planVersion"], "status": existing_plan["status"]}
+            return self._finish_plan_generation(payload, existing_plan, cancellation_check, context)
         if cancellation_check():
             raise JobCancelled()
         source_view = {"sourceRevisionId": current_source["sourceRevisionId"], "pages": payload["sourcePages"]}
@@ -466,7 +468,8 @@ class CoursewareService:
             objectives=json.dumps(payload["requestedObjectives"], ensure_ascii=False),
             source=json.dumps(source_view, ensure_ascii=False),
         )
-        schema = generation_schema(CoursewarePlanDraftOutput)
+        schema = generation_schema(CoursewarePlanDraftOutput, source=current_source, pages=pages,
+            asset_ids=[str(asset["assetId"]) for asset in self._source_assets(current_source, pages)])
         selection = payload["runtimeSnapshot"]["generation"]
         with use_job_runtime_snapshot(payload):
             draft, run = self.runtime.generate_json(
@@ -499,6 +502,11 @@ class CoursewareService:
             "updatedAt": time.time(),
         }
         result["generationAudit"]["timingDerivedFromPages"] = True
+        result["generationAudit"]["minimumTimingAdjusted"] = any(
+            sum(int(page.get("estimatedMinutes", 0)) for section in session.get("sections", []) for page in section.get("pages", [])) < 10
+            for session in draft.get("sessions", [])
+        )
+        result["generationAudit"]["automaticGeneration"] = bool(payload.get("autoGeneratePages"))
         validated = CoursewarePlan.model_validate(result).model_dump()
         saved = self.store.checkpoint_plan(
             context=context,
@@ -509,7 +517,18 @@ class CoursewareService:
             plan=validated,
             now=time.time(),
         )
-        return {"chapterId": payload["chapterId"], "planVersion": saved["planVersion"], "status": saved["status"]}
+        return self._finish_plan_generation(payload, saved, cancellation_check, context)
+
+    def _finish_plan_generation(self, payload: dict[str, Any], plan: dict[str, Any], cancellation_check: Any, context: JobExecutionContext) -> dict[str, Any]:
+        """Automatic mode advances validated outlines; generated pages remain unreviewed."""
+        if payload.get("autoGeneratePages"):
+            if cancellation_check():
+                raise JobCancelled()
+            with use_job_runtime_snapshot(payload):
+                approved = self.approve_plan(str(payload["chapterId"]), plan_version=int(plan["planVersion"]),
+                    expected_record_version=int(plan["recordVersion"]), command_id=f"auto-plan-{plan['generationJobId']}", execution_context=context)
+            plan = approved["plan"]
+        return {"chapterId": payload["chapterId"], "planVersion": plan["planVersion"], "status": plan["status"]}
 
     def edit_plan(self, chapter_id: str, edit: CoursewarePlanEdit) -> dict[str, Any]:
         with self.chapters.store.chapter_lock(chapter_id):
@@ -564,9 +583,24 @@ class CoursewareService:
                 )
 
     def approve_plan(self, chapter_id: str, *, plan_version: int, expected_record_version: int,
-                     command_id: str) -> dict[str, Any]:
+                     command_id: str, execution_context: JobExecutionContext | None = None) -> dict[str, Any]:
         with self.chapters.store.chapter_lock(chapter_id):
             with self.store.atomic() as connection:
+                if execution_context is not None:
+                    from sqlalchemy import select
+
+                    from persistence.schema import background_jobs
+
+                    live = connection.execute(select(background_jobs.c.job_id).where(
+                        background_jobs.c.job_id == execution_context.job_id,
+                        background_jobs.c.status == "running",
+                        background_jobs.c.lease_owner == execution_context.worker_id,
+                        background_jobs.c.attempt_count == execution_context.attempt_count,
+                        background_jobs.c.lease_expires_at > time.time(),
+                        background_jobs.c.cancel_requested.is_(False),
+                    ).with_for_update()).scalar_one_or_none()
+                    if live is None:
+                        raise TerminalJobError("自动规划任务已过期或取消，不创建页面任务")
                 chapter, source = self._chapter(chapter_id, lock=True)
                 plan = self.store.load_plan(chapter_id, lock=True)
                 if not plan:
@@ -950,7 +984,8 @@ class CoursewareService:
                         }, ensure_ascii=False),
                     )
                     draft, run = self.runtime.generate_json(
-                        prompt, generation_schema(CoursewarePageDraftOutput), max_tokens=3600,
+                        prompt, generation_schema(CoursewarePageDraftOutput, source=source, pages=page_source,
+                            asset_ids=sorted(allowed_asset_ids)), max_tokens=3600,
                         task="courseware_page_generation",
                         selection=ModelSelection(selection["provider"], selection["model"]),
                     )
@@ -1134,7 +1169,7 @@ class CoursewareService:
         )
         return self._with_asset_urls(saved)
 
-    def publish(self, courseware_id: str, *, expected_record_version: int) -> dict[str, Any]:
+    def publish(self, courseware_id: str, *, expected_record_version: int, confirm_review: bool = False, actor_id: str = "") -> dict[str, Any]:
         initial = self.store.load_document(courseware_id)
         if not initial:
             raise LookupError("课件不存在")
@@ -1147,6 +1182,12 @@ class CoursewareService:
                     raise ValueError("教材来源或课件规划已变化，不能发布旧草稿")
                 if int(document["recordVersion"]) != expected_record_version:
                     raise ValueError("课件已更新，请刷新后重新发布")
+                if confirm_review:
+                    if not actor_id:
+                        raise ValueError("最终预览确认需要当前教师身份")
+                    document = self._review_document_locked(courseware_id, decision="approve", page_ids=[],
+                        note="最终预览确认并发布", expected_record_version=expected_record_version, actor_id=actor_id)
+                    expected_record_version = int(document["recordVersion"])
                 return self._publish_locked(
                     connection, chapter, source, document,
                     expected_record_version=expected_record_version,
@@ -1163,7 +1204,8 @@ class CoursewareService:
             raise ValueError("课件所有页面必须完成生成后才能发布")
         if document.get("reviewIssues"):
             raise ValueError("课件仍有未解决的质量问题，不能发布")
-        if not source.get("license") or not source.get("attributionText"):
+        scope = str(source.get("distributionScope") or "private")
+        if scope != "private" and (not source.get("license") or not source.get("attributionText")):
             raise ValueError("发布前必须登记教材许可与署名文本")
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         issues = document_page_issues(self._with_asset_urls(document), selected)
@@ -1178,7 +1220,7 @@ class CoursewareService:
             self._validate_refs(asset["sourceRefs"], source, selected)
             if order.get(str(asset.get("distributionScope")), -1) < order[scope]:
                 raise ValueError("课件素材许可范围小于本次发布范围")
-            if asset.get("origin") == "textbook" and (not asset.get("license") or not asset.get("attributionText")):
+            if scope != "private" and asset.get("origin") == "textbook" and (not asset.get("license") or not asset.get("attributionText")):
                 raise ValueError("发布中的教材素材必须登记许可和署名")
             if asset.get("kind") not in {"source_page", "source_image"}:
                 raise ValueError("仅发布由受控来源预览服务解析的原页或冻结区域素材")

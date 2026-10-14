@@ -1,5 +1,5 @@
 import { Button } from "../../components/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { editablePage, type CoursewareAuthoringPage, type CoursewareEditableBlock, type CoursewarePageEditView } from "./coursewareAuthoringView";
 
 const pageKinds = ["cover", "explanation", "vocabulary", "reading", "worked_example", "activity", "practice", "summary"] as const;
@@ -11,15 +11,18 @@ export function CoursewarePageEditor({
   onSave,
   onRegenerate,
   onReview,
+  onDirtyChange,
 }: {
   page: CoursewareAuthoringPage;
   busy: boolean;
   onSave: (pageId: string, value: CoursewarePageEditView) => Promise<void>;
   onRegenerate: (pageId: string, reason: string) => Promise<void>;
   onReview: (pageId: string, decision: "approve" | "request_changes", note: string) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState<CoursewarePageEditView>(() => editablePage(page));
   const [dirty, setDirty] = useState(false);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [reason, setReason] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [actionError, setActionError] = useState("");

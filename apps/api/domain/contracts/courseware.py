@@ -250,6 +250,7 @@ class CoursewarePlanCreate(BaseModel):
     # accepts pages outside every planned/generated range. False replaces the
     # whole plan, which is the original single-plan behaviour.
     supplement: bool = False
+    autoGeneratePages: bool = False
 
     @model_validator(mode="after")
     def validate_page_range(self) -> CoursewarePlanCreate:
@@ -390,6 +391,17 @@ class CoursewarePlanDraftOutput(BaseModel):
             if not isinstance(session, dict) or not isinstance(session.get("sections"), list):
                 continue
             sections = session["sections"]
+            timed_pages = [page for section in sections if isinstance(section, dict)
+                           for page in section.get("pages", []) if isinstance(page, dict)]
+            if timed_pages and all(type(page.get("estimatedMinutes")) is int and 1 <= page["estimatedMinutes"] <= 30 for page in timed_pages):
+                total = sum(page["estimatedMinutes"] for page in timed_pages)
+                if total < 10:
+                    # All generated times are suggestions. Keep a short outline
+                    # within the same ten-minute session contract instead of
+                    # rejecting it only after deriving its aggregate timings.
+                    extra, remainder = divmod(10 - total, len(timed_pages))
+                    for index, page in enumerate(timed_pages):
+                        page["estimatedMinutes"] += extra + (index < remainder)
             for section in sections:
                 if not isinstance(section, dict) or not isinstance(section.get("pages"), list):
                     continue
@@ -621,6 +633,7 @@ class CoursewareReviewRequest(BaseModel):
 
 class CoursewarePublishRequest(BaseModel):
     expectedRecordVersion: int = Field(ge=1)
+    confirmReview: bool = False
 
 
 class CoursewarePublication(BaseModel):
@@ -634,7 +647,7 @@ class CoursewarePublication(BaseModel):
     distributionScope: Literal["private", "classroom", "public"]
     snapshot: CoursewareDocument
     publishedAt: float
-    reviewRecords: list[dict[str, str | float | bool]] = Field(default_factory=list)
+    reviewRecords: list[dict[str, str | float | bool | list[str]]] = Field(default_factory=list)
 
 
 class CoursewareJobSummary(BaseModel):
@@ -780,6 +793,7 @@ class CoursewareSourcePreparationRequest(BaseModel):
     """Explicitly classify a material before creating a source-only chapter."""
 
     confirmedMaterialKind: Literal["textbook"] | None = None
+    autoGenerate: bool = False
     subject: CoursewareSubject
     title: str | None = Field(default=None, min_length=1, max_length=200)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
@@ -799,6 +813,8 @@ class CoursewareSourcePreparationRequest(BaseModel):
         if self.pageStart is not None and self.pageEnd is not None:
             if self.pageEnd < self.pageStart or self.pageEnd - self.pageStart + 1 > 80:
                 raise ValueError("教材来源页段必须在 1 到 80 页之间")
+            if self.autoGenerate and self.pageEnd - self.pageStart + 1 > 30:
+                raise ValueError("自动生成一次最多选择 30 个物理页")
         return self
 
 

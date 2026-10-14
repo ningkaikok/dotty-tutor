@@ -23,6 +23,7 @@ export function useCoursewarePlanWorkflow() {
   const [params, setParams] = useSearchParams();
   const uploadId = params.get("uploadId") ?? "";
   const chapterId = params.get("chapterId") ?? "";
+  const sourceJobId = params.get("sourceJobId") ?? "";
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [uploads, setUploads] = useState<LibraryItem[]>([]);
@@ -48,6 +49,15 @@ export function useCoursewarePlanWorkflow() {
   // Supplementing opens a new plan form over an approved plan; its lessons are retained server-side.
   const [supplementing, setSupplementing] = useState(false);
 
+  const sourceCompleted = useCallback((result: unknown) => {
+    const found = preparedChapterList(result);
+    setPreparedChapters(found);
+    if (found.length === 1 && result && typeof result === "object" && "planJobId" in result) {
+      setParams({ chapterId: found[0].chapterId, mode: "automatic" });
+    }
+    if (!found.length) setError("来源任务已完成，但没有可用章节结果；请重新读取教材库。");
+  }, [setParams]);
+
   const refreshWorkspace = useCallback(async (id: string) => {
     setLoading(true);
     setError("");
@@ -67,6 +77,12 @@ export function useCoursewarePlanWorkflow() {
         setPageStart(String(current.pageStart));
         setPageEnd(String(current.pageEnd));
         setPlanLoaded(true);
+        if (current.generationJobId && ["queued", "running"].includes(current.generationStatus)) {
+          const resumed = await loadBackgroundJob(current.generationJobId);
+          setJob(resumed);
+          if (resumed.status === "failed") setError(typeof resumed.lastError?.message === "string" ? resumed.lastError.message : "自动制作未能完成，请重试或调整所选范围。");
+          setJobPurpose("plan");
+        }
       } else if (!(planResult.reason instanceof ApiRequestError && planResult.reason.status === 404)) {
         throw planResult.reason;
       } else {
@@ -107,6 +123,20 @@ export function useCoursewarePlanWorkflow() {
   }, [chapterId, refreshWorkspace]);
 
   useEffect(() => {
+    if (!uploadId || !sourceJobId) return;
+    let active = true;
+    void loadBackgroundJob(sourceJobId).then((resumed) => {
+      if (!active) return;
+      setJob(resumed); setJobPurpose("source");
+      if (resumed.status === "succeeded") sourceCompleted(resumed.result);
+      if (resumed.status === "failed" || resumed.status === "cancelled") setError(resumed.lastError?.message || resumed.message || "来源准备未能完成。");
+    }).catch((requestError) => {
+      if (active) setError(coursewareErrorMessage(requestError, "来源准备进度暂时无法恢复。"));
+    });
+    return () => { active = false; };
+  }, [sourceJobId, uploadId, sourceCompleted]);
+
+  useEffect(() => {
     if (!job?.jobId || !jobPurpose || isTerminal(job.status)) return;
     let active = true;
     let timer: number | undefined;
@@ -117,12 +147,10 @@ export function useCoursewarePlanWorkflow() {
         setJob(next);
         if (next.status === "succeeded") {
           if (jobPurpose === "source") {
-            const found = preparedChapterList(next.result);
-            setPreparedChapters(found);
-            if (!found.length) setError("来源任务已完成，但没有可用章节结果；请重新读取教材库。");
+            sourceCompleted(next.result);
           } else if (chapterId) {
             await refreshWorkspace(chapterId);
-            setNotice("教材规划已生成，请核对目标、页码覆盖和逐页大纲。");
+            setNotice(params.get("mode") === "automatic" ? "教学大纲已自动校验，教程页面正在制作；完成后打开预览即可。" : "教材规划已生成，请核对目标、页码覆盖和逐页大纲。");
           }
           return;
         }
@@ -140,7 +168,7 @@ export function useCoursewarePlanWorkflow() {
     };
     timer = window.setTimeout(() => void poll(), 500);
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [chapterId, job, jobPurpose, refreshWorkspace]);
+  }, [chapterId, job, jobPurpose, refreshWorkspace, sourceCompleted, params]);
 
   const startSourcePreparation = async (input: CoursewareSourcePreparationInput) => {
     if (!upload) return;
@@ -152,7 +180,8 @@ export function useCoursewarePlanWorkflow() {
       const next = await prepareCoursewareSource(upload.uploadId, input);
       setJob(next);
       setJobPurpose("source");
-      setNotice("已提交教材来源准备任务；任务只建立章节来源，不生成课件页面。");
+      setParams({ uploadId: upload.uploadId, sourceJobId: next.jobId, ...(input.autoGenerate ? { mode: "automatic" } : {}) });
+      setNotice(input.autoGenerate ? "已开始自动制作；系统会准备原页、生成规划和教程，无需分别批准来源与大纲。" : "已提交教材来源准备任务；任务只建立章节来源，不生成课件页面。");
     } catch (requestError) {
       setError(coursewareErrorMessage(requestError, "教材来源准备未能启动。"));
     } finally {
@@ -218,6 +247,7 @@ export function useCoursewarePlanWorkflow() {
         pageEnd: end,
         expectedRecordVersion: chapter.recordVersion,
         supplement: supplementing,
+        autoGeneratePages: false,
       });
       setPlan(planView(result.plan));
       setSupplementing(false);
@@ -285,7 +315,25 @@ export function useCoursewarePlanWorkflow() {
   };
   const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setSupplementing(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
 
+  const retryAutomatic = async () => {
+    if (!chapter || !plan) return;
+    setBusy(true); setError("");
+    try {
+      const next = await createCoursewarePlan(chapter.chapterId, {
+        subject: chapter.subject, audience: plan.audience, languagePolicy: plan.languagePolicy,
+        durationMinutes: 20, objectives: plan.requestedObjectives?.length ? plan.requestedObjectives : ["根据教材原页覆盖核心概念、示例与学习目标"],
+        expectedRecordVersion: chapter.recordVersion, pageStart: plan.pageStart, pageEnd: plan.pageEnd,
+        supplement: false, autoGeneratePages: true,
+      });
+      setPlan(planView(next.plan)); setJob(next.job ?? null); setJobPurpose("plan");
+      setNotice("已重试自动制作，继续复用已准备的教材来源。");
+    } catch (requestError) { setError(coursewareErrorMessage(requestError, "自动制作重试未能启动。")); }
+    finally { setBusy(false); }
+  };
+
   return {
+    retryAutomatic,
+    automaticGeneration: params.get("mode") === "automatic" || Boolean(plan?.generationAudit?.automaticGeneration),
     uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,
     languagePolicy, setLanguagePolicy, durationMinutes, setDurationMinutes, objectives, setObjectives,

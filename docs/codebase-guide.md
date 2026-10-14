@@ -63,7 +63,7 @@ dotty-tutor/
 │   │   │   ├── dependency_preflight_routes.py # GET /api/system/dependency-preflight（环境依赖自检只读端点）
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
-│   │   │   ├── material_courses.py # 显式教材分类/学科/页段，准备来源章节
+│   │   │   ├── material_courses.py # 受管原页 OCR 检查点与自动来源→规划→页面链路
 │   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
 │   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
 │   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
@@ -230,10 +230,10 @@ flowchart LR
   Source[上传 PDF / 逐页来源] --> Prepare[MaterialCourseService / source.prepare]
   Prepare --> Chapter[来源章节 / 修订]
   Chapter --> Plan[CoursewareService / 教学规划]
-  Plan --> Confirm[教师确认]
+  Plan --> Confirm[自动通过结构校验 / 可选手动规划]
   Confirm --> Worker[courseware_jobs / 页面检查点]
   Worker --> Draft[CoursewareStore / 课件草稿]
-  Draft --> Review[编辑与逐页审核]
+  Draft --> Review[一次最终预览确认 / 可选逐页修订]
   Review --> Publication[不可变发布]
   Publication --> Teacher[教师播放投影]
   Publication --> Student[学生安全投影 / 可选互动]
@@ -244,6 +244,8 @@ flowchart LR
 
 共享协议在 `domain/contracts/courseware.py`；学科差异在 `domain/courseware/profiles.py`
 及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
+默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
+来源任务 ID 保存在制作页面查询参数中，刷新后继续轮询既有任务；发布响应丢失时先读取已持久化结果，避免要求重复发布。
 清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。
 
 ### 2026-09 学习闭环新增边界
@@ -317,10 +319,10 @@ flowchart LR
 ### 教材链路
 
 统一上传通过 `domain/chapters/material.py` 自动分流：试卷继续题目流水线，教材或类型不明的来源保存 OCR。
-`ChapterStudioApp` 的上传来源分支由 `AutomaticCourseCreator` 与 `useAutomaticCourses` 展示无前置表单的流程。
-`POST /api/chapters/from-upload/{upload_id}` → `application/chapter_jobs.py` 的 `material.courses.create`
-→ `application/services/material_courses.py`（目录/逐页标题、最多前五章）→ 既有 `ChapterCourseService`
-与 `chapter.lesson.generate`；原 PDF、逐页 OCR、来源指纹及教师复核门禁继续保留。
+`CoursewareSourcePrepare` 选择学科与物理页段，默认自动制作；未知类型才需要额外确认。
+`POST /api/chapters/from-upload/{upload_id}` → `application/chapter_jobs.py` 的 `courseware.source.prepare`
+→ `application/services/material_courses.py`（逐页 OCR / 来源检查点）→ `ChapterCourseService` 来源修订
+→ `CoursewareService` 自动教学规划和页面任务；原 PDF、原始 OCR、来源指纹与一次最终确认继续保留。
 
 ```text
 apps/api/routers/textbook_routes.py（HTTP、上传状态）
@@ -360,7 +362,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
 `/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；新教程生成后旧练习进入历史区，教程数量不包含历史草稿；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
-或带 `uploadId` 进入 `/studio/chapters/new`，自动识别目录并制作教程。上传及旧练习编辑位于
+或带 `uploadId` 进入 `/studio/courseware`，自动准备所选教材范围并制作教程。上传及旧练习编辑位于
 `/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
 
 课程创建默认单页，来源版本、问题标记和区域坐标按需展开。课程编辑按生成、复核、发布组织，
@@ -371,7 +373,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 已有上传/OCR产物或人工提供的页段文本
   → domain/contracts/chapter.py（学科、页码/区域、修订及作答请求）
   → routers/chapter_routes.py
-  → application/services/material_courses.py（教材 OCR/目录 → 前 5 章 tutorial，一本教材目录聚合）
+  → application/services/material_courses.py（所选页段 OCR → 来源章节 → 自动规划与页面任务）
   → domain/chapters/source.py / templates.py（来源定位与 practice 课程纯构造）
   → application/services/chapter_courses.py（复核、修订、发布与作答编排）
   → AI：application/chapter_jobs.py → 既有 Job Store/Worker → ModelRuntime

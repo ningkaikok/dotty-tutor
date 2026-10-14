@@ -22,7 +22,7 @@ from domain.chapters.quality import (
     draft_source_excerpt,
     quality_draft_schema,
 )
-from domain.chapters.source import fingerprint, pages_from_ocr, sentences
+from domain.chapters.source import fingerprint, pages_from_upload, sentences
 from domain.chapters.templates import build_chapter_lessons
 from domain.questions.student_view import student_question_payload
 from ocr_quality import formula_problems
@@ -353,7 +353,7 @@ class ChapterCourseService:
                 raise LookupError("上传任务不存在")
             if job.get("status") not in {"complete", "completed", "ready"}:
                 raise ValueError("上传或 OCR 任务尚未完成")
-            persisted_pages = pages_from_ocr(str(job.get("sourceText") or ""))
+            persisted_pages = pages_from_upload(job)
             if pages:
                 persisted_by_page = {int(item["page"]): str(item["text"]).strip() for item in persisted_pages}
                 for page in pages:
@@ -539,7 +539,7 @@ class ChapterCourseService:
     @staticmethod
     def _source_issues(source: dict[str, Any]) -> list[dict[str, str]]:
         issues = [{"code": "missing_page", "message": f"页段缺页：{page}"} for page in source["missingPages"]]
-        if not source.get("license"):
+        if source.get("distributionScope", "private") != "private" and not source.get("license"):
             issues.append({"code": "source_license_missing", "message": "请记录来源许可或材料授权依据"})
         for page in source["pages"]:
             if not page["text"]:

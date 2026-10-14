@@ -20,6 +20,7 @@ from domain.contracts.courseware import (
     CoursewareDocument,
     CoursewarePageContent,
     CoursewarePlanCreate,
+    CoursewarePublication,
     CoursewareTextBlock,
 )
 from persistence.app_store import AppStore
@@ -104,6 +105,57 @@ class DeterministicCoursewareRuntime:
 
 
 class CoursewarePostgresAcceptanceTests(PostgresTestCase):
+    def test_user_saves_a_private_tutorial_without_distribution_license_then_students_cannot_read_it(self) -> None:
+        # Given a source used only for private preparation, without a distribution grant
+        chapter, _source, _refs, service = self._source_course(distribution_scope="private")
+        chapter["sourceRevisions"][-1]["license"] = None
+        chapter["sourceRevisions"][-1]["attributionText"] = None
+        self.app_store.save_chapter(chapter)
+        chapter = self.app_store.load_chapter(chapter["chapterId"])
+        service.runtime.fail_second_page_once = False
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=chapter["recordVersion"],
+            pageStart=23, pageEnd=24, autoGeneratePages=True,
+        ))
+        worker = JobWorker(self.jobs, build_courseware_registry(service), worker_id="private-save")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        draft = service.get_document(service.list_chapter_documents(chapter["chapterId"])["items"][0]["coursewareId"])
+        # When final preview is confirmed, Then the private snapshot can be saved but has no student projection
+        publication = service.publish(draft["coursewareId"], expected_record_version=draft["recordVersion"],
+            confirm_review=True, actor_id="private-preview-teacher")
+        self.assertEqual(publication["distributionScope"], "private")
+        with self.assertRaises((PermissionError, LookupError)):
+            service.get_published(draft["coursewareId"])
+
+    def test_user_selects_automatic_generation_then_only_final_preview_confirmation_is_needed(self) -> None:
+        # Given a source-grounded chapter and an explicit automatic-generation request
+        chapter, _source, _refs, service = self._source_course()
+        service.runtime.fail_second_page_once = False
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=chapter["recordVersion"],
+            pageStart=23, pageEnd=24, autoGeneratePages=True,
+        ))
+        worker = JobWorker(self.jobs, build_courseware_registry(service), worker_id="automatic-courseware")
+        # When the worker completes planning, it advances to page generation without a teacher approval
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        self.assertEqual(service.get_plan(chapter["chapterId"])["status"], "approved")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        document = service.list_chapter_documents(chapter["chapterId"])["items"][0]
+        draft = service.get_document(document["coursewareId"])
+        self.assertTrue(all(page["reviewStatus"] == "pending" for page in draft["pages"]))
+        # Then one final confirmation records the human action and publishes safe content
+        published = service.publish(document["coursewareId"], expected_record_version=draft["recordVersion"],
+            confirm_review=True, actor_id="final-preview-teacher")
+        response = CoursewarePublication.model_validate(published)
+        self.assertEqual(response.reviewRecords[-1]["pageIds"], [page["pageId"] for page in draft["pages"]])
+        self.assertEqual(published["reviewRecords"][-1]["actorId"], "final-preview-teacher")
+        student = service.get_published(document["coursewareId"])
+        self.assertEqual(student["publicationId"], published["publicationId"])
+        self.assertNotIn("teacherNotes", student["pages"][0])
+
     def test_user_submits_a_single_blank_then_the_attempt_is_saved_with_objective_feedback(self) -> None:
         # Given an immutable classroom activity with one reviewed blank
         cid, pid = "blank-courseware", "blank-publication"

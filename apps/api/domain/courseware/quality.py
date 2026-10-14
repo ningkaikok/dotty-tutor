@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import re
+from html import unescape
 from typing import Any
 
 from ocr_quality import formula_problems
 
 BLOCKING_SOURCE_FLAGS = frozenset({"missing_page", "unreadable", "missing_conditions", "wrong_figure", "formula_mismatch"})
+
+
+def _excerpt_text(text: str) -> str:
+    """Ignore OCR presentation markup while preserving the cited wording."""
+    text = re.sub(r"(?m)^\s{0,3}#{1,6}\s+", "", text)
+    text = re.sub(r"</?(?:sub|sup|em|strong|b|i|span)(?:\s[^>]*)?>", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", unescape(text)).strip()
 
 
 def source_readiness_issues(pages: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -47,11 +55,11 @@ def document_page_issues(document: dict[str, Any], pages: list[dict[str, Any]]) 
             if kind == "text" and block.get("authorship") == "source_excerpt" and not block.get("sourceRefs"):
                 issues.append({"code": "text_source_missing", "message": "教材摘录缺少来源依据", "pageId": page_id})
             if kind == "text" and block.get("authorship") == "source_excerpt" and block.get("sourceRefs"):
-                # Whitespace can change during PDF extraction; wording cannot.
-                excerpt = re.sub(r"\s+", " ", str(block.get("text") or "")).strip()
+                # OCR can add presentation markup and line breaks; wording cannot.
+                excerpt = _excerpt_text(str(block.get("text") or ""))
                 cited_texts = [str(page_map.get(int(ref.get("page", 0)), {}).get("text") or "")
                                for ref in block["sourceRefs"] if isinstance(ref, dict)]
-                if not excerpt or not any(excerpt in re.sub(r"\s+", " ", text).strip() for text in cited_texts):
+                if not excerpt or not any(excerpt in _excerpt_text(text) for text in cited_texts):
                     issues.append({"code": "excerpt_not_verbatim", "message": "标为教材摘录的内容与引用原文不一致，请改为补充讲解或恢复原文", "pageId": page_id})
             if kind == "image":
                 asset = assets.get(str(block.get("assetId")))

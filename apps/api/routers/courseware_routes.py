@@ -256,11 +256,13 @@ def build_courseware_router(service: Any, *, media_service: Any | None = None, v
         payload: CoursewarePublishRequest,
         request: Request,
     ) -> dict[str, Any]:
-        teacher_actor_id(request)
+        actor_id = teacher_actor_id(request)
         return call(
             service.publish,
             courseware_id,
             expected_record_version=payload.expectedRecordVersion,
+            confirm_review=payload.confirmReview,
+            actor_id=actor_id,
         )
 
     @router.get("/courseware/{courseware_id}/published", response_model=CoursewarePublicDocument)

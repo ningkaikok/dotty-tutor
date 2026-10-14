@@ -80,6 +80,44 @@ class ChapterStore(DatabaseStore):
             ))
         return chapter
 
+    def checkpoint_courseware_source(
+        self, *, context: Any, upload_id: str, source_text_sha256: str,
+        source_file_sha256: str, page: dict[str, Any], now: float,
+    ) -> None:
+        """Append source OCR only under a live lease, preserving the original preview."""
+        with self.atomic() as connection:
+            lease = connection.execute(select(background_jobs.c.job_id).where(
+                background_jobs.c.job_id == context.job_id,
+                background_jobs.c.status == "running",
+                background_jobs.c.lease_owner == context.worker_id,
+                background_jobs.c.attempt_count == context.attempt_count,
+                background_jobs.c.lease_expires_at > now,
+                background_jobs.c.cancel_requested.is_(False),
+            ).with_for_update()).scalar_one_or_none()
+            if lease is None:
+                raise ValueError("教材来源准备任务租约已过期或已被取消")
+            row = connection.execute(select(upload_jobs).where(
+                upload_jobs.c.upload_id == upload_id,
+            ).with_for_update()).mappings().first()
+            if not row or row["status"] not in {"complete", "completed", "ready"}:
+                raise ValueError("教材来源已不可用")
+            if hashlib.sha256(str(row["source_text"] or "").encode()).hexdigest() != source_text_sha256:
+                raise ValueError("教材 OCR 来源在准备期间已变化")
+            result = decode_json(row["result_json"]) or {}
+            snapshot = result.get("coursewareSource") or {"sourceFileSha256": source_file_sha256, "pages": []}
+            if snapshot["sourceFileSha256"] != source_file_sha256:
+                raise ValueError("教材原文件在准备期间已变化")
+            pages = {int(item["page"]): item for item in snapshot["pages"]}
+            existing = pages.get(int(page["page"]))
+            if existing and existing["text"] != page["text"]:
+                raise ValueError("该教材页已有不同 OCR 快照，请重新准备来源")
+            pages[int(page["page"])] = page
+            result["sourceFingerprint"] = source_file_sha256
+            result["coursewareSource"] = {**snapshot, "pages": [pages[number] for number in sorted(pages)]}
+            connection.execute(upload_jobs.update().where(upload_jobs.c.upload_id == upload_id).values(
+                result_json=result, updated_at=now,
+            ))
+
     def load_chapter(self, chapter_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
         with self.read_connection() as connection:

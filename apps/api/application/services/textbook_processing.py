@@ -545,7 +545,7 @@ class TextbookProcessingService:
             job["result"] = material_preview(job, lesson_source, ocr_run, detection, page_count)
             job["result"]["sourceFingerprint"] = source_fingerprint
             job["completedAt"] = time.time()
-            self.upload_registry.update(job, "complete", 100, "教材原文已保存，可直接制作前 5 个章节")
+            self.upload_registry.update(job, "complete", 100, "教材原件与首批预览已保存，选择页码范围即可自动制作教程")
             return job["result"]
         self._check_cancel(cancellation_check)
         self.upload_registry.update(
