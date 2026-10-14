@@ -461,6 +461,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 任务类型为 `courseware.source.prepare`，复用 `/api/jobs/{jobId}` 查询、取消和显式重试。
 请求包含显式 `subject`、成对的 `pageStart/pageEnd`（最多 80 页）、标题、`sourceTitle/sourceUrl/license/attributionText/distributionScope`。
+`autoGenerate=true`（前端默认）将页段限制到 30 页，来源准备成功后自动提交教学规划，并在结构/引用校验通过后启动页面生成；任务结果含 `planJobId`。服务兼容默认 false 的旧客户端和手动模式。
+任务会复用已保存的逐页来源；缺失页从受管原 PDF 经现有 OCR 路由逐页读取，检查点与识别记录保存到上传结果的内部 `coursewareSource`，不改写原始 OCR 文本。
 未知材料须传 `confirmedMaterialKind="textbook"`，试卷拒绝进入此路径；未注册学科拒绝，不能回退为数学。
 完成返回来源章节及 `requiresHumanReview=true`；不代表课件已经生成。复用持久化逐页文本和原 PDF，不自动扫描前五章。
 
@@ -490,6 +492,9 @@ curl -X POST http://127.0.0.1:8010/api/help \
 课件不要求包含练习，讲解可以独立发布；互动提交不写入原试卷掌握度。公开活动字段 `selectionMode=single|multiple` 决定单选或多选；选择题提交 `response.selectedOptions`，单填空提交 `response.text`，开放回答返回 `needs_review`。私有正确项不会随该模式字段公开。
 规划生成失败后，新 Idempotency-Key 可创建新版本；相同命令仍返回原任务。仅模型生成的课时总时长从页面时长汇总，手工编辑仍校验完整时长关系。教材摘录审核检查原页文字，改写或翻译不能标为 `source_excerpt`。
 任务按来源修订、规划、文档、页面版本以及 Worker 认领次数保存检查点。旧认领或教师修改后的迟到结果不能覆盖当前内容。
+规划请求可传 `autoGeneratePages=true`，校验后的大纲自动进入页面生成，页面仍未审核。发布请求可传 `confirmReview=true`，以当前教师身份在同一事务内记录最终预览确认与不可变发布；检查失败时全部回滚。默认 false 保留原先分开审核、发布的协议。
+发布响应的 `reviewRecords` 与草稿记录保持一致，`pageIds` 为字符串列表。摘录校验忽略 OCR 产生的标题和行内格式标记，保留措辞一致性检查；它不证明讲解语义正确。
+私有教程可在没有对外分发许可的情况下保存教师快照，学生接口仍拒绝读取；课堂和公开发布仍要求真实许可与署名。草稿预览仅在教师端复用已有数据与播放器，不提交学生作答。
 
 旧教材产物清理由独立 CLI 的精确 manifest 撤回，不新增删除 HTTP 端点。保留上传完成状态、原文件、OCR 与来源修订；普通读取应过滤 manifest 内旧生成 ID。
 工程验收、真实教材复核及实际清理结果见 [验收记录](textbook-courseware-acceptance.md)，不能把接口存在视为验收通过。

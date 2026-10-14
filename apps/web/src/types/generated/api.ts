@@ -4764,6 +4764,11 @@ export interface components {
             /** Audience */
             audience: string;
             /**
+             * Autogeneratepages
+             * @default false
+             */
+            autoGeneratePages: boolean;
+            /**
              * Durationminutes
              * @default 40
              */
@@ -4907,7 +4912,7 @@ export interface components {
             publishedAt: number;
             /** Reviewrecords */
             reviewRecords?: {
-                [key: string]: string | number | boolean;
+                [key: string]: string | number | boolean | string[];
             }[];
             snapshot: components["schemas"]["CoursewareDocument"];
             /** Sourcerevisionid */
@@ -4990,6 +4995,11 @@ export interface components {
         };
         /** CoursewarePublishRequest */
         CoursewarePublishRequest: {
+            /**
+             * Confirmreview
+             * @default false
+             */
+            confirmReview: boolean;
             /** Expectedrecordversion */
             expectedRecordVersion: number;
         };
@@ -5127,6 +5137,11 @@ export interface components {
         CoursewareSourcePreparationRequest: {
             /** Attributiontext */
             attributionText?: string | null;
+            /**
+             * Autogenerate
+             * @default false
+             */
+            autoGenerate: boolean;
             /** Confirmedmaterialkind */
             confirmedMaterialKind?: "textbook" | null;
             /**

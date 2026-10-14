@@ -37,6 +37,11 @@
 .quality-review-provenance b { color: var(--c-ink-muted); font-size: 10px; }
 .quality-review-provenance span, .quality-review-provenance code { overflow-wrap: anywhere; }
 .quality-review-provenance code, .quality-review-fingerprints { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.quality-review-source-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; margin:18px 0 24px; padding-top:16px; border-top:1px solid var(--c-line-strong); }
+.quality-review-source-actions a { color:var(--c-brand); border-color:var(--c-brand); text-decoration:none; }
+.quality-review-source-actions a:hover { background:var(--c-brand-soft); text-decoration:none; }
+.quality-review-source-actions > span { color:var(--c-ink-muted); font-size:12px; }
+.quality-review-source-actions a:focus-visible { outline:3px solid var(--c-brand); outline-offset:3px; }
 .quality-review-source h3 { margin: 18px 0 6px; font-size: 14px; }
 .quality-review-source blockquote { margin: 8px 0; padding: 11px 13px; border-left: 3px solid var(--c-ink-muted); background: var(--c-brand-soft); color: var(--c-ink-muted); font-size: 13px; line-height: 1.65; white-space: pre-wrap; }
 .quality-review-source-gate { margin-top: 14px; padding: 12px; border: 1px solid color-mix(in srgb, var(--c-accent) 40%, var(--c-surface)); border-radius: 10px; background: color-mix(in srgb, var(--c-accent-soft) 45%, var(--c-surface)); color: var(--c-on-accent-soft); }

@@ -1,4 +1,4 @@
-import { Button } from "../../components/ui";
+import { Badge, Button, ButtonLink } from "../../components/ui";
 import { useState } from "react";
 import { Link } from "react-router";
 import { useQualityReviewInbox } from "../quality-review/useQualityReviewInbox";
@@ -105,15 +105,15 @@ export function MaterialsApp() {
       {inbox.hasCounts && !inbox.error && <p className="materials-review-counts" role="status">来源：{inbox.counts.pendingCount} 项待处理 · {inbox.counts.reviewedCount} 项已复核 · {inbox.counts.unlinkedCount} 项未关联；课程：{knownCourseCount ?? "暂不可用"} 章待复核；视频：{inbox.counts.mediaPendingCount} 项待审（正在渲染的视频不计入）。</p>}
       {!inbox.loading && !inbox.error && reviewGroups.length === 0 && !reviewCourses.length && !mediaTasks.length && !coursewareTasks.length && <section className="chapter-panel materials-empty"><h3>{query ? "没有找到匹配的复核任务" : includeReviewed ? "还没有来源复核案例" : "当前没有待处理复核任务"}</h3><p>复核意见保存在来源记录中；接受来源案例不会自动批准课程或教学视频。</p></section>}
       {reviewCourses.length > 0 && <section className="materials-review-task-section" aria-label="课程待复核任务"><h3>课程待复核（{reviewCourses.length}）</h3><ul className="materials-review-task-list">{reviewCourses.map((item) => <li key={item.chapterId}><span>{item.title} · {statuses[item.status] ?? "待复核"}</span><Link to={`/studio/chapters/${item.chapterId}`}>继续课程复核</Link></li>)}</ul></section>}
-      <section className="materials-grid" aria-label="按教材或来源分组的复核任务">
-        {reviewGroups.map((group) => <article className="chapter-panel material-card" key={group.sourceKey}>
-          <span className="material-kind">{group.chapterIds.length ? "教材来源复核" : "未关联教材的来源包"}</span>
+      <section className="materials-grid materials-source-review-grid" aria-label="按教材或来源分组的复核任务">
+        {reviewGroups.map((group) => <article className="chapter-panel material-card material-source-review-card" key={group.sourceKey}>
+          <header className="material-source-review-heading"><span className="material-kind">{group.chapterIds.length ? "教材来源复核" : "未关联教材的来源包"}</span><span className="material-source-review-total">{group.items.length} 项案例</span></header>
           <h3>{group.title}</h3>
           {group.uploadId && !group.chapterIds.length && <p>已登记来源文件，尚未关联到当前章节；可直接继续复核。</p>}
           {group.chapterIds.length > 0 && <p>关联章节：{group.chapterIds.map((id) => chapterById.get(id)?.title ?? id).join("、")}</p>}
-          <ul>{group.items.map((item) => <li key={item.caseId}>
-            <span>{item.externalCaseId} · {item.subject === "english" ? "英语" : item.subject === "math" ? "数学" : item.subject} · PDF 第 {item.sourcePage} 页 · {reviewStatus(item.reviewStatus)}</span>
-            <Link to={reviewHref(item)} aria-label={`打开来源复核 ${item.externalCaseId}`}>打开来源复核</Link>
+          <ul className="material-source-review-list" aria-label={`${group.title} 来源案例`}>{group.items.map((item) => <li key={item.caseId}>
+            <div className="material-source-review-info"><strong>{item.externalCaseId}</strong><span>{subjectLabel(item.subject)} · PDF 第 {item.sourcePage} 页</span><Badge tone={item.reviewStatus === "human_accepted" ? "success" : item.reviewStatus === "human_rejected" || item.reviewStatus === "needs_changes" ? "warning" : "neutral"}>{reviewStatus(item.reviewStatus)}</Badge></div>
+            <div className="material-source-review-action"><ButtonLink to={reviewHref(item)} aria-label={`打开来源复核 ${item.externalCaseId}`}>打开来源复核<span aria-hidden="true">→</span></ButtonLink></div>
           </li>)}</ul>
         </article>)}
       </section>
@@ -184,7 +184,8 @@ function mediaReviewHref(item: QualityReviewInboxMediaTask): string {
 }
 
 function reviewStatus(status: string): string {
-  if (["pending_source_verification", "pending_human_review", "decision_recorded_pending_source", "needs_changes"].includes(status)) return "待复核";
+  if (status === "needs_changes") return "待复核 · 需补充";
+  if (["pending_source_verification", "pending_human_review", "decision_recorded_pending_source"].includes(status)) return "待复核";
   if (status === "human_accepted") return "已接受";
   if (status === "human_rejected") return "已拒绝";
   return status;

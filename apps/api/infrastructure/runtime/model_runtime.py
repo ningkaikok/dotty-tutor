@@ -14,6 +14,7 @@ import json
 import math
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -909,15 +910,33 @@ class ModelRuntime:
             )
             command.append("-")
             try:
-                completed = subprocess.run(
+                process = subprocess.Popen(
                     command,
-                    input=full_prompt,
-                    capture_output=True,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    timeout=timeout_seconds,
-                    check=False,
+                    start_new_session=os.name == "posix",
                 )
-            except (OSError, subprocess.TimeoutExpired) as error:
+                try:
+                    stdout, stderr = process.communicate(full_prompt, timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    # npm's Codex launcher starts a native child. Killing only the
+                    # launcher leaves that model call alive after the run timed out.
+                    if os.name == "posix":
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:
+                        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+                        process.kill()
+                    process.communicate()
+                    raise
+                completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+            except subprocess.TimeoutExpired as error:
+                raise RuntimeError(f"Codex 调用超过 {timeout_seconds:g} 秒，已停止本次模型进程；可重试或缩小教材范围") from error
+            except OSError as error:
                 raise RuntimeError(f"Codex 运行失败：{error}") from error
             if completed.returncode != 0:
                 detail = completed.stderr.strip() or completed.stdout.strip()

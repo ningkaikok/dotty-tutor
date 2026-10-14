@@ -165,7 +165,6 @@ app.include_router(build_publication_router(
     revision_service=publication_revision_service,
 ))
 chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
-source_preparation_service = MaterialCourseService(chapter_course_service)
 courseware_service = CoursewareService(
     store=courseware_store,
     chapters=chapter_course_service,
@@ -173,6 +172,7 @@ courseware_service = CoursewareService(
     runtime=generation_runtime,
     prompt_store=prompt_store,
 )
+source_preparation_service = MaterialCourseService(chapter_course_service, processing_service.ocr_runtime, courseware=courseware_service)
 app.state.courseware_service = courseware_service
 app.state.courseware_store = courseware_store
 app.include_router(build_chapter_router(

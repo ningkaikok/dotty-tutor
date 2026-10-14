@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-test("user Given a textbook PDF When uploading from the single entry Then type detection leads to explicit textbook source confirmation", async ({ page }) => {
+test("user Given a textbook PDF When uploading from the single entry Then type detection leads to automatic generation after choosing its scope", async ({ page }) => {
   const result = { uploadId: "automatic-source", importId: "book", filename: "English textbook.pdf", contentType: "application/pdf", size: 20, stored: true,
     materialKind: "textbook", detectionReason: "识别到教材标题", stages: [{ id: "ocr", label: "识别教材原文", status: "done" }],
     ocrRun: { requestedProvider: "pypdf", provider: "pypdf", mode: "text", fallback: false, output: "Unit 1 Hello" },
@@ -39,11 +39,13 @@ test("user Given a textbook PDF When uploading from the single entry Then type d
   await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
   await expect(page.getByLabel("学科")).toHaveValue("");
   await expect(page.getByLabel("起始页")).toHaveValue("");
-  await expect(page.getByRole("button", { name: "确认并准备教材来源" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
   expect(sourceRequested).toBe(false);
   await page.getByLabel("学科").selectOption("english");
-  await page.getByRole("checkbox", { name: /我确认这份材料用于教材课件制作/ }).check();
-  await expect(page.getByRole("button", { name: "确认并准备教材来源" })).toBeEnabled();
+  await page.getByLabel("起始页").fill("6");
+  await page.getByLabel("结束页").fill("8");
+  await expect(page.getByRole("checkbox", { name: /我确认这份材料用于教材课件制作/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
   expect(sourceRequested).toBe(false);
 });
 
@@ -275,13 +277,13 @@ test("user Given a PDF and an English course When using the unified library Then
   await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
   await expect(page.getByText(/系统尚未识别材料类型/)).toBeVisible();
   await expect(page.getByLabel("材料类型")).toHaveValue("");
-  await expect(page.getByRole("button", { name: "确认并准备教材来源" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
   await page.getByLabel("材料类型").selectOption("textbook");
   await page.getByLabel("学科").selectOption("math");
   await page.getByLabel("起始页").fill("1");
   await page.getByLabel("结束页").fill("12");
   await page.getByRole("checkbox", { name: /我确认这份材料用于教材课件制作/ }).check();
-  await expect(page.getByRole("button", { name: "确认并准备教材来源" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto("/studio/chapters");
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();

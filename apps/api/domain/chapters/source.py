@@ -75,3 +75,14 @@ def pages_from_ocr(text: str) -> list[dict[str, Any]]:
             # Correct the original text against the PDF before creating a new revision.
             page["flags"] = ["unreadable"]
     return pages
+
+
+def pages_from_upload(upload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Merge preview OCR with fenced per-page courseware source checkpoints."""
+    pages = {int(page["page"]): page for page in pages_from_ocr(str(upload.get("sourceText") or ""))}
+    result = upload.get("result") or {}
+    snapshot = result.get("coursewareSource") or {}
+    if snapshot.get("sourceFileSha256") and snapshot["sourceFileSha256"] == result.get("sourceFingerprint"):
+        for page in snapshot.get("pages", []):
+            pages[int(page["page"])] = {key: value for key, value in page.items() if key != "ocrRun"}
+    return [pages[number] for number in sorted(pages)]
