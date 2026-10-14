@@ -266,3 +266,75 @@ class DeepSeekProviderTests(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaisesRegex(RuntimeError, "DEEPSEEK_API_KEY"):
                 ModelRuntime()._deepseek_json("deepseek-flash", "prompt", {"type": "object"}, 80)
+
+
+class OpenAICompatibleProviderTests(unittest.TestCase):
+    """A generic Chat Completions endpoint lets benchmarks compare models across vendors."""
+
+    COMPATIBLE_ENV = {
+        "OPENAI_COMPATIBLE_BASE_URL": "https://gateway.example/v1/",
+        "OPENAI_COMPATIBLE_API_KEY": "secret",
+        "OPENAI_COMPATIBLE_MODELS": "qwen-max, claude-sonnet ,",
+    }
+
+    def test_user_sees_compatible_endpoint_only_when_fully_configured(self) -> None:
+        # Given only a base URL without key or model list
+        with patch.dict(os.environ, {"OPENAI_COMPATIBLE_BASE_URL": "https://gateway.example/v1"}, clear=True):
+            partial = next(item for item in ModelRuntime().providers() if item["id"] == "openai_compatible")
+        # When the endpoint, key and models are all configured
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True):
+            complete = next(item for item in ModelRuntime().providers() if item["id"] == "openai_compatible")
+        # Then the catalog hides the incomplete endpoint and lists the configured models
+        self.assertFalse(partial["available"])
+        self.assertTrue(complete["available"])
+        self.assertEqual(complete["models"], ["qwen-max", "claude-sonnet"])
+
+    def test_user_selects_compatible_model_and_it_persists_as_selection(self) -> None:
+        # Given a configured compatible endpoint
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True), \
+                patch("infrastructure.runtime.model_runtime.selection_store.save"):
+            runtime = ModelRuntime()
+            # When the user picks one of its models
+            catalog = runtime.select("openai_compatible", "qwen-max")
+        # Then it becomes the active selection
+        self.assertEqual(catalog["selected"], {"provider": "openai_compatible", "model": "qwen-max"})
+
+    def test_user_compares_compatible_model_and_request_targets_configured_endpoint(self) -> None:
+        response_payload = {
+            "choices": [{"message": {"content": '{"reply":"先通分"}'}}],
+            "usage": {"prompt_tokens": 21, "completion_tokens": 4},
+        }
+
+        class FakeResponse:
+            def __enter__(self) -> "FakeResponse":
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+            def read(self, *_: object) -> bytes:
+                return json.dumps(response_payload).encode("utf-8")
+
+        # Given a configured gateway at the external model boundary
+        with patch.dict(os.environ, self.COMPATIBLE_ENV, clear=True), \
+                patch("urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            # When an evaluation calls a compatible model explicitly
+            result, run = ModelRuntime().generate_json_as(
+                "openai_compatible", "qwen-max", "private prompt", {"type": "object"}
+            )
+        # Then the answer, provider identity and token usage are preserved
+        self.assertEqual(result, {"reply": "先通分"})
+        self.assertEqual(run["modelResult"]["actualModel"], "qwen-max")
+        self.assertEqual(run["modelResult"]["usage"], {"promptTokens": 21, "outputTokens": 4})
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://gateway.example/v1/chat/completions")
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+        sent = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(sent["model"], "qwen-max")
+        # DeepSeek-only parameters must not leak to other vendors.
+        self.assertNotIn("thinking", sent)
+
+    def test_user_sees_missing_configuration_before_any_request(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "OPENAI_COMPATIBLE_BASE_URL"):
+                ModelRuntime()._openai_compatible_json("qwen-max", "prompt", {"type": "object"}, 80)

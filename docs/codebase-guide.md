@@ -3,7 +3,8 @@
 `apps/web/src/api/client.ts` 同时承载可选的 API 来源地址装配及 API 图片地址解析，`src/main.tsx` 仅装配这一传输配置；章节来源组件复用解析函数，不自行拼接部署域名。
 
 可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
-DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+DeepSeek；配置 OPENAI_COMPATIBLE_BASE_URL/API_KEY/MODELS 后显示通用 OpenAI 兼容接口（provider
+`openai_compatible`，用于跨厂商模型评测）。JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
 MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
 启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
 现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
@@ -286,7 +287,7 @@ flowchart LR
   Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
-  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / Azure / Qwen TTS"]
+  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / OpenAI 兼容接口 / Azure / Qwen TTS"]
 ```
 
 依赖只能向右。Runtime、Store 和领域函数不得导入 `app.py`，否则会产生循环依赖并让单元测试必须启动
