@@ -17,6 +17,10 @@ from persistence.database import (  # noqa: E402
     normalize_database_url,
     resolve_database_url,
 )
+from persistence.migration_support import (  # noqa: E402
+    MIGRATION_LOCK_KEY,
+    migration_lock_timeout,
+)
 from persistence.schema_registry import SCHEMA_METADATA, table_registry  # noqa: E402
 
 config = context.config
@@ -56,14 +60,27 @@ def run_migrations_online() -> None:
         future=True,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
-        with context.begin_transaction():
-            connection.execute(text("SELECT pg_advisory_xact_lock(734291507)"))
-            context.run_migrations()
+        # Session-level lock: it must survive the commits that autocommit blocks
+        # (CREATE INDEX CONCURRENTLY) perform, so a second migrator still waits.
+        # It is taken before lock_timeout applies, so concurrent deploys queue
+        # here instead of failing.
+        connection.execute(text(f"SELECT pg_advisory_lock({MIGRATION_LOCK_KEY})"))
+        # A blocked DDL statement fails fast instead of queueing behind long
+        # transactions and freezing every request that touches the table.
+        connection.execute(text(f"SET lock_timeout = '{migration_lock_timeout()}'"))
+        connection.commit()
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            connection.rollback()
+            connection.execute(text(f"SELECT pg_advisory_unlock({MIGRATION_LOCK_KEY})"))
+            connection.commit()
     connectable.dispose()
 
 
