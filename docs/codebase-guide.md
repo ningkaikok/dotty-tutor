@@ -3,7 +3,8 @@
 `apps/web/src/api/client.ts` 同时承载可选的 API 来源地址装配及 API 图片地址解析，`src/main.tsx` 仅装配这一传输配置；章节来源组件复用解析函数，不自行拼接部署域名。
 
 可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
-DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+DeepSeek；配置 OPENAI_COMPATIBLE_BASE_URL/API_KEY/MODELS 后显示通用 OpenAI 兼容接口（provider
+`openai_compatible`，用于跨厂商模型评测）。JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
 MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
 启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
 现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
@@ -63,10 +64,12 @@ dotty-tutor/
 │   │   │   ├── dependency_preflight_routes.py # GET /api/system/dependency-preflight（环境依赖自检只读端点）
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
-│   │   │   ├── material_courses.py # 显式教材分类/学科/页段，准备来源章节
+│   │   │   ├── material_courses.py # 受管原页 OCR 检查点与自动来源→规划→页面链路
 │   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
 │   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
 │   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
+│   │   │   ├── courseware_completion.py # 当前来源连续缺口分批建议，不创建任务或覆盖已有规划
+│   │   │   ├── courseware_ai_review.py # AI 初审与来源案例 AI 参考意见：估算调用、任务执行、状态视图；从不批准或决定
 │   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
 │   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
 │   │   │   ├── review_restore.py # 待审案例包恢复指纹与事务锁
@@ -90,13 +93,14 @@ dotty-tutor/
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
 │   │   ├── application/chapter_jobs.py # 章节 AI 草稿 Worker 注册、取消与错误分类
 │   │   ├── application/courseware_jobs.py # 规划与逐页课件 Worker 注册、租约/认领门禁
+│   │   ├── application/ai_review_jobs.py # AI 初审/参考意见 Worker 注册；格式错误重试一次后可见失败
 │   │   ├── application/quality_review_sources.py # 受管素材哈希、原句与既有 PDF 预览适配
 │   │   ├── application/quality_review_runs_jobs.py # 共用 Worker 的一次性有界模型对照
 │   │   ├── application/lesson_media_jobs.py # 共用 Worker 的有界媒体渲染任务
 │   │   ├── application/lesson_media_renderer.py # 固定 SVG 数据、CairoSVG/FFmpeg、动画与 VTT 字幕
 │   │   ├── textbook_ocr_pipeline.py # 页面级 OCR 路由、局部升级和缓存编排
 │   │   ├── ocr_pipeline.py     # 页面探测、路由和内容寻址缓存纯函数
-│   │   ├── ocr_quality.py      # 页面/题块质量门禁和有限重试策略
+│   │   ├── ocr_quality.py      # 页面/题块公式结构门禁和有限重试；题目、章节、课件共用
 │   │   ├── ocr_preflight.py    # 正式 OCR 前的页面预检分类和脏页摘要（检查内容）
 │   │   ├── public_protection.py # 显式启用的进程内请求/模型配额与并发保护
 │   │   ├── dependency_preflight.py # 运行环境依赖自检：MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL（检查环境，与 ocr_preflight 不合并）
@@ -105,7 +109,7 @@ dotty-tutor/
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   │                   # courseware.py、quality_review.py、quality_review_runs.py、lesson_media.py、voice.py 定义新增协议
 │   │   │   ├── chapters/       # material.py 文档分类与章节边界；source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
-│   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议
+│   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议；batches.py 当前规划与保留批次的课件归属；ai_review.py AI 初审输入哈希、确定性抽检、分流与一致率
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
 │   │   │   │   └── answer_solver.py # 核验阶段 solverAgreement 的标量/显式解集三态判等（sympy 兜底，只判等价不解题）
 │   │   │   ├── learning/       # 知识点身份和 mastery-v2 派生算法
@@ -134,7 +138,7 @@ dotty-tutor/
 │   │   │   └── files/          # 上传注册和文件边界
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
 │   │   │   ├── chapter/        # 合成基线与 real_sources.py 真实材料待复核包/人工决策导入
-│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验和配对统计
+│   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验、只读 readiness 诊断和配对统计
 │   │   │   └── prefix_cache_probe.py # 离线 warm/cold/control 能力探针
 │   │   └── persistence/        # 数据库基础设施和按领域拆分的 Store
 │   │       ├── base.py         # PostgreSQL 引擎、健康检查和通用 Upsert
@@ -165,7 +169,7 @@ dotty-tutor/
 │   │       └── versions/         # adoption、mastery、assignment、review/variation、题目编辑与身份会话迁移
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
-│   │       ├── postgres_test_runner.py # 建库、迁移并运行完整后端测试发现
+│   │       ├── postgres_test_runner.py # 按模块多进程并行运行后端测试，每个进程独立运行时库
 │   │       └── test_postgres_integration.py # 迁移、JSONB、外键、锁和 Store 契约
 │   ├── web/                    # React 前端与 Playwright 用户路径
 │   │   ├── src/
@@ -206,7 +210,10 @@ dotty-tutor/
 ├── scripts/seed_demo_bundle.py # 固定 ID 的合成三人课堂 bundle，支持 --verify
 ├── scripts/cleanup_legacy_textbook_content.py # 默认 dry-run，精确 manifest 的 apply/restore
 ├── examples/demo-pack/manifest.json # demo bundle 的隐私声明和固定数据契约
-├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库运行后端测试
+├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库并行运行后端测试，可选覆盖率
+├── scripts/upgrade-local.ps1 # Windows 本机一键升级：已最新则跳过，否则备份→预检→升级→校验，可选重启 8010 API
+├── scripts/test-changed.py # 本地按导入关系只跑受影响的后端测试与 vitest related；不确定时退回全量
+├── scripts/ci-changed-areas.sh # CI 按改动路径决定 backend/frontend/e2e/docker 与 Python 版本
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # PostgreSQL、一次性迁移/卷初始化与应用服务编排
 ```
@@ -217,15 +224,18 @@ dotty-tutor/
 
 教材课件领域链路与试卷生成分开：
 
+OCR 公式结构检查由 `ocr_quality.formula_problems` 统一提供，题目发布、章节来源 issues 与课件来源就绪检查复用。
+`formula_mismatch` 是来源页人工标记，经章节来源修订进入课件规划、审核和发布边界；修订不改写历史发布内容。
+
 ```mermaid
 flowchart LR
   Source[上传 PDF / 逐页来源] --> Prepare[MaterialCourseService / source.prepare]
   Prepare --> Chapter[来源章节 / 修订]
   Chapter --> Plan[CoursewareService / 教学规划]
-  Plan --> Confirm[教师确认]
+  Plan --> Confirm[自动通过结构校验 / 可选手动规划]
   Confirm --> Worker[courseware_jobs / 页面检查点]
   Worker --> Draft[CoursewareStore / 课件草稿]
-  Draft --> Review[编辑与逐页审核]
+  Draft --> Review[一次最终预览确认 / 可选逐页修订]
   Review --> Publication[不可变发布]
   Publication --> Teacher[教师播放投影]
   Publication --> Student[学生安全投影 / 可选互动]
@@ -236,6 +246,8 @@ flowchart LR
 
 共享协议在 `domain/contracts/courseware.py`；学科差异在 `domain/courseware/profiles.py`
 及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
+默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
+来源任务 ID 保存在制作页面查询参数中，刷新后继续轮询既有任务；发布响应丢失时先读取已持久化结果，避免要求重复发布。
 清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。
 
 ### 2026-09 学习闭环新增边界
@@ -275,7 +287,7 @@ flowchart LR
   Prompts --> PromptStore["persistence/prompt_store：修订与发布指针"]
   Services --> Contracts["domain/contracts"]
   Stores --> PostgreSQL[(PostgreSQL)]
-  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / Azure / Qwen TTS"]
+  Runtime --> External["MinerU / Ollama / Codex / DeepSeek / OpenAI 兼容接口 / Azure / Qwen TTS"]
 ```
 
 依赖只能向右。Runtime、Store 和领域函数不得导入 `app.py`，否则会产生循环依赖并让单元测试必须启动
@@ -309,10 +321,10 @@ flowchart LR
 ### 教材链路
 
 统一上传通过 `domain/chapters/material.py` 自动分流：试卷继续题目流水线，教材或类型不明的来源保存 OCR。
-`ChapterStudioApp` 的上传来源分支由 `AutomaticCourseCreator` 与 `useAutomaticCourses` 展示无前置表单的流程。
-`POST /api/chapters/from-upload/{upload_id}` → `application/chapter_jobs.py` 的 `material.courses.create`
-→ `application/services/material_courses.py`（目录/逐页标题、最多前五章）→ 既有 `ChapterCourseService`
-与 `chapter.lesson.generate`；原 PDF、逐页 OCR、来源指纹及教师复核门禁继续保留。
+`CoursewareSourcePrepare` 选择学科与物理页段，默认自动制作；未知类型才需要额外确认。
+`POST /api/chapters/from-upload/{upload_id}` → `application/chapter_jobs.py` 的 `courseware.source.prepare`
+→ `application/services/material_courses.py`（逐页 OCR / 来源检查点）→ `ChapterCourseService` 来源修订
+→ `CoursewareService` 自动教学规划和页面任务；原 PDF、原始 OCR、来源指纹与一次最终确认继续保留。
 
 ```text
 apps/api/routers/textbook_routes.py（HTTP、上传状态）
@@ -352,7 +364,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
 `/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；新教程生成后旧练习进入历史区，教程数量不包含历史草稿；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
-或带 `uploadId` 进入 `/studio/chapters/new`，自动识别目录并制作教程。上传及旧练习编辑位于
+或带 `uploadId` 进入 `/studio/courseware`，自动准备所选教材范围并制作教程。上传及旧练习编辑位于
 `/studio/import`，`useTextbookImport` 负责深链接恢复；旧 `/studio/chapters` 列表链接重定向到统一教材页。
 
 课程创建默认单页，来源版本、问题标记和区域坐标按需展开。课程编辑按生成、复核、发布组织，
@@ -363,7 +375,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 已有上传/OCR产物或人工提供的页段文本
   → domain/contracts/chapter.py（学科、页码/区域、修订及作答请求）
   → routers/chapter_routes.py
-  → application/services/material_courses.py（教材 OCR/目录 → 前 5 章 tutorial，一本教材目录聚合）
+  → application/services/material_courses.py（所选页段 OCR → 来源章节 → 自动规划与页面任务）
   → domain/chapters/source.py / templates.py（来源定位与 practice 课程纯构造）
   → application/services/chapter_courses.py（复核、修订、发布与作答编排）
   → AI：application/chapter_jobs.py → 既有 Job Store/Worker → ModelRuntime
@@ -680,8 +692,13 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 
 ### 课件扩展链路（2026-10-12）
 
-`courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划版本的未发布课件加入“我的教材 → 待我复核”。
+`courseware_coverage` 汇总当前来源完整页段的缺口；`quality_review_courseware` 把当前规划及保留批次的未发布课件加入“我的教材 → 待我复核”。
+`courseware_completion` 在相同来源/章节锁下读取覆盖与任务状态，按连续、可用、未规划且未生成的原页分批；已有任务/规划引导继续原流程，不写入规划或审批。前端 `useCoursewareCoverage` 管理请求与来源变化，`coursewareCompletionView` 负责建议可选状态；选择页段仅填写既有规划表单。规划读取失败时不将其当作“没有规划”。
+已确认且生成完成的规划可按建议“补齐”：`create_plan(supplement=True)` 把旧规划转入 `retainedBatches`，`domain/courseware/batches.py` 让列表、读取、编辑、重做、发布、复核收件箱与任务回写同时接受当前规划和保留批次；前端 `useCoursewarePlanWorkflow` 的补齐模式在已确认规划之上打开新建表单并保留已有课时列表。
+AI 初审：`persistence/ai_review_store.py` 只追加保存结论（迁移 0026），`domain/contracts/ai_review.py` 定义严格模型输出与状态视图，`application/services/courseware_ai_review.py` 估算并执行审核任务；前端 `CoursewareAiReviewPanel` + `useCoursewareAiReview` 显示分流与问题定位，批量确认调用原有教师审核接口；来源复核页的 `SourceCaseAiOpinion` 只展示参考意见。
 `courseware_publication` 读取不可变发布 → 白名单讲解 → 既有 LessonMediaService/VoiceTutorService；不复制渲染、语音轮次或答案规则。
 `courseware_assets` 从保存的 ChapterRegion 推导裁图；缺坐标明确回退原页。恢复命令为 `scripts/restore-quality-review.py` 和 `scripts/restore-courseware-drafts.py`，只恢复待审，不复建批准。
 
 人工评测位于 `evaluation/benchmark/admission.py`（快照双审与独立身份登记）和 `formal.py`（50 案覆盖、完整两臂、离线盲审与分歧阻断），继续复用 `blind_review.py` 和 `statistics.py`。流程见 [执行与验收](frontend-quality-expansion-acceptance.md)。
+`evaluation/benchmark/readiness.py` 只读检查候选、身份与已有审批，复用入集和覆盖校验，输出安全原因码与缺口；不会创建人工批准或排名。命令见[评测准备诊断](benchmark-readiness.md)。
+`evaluation/chapter/material_candidates.py` 用既有 pypdf、来源句子和 ChapterCreate 协议准备受限页段，固定 PDF/来源哈希并保留原始文字层；粘连、空文本与公式风险仅标待核对，不自动修正。候选保持 private/pending/count=false，原 PDF 和产物只放忽略目录。来源准备命令见[候选教材说明](material-candidate-preparation.md)。

@@ -406,3 +406,22 @@
 .courseware-published-media { margin: 20px auto; max-width: 1180px; }
 .courseware-published-media video { width: 100%; max-height: 420px; }
 .courseware-page-voice { margin: 24px 0; color: var(--c-ink); }
+
+/* Completion suggestions retain source-page boundaries and wrap actions on narrow screens. */
+.courseware-completion { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--c-line); }
+.courseware-completion h3 { margin: 0 0 12px; }
+.courseware-completion .ui-notice { margin: 12px 0; }
+.courseware-completion-batches { display: grid; gap: 8px; margin: 16px 0; padding: 0; list-style: none; }
+.courseware-completion-batches li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px; border-radius: var(--radius-md); background: var(--c-surface-tint); }
+
+.courseware-workflow-header > .courseware-eyebrow { display: block; margin-top: 16px; }
+.courseware-final-confirmation { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px clamp(18px, 3vw, 42px); background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
+.courseware-final-confirmation > div { min-width: 0; }
+.courseware-final-confirmation h1 { margin: 0 0 8px; font-size: clamp(22px, 2.4vw, 32px); overflow-wrap: anywhere; }
+.courseware-final-confirmation p { margin: 6px 0; color: var(--c-ink-soft); }
+.courseware-final-actions { display: flex; flex-wrap: wrap; flex-shrink: 0; gap: 8px; }
+.courseware-authoring-route > details { margin: 24px clamp(18px, 3vw, 42px); }
+.courseware-authoring-route > details > summary { padding: 14px 0; cursor: pointer; font-weight: 700; color: var(--c-ink-soft); }
+@media (max-width: 700px) { .courseware-final-confirmation { align-items: stretch; flex-direction: column; gap: 12px; } }
+.courseware-plan-source-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); }
+.courseware-plan-source-range legend { padding: 0 6px; color: var(--c-ink-soft); line-height: 1.6; }

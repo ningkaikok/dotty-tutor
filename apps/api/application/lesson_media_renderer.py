@@ -13,11 +13,12 @@ import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
-
-import cairosvg
+from typing import TYPE_CHECKING, Any, Callable
 
 from application.job_worker import JobCancelled, TerminalJobError
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 WIDTH = 1_280
 HEIGHT = 720
@@ -49,6 +50,20 @@ SUPPORTED_TEX = {
     r"\%": "%",
 }
 _TEX_TOKEN = re.compile(r"\\[A-Za-z]+|\\.")
+
+
+def _load_cairosvg() -> ModuleType:
+    """Import CairoSVG only when a video is actually rendered.
+
+    cairocffi loads the native Cairo library at import time. Importing it at module level
+    made the whole API fail to start on hosts without Cairo (e.g. a Windows dev machine),
+    even though only the video worker needs it. A missing library now fails just this job.
+    """
+    try:
+        import cairosvg
+    except (ImportError, OSError) as error:
+        raise TerminalJobError(f"教学视频渲染环境未就绪：无法加载 CairoSVG/Cairo（{error}）") from error
+    return cairosvg
 
 
 @dataclass(frozen=True)
@@ -337,6 +352,7 @@ class LessonMediaRenderer:
         if sum(len(scene["narration"]) for scene in scenes) > 8_000:
             raise TerminalJobError("讲解总长度超过 8000 字符上限")
         deadline = deadline or time.monotonic() + MAX_RENDER_SECONDS
+        cairosvg = _load_cairosvg()
         temp_root.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix="lesson-media-", dir=temp_root) as work:
             workdir = Path(work)

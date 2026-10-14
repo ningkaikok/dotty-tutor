@@ -154,7 +154,7 @@ schema；`PostgresTestCase` 负责为数据库测试创建一次性 PostgreSQL �
 | `0009_tutor_tools_and_canvas` | 增加结构化画布、公式候选兼容列和工具提案审计表。 |
 | `0010_tutor_search_and_tools` | 注册 Tutor 检索文档及 PostgreSQL 全文检索索引。 |
 
-`env.py` 在 PostgreSQL 事务内取得 advisory lock；`migration_cli.py` 提供
+`env.py` 先取得会话级 advisory lock（并发迁移排队等待，且锁能跨越 CONCURRENTLY 建索引所需的提交），再设置 `lock_timeout`（默认 5s，`DOTTY_MIGRATION_LOCK_TIMEOUT`）：某一步等表锁超时即失败并整体回滚，不会排在长事务后面把业务请求一起卡住；`migration_cli.py` 提供
 `current`、`head`、`preflight`、`upgrade`、`verify` 五个统一入口；`schema_registry.py` 保证
 七个领域的 metadata 在迁移、检查和 PostgreSQL 测试夹具中保持同一份注册事实。
 
@@ -209,9 +209,11 @@ uv run python -m persistence.migration_cli upgrade --database-url "$DATABASE_URL
 uv run python -m persistence.migration_cli verify --database-url "$DATABASE_URL"
 ```
 
-`preflight` 和 `verify` 只读且不打印连接串；`upgrade` 在 PostgreSQL 事务中取得 advisory lock，
+`preflight` 和 `verify` 只读且不打印连接串；`upgrade` 取得会话级 advisory lock 后在 PostgreSQL 事务中
 执行有序 revision，并在添加 assignment 外键前检查孤儿数据。`verify` 不通过时不能部署或重启
 业务进程。迁移前必须有可恢复备份；发现手工项时先修复数据或结构，再重新 preflight。
+给已有数据的表新增索引时使用 `migration_support.create_index_concurrently()`，不要用阻塞写入的 `op.create_index`；它在 autocommit 块中执行，同一 revision 中排在它之前的步骤会先提交。
+已知限制：历史 revision 通过 `create_registered_schema` 使用当前注册表建表，升级到旧版本的新库也会包含之后新增的表，因此不能用“表是否存在”判断升级是否完成，以 `alembic_version` 为准。
 
 多个 worktree/session **不得共享同一个可写数据库**。每个开发工作树应使用独立 PostgreSQL
 数据库；自动化测试使用隔离数据库或临时实例；只有明确配置且与用户库隔离的

@@ -13,7 +13,7 @@ from application.job_worker import JobCancelled, TerminalJobError
 from evaluation.benchmark.contract import validate_records
 from evaluation.benchmark.statistics import paired_binary_difference
 from infrastructure.runtime.capabilities import annotate_model_entry, eligible_for_role
-from infrastructure.runtime.model_runtime import ModelRuntime
+from infrastructure.runtime.model_runtime import CALLABLE_PROVIDERS, ModelRuntime
 
 _MISSING_JOB_RECOVERY_GRACE_SECONDS = 60
 
@@ -38,7 +38,7 @@ class QualityReviewRunsService:
         providers = self.runtime.providers()
         catalog = []
         for provider in providers:
-            if provider["id"] not in {"ollama", "codex", "deepseek"}:
+            if provider["id"] not in CALLABLE_PROVIDERS:
                 continue
             models = self._text_generation_models(provider)
             available = bool(provider["available"]) and bool(models)
@@ -359,7 +359,7 @@ class QualityReviewRunsService:
         }
 
     def _validate_model(self, selection: dict[str, str]) -> None:
-        if selection["provider"] not in {"ollama", "codex", "deepseek"}:
+        if selection["provider"] not in CALLABLE_PROVIDERS:
             raise ValueError("质量比较必须使用真实、可配置的模型提供方")
         provider = next((item for item in self.runtime.providers() if item["id"] == selection["provider"]), None)
         if provider is None or not provider["available"]:

@@ -102,10 +102,20 @@ export function useCoursewareDocumentWorkflow(coursewareId: string) {
     setError("");
     setNotice("");
     try {
-      const result = await publishCourseware(coursewareId, { expectedRecordVersion: document.recordVersion });
-      setDocument(authoringDocument(result.snapshot));
+      const result = await publishCourseware(coursewareId, { expectedRecordVersion: document.recordVersion, confirmReview: true });
+      setDocument(authoringDocument(await loadCourseware(coursewareId)));
       setNotice(`课件已发布，发布版本 ${result.version}。`);
     } catch (requestError) {
+      // A timeout or malformed response can occur after publication committed.
+      // Recover the persisted result before suggesting another publish action.
+      try {
+        const saved = await loadCourseware(coursewareId);
+        if (saved.status === "published" && saved.publicationId && saved.publicationId !== document.publicationId) {
+          setDocument(authoringDocument(saved));
+          setNotice("课件已发布；已恢复保存成功的发布结果。");
+          return;
+        }
+      } catch { /* Keep the original publish error if the persisted result is unavailable. */ }
       setError(coursewareErrorMessage(requestError, "课件发布失败；请查看来源和审核问题。"));
     } finally {
       setBusy(false);

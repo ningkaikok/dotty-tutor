@@ -7,6 +7,7 @@
 .venv/
 output/
 .coverage
+.coverage.*
 htmlcov/
 coverage/
 *.log

@@ -23,11 +23,19 @@ export DOTTY_TEST_POSTGRES_ADMIN_URL='postgresql+psycopg://postgres:password@127
 bash scripts/test-backend-postgres.sh
 ```
 
-脚本只接受这个显式 admin 变量。它会创建名称形如 `dotty_ci_test_<随机后缀>` 的独立数据库，
-先升级到当前 Alembic head，再运行整个 `apps/api/tests` 发现；结束时只终止自己创建的数据库
+脚本只接受这个显式 admin 变量。它调用 `tests.postgres_test_runner`：把 `tests/test_*.py` 按模块
+分给多个 spawn 子进程（默认 min(4, CPU 数)，`--workers N` 或 `DOTTY_TEST_WORKERS` 覆盖，也可只传
+模块名），每个子进程各自从模板库复制一个 `dotty_ci_test_<随机后缀>` 运行时库并使用独立的
+`DOTTY_DATA_DIR`，互不共享可变状态；结束时打印最慢的 10 个模块。设置 `DOTTY_TEST_COVERAGE=1`
+时脚本改用 `coverage run` 并在结束后 `coverage combine` 合并各子进程数据（CI 只在推送到 main 时
+这样做）。结束时只终止自己创建的数据库
 连接并删除自己前缀下的数据库，不会把 `DATABASE_URL` 当作 admin 地址，也不会输出凭据。
 
-`PostgresTestCase` 为每个数据库测试类创建独立数据库，先升级到 Alembic head；每个测试通过
+`PostgresTestCase` 为每个数据库测试类创建独立数据库：从已升级到 Alembic head 的模板库
+`dotty_ci_test_tpl_<hash>` 复制，再校验 head 与注册表齐全。模板名的哈希覆盖 `migrations/` 与
+`persistence/` 的全部 Python 文件，任何可能影响迁移结果的改动都会重建模板；模板在 advisory
+lock 下先建临时库、迁移完成后再改名，并发运行不会复制到迁移一半的库。7 天未重建的旧模板会被
+清理（多个 worktree 共用一个本地 PostgreSQL 时不会互删正在使用的模板）。每个测试通过
 可信 schema registry 生成的 `TRUNCATE ... RESTART IDENTITY CASCADE` 清理业务表，并保留
 `alembic_version`。adoption、legacy 和 preflight 测试显式创建未迁移的空数据库，不与普通 Store
 测试夹具混用。`test_postgres_integration.py` 覆盖 current/head、adoption、preflight、upgrade、

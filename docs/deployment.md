@@ -470,6 +470,12 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。
 
+### v0.39.0 发布分支同步
+
+部署分支采用已发布 `v0.39.0` 的主分支代码，保留 Render Blueprint、启动脚本、MinerU/DeepSeek、公网配额及可信代理设置。教材制作默认自动串联识别、规划与生成并在最终预览确认一次，新增完整单元增量补齐、课件与来源 AI 辅助预审、损坏 OCR 公式发布拦截及 Cairo 延迟加载。通用 OpenAI 兼容接口在 `render.yaml` 中未配置，线上仍使用 DeepSeek。
+
+已有数据库须升级至 `0026_ai_reviews`：只新增 AI 预审记录相关的表、列和索引，不修改既有数据，降级时保留预审记录。部署前须为线上数据库建立恢复点，核对实际版本后执行 preflight→upgrade→verify；Render 启动脚本在 verify 成功后才启动 Worker/API。分支同步与 CI 通过不代表线上迁移或实际部署已完成。
+
 ### v0.38.0 发布分支同步
 
 部署分支同步 v0.38.0：共享 Bright 组件、教材待审与完整单元覆盖、可信区域裁图、固定课件发布的视频/语音、science 独立配置与人工双审门槛。保留 Render Blueprint、启动脚本、MinerU/DeepSeek、公网配额及可信代理设置。新组件不改变试卷生产流程。

@@ -195,6 +195,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chapters/{chapter_id}/courseware-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Completion */
+        get: operations["completion_api_chapters__chapter_id__courseware_completion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chapters/{chapter_id}/courseware-coverage": {
         parameters: {
             query?: never;
@@ -755,6 +772,24 @@ export interface paths {
         post?: never;
         /** Delete Draft */
         delete: operations["delete_draft_api_courseware__courseware_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/ai-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Review Status */
+        get: operations["ai_review_status_api_courseware__courseware_id__ai_review_get"];
+        put?: never;
+        /** Request Ai Review */
+        post: operations["request_ai_review_api_courseware__courseware_id__ai_review_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1994,6 +2029,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/quality-review/cases/{case_id}/ai-opinion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Case Ai Opinion */
+        get: operations["source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_get"];
+        put?: never;
+        /** Request Source Case Ai Opinion */
+        post: operations["request_source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/quality-reviews/cases/{case_id}": {
         parameters: {
             query?: never;
@@ -3040,6 +3093,104 @@ export interface components {
             /** Revisionid */
             revisionId: string;
         };
+        /**
+         * AiAgreementMetrics
+         * @description Teacher decisions recorded after an AI verdict on the same page version.
+         */
+        AiAgreementMetrics: {
+            /**
+             * Agreements
+             * @default 0
+             */
+            agreements: number;
+            /**
+             * Compared
+             * @default 0
+             */
+            compared: number;
+            /**
+             * Falsealarms
+             * @default 0
+             */
+            falseAlarms: number;
+            /**
+             * Missed
+             * @default 0
+             */
+            missed: number;
+        };
+        /**
+         * AiPageReview
+         * @description One page's AI verdict and routing next to the teacher's current decision.
+         */
+        AiPageReview: {
+            /** Issues */
+            issues?: components["schemas"]["AiReviewIssue"][];
+            model?: components["schemas"]["AiReviewModel"] | null;
+            /** Pageid */
+            pageId: string;
+            /** Pageversion */
+            pageVersion: number;
+            /** Reviewedat */
+            reviewedAt?: number | null;
+            /** Reviewedversion */
+            reviewedVersion?: number | null;
+            /**
+             * Reviewstatus
+             * @enum {string}
+             */
+            reviewStatus: "pending" | "approved" | "changes_requested";
+            /**
+             * Route
+             * @enum {string}
+             */
+            route: "not_reviewed" | "stale" | "needs_review" | "bulk_confirmable" | "decided";
+            /** Sampled */
+            sampled: boolean;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Textonly
+             * @default false
+             */
+            textOnly: boolean;
+            /** Title */
+            title: string;
+            /** Verdict */
+            verdict?: ("pass" | "concern" | "fail") | null;
+        };
+        /** AiReviewIssue */
+        AiReviewIssue: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "excerpt_mismatch" | "formula_error" | "figure_mismatch" | "answer_error" | "unsupported_content" | "missing_condition" | "other";
+            /** Message */
+            message: string;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "blocking" | "minor";
+            /** Sourcepage */
+            sourcePage?: number | null;
+        };
+        /** AiReviewModel */
+        AiReviewModel: {
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+        };
         /** AssignmentCreate */
         AssignmentCreate: {
             /**
@@ -3485,7 +3636,7 @@ export interface components {
         /** ChapterPageFlag */
         ChapterPageFlag: {
             /** Flags */
-            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable")[];
+            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable" | "formula_mismatch")[];
             /** Page */
             page: number;
         };
@@ -3885,6 +4036,48 @@ export interface components {
             /** Teacherrubric */
             teacherRubric?: string | null;
         };
+        /** CoursewareAiReviewRequest */
+        CoursewareAiReviewRequest: {
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+        };
+        /**
+         * CoursewareAiReviewStart
+         * @description Estimate first: pagesToReview equals the model calls this request will make.
+         */
+        CoursewareAiReviewStart: {
+            /** Cachedpages */
+            cachedPages: number;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Jobid */
+            jobId?: string | null;
+            /** Pagestoreview */
+            pagesToReview: number;
+            reviewer: components["schemas"]["AiReviewModel"];
+        };
+        /** CoursewareAiReviewStatus */
+        CoursewareAiReviewStatus: {
+            /**
+             * Countsashumanreview
+             * @default false
+             * @constant
+             */
+            countsAsHumanReview: false;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Jobid */
+            jobId?: string | null;
+            metrics: components["schemas"]["AiAgreementMetrics"];
+            /** Pages */
+            pages: components["schemas"]["AiPageReview"][];
+            /** Pagestoreview */
+            pagesToReview: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Samplingrate */
+            samplingRate: number;
+        };
         /** CoursewareAsset */
         CoursewareAsset: {
             /**
@@ -3986,6 +4179,90 @@ export interface components {
             itemId: string;
             /** Label */
             label: string;
+        };
+        /**
+         * CoursewareCompletion
+         * @description Read-only preparation advice; human decisions stay in the existing workflow.
+         */
+        CoursewareCompletion: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create_plan" | "continue_plan" | "wait_generation" | "review_generated" | "repair_source" | "complete";
+            /** Alreadygeneratedpages */
+            alreadyGeneratedPages: number[];
+            /** Alreadyplannedpages */
+            alreadyPlannedPages: number[];
+            /** Batches */
+            batches: components["schemas"]["CoursewareCompletionBatch"][];
+            /** Blockedpages */
+            blockedPages: number[];
+            /** Cancreateplan */
+            canCreatePlan: boolean;
+            /** Chapterid */
+            chapterId: string;
+            existingPlan?: components["schemas"]["CoursewareCompletionPlan"] | null;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Maxpagesperbatch */
+            maxPagesPerBatch: number;
+            /** Pendinggenerationpages */
+            pendingGenerationPages: number[];
+            /** Pendingpublicationpages */
+            pendingPublicationPages: number[];
+            /** Pendingreviewpages */
+            pendingReviewPages: number[];
+            /**
+             * Requireshumanreview
+             * @default true
+             * @constant
+             */
+            requiresHumanReview: true;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /**
+             * Supplementsexistingplan
+             * @default false
+             */
+            supplementsExistingPlan: boolean;
+        };
+        /** CoursewareCompletionBatch */
+        CoursewareCompletionBatch: {
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Sourcepages */
+            sourcePages: number[];
+        };
+        /**
+         * CoursewareCompletionPlan
+         * @description Existing workflow identity, retained when suggestions describe another range.
+         */
+        CoursewareCompletionPlan: {
+            /**
+             * Generationstatus
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "awaiting_confirmation" | "approved" | "superseded";
         };
         /**
          * CoursewareCoverage
@@ -4442,6 +4719,8 @@ export interface components {
             requestedObjectives?: string[];
             /** Requesthash */
             requestHash?: string | null;
+            /** Retainedbatches */
+            retainedBatches?: components["schemas"]["CoursewareRetainedBatch"][];
             /**
              * Schemaversion
              * @default 1
@@ -4485,6 +4764,11 @@ export interface components {
             /** Audience */
             audience: string;
             /**
+             * Autogeneratepages
+             * @default false
+             */
+            autoGeneratePages: boolean;
+            /**
              * Durationminutes
              * @default 40
              */
@@ -4501,6 +4785,11 @@ export interface components {
             pageStart?: number | null;
             /** Subject */
             subject: string;
+            /**
+             * Supplement
+             * @default false
+             */
+            supplement: boolean;
         };
         /** CoursewarePlanEdit */
         CoursewarePlanEdit: {
@@ -4623,7 +4912,7 @@ export interface components {
             publishedAt: number;
             /** Reviewrecords */
             reviewRecords?: {
-                [key: string]: string | number | boolean;
+                [key: string]: string | number | boolean | string[];
             }[];
             snapshot: components["schemas"]["CoursewareDocument"];
             /** Sourcerevisionid */
@@ -4706,6 +4995,11 @@ export interface components {
         };
         /** CoursewarePublishRequest */
         CoursewarePublishRequest: {
+            /**
+             * Confirmreview
+             * @default false
+             */
+            confirmReview: boolean;
             /** Expectedrecordversion */
             expectedRecordVersion: number;
         };
@@ -4725,6 +5019,25 @@ export interface components {
         CoursewareRegenerationResult: {
             document: components["schemas"]["CoursewareDocument"];
             job: components["schemas"]["CoursewareJobSummary"];
+        };
+        /**
+         * CoursewareRetainedBatch
+         * @description An earlier approved plan whose courseware stays editable after a supplement.
+         *
+         *     Objectives are frozen with the batch because its pages reference these IDs,
+         *     not the objectives of whichever plan is currently open.
+         */
+        CoursewareRetainedBatch: {
+            /** Coursewareids */
+            coursewareIds?: string[];
+            /** Objectives */
+            objectives?: components["schemas"]["CoursewareObjective"][];
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
         };
         /**
          * CoursewareRevealContent
@@ -4824,6 +5137,11 @@ export interface components {
         CoursewareSourcePreparationRequest: {
             /** Attributiontext */
             attributionText?: string | null;
+            /**
+             * Autogenerate
+             * @default false
+             */
+            autoGenerate: boolean;
             /** Confirmedmaterialkind */
             confirmedMaterialKind?: "textbook" | null;
             /**
@@ -5346,7 +5664,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "ollama" | "codex" | "deepseek" | "mock";
+            provider: "ollama" | "codex" | "deepseek" | "openai_compatible" | "mock";
         };
         /** OcrSelectionRequest */
         OcrSelectionRequest: {
@@ -5984,6 +6302,46 @@ export interface components {
             inviteToken?: string | null;
             /** Teachersecret */
             teacherSecret?: string | null;
+        };
+        /**
+         * SourceCaseAiOpinion
+         * @description Advisory opinion on a source case; never a human decision or gold label.
+         */
+        SourceCaseAiOpinion: {
+            /** Caseid */
+            caseId: string;
+            /** Caseversion */
+            caseVersion: number;
+            /**
+             * Countsashumanreview
+             * @default false
+             * @constant
+             */
+            countsAsHumanReview: false;
+            /** Issues */
+            issues?: components["schemas"]["AiReviewIssue"][];
+            /** Jobid */
+            jobId?: string | null;
+            model?: components["schemas"]["AiReviewModel"] | null;
+            /** Reviewedat */
+            reviewedAt?: number | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Textonly
+             * @default false
+             */
+            textOnly: boolean;
+            /** Verdict */
+            verdict?: ("pass" | "concern" | "fail") | null;
         };
         /**
          * StageRerunResponse
@@ -6773,6 +7131,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoursewareDocumentsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    completion_api_chapters__chapter_id__courseware_completion_get: {
+        parameters: {
+            query?: {
+                maxPagesPerBatch?: number;
+            };
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareCompletion"];
                 };
             };
             /** @description Validation Error */
@@ -8007,6 +8398,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ai_review_status_api_courseware__courseware_id__ai_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareAiReviewStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_ai_review_api_courseware__courseware_id__ai_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareAiReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareAiReviewStart"];
                 };
             };
             /** @description Validation Error */
@@ -10498,6 +10955,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCaseAiOpinion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareAiReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCaseAiOpinion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

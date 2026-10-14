@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button, Notice, SelectField, Skeleton, TextAreaField, TextField } from "../../components/ui";
 import { apiResourceUrl } from "../../api/client";
 import type { QualityReviewCase, QualityReviewInboxItem } from "../../api/qualityReviews";
+import { SourceCaseAiOpinion } from "./SourceCaseAiOpinion";
 import { useQualityReview } from "./useQualityReview";
 import "./qualityReview.css";
 
@@ -76,7 +77,7 @@ export function CaseReviewPanel({
           <section className="panel quality-review-source">
             <div className="quality-review-section-heading"><div><span className="eyebrow">{review.detail.subject === "math" ? "数学来源" : review.detail.subject === "english" ? "英语来源" : review.detail.subject}</span><h3>{review.detail.externalCaseId}</h3></div><span className="quality-review-status">{caseStatusLabel(review.detail.reviewStatus, review.detail.sourceVerification)}</span></div>
             <div className="quality-review-provenance"><div><b>来源</b><span>{String(packageSource.sourceTitle ?? packageSource.title ?? "教材来源")}</span></div><div><b>PDF 页码</b><span>{review.detail.sourcePage}</span></div><div><b>版本</b><span>{String(packageSource.version ?? "未标明")}</span></div><div><b>许可</b><span>{String(packageSource.license ?? "待核实")}</span></div><div><b>服务端 SHA-256</b><code>{String(packageSource.contentSha256 ?? "尚未核验")}</code></div></div>
-            {typeof packageSource.url === "string" && <p><a href={packageSource.url} target="_blank" rel="noreferrer">打开来源网页</a></p>}
+            {typeof packageSource.url === "string" && <div className="quality-review-source-actions" role="group" aria-label="来源查看操作"><a className="ui-button ui-button-secondary" href={packageSource.url} target="_blank" rel="noopener noreferrer" aria-label="打开来源网页（新标签页）">打开来源网页<span aria-hidden="true">↗</span></a><span>在新标签页查看原教材来源</span></div>}
             <h4>原文定位</h4><blockquote>{String(sourceLocator.quote ?? "来源引用缺失")}</blockquote>
             {packageSource.assetVerification === "server_hash_verified" ? <figure className="quality-review-source-page"><img src={apiResourceUrl(`/api/quality-reviews/cases/${encodeURIComponent(review.detail.caseId)}/source-page`)} alt={`教材 PDF 第 ${review.detail.sourcePage} 页`} /><figcaption>受管原页、PDF 指纹、页码和引用已由服务端核验；案例仍需人工复核。</figcaption></figure> : <div className="quality-review-source-gate" role="status"><strong>原教材 PDF 尚未连接</strong><p>请通过现有教材上传流程登记原 PDF。未能从受管原件核验的决定只会保存为临时意见。</p></div>}
             <div className="quality-review-source-gate" role="note"><strong>人工决定仍由你提交</strong><p>预期答案、OCR 和机检结果不代表教材正确。公开教材案例不计入人工金标准，未验证身份不表示独立双审。</p></div>
@@ -88,6 +89,7 @@ export function CaseReviewPanel({
             <article className="panel"><h3>预期结果</h3><ReviewSummary value={review.detail.expected} kind="expected" /></article>
             <article className="panel"><h3>实际观察</h3><ReviewSummary value={review.detail.actual} kind="actual" /></article>
           </section>
+          <SourceCaseAiOpinion key={review.detail.caseId} caseId={review.detail.caseId} recordVersion={review.detail.recordVersion} />
 
           <section className="panel quality-review-revisions">
             <h3>版本历史</h3><p>每次修订都会追加新版本；旧版决定仍绑定原有指纹。</p>

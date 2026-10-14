@@ -210,7 +210,8 @@ bash scripts/test-backend-postgres.sh
 
 测试设施只接受这个显式 admin 变量，不会把 `DATABASE_URL`、`POSTGRES_*` 或 `DOTTY_DATA_DIR`
 猜作测试管理入口。每次运行会创建带固定安全前缀和随机后缀的临时数据库，迁移到当前 head 后
-运行完整后端测试，最后只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
+按模块并行运行完整后端测试（`--workers N` 调整进程数，也可只传 `tests.test_x` 模块名），最后
+只清理本次创建的数据库。不要把生产库、应用业务库或其他 worktree
 正在使用的库作为 admin 目标；命令不会打印连接凭据。
 
 没有设置 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时，需要数据库的测试会跳过，纯逻辑测试仍可运行。CI
@@ -375,6 +376,15 @@ schema 落后时返回 `503`、错误码 `SCHEMA_OUT_OF_DATE` 和脱敏缺失表
 ```text
 backup → preflight → upgrade → verify → deploy/restart
 ```
+
+Windows 本机（免安装 PostgreSQL + 手动启动的 8010 API）用一条命令完成以上流程：
+
+```powershell
+pwsh scripts/upgrade-local.ps1              # 已是最新则什么都不做；否则备份 → 预检 → 升级 → 校验
+pwsh scripts/upgrade-local.ps1 -RestartApi  # 另外只重启命令行为 uvicorn app:app 的 8010 进程，并等健康检查通过
+```
+
+脚本读取 `.env.local` 的 `POSTGRES_*`，用 `pg_dump -Fc` 备份到 `%LOCALAPPDATA%\dotty-tutor\backups`（保留最近 10 份）并用 `pg_restore --list` 确认可读；任一步失败即停止并打印对应的 `pg_restore` 恢复命令，不会自动恢复。升级被长事务锁住时会在 `DOTTY_MIGRATION_LOCK_TIMEOUT` 内失败回滚，版本不前进。请在终端直接运行，不要把输出接到管道。
 
 `mistake_items.error_reason`、`ai_error_reason` 和 `ai_error_reason_confidence` 仍是旧 API 兼容投影；
 `mistake_attributions` 记录追加式历史，旧列要经过观察窗口后才单独评估 contract/drop。
@@ -575,11 +585,11 @@ mock 真正的外部边界（模型/OCR/TTS/审校 Runtime），时间相关行�
 [apps/api/tests/README.md](../apps/api/tests/README.md)。
 
 后端和前端都接入了覆盖率报告（`coverage`/`@vitest/coverage-v8`），CI 日志里会打印分支/行覆盖率
-明细，但目前**只出报告、不设门槛**——先看真实分布再决定基线，而不是让 AI 或人为了凑数字写
+明细（后端只在推送到 main 时收集，PR 不收集以节省时间），但目前**只出报告、不设门槛**——先看真实分布再决定基线，而不是让 AI 或人为了凑数字写
 无意义测试：
 
 ```bash
-(cd apps/api && uv run coverage run -m unittest discover -s tests -p 'test_*.py' && uv run coverage report -m)
+DOTTY_TEST_COVERAGE=1 bash scripts/test-backend-postgres.sh   # 并行子进程数据会自动 combine
 cd apps/web && pnpm test:coverage
 ```
 
@@ -616,7 +626,9 @@ gh secret set FEISHU_WEBHOOK_SECRET
 
 三份环境模板均列出 DeepSeek 和 MinerU 云端参数，默认密钥为空，不会自动切换本机模型。
 DeepSeek 需选择 MODEL_PROVIDER=deepseek 和目录中的模型；陪练可独立设置
-TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。MinerU 在本机命令不可用且配置
+TUTOR_MODEL_PROVIDER/TUTOR_MODEL_NAME。跨厂商评测可填写 OPENAI_COMPATIBLE_BASE_URL、
+OPENAI_COMPATIBLE_API_KEY 和逗号分隔的 OPENAI_COMPATIBLE_MODELS（三项缺一则不显示），一个网关
+（如 OpenRouter）即可覆盖多家模型；provider 为 `openai_compatible`。MinerU 在本机命令不可用且配置
 MINERU_API_KEY 时使用云端解析，上传的原文件及返回的 OCR 产物仍保存在现有数据目录。
 Compose 将同样的云端参数传给 API 和 Worker。测试使用外部服务替身，不证明真实模型/OCR质量。
 

@@ -19,6 +19,44 @@ from tests.postgres_test_support import PostgresTestCase
 class ChapterPostgresAcceptanceTests(PostgresTestCase):
     """Exercise the public chapter routes with the real migrated PostgreSQL store."""
 
+    def test_user_flags_ocr_formula_mismatch_then_source_revision_is_required_before_publication(self) -> None:
+        # Given syntactically valid synthetic OCR known by a reviewer to differ from the page
+        chapter = self._create_chapter("math", "公式复核", [
+            {"page": 1, "text": "一次函数 y=2x+2。", "flags": []},
+        ], pageFlags=[{"page": 1, "flags": ["formula_mismatch"]}])
+        cid = chapter["chapterId"]
+        self.assertIn("formula_mismatch", [issue["code"] for issue in chapter["sourceRevisions"][-1]["issues"]])
+        # When a teacher approves the generated lesson despite the flagged source
+        generated = self.client.post(f"/api/chapters/{cid}/generate")
+        self.assertEqual(generated.status_code, 200, generated.text)
+        lesson_id = generated.json()["lessons"][0]["lessonId"]
+        reviewed = self._approve_lesson(cid, lesson_id, "formula-reviewer")
+        self.assertEqual(reviewed.status_code, 200, reviewed.text)
+        blocked = self.client.post(f"/api/chapters/{cid}/publish")
+        # Then the known source error is not approved away
+        self.assertEqual(blocked.status_code, 409, blocked.text)
+        # When a reviewer supplies a corrected source revision and clears the flag
+        revised = self.client.post(f"/api/chapters/{cid}/revisions", json={
+            "source": {"sourceVersion": "corrected-v2", "license": "Original synthetic test content",
+                       "pages": [{"page": 1, "text": "一次函数 y=2x+1。"}]},
+            "expectedRecordVersion": self._record_version(cid),
+        })
+        self.assertEqual(revised.status_code, 200, revised.text)
+        self.assertEqual(revised.json()["sourceRevisions"][-1]["issues"], [])
+        self._generate_edit_approve_publish_math(revised.json())
+
+    def test_user_imports_truncated_ocr_formula_then_source_issue_survives_reload(self) -> None:
+        # Given a paired formula delimiter that hides a missing group terminator
+        chapter = self._create_chapter("math", "损坏公式", [
+            {"page": 1, "text": r"一次函数 $y=\frac{2}{x$。"},
+        ])
+        # When the persisted chapter is read back
+        read = self.client.get(f"/api/chapters/{chapter['chapterId']}")
+        # Then the OCR corruption remains a publication blocker
+        self.assertIn("formula_group_unbalanced", [item["code"] for item in read.json()["sourceRevisions"][-1]["issues"]])
+        self.assertEqual(self.client.post(f"/api/chapters/{chapter['chapterId']}/publish").status_code, 409)
+
+
     def setUp(self) -> None:
         super().setUp()
         self.store = AppStore(database_url=self.database_url, data_root=self.data_root)
@@ -104,7 +142,7 @@ class ChapterPostgresAcceptanceTests(PostgresTestCase):
         generated_response = self.client.post(f"/api/chapters/{chapter_id}/generate")
         self.assertEqual(generated_response.status_code, 200, generated_response.text)
         generated = generated_response.json()
-        lesson = generated["lessons"][0]
+        lesson = next(item for item in generated["lessons"] if item["lessonId"] in generated["currentLessonIds"])
         revision_id = chapter["sourceRevisions"][-1]["sourceRevisionId"]
         edited = self.client.put(f"/api/chapters/{chapter_id}/lessons/{lesson['lessonId']}", json={
             "prompt": "当 x=1 时，求 y=2x+1 的值。",

@@ -37,6 +37,16 @@ NUMERIC_SPEC = {"answerType": "numeric", "expected": "5/2", "accepted": ["5/2", 
 
 
 class AnswerSpecGateTests(unittest.TestCase):
+    def test_user_receives_clean_generated_question_from_corrupted_ocr_then_publication_stays_blocked(self) -> None:
+        # Given a clean model output that would conceal a truncated OCR fraction
+        prompt = "26. 求 x 的值。"
+        payload = _payload("numeric", NUMERIC_SPEC, prompt)
+        # When publication checks the original source rather than only the clean output
+        quality = validate_question_payload(payload, r"26. 求 $x=\frac{5}{2$。", [])
+        # Then normalizing or regenerating the candidate cannot approve the damaged source
+        self.assertEqual(quality["status"], "needs_review")
+        self.assertTrue(any("formula_group_unbalanced" in error for error in quality["errors"]), quality["errors"])
+
     def test_short_answer_carrying_an_answer_spec_is_flagged(self) -> None:
         """short-answer 不参与确定性判题，携带 answerSpec 一定是错配数据。"""
         quality = validate_question_payload(_payload("short-answer", NUMERIC_SPEC, PROOF_PROMPT), PROOF_PROMPT, [])

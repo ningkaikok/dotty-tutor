@@ -31,9 +31,16 @@ from domain.contracts.courseware import (
     CoursewareSourceRef,
 )
 from domain.courseware.assessment import assess_activity
+from domain.courseware.batches import (
+    active_plan_versions,
+    batches_after_supplement,
+    objectives_for_version,
+    owns_document,
+    retained_page_ranges,
+)
 from domain.courseware.model_output import generation_schema
 from domain.courseware.profiles import CoursewareProfileRegistry, courseware_profiles
-from domain.courseware.quality import document_page_issues
+from domain.courseware.quality import document_page_issues, source_readiness_issues
 from infrastructure.runtime.job_snapshot import (
     current_job_runtime_snapshot,
     use_job_runtime_snapshot,
@@ -120,10 +127,9 @@ class CoursewareService:
         if missing:
             raise ValueError("课件范围包含缺失来源页：" + ", ".join(map(str, missing[:12])))
         pages = [by_page[number] for number in range(start, end + 1)]
-        blocked_flags = {"missing_page", "unreadable", "missing_conditions", "wrong_figure"}
-        for page in pages:
-            if not str(page.get("text") or "").strip() or set(page.get("flags") or []) & blocked_flags:
-                raise ValueError(f"第 {page['page']} 页来源未就绪，不能确认或发布课件")
+        issues = source_readiness_issues(pages)
+        if issues:
+            raise ValueError("来源未就绪，不能确认或发布课件：" + issues[0]["message"])
         return pages
 
     @staticmethod
@@ -264,7 +270,10 @@ class CoursewareService:
         for document in self.store.list_documents(chapter_id):
             if document.get("status") == "deleted":
                 continue
-            if plan and int(document.get("planVersion", 0)) != int(plan.get("planVersion", 0)):
+            # Retained batches stay listed; only drafts of replaced plans drop out.
+            if plan and int(document.get("planVersion", 0)) not in active_plan_versions(
+                plan, str(plan.get("sourceRevisionId")),
+            ):
                 continue
             items.append({key: document.get(key) for key in (
                 "coursewareId", "title", "status", "generationStatus", "recordVersion",
@@ -278,6 +287,40 @@ class CoursewareService:
 
         chapter, source = self._chapter(chapter_id)
         return coverage_report(chapter, source, self.store)
+
+    def get_completion(self, chapter_id: str, *, max_pages_per_batch: int = 5) -> dict[str, Any]:
+        """Suggest missing ranges while source and chapter identity remain guarded."""
+        from application.services.courseware_completion import completion_report
+        from application.services.courseware_coverage import coverage_report
+
+        # Reuse the mutation serialization boundary only to stabilize reads. No
+        # plan, job, review, or publication is created by this preparation API.
+        with self.chapters.store.chapter_lock(chapter_id):
+            with self.store.atomic():
+                chapter, source = self._chapter(chapter_id, lock=True)
+                blocked = []
+                for number in range(int(source["pageStart"]), int(source["pageEnd"]) + 1):
+                    try:
+                        self._selected_pages(source, number, number)
+                    except ValueError:
+                        blocked.append(number)
+                plan = self.store.load_plan(chapter_id)
+                documents = [item for item in self.store.list_documents(chapter_id)
+                             if not item.get("deletedAt") and item.get("status") != "deleted"]
+                current_records = [item for item in ([plan] if plan else []) + documents
+                                   if item.get("sourceRevisionId") == source["sourceRevisionId"]]
+                active = False
+                for item in current_records:
+                    job = self.jobs.get_job(item["generationJobId"]) if self.jobs is not None and item.get("generationJobId") else None
+                    active = active or (
+                        job.get("status") in {"queued", "running"} if job
+                        else item.get("generationStatus") in {"queued", "running"}
+                    )
+                return completion_report(
+                    chapter, source, coverage_report(chapter, source, self.store),
+                    plan=plan, blocked_pages=blocked, active_generation=active,
+                    max_pages_per_batch=max_pages_per_batch,
+                )
 
     def get_plan(self, chapter_id: str) -> dict[str, Any] | None:
         chapter, source = self._chapter(chapter_id)
@@ -310,6 +353,10 @@ class CoursewareService:
                 if len(serialized_source) > 80_000:
                     raise ValueError("所选来源范围过长，请选择更小的完整教学范围")
                 existing = self.store.load_plan(chapter_id, lock=True)
+                retained_batches = (
+                    self._supplement_batches(chapter, source, existing, page_start, page_end)
+                    if request.supplement else []
+                )
                 existing_version = int(existing.get("recordVersion", 0)) if existing else 0
                 existing_plan_version = int(existing.get("planVersion", 0)) if existing else 0
                 next_plan_version = existing_plan_version + 1
@@ -324,6 +371,7 @@ class CoursewareService:
                     "durationMinutes": request.durationMinutes, "requestedObjectives": request.objectives,
                     "expectedPlanRecordVersion": next_record_version, "planVersion": next_plan_version,
                     "runtimeSnapshot": runtime_snapshot,
+                    "autoGeneratePages": request.autoGeneratePages,
                     "frozenTemplate": self._frozen_template(template), "requestHash": request_hash,
                 }
                 previous_job = self.jobs.get_by_idempotency_key(job_key, connection=connection, lock=True)
@@ -351,6 +399,8 @@ class CoursewareService:
                     "coverageMap": {}, "status": "draft", "planVersion": next_plan_version,
                     "recordVersion": max(1, next_record_version), "generationJobId": job_id,
                     "generationStatus": "queued", "coursewareIds": [], "requestHash": request_hash,
+                    "generationAudit": {"automaticGeneration": request.autoGeneratePages},
+                    "retainedBatches": retained_batches,
                     "createdAt": existing.get("createdAt", now) if existing else now, "updatedAt": now,
                 }).model_dump()
                 saved_plan = self.store.save_record(
@@ -365,6 +415,33 @@ class CoursewareService:
                 )
                 return {"plan": saved_plan, "job": self._job_summary(job)}
 
+    def _supplement_batches(
+        self, chapter: dict[str, Any], source: dict[str, Any], existing: dict[str, Any] | None,
+        page_start: int, page_end: int,
+    ) -> list[dict[str, Any]]:
+        """Validate a supplement range and return the batches it must retain.
+
+        A supplement never regenerates a page that already has live courseware,
+        an open plan, or a student-visible publication; redoing those pages stays
+        an explicit single-page regeneration or a full replacement plan.
+        """
+        from application.services.courseware_coverage import coverage_report
+
+        revision = source["sourceRevisionId"]
+        current = existing if existing and existing.get("sourceRevisionId") == revision else None
+        if current and current.get("status") != "approved":
+            raise ValueError("当前规划尚未确认，请先确认或修改当前规划后再补齐其余原页")
+        coverage = coverage_report(chapter, source, self.store)
+        claimed = (set(coverage["plannedPages"]) | set(coverage["generatedPages"])
+                   | set(coverage["publishedPages"]) | retained_page_ranges(current))
+        if current:
+            claimed.update(range(int(current["pageStart"]), int(current["pageEnd"]) + 1))
+        overlap = sorted(claimed & set(range(page_start, page_end + 1)))
+        if overlap:
+            shown = "、".join(str(number) for number in overlap[:10])
+            raise ValueError(f"补齐范围包含已规划、已生成或已发布的原页（{shown}），请只选择尚未覆盖的原页")
+        return batches_after_supplement(current, revision)
+
     def run_plan_generation(
         self, payload: dict[str, Any], cancellation_check: Any, context: JobExecutionContext,
     ) -> dict[str, Any]:
@@ -378,7 +455,7 @@ class CoursewareService:
         if (existing_plan and existing_plan.get("generationJobId") == context.job_id
                 and existing_plan.get("generationStatus") == "completed"
                 and existing_plan.get("status") in {"awaiting_confirmation", "approved"}):
-            return {"chapterId": payload["chapterId"], "planVersion": existing_plan["planVersion"], "status": existing_plan["status"]}
+            return self._finish_plan_generation(payload, existing_plan, cancellation_check, context)
         if cancellation_check():
             raise JobCancelled()
         source_view = {"sourceRevisionId": current_source["sourceRevisionId"], "pages": payload["sourcePages"]}
@@ -391,7 +468,8 @@ class CoursewareService:
             objectives=json.dumps(payload["requestedObjectives"], ensure_ascii=False),
             source=json.dumps(source_view, ensure_ascii=False),
         )
-        schema = generation_schema(CoursewarePlanDraftOutput)
+        schema = generation_schema(CoursewarePlanDraftOutput, source=current_source, pages=pages,
+            asset_ids=[str(asset["assetId"]) for asset in self._source_assets(current_source, pages)])
         selection = payload["runtimeSnapshot"]["generation"]
         with use_job_runtime_snapshot(payload):
             draft, run = self.runtime.generate_json(
@@ -424,6 +502,11 @@ class CoursewareService:
             "updatedAt": time.time(),
         }
         result["generationAudit"]["timingDerivedFromPages"] = True
+        result["generationAudit"]["minimumTimingAdjusted"] = any(
+            sum(int(page.get("estimatedMinutes", 0)) for section in session.get("sections", []) for page in section.get("pages", [])) < 10
+            for session in draft.get("sessions", [])
+        )
+        result["generationAudit"]["automaticGeneration"] = bool(payload.get("autoGeneratePages"))
         validated = CoursewarePlan.model_validate(result).model_dump()
         saved = self.store.checkpoint_plan(
             context=context,
@@ -434,7 +517,18 @@ class CoursewareService:
             plan=validated,
             now=time.time(),
         )
-        return {"chapterId": payload["chapterId"], "planVersion": saved["planVersion"], "status": saved["status"]}
+        return self._finish_plan_generation(payload, saved, cancellation_check, context)
+
+    def _finish_plan_generation(self, payload: dict[str, Any], plan: dict[str, Any], cancellation_check: Any, context: JobExecutionContext) -> dict[str, Any]:
+        """Automatic mode advances validated outlines; generated pages remain unreviewed."""
+        if payload.get("autoGeneratePages"):
+            if cancellation_check():
+                raise JobCancelled()
+            with use_job_runtime_snapshot(payload):
+                approved = self.approve_plan(str(payload["chapterId"]), plan_version=int(plan["planVersion"]),
+                    expected_record_version=int(plan["recordVersion"]), command_id=f"auto-plan-{plan['generationJobId']}", execution_context=context)
+            plan = approved["plan"]
+        return {"chapterId": payload["chapterId"], "planVersion": plan["planVersion"], "status": plan["status"]}
 
     def edit_plan(self, chapter_id: str, edit: CoursewarePlanEdit) -> dict[str, Any]:
         with self.chapters.store.chapter_lock(chapter_id):
@@ -452,6 +546,8 @@ class CoursewareService:
                 selected_pages = self._selected_pages(source, start, end)
                 if len(selected_pages) > 30:
                     raise ValueError("一次规划最多选择 30 个物理页；请拆分教学范围")
+                if retained_page_ranges(plan) & set(range(start, end + 1)):
+                    raise ValueError("规划范围不能包含已保留课时的原页；请只编辑本次补齐的页段")
                 self._validate_refs(edit.objectives, source, selected_pages)
                 self._validate_refs(edit.sessions, source, selected_pages)
                 coverage = {
@@ -487,9 +583,24 @@ class CoursewareService:
                 )
 
     def approve_plan(self, chapter_id: str, *, plan_version: int, expected_record_version: int,
-                     command_id: str) -> dict[str, Any]:
+                     command_id: str, execution_context: JobExecutionContext | None = None) -> dict[str, Any]:
         with self.chapters.store.chapter_lock(chapter_id):
             with self.store.atomic() as connection:
+                if execution_context is not None:
+                    from sqlalchemy import select
+
+                    from persistence.schema import background_jobs
+
+                    live = connection.execute(select(background_jobs.c.job_id).where(
+                        background_jobs.c.job_id == execution_context.job_id,
+                        background_jobs.c.status == "running",
+                        background_jobs.c.lease_owner == execution_context.worker_id,
+                        background_jobs.c.attempt_count == execution_context.attempt_count,
+                        background_jobs.c.lease_expires_at > time.time(),
+                        background_jobs.c.cancel_requested.is_(False),
+                    ).with_for_update()).scalar_one_or_none()
+                    if live is None:
+                        raise TerminalJobError("自动规划任务已过期或取消，不创建页面任务")
                 chapter, source = self._chapter(chapter_id, lock=True)
                 plan = self.store.load_plan(chapter_id, lock=True)
                 if not plan:
@@ -642,8 +753,7 @@ class CoursewareService:
         if doc.get("sourceRevisionId") != source.get("sourceRevisionId"):
             raise ValueError("教材来源已变化，旧课件不能继续编辑")
         plan = self.store.load_plan(str(doc["chapterId"]), lock=lock)
-        if (not plan or plan.get("sourceRevisionId") != doc.get("sourceRevisionId")
-                or int(plan.get("planVersion", 0)) != int(doc.get("planVersion", -1))):
+        if not owns_document(plan, doc):
             raise LookupError("课件规划已更新，此草稿已被新版本取代")
         return chapter, source, doc
 
@@ -793,7 +903,7 @@ class CoursewareService:
                             document.get("assets", []), page_source_numbers,
                         ),
                     },
-                    "objectives": (plan or {}).get("objectives", []),
+                    "objectives": objectives_for_version(plan, int(document["planVersion"])),
                     "audience": document.get("audience", ""), "languagePolicy": document.get("languagePolicy", ""),
                     "frozenTemplate": self._frozen_template(template),
                     "runtimeSnapshot": current_job_runtime_snapshot(), "regenerationReason": reason.strip(),
@@ -874,7 +984,8 @@ class CoursewareService:
                         }, ensure_ascii=False),
                     )
                     draft, run = self.runtime.generate_json(
-                        prompt, generation_schema(CoursewarePageDraftOutput), max_tokens=3600,
+                        prompt, generation_schema(CoursewarePageDraftOutput, source=source, pages=page_source,
+                            asset_ids=sorted(allowed_asset_ids)), max_tokens=3600,
                         task="courseware_page_generation",
                         selection=ModelSelection(selection["provider"], selection["model"]),
                     )
@@ -968,7 +1079,7 @@ class CoursewareService:
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         self._validate_refs(content, source, selected)
         plan = self.store.load_plan(chapter["chapterId"], lock=True)
-        objectives = {item["objectiveId"] for item in (plan or {}).get("objectives", [])}
+        objectives = {item["objectiveId"] for item in objectives_for_version(plan, int(document["planVersion"]))}
         if not set(content.objectiveIds).issubset(objectives):
             raise ValueError("页面只能引用已声明的教学目标")
         asset_ids = {item["assetId"] for item in document.get("assets", []) if item.get("status") == "available"}
@@ -1058,7 +1169,7 @@ class CoursewareService:
         )
         return self._with_asset_urls(saved)
 
-    def publish(self, courseware_id: str, *, expected_record_version: int) -> dict[str, Any]:
+    def publish(self, courseware_id: str, *, expected_record_version: int, confirm_review: bool = False, actor_id: str = "") -> dict[str, Any]:
         initial = self.store.load_document(courseware_id)
         if not initial:
             raise LookupError("课件不存在")
@@ -1067,11 +1178,16 @@ class CoursewareService:
             with self.store.atomic() as connection:
                 chapter, source, document = self._document(courseware_id, lock=True)
                 plan = self.store.load_plan(chapter_id, lock=True)
-                if (not plan or plan.get("sourceRevisionId") != source["sourceRevisionId"]
-                        or int(plan.get("planVersion", 0)) != int(document.get("planVersion", -1))):
+                if not owns_document(plan, document) or document.get("sourceRevisionId") != source["sourceRevisionId"]:
                     raise ValueError("教材来源或课件规划已变化，不能发布旧草稿")
                 if int(document["recordVersion"]) != expected_record_version:
                     raise ValueError("课件已更新，请刷新后重新发布")
+                if confirm_review:
+                    if not actor_id:
+                        raise ValueError("最终预览确认需要当前教师身份")
+                    document = self._review_document_locked(courseware_id, decision="approve", page_ids=[],
+                        note="最终预览确认并发布", expected_record_version=expected_record_version, actor_id=actor_id)
+                    expected_record_version = int(document["recordVersion"])
                 return self._publish_locked(
                     connection, chapter, source, document,
                     expected_record_version=expected_record_version,
@@ -1088,7 +1204,8 @@ class CoursewareService:
             raise ValueError("课件所有页面必须完成生成后才能发布")
         if document.get("reviewIssues"):
             raise ValueError("课件仍有未解决的质量问题，不能发布")
-        if not source.get("license") or not source.get("attributionText"):
+        scope = str(source.get("distributionScope") or "private")
+        if scope != "private" and (not source.get("license") or not source.get("attributionText")):
             raise ValueError("发布前必须登记教材许可与署名文本")
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         issues = document_page_issues(self._with_asset_urls(document), selected)
@@ -1103,7 +1220,7 @@ class CoursewareService:
             self._validate_refs(asset["sourceRefs"], source, selected)
             if order.get(str(asset.get("distributionScope")), -1) < order[scope]:
                 raise ValueError("课件素材许可范围小于本次发布范围")
-            if asset.get("origin") == "textbook" and (not asset.get("license") or not asset.get("attributionText")):
+            if scope != "private" and asset.get("origin") == "textbook" and (not asset.get("license") or not asset.get("attributionText")):
                 raise ValueError("发布中的教材素材必须登记许可和署名")
             if asset.get("kind") not in {"source_page", "source_image"}:
                 raise ValueError("仅发布由受控来源预览服务解析的原页或冻结区域素材")

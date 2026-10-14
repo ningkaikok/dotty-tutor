@@ -23,6 +23,7 @@ from infrastructure.runtime.review_runtime import (
     formula_anomaly_score,
     normalize_ocr_question,
 )
+from ocr_quality import formula_problems
 
 QUESTION_START_PATTERN = re.compile(r"(?m)^\s*(?P<number>\d{1,3})[.．、]\s*")
 # Possessive quantifiers prevent backtracking on malformed, user-provided OCR text.
@@ -694,6 +695,7 @@ def validate_question_payload(payload: dict[str, Any], source_block: str, source
     """执行确定性发布检查，返回错误证据但不直接抛异常。"""
     question = payload["question"]
     errors: list[str] = []
+    errors.extend(f"OCR 来源公式损坏，请对照原页修订：{problem}" for problem in formula_problems(source_block))
     warnings: list[str] = []
     for audit in payload.get("_imagePlaceholderAudits", []):
         if not isinstance(audit, dict):

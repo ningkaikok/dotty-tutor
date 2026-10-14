@@ -113,6 +113,18 @@ export function teacherPlaybackDocument(presentation: ApiPresentation): Coursewa
   }, true);
 }
 
+/** Teacher-only draft preview reuses the player; it creates no publication or learner attempt. */
+export function draftPlaybackDocument(document: components["schemas"]["CoursewareDocument"]): CoursewarePresentationDocument {
+  return toPlaybackDocument({
+    coursewareId: document.coursewareId, publicationId: `draft:${document.coursewareId}`,
+    version: document.recordVersion, title: document.title, subject: document.subject,
+    sourceUrl: document.sourceUrl, sourceTitle: document.sourceTitle ?? undefined,
+    attributionText: document.attributionText, license: document.sourceLicense,
+    distributionScope: "private", durationMinutes: document.durationMinutes,
+    sections: document.sections ?? [], pages: document.pages ?? [], assets: document.assets ?? [],
+  }, true);
+}
+
 /** Student playback is built only from the safe published projection; it never falls back to teacher data. */
 export function studentPlaybackDocument(document: ApiPublicDocument): CoursewarePresentationDocument {
   return toPlaybackDocument({

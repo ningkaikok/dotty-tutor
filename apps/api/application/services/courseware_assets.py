@@ -11,7 +11,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import cairosvg
 from pydantic import ValidationError
 
 from domain.contracts.chapter import ChapterRegion
@@ -81,6 +80,9 @@ def crop_source_asset(path: Path, source: dict[str, Any], page_number: int, asse
     if target.is_symlink():
         raise ValueError("区域缓存不能是符号链接")
     if not target.exists():
+        # Imported here: cairocffi loads native Cairo on import, and only cropping needs it.
+        import cairosvg
+
         encoded = base64.b64encode(content).decode("ascii")
         svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{cropped_width}" height="{cropped_height}" '
                f'viewBox="{x} {y} {cropped_width} {cropped_height}"><image width="{width}" height="{height}" '
