@@ -105,6 +105,76 @@ class DeterministicCoursewareRuntime:
 
 
 class CoursewarePostgresAcceptanceTests(PostgresTestCase):
+    def test_user_supplements_a_published_unit_then_retry_preserves_teacher_edits_and_first_publication(self) -> None:
+        # Given a first batch generated, corrected by its teacher, and published
+        chapter, source, refs, service = self._source_course()
+        service.runtime.fail_second_page_once = False
+        request = dict(subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+                       objectives=["Read cited evidence"], autoGeneratePages=True)
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            **request, expectedRecordVersion=chapter["recordVersion"], pageStart=23, pageEnd=24))
+        worker = JobWorker(self.jobs, build_courseware_registry(service), worker_id="two-batches")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        first = service.get_document(service.list_chapter_documents(chapter["chapterId"])["items"][0]["coursewareId"])
+        page = first["pages"][0]
+        editable = {key: page[key] for key in CoursewarePageContent.model_fields}
+        editable["revealSteps"] = []
+        content = CoursewarePageContent.model_validate(editable)
+        content.teacherNotes = "Teacher correction retained across unit completion."
+        content.blocks[0].text = "A teacher-corrected explanation of the cited evidence."
+        edited = service.edit_page(first["coursewareId"], page["pageId"], content=content,
+                                   expected_record_version=first["recordVersion"])
+        publication = service.publish(first["coursewareId"], expected_record_version=edited["recordVersion"],
+                                      confirm_review=True, actor_id="two-batch-teacher")
+        frozen = service.get_published(first["coursewareId"], publication["publicationId"])
+
+        class SupplementRuntime(DeterministicCoursewareRuntime):
+            def generate_json(self, prompt: str, schema: dict[str, Any], *, task: str, **kwargs: Any):
+                if task == "courseware_plan_generation":
+                    output, run = super().generate_json(prompt, schema, task=task, **kwargs)
+                    ref = self.refs[25]
+                    objective = output["objectives"][0]
+                    objective["sourceRefs"] = [ref]
+                    session = output["sessions"][0]
+                    session["sessionId"] = "session-followup"
+                    for index, item in enumerate(session["sections"][0]["pages"]):
+                        item["pageId"] = f"page-followup-{index}"
+                        item["sourceRefs"] = [ref]
+                    output["coverageMap"] = {objective["objectiveId"]: [ref]}
+                    return output, run
+                outline = json.loads(prompt.split("Page outline: ", 1)[1].split("\nObjectives:", 1)[0])
+                if outline["pageId"] == "page-followup-1" and self.fail_second_page_once:
+                    self.fail_second_page_once = False
+                    raise TimeoutError("Temporary supplemental model timeout")
+                return {"blocks": [{"kind": "text", "blockId": f"{outline['pageId']}-text", "text": "Discuss the final source page.",
+                                     "sourceRefs": [self.refs[25]], "authorship": "teacher_authored"}]}, self._run_metadata()
+
+        # When the second batch fails after one page, retry resumes its checkpoint
+        service.runtime = SupplementRuntime(refs, source["sourceRevisionId"])
+        current = self.chapters.get(chapter["chapterId"])
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            **request, expectedRecordVersion=current["recordVersion"], pageStart=25, pageEnd=25, supplement=True))
+        planned = worker.run_once()
+        self.assertEqual(planned["status"], "succeeded", planned)
+        self.assertEqual(worker.run_once()["status"], "queued")
+        docs = service.list_chapter_documents(chapter["chapterId"])["items"]
+        second_id = next(item["coursewareId"] for item in docs if item["coursewareId"] != first["coursewareId"])
+        partial = service.get_document(second_id)
+        checkpoint = partial["pages"][0]
+        self.assertEqual(checkpoint["generationStatus"], "completed")
+        recovered = worker.run_once()
+        self.assertEqual(recovered["status"], "succeeded", recovered.get("lastError"))
+        second = service.get_document(second_id)
+        # Then completed pages are not regenerated, old edits/publication survive, and coverage is complete
+        self.assertEqual(second["pages"][0]["version"], checkpoint["version"])
+        self.assertTrue(all(item["generationStatus"] == "completed" for item in second["pages"]))
+        retained = service.get_document(first["coursewareId"])
+        self.assertEqual(retained["pages"][0]["teacherNotes"], content.teacherNotes)
+        self.assertEqual(retained["pages"][0]["blocks"][0]["text"], content.blocks[0].text)
+        self.assertEqual(service.get_published(first["coursewareId"], publication["publicationId"]), frozen)
+        self.assertEqual(service.get_completion(chapter["chapterId"])["alreadyPlannedPages"], [23, 24, 25])
+
     def test_user_saves_a_private_tutorial_without_distribution_license_then_students_cannot_read_it(self) -> None:
         # Given a source used only for private preparation, without a distribution grant
         chapter, _source, _refs, service = self._source_course(distribution_scope="private")

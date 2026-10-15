@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { CoursewarePlayer } from "./CoursewarePlayer";
+import { CoursewarePlayer, CoursewarePrintDocument } from "./CoursewarePlayer";
 import type { CoursewarePresentationDocument } from "./coursewarePresentation";
 
 const lesson: CoursewarePresentationDocument = {
@@ -63,6 +63,48 @@ afterEach(() => {
 });
 
 describe("CoursewarePlayer user flows", () => {
+  it("user Given a saved server page When opening the lesson Then starts at that page without submitting practice", () => {
+    render(<CoursewarePlayer document={lesson} initialPageId="practice-page" />);
+    expect(screen.getByRole("heading", { level: 1, name: "Optional check" })).toBeVisible();
+  });
+
+  it("user Given a function activity When changing parameters and explicitly submitting Then uses the existing text answer contract", async () => {
+    const attempts: Array<{ activityId: string; response: unknown }> = [];
+    const functionLesson: CoursewarePresentationDocument = { ...lesson, subject: "math", canRevealAnswers: false, pages: [{
+      ...lesson.pages[2], blocks: [{ kind: "activity", activityId: "function-value", activityKind: "fill_blank",
+        instructions: "设置 k=2、b=1，求 x=2 时的 y。", assessmentMode: "objective", choices: [],
+        responseSchema: { interaction: "linear_function", slope: 1, intercept: 0, sampleX: 2 } }],
+    }] };
+    const view = render(<CoursewarePlayer document={functionLesson} onSubmitActivity={async (activityId, response) => {
+      attempts.push({ activityId, response }); return { assessment: "correct", feedback: "已记录" };
+    }} />);
+    fireEvent.change(screen.getByLabelText("斜率 k"), { target: { value: "2" } });
+    fireEvent.change(screen.getByLabelText("截距 b"), { target: { value: "1" } });
+    expect(screen.getByText("x = 2 时，y = 5")).toBeVisible();
+    expect(attempts).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "把当前函数值填入作答" }));
+    expect(screen.getByRole("textbox", { name: "Activity response" })).toHaveValue("5");
+    view.unmount();
+    render(<CoursewarePlayer document={functionLesson} onSubmitActivity={async (activityId, response) => {
+      attempts.push({ activityId, response }); return { assessment: "correct", feedback: "已记录" };
+    }} />);
+    expect(screen.getByLabelText("斜率 k")).toHaveValue("2");
+    fireEvent.click(screen.getByRole("button", { name: /Submit practice/ }));
+    expect(await screen.findByText("correct · 已记录")).toBeVisible();
+    expect(attempts).toEqual([{ activityId: "function-value", response: { text: "5" } }]);
+    fireEvent.click(screen.getByRole("button", { name: "只看静态说明" }));
+    expect(screen.getByRole("table", { name: "函数取值表" })).toBeVisible();
+    expect(screen.queryByRole("application", { name: "交互数学画布" })).not.toBeInTheDocument();
+  });
+
+  it("user Given teacher content When printing the student edition Then all pages retain sources but omit notes and answers", () => {
+    render(<CoursewarePrintDocument document={lesson} includeAnswers={false} />);
+    expect(screen.getAllByRole("article", { name: /打印页/ })).toHaveLength(3);
+    expect(screen.getByText("Start with the selected textbook section.")).toBeVisible();
+    expect(screen.queryByText("Introduce the selected source range.")).not.toBeInTheDocument();
+    expect(screen.queryByText("A source-grounded example.")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Access for free at openstax.org/)).toHaveLength(3);
+  });
   it("user_writes_checks_and_submits_a_cover_activity_then_restores_the_response_after_remount", async () => {
     // Given a cover page with image, observation, peer check and optional discussion
     const user = userEvent.setup();

@@ -53,14 +53,14 @@ def _record(case_id: str, dimension: str, *, counted: bool = True, reviewer: str
 
 
 class BenchmarkContractTests(unittest.TestCase):
-    def test_user_previews_text_cases_without_unseen_images(self) -> None:
-        """Given 50 reviewed cases, when previewing, then only 42 text cases run."""
+    def test_user_previews_text_and_image_cases_without_losing_failures(self) -> None:
+        """Given 50 reviewed cases, when previewing, then retain all 50 paired cases."""
         dataset = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue" / "reviewed_synthetic.jsonl"
         service = TutorModelEvaluationService(runtime=ModelRuntime(env_prefix="TUTOR_"), candidates_path=dataset)
         cases, dataset_hash = service._load_cases()
-        self.assertEqual(len(cases), 42)
+        self.assertEqual(len(cases), 50)
         self.assertEqual(len(dataset_hash), 64)
-        self.assertFalse(any(case["taskDimension"] == "image_understanding" for case in cases))
+        self.assertEqual(sum(case["taskDimension"] == "image_understanding" for case in cases), 8)
 
     def test_owner_confirmed_synthetic_set_is_usable_without_claiming_human_gold(self) -> None:
         root = Path(__file__).resolve().parents[1] / "evaluation" / "benchmark" / "review_queue"

@@ -77,6 +77,8 @@ export interface TutorModelEvaluationArmSummary {
   cases: number;
   successfulCalls: number;
   failedCalls: number;
+  skippedCalls?: number;
+  cost?: number | null;
   schemaSuccessRate: number;
   strictReferenceCases: number;
   strictReferenceCaseRate: number;
@@ -95,6 +97,7 @@ export interface TutorModelEvaluationArmSummary {
 
 export interface TutorModelEvaluationResult {
   caseId: string;
+  comparisonGroupId?: string;
   taskDimension: string;
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
@@ -104,7 +107,12 @@ export interface TutorModelEvaluationResult {
 }
 
 export interface TutorModelEvaluationCall {
-  status: "success" | "failed";
+  status: "success" | "failed" | "skipped";
+  reason?: string;
+  inputMode?: "text" | "image";
+  cost?: number | null;
+  sourceAssetSha256?: string | null;
+  deliveredImageSha256?: string | null;
   output: Record<string, unknown> | null;
   durationMs: number | null;
   promptTokens: number | null;

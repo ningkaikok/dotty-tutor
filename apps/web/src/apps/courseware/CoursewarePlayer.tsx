@@ -4,6 +4,7 @@ import MathText from "../../MathText";
 import { RichText } from "../../RichText";
 import type { CoursewareBlockView, CoursewarePageView, CoursewarePresentationDocument } from "./coursewarePresentation";
 import { useCoursewarePlayback } from "./useCoursewarePlayback";
+import { CoursewareFunctionExplorer } from "./CoursewareFunctionExplorer";
 import "./courseware.css";
 
 type Panel = "content" | "notes" | "answers";
@@ -32,15 +33,17 @@ function blockActivityKey(page: CoursewarePageView, blockIndex: number, block: C
   return `${page.pageId}:block-${blockIndex}`;
 }
 
-export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local", renderPageTools }: {
+export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local", renderPageTools, initialPageId, onPageChange }: {
   document: CoursewarePresentationDocument;
   now?: () => number;
   renderPageTools?: (page: CoursewarePageView) => ReactNode;
   /** UI identity scope prevents classroom state from crossing learner or role boundaries. */
   playbackScope?: string;
+  initialPageId?: string;
+  onPageChange?: (pageId: string) => void;
   onSubmitActivity?: (activityId: string, response: { text?: string; selectedOptions?: string[] }) => Promise<{ assessment: string; feedback: string }>;
 }) {
-  const playback = useCoursewarePlayback(lesson, now, playbackScope);
+  const playback = useCoursewarePlayback(lesson, now, playbackScope, initialPageId);
   const { page, pageIndex, section, state } = playback;
   const [fullscreen, setFullscreen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -53,8 +56,13 @@ export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitAct
   const activePanel = lesson.canRevealAnswers ? state.panel : "content";
 
   useEffect(() => {
+    if (page) onPageChange?.(page.pageId);
+  }, [page, onPageChange]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey || event.metaKey || isEditableTarget(event.target)) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || isEditableTarget(event.target)
+        || (event.target instanceof Element && event.target.closest("[role='application']"))) return;
       if (event.key === "ArrowLeft" && pageIndex > 0) {
         event.preventDefault();
         playback.navigateTo(lesson.pages[pageIndex - 1].pageId);
@@ -271,6 +279,7 @@ function BlockView({ page, block, blockIndex, assetsById, playback, onSubmitActi
     const responseText = playback?.activityResponse(key) ?? "";
     return <section className="courseware-activity-block courseware-practice-block"><span className="courseware-eyebrow">{block.assessmentMode === "participation" ? "Class activity" : "Optional practice"}</span><h2>{block.instructions}</h2>
       {block.practiceReason && <p className="courseware-practice-reason">Why now · {block.practiceReason}</p>}
+      {block.activityKind === "fill_blank" && block.responseSchema?.interaction === "linear_function" && playback && <CoursewareFunctionExplorer schema={block.responseSchema} values={playback.inputResponses(key)} onChange={(index, value) => playback.setResponse(key, index, value)} />}
       {block.choices.length > 0 && <div className="courseware-choice-list">{block.choices.map((choice, index) => <button key={`${block.activityId}-choice-${index}`} type="button" aria-pressed={selected.includes(choice)} onClick={() => playback?.setChoice(key, choice, block.selectionMode === "multiple")}>{choice}</button>)}</div>}
       {block.choices.length === 0 && <textarea aria-label="Activity response" placeholder="Write or discuss your response" value={responseText} onChange={(event) => playback?.setResponse(key, 0, event.target.value)} />}
       {onSubmitActivity && <button type="button" aria-label={`Submit practice: ${block.instructions}`} disabled={submittingActivityId === block.activityId || (block.choices.length > 0 ? !selected.length : !responseText.trim())} onClick={() => onSubmitActivity(block, page, blockIndex)}>{submittingActivityId === block.activityId ? "Submitting…" : "Submit optional practice"}</button>}
@@ -341,4 +350,17 @@ function safeSourceUrl(value?: string | null): string | undefined {
 function SourcePages({ refs }: { refs: Array<{ page: number }> }) {
   const pages = [...new Set(refs.map((ref) => ref.page))].sort((left, right) => left - right);
   return <span className="courseware-source-pages">Textbook page{pages.length === 1 ? "" : "s"} {pages.join(", ")}</span>;
+}
+
+/** Print frozen pages with the normal formula/image renderer and an explicit answer boundary. */
+export function CoursewarePrintDocument({ document: lesson, includeAnswers = false }: {
+  document: CoursewarePresentationDocument; includeAnswers?: boolean;
+}) {
+  const assetsById = new Map(lesson.assets.map((asset) => [asset.assetId, asset]));
+  return <div className="courseware-print-document">{lesson.pages.map((page, pageIndex) => <article className="courseware-print-page" aria-label={`打印页 ${pageIndex + 1}`} key={page.pageId}>
+    <header><span>{lesson.title} · 发布第 {lesson.version} 版 · {includeAnswers ? "教师答案版" : "学生版"}</span><h1>{page.title}</h1></header>
+    {page.blocks.map((block, index) => <BlockView key={index} page={page} block={block} blockIndex={index} assetsById={assetsById} playback={null} />)}
+    {includeAnswers && lesson.canRevealAnswers && <><p>{page.teacherNotes}</p><AnswerPanel page={page} revealedIds={page.revealSteps?.map((step) => step.revealId) ?? []} onReveal={() => undefined} canReveal /></>}
+    <SourceFooter page={page} document={lesson} /><footer>第 {pageIndex + 1} / {lesson.pages.length} 页 · {lesson.publicationId}</footer>
+  </article>)}</div>;
 }

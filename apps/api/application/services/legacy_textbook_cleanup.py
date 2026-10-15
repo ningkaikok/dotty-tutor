@@ -34,7 +34,7 @@ def _digest(value: Any) -> str:
 
 
 def _write_private_json(path: Path, value: dict[str, Any]) -> None:
-    """Create a 0600 metadata file atomically and refuse different-file overwrite."""
+    """Write without overwrite; POSIX uses 0600, Windows inherits directory ACLs."""
     encoded = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
     path = path.expanduser()
     if path.is_symlink():
@@ -44,8 +44,11 @@ def _write_private_json(path: Path, value: dict[str, Any]) -> None:
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
-        os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "wb") as handle:
+            # mkstemp already opens privately on POSIX. chmod also works on
+            # Windows, whose access control comes from the output directory ACL.
+            # Own the descriptor before chmod so a permission error cannot leak it.
+            temporary_path.chmod(0o600)
             handle.write(encoded)
             handle.flush()
             os.fsync(handle.fileno())
@@ -56,13 +59,14 @@ def _write_private_json(path: Path, value: dict[str, Any]) -> None:
             if existing != value:
                 raise LegacyTextbookCleanupError("目标文件已存在且内容不同，拒绝覆盖")
         os.chmod(path, 0o600)
-        directory_descriptor = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory_descriptor)
-        finally:
-            os.close(directory_descriptor)
-    except Exception:
-        raise
+        # Windows cannot open directories via os.open; file data was fsynced
+        # above. Keep the additional POSIX directory-entry durability guarantee.
+        if os.name != "nt":
+            directory_descriptor = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_descriptor)
+            finally:
+                os.close(directory_descriptor)
     finally:
         temporary_path.unlink(missing_ok=True)
 

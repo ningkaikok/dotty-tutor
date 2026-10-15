@@ -29,3 +29,13 @@ uv run python -m evaluation.chapter.baseline --check --json --output /tmp/chapte
 数学有 12 个案例，包含文本 PDF OCR 产物与扫描页 OCR 产物的合成文本、公式、原创图表、重复页题号、缺页、错图、漏条件及截断公式。已知失败保持可见：缺页导致题号缺失、图像归属错误、来源条件缺失，以及截断 OCR 缺少完整公式。每条的 `baselineSignature` 记录实际观察结果，便于区分“预期产品行为”与“重放结果变动”。
 
 英语有 6 个案例，分别覆盖上述六类阅读场景。运行器仅验证这些声明过的答案变体和证据场景，不推断其他答案的语义，也不提供人工 rubric 判定。
+
+## 本地来源与科学候选校对
+
+`material_candidates` 保留数字 PDF 或纸质扫描的文本层观察，`source_review_report` 可以把该候选与待审人工转写按物理页逐项比较：
+
+```bash
+uv run python -m evaluation.chapter.source_review_report candidate.json report.json --transcriptions transcriptions.json
+```
+
+转写文件是以物理页码为键的 JSON 对象，例如 `{"12": "待核对的完整文本"}`；省略 `--transcriptions` 时列出待补充转写的页面。报告保留原始观察、原文件指纹、差异文本及位置，不覆盖候选、原始 OCR 或已存在的报告。科学学科附带概念、单位、图表和来源活动的核对清单。它不调用模型、OCR 或数据库，不产生课件或人工批准，不能把文字差异称为真实扫描 OCR 准确率。

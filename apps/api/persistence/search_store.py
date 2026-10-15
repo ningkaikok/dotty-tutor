@@ -18,6 +18,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Engine
 
 metadata = MetaData()
@@ -107,6 +108,19 @@ class TutorSearchStore:
             "updated_at": now,
         }
         with self.engine.begin() as connection:
+            if self.engine.dialect.name == "postgresql":
+                # Lazy publication indexing can start on several API workers.
+                # One atomic upsert avoids racing the initial SELECT/INSERT.
+                connection.execute(postgresql_insert(lesson_search_documents).values(**values).on_conflict_do_update(
+                    index_elements=[lesson_search_documents.c.document_id],
+                    set_={key: value for key, value in values.items() if key not in {"document_id", "created_at"}},
+                ))
+                connection.execute(
+                    lesson_search_documents.update()
+                    .where(lesson_search_documents.c.document_id == values["document_id"])
+                    .values(search_vector=func.to_tsvector("simple", lesson_search_documents.c.search_text))
+                )
+                return document
             existing = connection.execute(
                 select(lesson_search_documents.c.document_id).where(
                     lesson_search_documents.c.document_id == values["document_id"]
@@ -120,26 +134,28 @@ class TutorSearchStore:
                 )
             else:
                 connection.execute(lesson_search_documents.insert().values(**values))
-            if self.engine.dialect.name == "postgresql":
-                connection.execute(
-                    lesson_search_documents.update()
-                    .where(lesson_search_documents.c.document_id == values["document_id"])
-                    .values(search_vector=func.to_tsvector("simple", lesson_search_documents.c.search_text))
-                )
         return document
 
-    def search(self, *, query: str, publication_id: str | None = None, limit: int = 5) -> list[dict[str, Any]]:
+    def search(self, *, query: str, publication_id: str | None = None, limit: int = 5,
+               document_kind: str = "question", match_any: bool = False) -> list[dict[str, Any]]:
         query = query.strip()
         if not query:
             return []
         limit = max(1, min(limit, 20))
         with self.engine.connect() as connection:
-            conditions = []
+            is_source = lesson_search_documents.c.question_id.startswith("courseware-source:", autoescape=True)
+            conditions = [is_source if document_kind == "courseware_source" else ~is_source]
             if publication_id:
                 conditions.append(lesson_search_documents.c.publication_id == publication_id)
             if self.engine.dialect.name == "postgresql":
                 terms = " ".join(cjk_bigrams(query)) or query
-                ts_query = func.plainto_tsquery("simple", terms)
+                if match_any:
+                    # Questions include words absent from the source. OR only
+                    # sanitized lexemes so user punctuation cannot become query syntax.
+                    lexemes = list(dict.fromkeys([*cjk_bigrams(query), *re.findall(r"[A-Za-z0-9_]+", query)]))
+                    ts_query = func.to_tsquery("simple", " | ".join(lexemes)) if lexemes else func.plainto_tsquery("simple", terms)
+                else:
+                    ts_query = func.plainto_tsquery("simple", terms)
                 conditions.append(lesson_search_documents.c.search_vector.op("@@")(ts_query))
                 statement = select(
                     lesson_search_documents,
@@ -151,9 +167,11 @@ class TutorSearchStore:
             rows = connection.execute(statement).mappings().all()
         return [self._result(row) for row in rows]
 
-    def count(self, publication_id: str | None = None) -> int:
+    def count(self, publication_id: str | None = None, *, document_kind: str = "question") -> int:
         with self.engine.connect() as connection:
             statement = select(func.count()).select_from(lesson_search_documents)
+            is_source = lesson_search_documents.c.question_id.startswith("courseware-source:", autoescape=True)
+            statement = statement.where(is_source if document_kind == "courseware_source" else ~is_source)
             if publication_id:
                 statement = statement.where(lesson_search_documents.c.publication_id == publication_id)
             return int(connection.execute(statement).scalar() or 0)

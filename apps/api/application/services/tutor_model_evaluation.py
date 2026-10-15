@@ -19,8 +19,14 @@ from typing import Any
 
 from evaluation.benchmark.contract import load_jsonl
 from evaluation.benchmark.drafts import validate_reviewed_synthetic
+from evaluation.benchmark.images import (
+    MAX_BYTES,
+    ImageConversionUnavailable,
+    asset_digest,
+    prepared_image,
+)
 from evaluation.benchmark.statistics import paired_binary_difference
-from infrastructure.runtime.capabilities import eligible_for_role
+from infrastructure.runtime.capabilities import capability_for, eligible_for_role
 from infrastructure.runtime.model_runtime import ModelRuntime, ModelSelection
 
 
@@ -60,20 +66,37 @@ def _run_arm(
     runtime: ModelRuntime,
     case: dict[str, Any],
     selection: ModelSelection,
+    *,
+    asset_root: Path | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     expected = case["expected"]
+    delivered_digest: str | None = None
     try:
-        output, run = runtime.generate_json(
-            _build_prompt(case),
-            _schema_for(expected),
-            max_tokens=500,
-            selection=selection,
-            task="tutor-model-evaluation",
-        )
+        image_case = case.get("taskDimension") == "image_understanding"
+        if image_case:
+            if "vision" not in capability_for(selection.provider, selection.model).capabilities:
+                return _unavailable(case, "skipped", "vision_not_declared")
+            if asset_root is None:
+                raise ValueError("图像案例缺少评测素材目录")
+            with prepared_image(case, asset_root) as image:
+                delivered_digest = hashlib.sha256(image.read_bytes()).hexdigest()
+                output, run = runtime.generate_json_as(
+                    selection.provider, selection.model, _build_prompt(case), _schema_for(expected),
+                    max_tokens=500, image_paths=[image], allow_fallback=False,
+                )
+        else:
+            output, run = runtime.generate_json(
+                _build_prompt(case), _schema_for(expected), max_tokens=500,
+                selection=selection, task="tutor-model-evaluation",
+            )
         usage = run.get("usage") if isinstance(run, dict) else None
         return {
             "status": "success",
+            "inputMode": "image" if image_case else "text",
+            "cost": None,
+            "sourceAssetSha256": case.get("imageAssetSha256") if image_case else None,
+            "deliveredImageSha256": delivered_digest,
             "output": output,
             "durationMs": run.get("durationMs") if isinstance(run, dict) else round((time.perf_counter() - started) * 1000, 1),
             "promptTokens": usage.get("promptTokens") if isinstance(usage, dict) else None,
@@ -83,10 +106,14 @@ def _run_arm(
                 key: output.get(key) == value for key, value in expected.items()
             },
         }
+    except ImageConversionUnavailable:
+        return _unavailable(case, "skipped", "image_conversion_unavailable")
     except Exception as error:  # noqa: BLE001 - one model failure must not drop its paired case
         run = getattr(error, "runtime_run", None)
         return {
             "status": "failed",
+            "inputMode": "image" if case.get("taskDimension") == "image_understanding" else "text",
+            "cost": None,
             "output": None,
             "durationMs": (
                 run.get("durationMs") if isinstance(run, dict)
@@ -98,6 +125,13 @@ def _run_arm(
             "errorType": type(error).__name__,
             "referenceFields": {key: False for key in expected},
         }
+
+
+def _unavailable(case: dict[str, Any], status: str, reason: str) -> dict[str, Any]:
+    return {"status": status, "reason": reason, "output": None, "inputMode": "image",
+            "durationMs": None, "promptTokens": None, "outputTokens": None,
+            "cost": None, "schemaFallback": None,
+            "referenceFields": {key: False for key in case["expected"]}}
 
 
 def _percentile(values: list[float], percentile: float) -> float | None:
@@ -125,7 +159,9 @@ def _arm_summary(rows: list[dict[str, Any]], arm: str) -> dict[str, Any]:
     return {
         "cases": len(outcomes),
         "successfulCalls": len(succeeded),
-        "failedCalls": len(outcomes) - len(succeeded),
+        "failedCalls": sum(item["status"] == "failed" for item in outcomes),
+        "skippedCalls": sum(item["status"] == "skipped" for item in outcomes),
+        "cost": None,
         "schemaSuccessRate": round(len(succeeded) / len(outcomes), 4) if outcomes else 0.0,
         "strictReferenceCases": sum(strict_cases),
         "strictReferenceCaseRate": round(sum(strict_cases) / len(outcomes), 4) if outcomes else 0.0,
@@ -172,10 +208,19 @@ class TutorModelEvaluationService:
     def _load_cases(self) -> tuple[list[dict[str, Any]], str]:
         content = self.candidates_path.read_bytes()
         rows = load_jsonl(self.candidates_path)
-        validation = validate_reviewed_synthetic(rows, asset_root=self.candidates_path.parent)
+        validation = validate_reviewed_synthetic(rows, asset_root=self.candidates_path.parent, validate_assets=False)
         if not validation.ok:
             raise ValueError("已审核合成评测集校验失败：" + "; ".join(validation.problems[:4]))
-        return [row for row in rows if row["evaluationEligible"]], hashlib.sha256(content).hexdigest()
+        digest = hashlib.sha256(content)
+        for row in rows:
+            if row["taskDimension"] == "image_understanding":
+                path = (self.candidates_path.parent / row["input"]["imageAsset"]).resolve()
+                if (path.is_relative_to(self.candidates_path.parent.resolve()) and path.is_file()
+                        and path.stat().st_size <= MAX_BYTES):
+                    digest.update(asset_digest(path).encode())
+                else:
+                    digest.update(b"missing-image")
+        return rows, digest.hexdigest()
 
     def start(self, *, baseline: ModelSelection, candidate: ModelSelection) -> dict[str, Any]:
         if (baseline.provider, baseline.model) == (candidate.provider, candidate.model):
@@ -228,7 +273,7 @@ class TutorModelEvaluationService:
                 "results": [],
                 "summary": None,
                 "statisticalNote": (
-                    "使用 42 条已确认的合成文本案例；8 条图像案例因当前评测未传入图像而排除。"
+                    "使用已确认的合成案例；图像通过实际图片输入评测，无视觉能力或无法转换时保留跳过记录。"
                     "指标是结构/精确参考匹配预览，不是语义评分或人工金标准排名。"
                 ),
             }
@@ -267,10 +312,11 @@ class TutorModelEvaluationService:
         try:
             results: list[dict[str, Any]] = []
             for case in cases:
-                baseline_result = _run_arm(self.runtime, case, baseline)
-                candidate_result = _run_arm(self.runtime, case, candidate)
+                baseline_result = _run_arm(self.runtime, case, baseline, asset_root=self.candidates_path.parent)
+                candidate_result = _run_arm(self.runtime, case, candidate, asset_root=self.candidates_path.parent)
                 results.append({
                     "caseId": case["caseId"],
+                    "comparisonGroupId": case.get("comparisonGroupId") or case["caseId"],
                     "taskDimension": case["taskDimension"],
                     "input": case["input"],
                     "expected": case["expected"],

@@ -209,6 +209,33 @@ class CoursewareRouteBoundaryTests(unittest.TestCase):
         self.assertNotIn("acceptedAnswers", activity)
         self.assertNotIn("teacherRubric", activity)
 
+    def test_user_cannot_select_another_learner_in_the_attempt_query_under_protected_authentication(self) -> None:
+        # Given the trusted session identifies the actual student
+        with environment({"AUTH_MODE": "protected"}):
+            # When the URL supplies a different identity, Then reject before recording a response
+            response = self.client.post(
+                "/api/courseware/course-1/attempts?learnerId=learner-other",
+                headers={"x-test-role": "student", "x-test-learner": "learner-actual"},
+                json={"publicationId": "publication-1", "activityId": "activity-1",
+                      "commandId": "forged-query-command", "response": {"text": "My response"}},
+            )
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assertEqual(self.service.attempts_for("learner-other"), [])
+        self.assertEqual(self.service.attempts_for("learner-actual"), [])
+
+    def test_user_switches_the_local_demo_learner_then_the_attempt_belongs_to_that_demo_identity(self) -> None:
+        # Given demo mode explicitly supports local learner selection without protected sessions
+        with environment({"AUTH_MODE": "demo"}):
+            response = self.client.post(
+                "/api/courseware/course-1/attempts?learnerId=demo-second",
+                json={"publicationId": "publication-1", "activityId": "activity-1",
+                      "commandId": "demo-second-command", "response": {"text": "My response"}},
+            )
+        # Then that response is available to the selected demo learner only
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(len(self.service.attempts_for("demo-second")), 1)
+        self.assertEqual(self.service.attempts_for("local-demo-learner"), [])
+
     def test_user_gets_a_stable_not_found_problem_for_a_missing_draft(self) -> None:
         # Given a teacher opening a draft that has been removed.
         response = self.client.get(

@@ -726,3 +726,28 @@ QualityReviewInbox 增加 `coursewareTasks`（当前规划版本的未发布课�
 
 `CoursewareCompletion` 返回 `chapterId/sourceRevisionId/expectedRecordVersion`、`maxPagesPerBatch`、`batches`（pageStart/pageEnd/sourcePages）、`blockedPages`、`alreadyGeneratedPages`、`alreadyPlannedPages`、`pendingGenerationPages`、`pendingReviewPages`、`pendingPublicationPages`，以及 `existingPlan`、`canCreatePlan`、`action`、固定为 true 的 `requiresHumanReview`。action 为 create_plan/continue_plan/wait_generation/review_generated/repair_source/complete。既有规划身份含来源修订、规划/记录版本、状态、页段和 stale；不构成替换规划授权。客户端选批次仅填写现有表单，实际创建仍走原 POST 的章节版本校验、Worker 和教师确认流程。撤回章节或原 PDF 哈希变化拒绝读取建议。
 渲染、审校、发布与后续语音轮次仍使用既有 `/api/lesson-media`、`/api/voice` 接口。
+
+## 单元目录、续学位置与教材证据
+
+| 方法 | 端点 | 内容与访问边界 |
+| --- | --- | --- |
+| GET | `/api/courseware-units` | 当前学习者可访问的单元，含课时、活动摘要和继续位置；受保护模式要求学生会话 |
+| GET | `/api/courseware/{courseware_id}/unit` | 学生安全单元目录；只包含可访问发布与本人进度 |
+| GET | `/api/chapters/{chapter_id}/courseware-unit` | 教师单元目录，包含草稿和保留批次；不开放给学生 |
+| GET | `/api/courseware/{courseware_id}/teaching-unit` | 从教师课件打开其所属单元 |
+| PUT | `/api/courseware/{courseware_id}/progress` | 保存本人阅读位置；正文 `publicationId,pageId,expectedVersion,commandId`，页必须属于指定发布 |
+| GET | `/api/courseware/{courseware_id}/source-search` | `publicationId,q,limit`；搜索当前发布批准页明确引用的教材句子 |
+| POST | `/api/courseware/{courseware_id}/source-search/explain` | 正文 `publicationId,question`；复用生成模型，返回附证据讲解或明确缺口 |
+| GET | `/api/courseware/{courseware_id}/source-search/evidence/{document_id}/preview` | `publicationId` 必填；重新验证证据归属后返回原 PDF 页 PNG，`Cache-Control: private, no-store` |
+
+单元以现有 `chapterId` 标识。`lessons` 返回 `coursewareId,title,order,pageStart,pageEnd,durationMinutes,status,currentBatch,sourceRevisionId,publicationId,publicationVersion`，以及 `activityCount,answeredActivityCount,needsCorrectionCount,activityStatus,progress`。
+`activityStatus` 为 `not_started/answered/needs_correction`，表示作答情况，不是掌握度。
+`progress` 和单元 `resume` 包含 `coursewareId,publicationId,pageId,version,updatedAt,available`；旧发布不可读时 `available=false`，不得把旧作答套到新发布。
+
+位置写入的 `expectedVersion=0` 仅创建位置，后续必须带已读版本；同一命令和输入重复提交返回已保存位置，竞争更新返回 409。demo 模式可传 `learnerId` 查询参数选择本机学习者；受保护会话传不同学习者返回 403，不信任请求体身份。课件作答 POST 同样支持 demo 的 `learnerId` 查询参数，保护模式始终校验会话归属。
+
+检索 `items` 每项包含 `documentId,coursewareId,publicationId,publicationVersion,sourceRevisionId,sourcePage,coursewarePageId,title,excerpt,sourceRef,previewUrl,rank`。
+讲解返回 `status=answered/insufficient_evidence/unavailable`、`explanation,evidence,run`；无模型时仍提供原文，伪造证据 ID 不作为回答。run 只含安全用量/时延/实际模型元数据，不返回提示词、地址或密钥。
+教材证据接口允许已认证学生和教师读取可分发的发布；匿名在保护模式返回 401。私有、错配、撤回、原文件变化或来源修订后的旧证据不再返回；历史发布在来源修订未变时可以按原 publicationId 查证。新增索引与旧题目全文检索分类隔离。
+
+PDF 导出使用原 `published/presentation/assets` 端点重新校验固定版本与素材，再由浏览器打印，不新增下载 API。学生版与教师答案版分别复用原安全投影和教师认证边界。

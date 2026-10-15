@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ApiRequestError } from "../../api/client";
 import { listChapters, loadChapter } from "../../api/chapters";
-import { loadLibrary, loadBackgroundJob } from "../../api/textbooks";
+import { loadLibrary, loadBackgroundJob, retryBackgroundJob } from "../../api/textbooks";
 import { approveCoursewarePlan, createCoursewarePlan, editCoursewarePlan, listChapterCourseware, listCoursewareProfiles, loadCoursewarePlan, prepareCoursewareSource } from "../../api/courseware";
 import type { components } from "../../types/generated/api";
 import type { ChapterManagement, ChapterSummary } from "../../types/chapter";
@@ -77,7 +77,7 @@ export function useCoursewarePlanWorkflow() {
         setPageStart(String(current.pageStart));
         setPageEnd(String(current.pageEnd));
         setPlanLoaded(true);
-        if (current.generationJobId && ["queued", "running"].includes(current.generationStatus)) {
+        if (current.generationJobId) {
           const resumed = await loadBackgroundJob(current.generationJobId);
           setJob(resumed);
           if (resumed.status === "failed") setError(typeof resumed.lastError?.message === "string" ? resumed.lastError.message : "自动制作未能完成，请重试或调整所选范围。");
@@ -331,8 +331,34 @@ export function useCoursewarePlanWorkflow() {
     finally { setBusy(false); }
   };
 
+  const retrySource = async () => {
+    if (!job || jobPurpose !== "source" || job.status !== "failed") return;
+    setBusy(true); setError("");
+    try {
+      // Retry the persisted job so checkpointed original pages and the original
+      // source identity are reused instead of creating another preparation task.
+      setJob(await retryBackgroundJob(job.jobId));
+      setNotice("已重试原来源任务；继续使用原页码范围和已识别页面。");
+    } catch (requestError) {
+      setError(coursewareErrorMessage(requestError, "来源任务重试未能启动，请重新读取状态。"));
+    } finally { setBusy(false); }
+  };
+
+  const retryPlan = async () => {
+    if (!job || jobPurpose !== "plan" || job.status !== "failed" || !plan || plan.status === "approved") return;
+    setBusy(true); setError("");
+    try {
+      setJob(await retryBackgroundJob(job.jobId));
+      setNotice("已重试原规划任务；沿用原教材范围与生成设置，已完成课时保持不变。");
+    } catch (requestError) {
+      setError(coursewareErrorMessage(requestError, "规划任务重试未能启动，请重新读取状态。"));
+    } finally { setBusy(false); }
+  };
+
   return {
     retryAutomatic,
+    retrySource,
+    retryPlan,
     automaticGeneration: params.get("mode") === "automatic" || Boolean(plan?.generationAudit?.automaticGeneration),
     uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,

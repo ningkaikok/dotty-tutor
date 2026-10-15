@@ -22,7 +22,7 @@ function FlaggedPage({ page, onOpen }: { page: AiPageReview; onOpen?: (pageId: s
 }
 
 /** Advisory AI pre-review: routes pages to the teacher; confirming is still a teacher review action. */
-export function CoursewareAiReviewPanel({ status, error, starting, busy, onStart, onBulkConfirm, onOpenPage }: {
+export function CoursewareAiReviewPanel({ status, error, starting, busy, onStart, onBulkConfirm, onOpenPage, onReload }: {
   status: CoursewareAiReviewStatus | null;
   error: string;
   starting: boolean;
@@ -30,8 +30,9 @@ export function CoursewareAiReviewPanel({ status, error, starting, busy, onStart
   onStart: () => void;
   onBulkConfirm: (pageIds: string[]) => void;
   onOpenPage?: (pageId: string) => void;
+  onReload?: () => void;
 }) {
-  if (!status) return <Card aria-label="AI 初审">{error ? <Notice tone="danger">{error}</Notice> : <Skeleton label="正在读取 AI 初审结果…" rows={1} />}</Card>;
+  if (!status) return <Card aria-label="AI 初审">{error ? <Notice tone="danger">{error}</Notice> : <Skeleton label="正在读取当前版本的 AI 初审结果…" rows={1} />}{onReload && <Button type="button" disabled={busy || starting} onClick={onReload}>重新读取初审结果</Button>}</Card>;
   const groups = aiReviewGroups(status);
   const running = Boolean(status.jobId);
   return <Card className="courseware-ai-review" aria-label="AI 初审">
@@ -43,6 +44,7 @@ export function CoursewareAiReviewPanel({ status, error, starting, busy, onStart
         {status.pagesToReview === 0 ? "待审页面均已完成 AI 初审" : starting ? "正在提交…" : `AI 初审 ${status.pagesToReview} 页（将调用 ${status.pagesToReview} 次审核模型）`}
       </Button>}
     <p role="status">{metricsSummary(status.metrics)}</p>
+    <p>统计仅包含问题页和抽检页中，AI 初审后教师对同一页面版本的复核；批量确认不计入独立复核样本。样本存在选择偏差，不代表全部页面的漏报率。</p>
 
     <section aria-labelledby="ai-review-needs">
       <h3 id="ai-review-needs">需要教师细看（{groups.needsReview.length}）</h3>
@@ -59,6 +61,6 @@ export function CoursewareAiReviewPanel({ status, error, starting, busy, onStart
       </>}
     </section>
 
-    {groups.unreviewed.length > 0 && <p>尚未初审或已修改需重新初审：{groups.unreviewed.map((page) => page.title).join("、")}</p>}
+    {groups.unreviewed.length > 0 && <p>尚未初审或原结论已过期，需重新初审：{groups.unreviewed.map((page) => page.title).join("、")}</p>}
   </Card>;
 }
