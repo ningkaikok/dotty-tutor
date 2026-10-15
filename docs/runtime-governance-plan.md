@@ -158,7 +158,7 @@ Provider/Model/Prompt 版本；比较器只有在这些比较条件一致时才�
 测试不执行真实模型调用，真实 Judge 报告通过 `python -m evaluation.judge_cli --check` 按需生成。
 
 确定性重放（`evaluation.replay`）已接入 CI：`.github/workflows/ci.yml` 的 `backend` 聚合 job
-在 `backend-matrix` 全部通过后运行 `uv run python -m evaluation.replay --check`，
+在 Python 3.12 的 `backend-tests` 通过后运行 `uv run python -m evaluation.replay --check`，
 `replay-report.json`/`.md` 作为 `eval-replay-report` artifact 上传留档；语料出现预期外失败或
 已知缺陷特征变化时该 job 非零退出，让必需检查 `backend` 变红、阻止合并。Judge/Leaderboard
 仍然只能按需手动运行，不进入这条链路。

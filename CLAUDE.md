@@ -115,8 +115,8 @@ docstring/JSDoc；显而易见的展示组件不需要堆叠注释。详细边�
 2. **准备交付 / 开 PR 前**：跑下方完整命令。改动涉及迁移、存储层、共享契约、测试设施或依赖
    时，本地必须跑后端全量（需要 `DOTTY_TEST_POSTGRES_ADMIN_URL`）；其他改动可以只跑第 1 层，
    但交付说明里要写明"后端/前端全量交给 PR CI"，并在 CI 结果出来后再报告通过。
-3. **CI**：按改动路径跳过不受影响的 job（规则见 `scripts/ci-changed-areas.sh`），PR 上后端只跑
-   Python 3.12 且不收集覆盖率；推送到 main 时所有 job 与 3.12/3.14 全部运行并收集覆盖率，作为
+3. **CI**：按改动路径跳过不受影响的 job（规则见 `scripts/ci-changed-areas.sh`），PR 与 main 的
+   后端都只用 Python 3.12；PR 不收集覆盖率，推送到 main 时所有 job 全部运行并收集覆盖率，作为
    合并后兜底。
 
 后端（在 `apps/api` 下）：

@@ -219,7 +219,7 @@ dotty-tutor/
 ├── scripts/test-backend-postgres.sh # 使用一次性 PostgreSQL 数据库并行运行后端测试，可选覆盖率
 ├── scripts/upgrade-local.ps1 # Windows 本机一键升级：已最新则跳过，否则备份→预检→升级→校验，可选重启 8010 API
 ├── scripts/test-changed.py # 本地按导入关系只跑受影响的后端测试与 vitest related；不确定时退回全量
-├── scripts/ci-changed-areas.sh # CI 按改动路径决定 backend/frontend/e2e/docker 与 Python 版本
+├── scripts/ci-changed-areas.sh # CI 按改动路径决定 backend/frontend/e2e/docker；后端固定 Python 3.12
 ├── docs/                       # 面向维护者和使用者的文档
 └── compose.yaml                # PostgreSQL、一次性迁移/卷初始化与应用服务编排
 ```

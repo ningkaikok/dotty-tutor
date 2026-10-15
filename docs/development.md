@@ -557,7 +557,8 @@ Playwright 测试会启动独立的 Vite 开发服务器，并通过固定 API m
 仓库 Secrets 时会自动跳过，不影响 CI。Fork 发起的 Pull Request 不会发送通知，以避免暴露
 飞书 Webhook。
 
-必需检查 `backend` 在矩阵通过后还会跑一次 `apps/api/evaluation/replay.py`（确定性金标准语料
+后端在 PR 与 main 均只用 Python 3.12 跑全套检查；仅 main 收集后端覆盖率。
+必需检查 `backend` 在 `backend-tests` 通过后还会跑一次 `apps/api/evaluation/replay.py`（确定性金标准语料
 重放，纯函数、不需要数据库），报告作为 `eval-replay-report` artifact 上传；出现预期外失败或
 已知缺陷特征变化时该检查失败，阻止合并。本地等价命令：
 
