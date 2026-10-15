@@ -8,10 +8,8 @@
 # re-run everything so a change to the gates is itself gated.
 set -euo pipefail
 
-all_versions='["3.12","3.14"]'
 if [[ "${1:-}" == "--all" ]]; then
   for key in backend frontend e2e docker; do echo "$key=true"; done
-  echo "python-versions=$all_versions"
   exit 0
 fi
 
@@ -29,9 +27,3 @@ echo "backend=$(match "^apps/api/|$shared")"
 echo "frontend=$(match "^apps/(web|api)/|$web_deps|$shared")"
 echo "e2e=$(match "^apps/web/|$web_deps|$shared")"
 echo "docker=$(match "(^|/)Dockerfile|^compose\.ya?ml$|^deploy/|nginx|^apps/api/(pyproject\.toml|uv\.lock)$|^apps/web/package\.json$|$web_deps|$shared")"
-# Python 3.14 runs on PRs only when dependencies or CI change; every push to main runs both.
-if [[ "$(match '^apps/api/(pyproject\.toml|uv\.lock)$|^\.github/workflows/ci\.yml$')" == true ]]; then
-  echo "python-versions=$all_versions"
-else
-  echo 'python-versions=["3.12"]'
-fi

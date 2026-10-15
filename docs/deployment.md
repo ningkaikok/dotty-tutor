@@ -431,7 +431,7 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 
 `.github/workflows/ci.yml` 在推送和 Pull Request 时执行：
 
-- 后端 Python 矩阵的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
+- 后端固定 Python 3.12 的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
 - 前端 pnpm 锁定安装、lint、Vitest、API 类型漂移、TypeScript 与构建；
 - Playwright E2E、Docker Compose 构建/健康检查与独立 CodeQL 工作流。
 

@@ -19,7 +19,6 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       e2e: ${{ steps.filter.outputs.e2e }}
       docker: ${{ steps.filter.outputs.docker }}
-      python-versions: ${{ steps.filter.outputs.python-versions }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -35,20 +34,12 @@ jobs:
             bash scripts/ci-changed-areas.sh --all | tee -a "$GITHUB_OUTPUT"
           fi
 
-  # 真正跑门禁的矩阵 job。它不叫 backend：矩阵会把检查名变成
-  # "backend (3.12)"/"backend (3.14)"，而仓库 ruleset 要求的必需检查名是
-  # 恰好的 "backend"，改名会让那个检查永远不出现、PR 永远无法合并。
-  backend-matrix:
+  # PR 与 main 均只用最低支持版本 3.12 跑完整后端检查。
+  # 保留独立的 backend 聚合 job，维持 ruleset 的必需检查名和路径跳过门禁。
+  backend-tests:
     runs-on: ubuntu-latest
     needs: [changes]
     if: needs.changes.outputs.backend == 'true'
-    strategy:
-      fail-fast: false
-      # pyproject 声明 requires-python = ">=3.12"，矩阵覆盖支持区间的两个端点。
-      # PR 默认只跑 3.12（3.14 仅在依赖或 CI 变化时加入）；每次推送到 main 都跑两个
-      # 版本，3.14 的兼容问题最晚在合并后的 main 上暴露。
-      matrix:
-        python-version: ${{ fromJSON(needs.changes.outputs.python-versions) }}
     services:
       postgres:
         image: postgres:17
@@ -71,7 +62,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
       # 只用系统 Python（pyproject: python-preference=only-system），不下载解释器。
       - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
@@ -111,29 +102,23 @@ jobs:
           DOTTY_TEST_COVERAGE: ${{ github.event_name == 'push' && '1' || '0' }}
         run: bash scripts/test-backend-postgres.sh
 
-  # 聚合 job：ruleset 要求的必需检查名。只有全部矩阵分支成功它才成功，
-  # 因此必需检查依然是真门禁，而不是被降级成摆设。
-  #
-  # 离线评测重放（evaluation.replay）也放在这里而不是 backend-matrix：它是纯函数、
-  # 不需要 Postgres，且是确定性的——在两条矩阵分支里各跑一次只会产生两份完全相同的
-  # 报告，浪费时间又重复上传 artifact。这个聚合 job 本来就只跑一次、且已经是
-  # ruleset 要求的必需检查名，所以重放回归会直接让 "backend" 变红、阻止合并，
-  # 而不只是产生一个未被强制的旁路信号。
+  # 聚合 job：维持 ruleset 要求的 backend 检查名，并拒绝路径判断或后端测试失败。
+  # 确定性离线评测重放也在这里运行一次，其失败会直接阻止合并。
   backend:
     runs-on: ubuntu-latest
-    needs: [changes, backend-matrix]
+    needs: [changes, backend-tests]
     if: always()
     env:
       UV_PROJECT_ENVIRONMENT: ${{ github.workspace }}/.venv
-      # 后端未改动时矩阵被跳过，聚合视为通过，重放也无需再跑。
-      BACKEND_RAN: ${{ needs.backend-matrix.result == 'success' }}
+      # 后端未改动时测试被跳过，聚合视为通过，重放也无需再跑。
+      BACKEND_RAN: ${{ needs.backend-tests.result == 'success' }}
     steps:
-      - name: Require every backend matrix leg to pass
+      - name: Require backend checks to pass
         run: |
           changes='${{ needs.changes.result }}'
-          result='${{ needs.backend-matrix.result }}'
-          echo "changes result: $changes; backend-matrix result: $result"
-          # 路径判断失败时矩阵也会是 skipped，必须先确认判断本身成功。
+          result='${{ needs.backend-tests.result }}'
+          echo "changes result: $changes; backend-tests result: $result"
+          # 路径判断失败时测试也会是 skipped，必须先确认判断本身成功。
           test "$changes" = success
           test "$result" = success -o "$result" = skipped
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
