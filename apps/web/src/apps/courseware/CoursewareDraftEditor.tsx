@@ -37,6 +37,8 @@ export function CoursewareDraftEditor({
   onPresent,
   onLearn,
   onDirtyChange,
+  selectedPageId,
+  onSelectPage,
 }: {
   document: CoursewareAuthoringDocument;
   busy?: boolean;
@@ -50,10 +52,14 @@ export function CoursewareDraftEditor({
   onPresent: () => void;
   onLearn: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  selectedPageId?: string;
+  onSelectPage?: (pageId: string) => void;
 }) {
   const [pageDirty, setPageDirty] = useState(false);
   useEffect(() => { onDirtyChange?.(pageDirty); }, [pageDirty, onDirtyChange]);
-  const [pageId, setPageId] = useState(document.pages[0]?.pageId ?? "");
+  const [internalPageId, setInternalPageId] = useState(document.pages[0]?.pageId ?? "");
+  const pageId = selectedPageId ?? internalPageId;
+  const setPageId = (id: string) => { setInternalPageId(id); onSelectPage?.(id); };
   const [selectedPages, setSelectedPages] = useState<string[]>([]);
   const [reviewNote, setReviewNote] = useState("");
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -62,9 +68,10 @@ export function CoursewareDraftEditor({
   const hasReviewIssues = document.reviewIssues.length > 0;
   const reviewablePageIds = new Set(document.pages.filter((item) => item.generationStatus === "completed" && item.blocks.length > 0 && !item.error).map((item) => item.pageId));
   const running = document.generationStatus === "queued" || document.generationStatus === "running";
+  const failedPages = document.pages.filter((item) => item.generationStatus === "failed" || item.error);
 
   useEffect(() => {
-    if (!document.pages.some((item) => item.pageId === pageId)) setPageId(document.pages[0]?.pageId ?? "");
+    if (!document.pages.some((item) => item.pageId === pageId)) setInternalPageId(document.pages[0]?.pageId ?? "");
     setSelectedPages((items) => items.filter((id) => document.pages.some((item) => item.pageId === id)));
   }, [document.pages, pageId]);
 
@@ -104,6 +111,13 @@ export function CoursewareDraftEditor({
     {running && <section className="courseware-job-status" role="status"><span>{document.generationStatus === "queued" ? "课件生成排队中" : "正在逐页生成课件"}</span>{document.generationJobId && <span>任务 {document.generationJobId}</span>}<Button type="button" onClick={() => void onReload()} disabled={busy}>检查进度</Button></section>}
     {document.generationStatus === "partial" && <p className="courseware-editor-warning" role="status">部分页面尚未完成。已完成页面可以继续编辑；请先重做失败页面，再审核发布。</p>}
     {document.sourceReadiness !== "ready" && <p className="courseware-editor-warning" role="alert">教材来源尚未就绪，先处理来源页/图像问题后再审核。</p>}
+    {pageDirty && <p role="status">请先保存当前页面修改，再切换页面。</p>}
+    {(failedPages.length > 0 || hasReviewIssues) && <section aria-label="制作恢复与下一步" className="courseware-job-status">
+      <h2>先处理这些页面，再预览发布</h2>
+      {failedPages.map((item) => <div key={item.pageId}><strong>{item.title}</strong><p>{item.sourceRefs.length ? `教材第 ${[...new Set(item.sourceRefs.map((ref) => ref.page))].join("、")} 页` : "尚未关联教材原页"} · {item.error || "页面生成失败"}</p><Button type="button" disabled={busy || pageDirty} onClick={() => setPageId(item.pageId)}>修复 {item.title}</Button></div>)}
+      {document.reviewIssues.map((issue, index) => <div key={`${issue.code}-${index}`}><p>{issue.message}</p>{issue.pageId && document.pages.some((item) => item.pageId === issue.pageId) && <Button type="button" disabled={busy || pageDirty} onClick={() => setPageId(issue.pageId!)}>定位问题页</Button>}</div>)}
+      <p>打开问题页后可修订内容或填写原因重做本页；其他已完成页面会保留。来源问题需先返回教材来源处理。</p>
+    </section>}
 
     <section className="courseware-source-policy" aria-label="来源与许可">
       <h2>来源与许可</h2>
@@ -118,7 +132,7 @@ export function CoursewareDraftEditor({
         {document.sections.map((section) => <section key={section.sectionId} className="courseware-page-list-section"><h3>{section.title}<small>{section.estimatedMinutes} min</small></h3>{(section.pageIds ?? []).map((id) => {
           const item = document.pages.find((candidate) => candidate.pageId === id);
           if (!item) return null;
-          return <div className="courseware-page-list-item" key={item.pageId}><Button type="button" aria-current={page?.pageId === item.pageId ? "page" : undefined} onClick={() => setPageId(item.pageId)}><span>{item.title}</span><small>{item.generationStatus === "completed" ? "已生成" : item.generationStatus}</small><small>{item.reviewStatus === "approved" ? "已审" : item.reviewStatus === "changes_requested" ? "需修改" : "待审"}</small></Button><label><input type="checkbox" aria-label={`选择审核 ${item.title}`} checked={selectedPages.includes(item.pageId)} onChange={() => togglePage(item.pageId)} />选审</label></div>;
+          return <div className="courseware-page-list-item" key={item.pageId}><Button type="button" disabled={pageDirty && page?.pageId !== item.pageId} aria-current={page?.pageId === item.pageId ? "page" : undefined} onClick={() => setPageId(item.pageId)}><span>{item.title}</span><small>{item.generationStatus === "completed" ? "已生成" : item.generationStatus}</small><small>{item.reviewStatus === "approved" ? "已审" : item.reviewStatus === "changes_requested" ? "需修改" : "待审"}</small></Button><label><input type="checkbox" aria-label={`选择审核 ${item.title}`} checked={selectedPages.includes(item.pageId)} onChange={() => togglePage(item.pageId)} />选审</label></div>;
         })}</section>)}
       </aside>
 

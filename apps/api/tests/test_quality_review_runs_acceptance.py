@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import threading
 import unittest.mock
 
@@ -32,13 +31,17 @@ class QualityReviewRunsAcceptanceTests(PostgresTestCase):
         self.addCleanup(self.review_store.close)
         self.addCleanup(self.runs_store.close)
         self.addCleanup(self.jobs.close)
-        self.environment = unittest.mock.patch.dict(os.environ, {
-            "CODEX_COMMAND": "/bin/echo",
-            "DEEPSEEK_API_KEY": "test-boundary-key",
-        })
-        self.environment.start()
-        self.addCleanup(self.environment.stop)
         self.runtime = ModelRuntime()
+        # Discovery is an external boundary too: developer CLI installations,
+        # API credentials and local Ollama availability must not alter acceptance.
+        self.runtime_catalog = unittest.mock.patch.object(self.runtime, "providers", return_value=[
+            {"id": "codex", "label": "Codex", "available": True,
+             "models": ["default"], "detail": "test provider boundary"},
+            {"id": "deepseek", "label": "DeepSeek", "available": True,
+             "models": ["deepseek-flash"], "detail": "test provider boundary"},
+        ])
+        self.runtime_catalog.start()
+        self.addCleanup(self.runtime_catalog.stop)
         self.runtime_call = unittest.mock.patch.object(
             self.runtime, "generate_json_as", side_effect=self.model_result
         )
@@ -340,6 +343,21 @@ class QualityReviewRunsAcceptanceTests(PostgresTestCase):
         self.assertEqual({arm["status"] for arm in run_view["cases"][0]["arms"].values()}, {"failed"})
         self.assertEqual(self.jobs.get_job(run_id)["attemptCount"], 1)  # type: ignore[index]
         self.assertEqual(rating.status_code, 409)
+
+    def test_user_given_an_unavailable_provider_when_starting_comparison_then_no_run_is_created(self) -> None:
+        # Given provider discovery reports an unconfigured generation provider
+        case_id = self.create_case()
+        providers = [
+            {"id": "codex", "label": "Codex", "available": False,
+             "models": ["default"], "detail": "not configured"},
+        ]
+        # When the teacher submits a comparison using that provider
+        with unittest.mock.patch.object(self.runtime, "providers", return_value=providers):
+            response = self.client.post("/api/quality-review-runs", json=self.create_payload(case_id))
+        # Then discovery isolation does not weaken the real availability gate
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertIn("codex 当前不可用", response.json()["detail"])
+        self.assertEqual(self.client.get("/api/quality-review-runs").json()["items"], [])
 
     def test_user_cannot_turn_public_source_or_client_claims_into_human_gold(self) -> None:
         # Given a public-source packet that includes forged human-review labels and benchmark fields

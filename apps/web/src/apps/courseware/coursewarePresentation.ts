@@ -40,6 +40,7 @@ export type CoursewareBlockView =
       choices: string[];
       selectionMode?: "single" | "multiple";
       practiceReason?: string;
+      responseSchema?: Record<string, string | number | boolean>;
       answerKey?: string;
       acceptedAnswers?: string[];
       teacherRubric?: string;
@@ -212,6 +213,7 @@ function blockView(block: ApiBlock, canRevealAnswers: boolean): CoursewareBlockV
         choices: block.choices ?? [],
         selectionMode: block.selectionMode ?? "single",
         practiceReason: block.practiceReason ?? undefined,
+        responseSchema: block.responseSchema ?? {},
         ...(canRevealAnswers && "answerKey" in block && block.answerKey != null ? { answerKey: Array.isArray(block.answerKey) ? block.answerKey.join("\n") : block.answerKey } : {}),
         ...(canRevealAnswers && "acceptedAnswers" in block && block.acceptedAnswers ? { acceptedAnswers: block.acceptedAnswers } : {}),
         ...(canRevealAnswers && "teacherRubric" in block && block.teacherRubric ? { teacherRubric: block.teacherRubric } : {}),

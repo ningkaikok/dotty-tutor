@@ -164,6 +164,26 @@ class CoursewareSourcePreparationAcceptanceTests(PostgresTestCase):
                 page={"page": 23, "text": "Late OCR"}, now=time.time())
         # Then no new OCR snapshot or chapter is written
         self.assertNotIn("coursewareSource", self.store.load_job("source-book")["result"])
+
+    def test_user_prepares_an_unreadable_pdf_then_failure_identifies_the_physical_page_without_creating_a_chapter(self):
+        # Given an uploaded PDF whose original bytes cannot be parsed and no reusable page OCR
+        upload = self.store.load_job("source-book")
+        assert upload is not None
+        (upload["directory"] / "source.pdf").write_bytes(b"%PDF-1.7\ninvalid physical page\n%%EOF")
+        upload["sourceText"] = "Aggregate preview without page boundaries."
+        self.store.save_job(upload)
+        ocr = OcrRuntime()
+        ocr.selection = OcrSelection("pypdf")
+        self.service = MaterialCourseService(self.chapters, ocr)
+        job = self.service.enqueue("source-book", self._request(pageStart=1, pageEnd=1))
+        # When source preparation fails at the PDF/OCR boundary
+        with self.assertRaisesRegex(Exception, "教材第 1 页"):
+            self._execute(job)
+        # Then the teacher can locate that page and the original evidence stays untouched
+        progress = self.jobs.get_job(job["jobId"])
+        self.assertIn("第 1 页", progress["message"])
+        self.assertEqual(self.store.list_chapters(), [])
+        self.assertEqual(self.store.load_job("source-book")["sourceText"], upload["sourceText"])
         self.assertEqual(self.store.list_chapters(), [])
 
     def test_user_selects_a_source_range_then_missing_pages_and_unregistered_profiles_fail_closed(self):

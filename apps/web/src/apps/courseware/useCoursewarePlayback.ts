@@ -40,8 +40,9 @@ function initialSession(document: CoursewarePresentationDocument): PlaybackSessi
   };
 }
 
-function parseSession(document: CoursewarePresentationDocument, actorScope: string, now: number): PlaybackSession {
+function parseSession(document: CoursewarePresentationDocument, actorScope: string, now: number, initialPageId?: string): PlaybackSession {
   const fallback = initialSession(document);
+  if (initialPageId && document.pages.some((page) => page.pageId === initialPageId)) fallback.pageId = initialPageId;
   try {
     const stored = JSON.parse(localStorage.getItem(sessionKey(document.publicationId, actorScope)) || "null") as StoredPlayback | null;
     if (!stored || stored.publicationId !== document.publicationId || stored.actorScope !== actorScope || !stored.state || typeof stored.state !== "object") return fallback;
@@ -52,7 +53,7 @@ function parseSession(document: CoursewarePresentationDocument, actorScope: stri
       ? value.timerDeadline
       : null;
     return {
-      pageId: pageExists ? value.pageId : fallback.pageId,
+      pageId: initialPageId && document.pages.some((page) => page.pageId === initialPageId) ? initialPageId : pageExists ? value.pageId : fallback.pageId,
       panel: value.panel === "notes" && document.canRevealAnswers && document.pages.some((page) => Boolean(page.teacherNotes))
         ? "notes"
         : value.panel === "answers" && document.canRevealAnswers ? "answers" : "content",
@@ -74,28 +75,28 @@ function isStringArrayRecord(value: unknown): value is Record<string, string[]> 
     && Object.values(value as Record<string, unknown>).every((items) => Array.isArray(items) && items.every((item) => typeof item === "string"));
 }
 
-export function useCoursewarePlayback(document: CoursewarePresentationDocument, now: () => number = Date.now, actorScope = "teacher:local") {
+export function useCoursewarePlayback(document: CoursewarePresentationDocument, now: () => number = Date.now, actorScope = "teacher:local", initialPageId?: string) {
   const [stored, setStored] = useState<StoredPlayback>(() => ({
     publicationId: document.publicationId,
     actorScope,
-    state: parseSession(document, actorScope, now()),
+    state: parseSession(document, actorScope, now(), initialPageId),
   }));
   const current = stored.publicationId === document.publicationId && stored.actorScope === actorScope
     ? stored.state
-    : parseSession(document, actorScope, now());
+    : parseSession(document, actorScope, now(), initialPageId);
 
   const update = useCallback((change: (previous: PlaybackSession) => PlaybackSession) => {
     setStored((previous) => {
-      const base = previous.publicationId === document.publicationId && previous.actorScope === actorScope ? previous.state : parseSession(document, actorScope, now());
+      const base = previous.publicationId === document.publicationId && previous.actorScope === actorScope ? previous.state : parseSession(document, actorScope, now(), initialPageId);
       return { publicationId: document.publicationId, actorScope, state: change(base) };
     });
-  }, [actorScope, document, now]);
+  }, [actorScope, document, now, initialPageId]);
 
   useEffect(() => {
     if (stored.publicationId !== document.publicationId || stored.actorScope !== actorScope) {
-      setStored({ publicationId: document.publicationId, actorScope, state: parseSession(document, actorScope, now()) });
+      setStored({ publicationId: document.publicationId, actorScope, state: parseSession(document, actorScope, now(), initialPageId) });
     }
-  }, [actorScope, document, now, stored.actorScope, stored.publicationId]);
+  }, [actorScope, document, now, initialPageId, stored.actorScope, stored.publicationId]);
 
   useEffect(() => {
     if (stored.publicationId !== document.publicationId || stored.actorScope !== actorScope) return;

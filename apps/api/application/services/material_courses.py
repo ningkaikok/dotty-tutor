@@ -17,6 +17,8 @@ from application.job_worker import (
     CancellableJobResult,
     JobCancelled,
     JobExecutionContext,
+    JobFailure,
+    RetryableJobError,
 )
 from application.services.chapter_source_preview import file_hash, source_file
 from domain.chapters.material import classify_material
@@ -161,13 +163,29 @@ class MaterialCourseService:
                     continue
                 if self.ocr is None or path is None or current_file_hash is None:
                     raise ValueError("所选页缺少可识别的教材原件")
-                markdown, run = resolve_routed_ocr_source(
-                    runtime=self.ocr, source_text="", source_path=path,
-                    start_page=number - 1, end_page=number - 1,
-                    asset_dir=Path(upload["directory"]) / "assets" / f"courseware-page-{number}",
-                    asset_url_prefix=f"/api/uploads/{payload['uploadId']}/assets/courseware-page-{number}",
-                    cache_dir=Path(upload["directory"]) / "ocr-cache", content_hash=current_file_hash,
+                self.jobs.update_progress(
+                    context.job_id, progress=int(90 * (number - start) / (end - start + 1)),
+                    message=f"正在识别教材第 {number} 页；失败后可重试并保留已识别页面",
+                    worker_id=context.worker_id, expected_attempt_count=context.attempt_count,
                 )
+                try:
+                    markdown, run = resolve_routed_ocr_source(
+                        runtime=self.ocr, source_text="", source_path=path,
+                        start_page=number - 1, end_page=number - 1,
+                        asset_dir=Path(upload["directory"]) / "assets" / f"courseware-page-{number}",
+                        asset_url_prefix=f"/api/uploads/{payload['uploadId']}/assets/courseware-page-{number}",
+                        cache_dir=Path(upload["directory"]) / "ocr-cache", content_hash=current_file_hash,
+                    )
+                except JobCancelled:
+                    raise
+                except JobFailure as error:
+                    # Keep the runtime's retry policy while adding a physical-page locator.
+                    raise type(error)(f"教材第 {number} 页识别失败：{error}",
+                                      details={**error.details, "sourcePage": number}) from error
+                except Exception as error:
+                    # Unknown runtime failures already receive bounded retries in the worker.
+                    raise RetryableJobError(f"教材第 {number} 页识别失败：{error}",
+                                            details={"sourcePage": number}) from error
                 # A single-page request provides a real physical-page boundary even
                 # when MinerU returns aggregate Markdown without page markers.
                 markdown = re.sub(r"<!--\s*pages\s+\d+-\d+\s*-->\s*", "", markdown).strip()

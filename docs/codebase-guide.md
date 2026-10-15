@@ -52,6 +52,8 @@ dotty-tutor/
 │   │   │   ├── textbook_routes.py # 教材 HTTP、分块接收和文件响应
 │   │   │   ├── chapter_routes.py # 来源关联章节、人工复核、发布与学科作答
 │   │   │   ├── courseware_routes.py # 课件规划确认、逐页编辑、审核发布与独立学生投影
+│   │   │   ├── courseware_unit_routes.py # 教师/学生单元目录、本人续学位置
+│   │   │   ├── courseware_search_routes.py # 当前发布教材原文检索、引用讲解与证据原页
 │   │   │   ├── courseware_delivery_routes.py # 课件视频和语音到已有领域服务的薄路由
 │   │   │   ├── quality_review_runs_routes.py # 受限模型对照、匿名评分、统计与金标准门禁
 │   │   │   ├── quality_review_routes.py # 教师案例导入、来源复核与追加决定
@@ -69,6 +71,8 @@ dotty-tutor/
 │   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
 │   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
 │   │   │   ├── courseware_completion.py # 当前来源连续缺口分批建议，不创建任务或覆盖已有规划
+│   │   │   ├── courseware_unit.py # 按章节组织保留批次、发布课时与作答摘要
+│   │   │   ├── courseware_search.py # 冻结引用入全文索引，每次重新验证来源/分发范围
 │   │   │   ├── courseware_ai_review.py # AI 初审与来源案例 AI 参考意见：估算调用、任务执行、状态视图；从不批准或决定
 │   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
 │   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
@@ -151,6 +155,7 @@ dotty-tutor/
 │   │       ├── quality_review_runs_store.py # 模型对照审计、冻结输入、A/B 分配与人工评分
 │   │       ├── quality_review_store.py # 版本绑定的复核包、案例与追加人工意见
 │   │       ├── courseware_store.py # 规划/课件 JSONB、逐页检查点、发布快照与可选作答
+│   │       ├── courseware_unit_store.py # 学习者阅读位置 CAS/幂等命令；不写掌握度
 │   │       ├── legacy_textbook_cleanup_store.py # 精确关联盘点、墓碑 CAS 与恢复 metadata
 │   │       ├── legacy_cleanup_guards.py # 上传共享行锁与精确墓碑 ID 读写门禁
 │   │       ├── lesson_media_store.py # 不可变视频版本、产物指纹与审校事件
@@ -191,6 +196,7 @@ dotty-tutor/
 │   │   │   ├── apps/textbook/  # 内容生产、互动预览与发布子模块
 │   │   │   ├── apps/mistake/   # 错题本、录入、确认和陪练
 │   │   │   ├── InteractiveMathCanvas.tsx # 最小点放置数学画布
+│   │   │   ├── InteractiveMathCanvas.css # 画布自有样式，课件与错题页面共用
 │   │   │   ├── apps/metrics/   # 学习效果与模型成本联合报告；DependencyPreflightApp 环境依赖自检页
 │   │   │   ├── productTerms.ts # 用户可见术语集中表，不重命名 API/type
 │   │   │   ├── components/     # 跨教材题型复用的作答组件与富文本渲染
@@ -239,6 +245,11 @@ flowchart LR
   Review --> Publication[不可变发布]
   Publication --> Teacher[教师播放投影]
   Publication --> Student[学生安全投影 / 可选互动]
+  Publication --> Unit[CoursewareUnitService / 单元目录]
+  Unit --> Position[CoursewareUnitStore / 本人续学位置]
+  Publication --> Evidence[CoursewareSearchService / 冻结教材引用]
+  Evidence --> FTS[TutorSearchStore / 分类隔离全文检索]
+  Evidence --> Preview[ChapterSourcePreview / 原 PDF 页]
   Source --> Paper[试卷原题流水线]
   Old[旧教材派生产物] --> Manifest[精确清理 manifest]
   Manifest --> Tombstone[墓碑 / ID 过滤 / 可恢复]
@@ -246,6 +257,11 @@ flowchart LR
 
 共享协议在 `domain/contracts/courseware.py`；学科差异在 `domain/courseware/profiles.py`
 及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
+
+单元与检索协议分别在 `domain/contracts/courseware_unit.py`、`courseware_search.py`；迁移 0027 只新增阅读位置。
+`CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
+`CoursewareFunctionExplorer` 复用 `InteractiveMathCanvas` 与原活动判题；`CoursewareExport` 用固定发布投影和现有 `BlockView` 打印为 PDF，不创建另一套公式渲染器。
+`evaluation/benchmark/images.py` 校验图像路径/指纹并交给模型 Runtime，SVG 使用已有转换器；`evaluation/chapter/source_review_report.py` 对照原始文字与人工转写，输出待审差异，不改教材或批准状态。
 默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
 来源任务 ID 保存在制作页面查询参数中，刷新后继续轮询既有任务；发布响应丢失时先读取已持久化结果，避免要求重复发布。
 清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。

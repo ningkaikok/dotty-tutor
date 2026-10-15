@@ -79,7 +79,8 @@ def agreement_metrics(pages: list[dict[str, Any]], reviews: dict[str, dict[str, 
                  if page["pageId"] in (record.get("pageIds") or []) and float(record.get("createdAt", 0)) > review["createdAt"]]
         if not later:
             continue
-        teacher_approved = later[-1].get("decision") == "approve"
+        latest = max(later, key=lambda record: float(record.get("createdAt", 0)))
+        teacher_approved = latest.get("decision") == "approve"
         ai_passed = review["verdict"] == "pass"
         metrics["compared"] += 1
         if ai_passed == teacher_approved:

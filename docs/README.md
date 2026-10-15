@@ -18,7 +18,7 @@
 | 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理 |
 | 执行课件改造 | [课件执行与独立验收计划](textbook-courseware-execution-plan.md) | 并行任务、串行门禁、Luna 分工和主代理验收；本地工程及英语/数学试点完成 |
 | 检查课件结果 | [独立验收记录](textbook-courseware-acceptance.md)、[设计验收](design-qa.md) | 实际模型范围、门禁、截图与限制；本机正式清理已完成，教师内容复核与整单元验收待完成 |
-| 执行后续主线 | [产品与工程计划](roadmap-development-execution-plan.md)、[本轮验收](roadmap-development-acceptance.md) | 产品场景/里程碑与工程批次对应；单元补齐、评测准备、科学候选；工程与真人批准分开 |
+| 执行后续主线 | [已有功能完善与新增功能计划](roadmap-development-execution-plan.md)、[本轮并行开发验收](development-parallel-acceptance.md)、[历史候选准备验收](roadmap-development-acceptance.md) | 制作可靠性、单元学习与 AI 证据三线的实现、实际检查及人工待办；工程与真人批准分开 |
 | 理解单题辅导 | [错题陪练设计](mistake-coach-plan.md) | 单题状态机、用户闭环与专题设计 |
 | 理解内容生产 | [原题处理链路](exam-pipeline-refactor-plan.md) | IR 分阶段改造、兼容设计与实施状态 |
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |

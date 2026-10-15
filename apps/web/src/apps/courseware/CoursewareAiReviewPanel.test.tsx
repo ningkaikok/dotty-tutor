@@ -32,6 +32,13 @@ it("user Given an AI pre-review When reading it Then flagged and sampled pages a
   expect(screen.getByText(/新改的页/)).toBeVisible();
 });
 
+it("user Given a calibrated sample When reading reliability Then the sample scope and bulk-confirmation exclusion are explicit", () => {
+  render(<CoursewareAiReviewPanel status={status} error="" starting={false} busy={false} onStart={() => undefined} onBulkConfirm={() => undefined} />);
+  expect(screen.getByText(/不代表全部页面的漏报率/)).toBeVisible();
+  expect(screen.getByText(/批量确认不计入独立复核样本/)).toBeVisible();
+  expect(screen.getByText(/原结论已过期/)).toHaveTextContent("新改的页");
+});
+
 it("user Given unsampled AI passes When bulk confirming Then only those pages are sent as a teacher review", async () => {
   const confirm = vi.fn();
   render(<CoursewareAiReviewPanel status={status} error="" starting={false} busy={false} onStart={() => undefined} onBulkConfirm={confirm} />);

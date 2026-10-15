@@ -318,8 +318,11 @@ def build_courseware_router(service: Any, *, media_service: Any | None = None, v
         courseware_id: str,
         payload: CoursewareAttemptRequest,
         request: Request,
+        learnerId: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        learner_id = call(learner_for_request, request, None)
+        # The shared helper rejects session/query mismatches in protected mode;
+        # local selection is supported only by the existing explicit demo mode.
+        learner_id = call(learner_for_request, request, learnerId)
         return call(service.attempt, courseware_id, learner_id=learner_id, request=payload)
 
     @router.delete("/courseware/{courseware_id}")

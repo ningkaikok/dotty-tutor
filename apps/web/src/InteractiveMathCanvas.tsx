@@ -1,10 +1,12 @@
 import { useCallback, useMemo, type PointerEvent } from "react";
 import type { TutorCanvasState } from "./types/tutoring";
+import "./InteractiveMathCanvas.css";
 
 interface InteractiveMathCanvasProps {
   value: TutorCanvasState;
   onChange: (value: TutorCanvasState) => void;
   readOnly?: boolean;
+  guideLine?: { slope: number; intercept: number };
 }
 
 const WIDTH = 100;
@@ -18,7 +20,7 @@ function toCanvasY(y: number, state: TutorCanvasState) {
   return HEIGHT - ((y - state.yMin) / (state.yMax - state.yMin)) * HEIGHT;
 }
 
-export function InteractiveMathCanvas({ value, onChange, readOnly = false }: InteractiveMathCanvasProps) {
+export function InteractiveMathCanvas({ value, onChange, readOnly = false, guideLine }: InteractiveMathCanvasProps) {
   const point = value.points.find((item) => item.id === "student") ?? value.points[0];
   const gridLines = useMemo(() => Array.from({ length: 9 }, (_, index) => (index + 1) * 10), []);
 
@@ -78,6 +80,7 @@ export function InteractiveMathCanvas({ value, onChange, readOnly = false }: Int
         {gridLines.map((position) => <line key={`h-${position}`} x1="0" y1={position} x2="100" y2={position} className="math-canvas-grid" />)}
         <line x1={toCanvasX(0, value)} y1="0" x2={toCanvasX(0, value)} y2="100" className="math-canvas-axis" />
         <line x1="0" y1={toCanvasY(0, value)} x2="100" y2={toCanvasY(0, value)} className="math-canvas-axis" />
+        {guideLine && <line x1="0" y1={toCanvasY(guideLine.slope * value.xMin + guideLine.intercept, value)} x2="100" y2={toCanvasY(guideLine.slope * value.xMax + guideLine.intercept, value)} className="math-canvas-guide" />}
         {point && <circle cx={toCanvasX(point.x, value)} cy={toCanvasY(point.y, value)} r="3.8" className="math-canvas-student-point" />}
       </svg>
       <div className="math-canvas-controls">

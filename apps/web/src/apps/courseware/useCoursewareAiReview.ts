@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { loadCoursewareAiReview, startCoursewareAiReview, type CoursewareAiReviewStatus } from "../../api/aiReview";
 import { coursewareErrorMessage } from "./coursewareErrors";
 
@@ -7,13 +7,15 @@ export function useCoursewareAiReview(coursewareId: string, recordVersion: numbe
   const [status, setStatus] = useState<CoursewareAiReviewStatus | null>(null);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const requestSequence = useRef(0);
 
   const reload = useCallback(async (signal?: AbortSignal) => {
+    const sequence = ++requestSequence.current;
     try {
       const next = await loadCoursewareAiReview(coursewareId, signal);
-      if (!signal?.aborted) { setStatus(next); setError(""); }
+      if (!signal?.aborted && sequence === requestSequence.current) { setStatus(next); setError(""); }
     } catch (requestError) {
-      if (!signal?.aborted) setError(coursewareErrorMessage(requestError, "AI 初审结果暂时无法读取。"));
+      if (!signal?.aborted && sequence === requestSequence.current) setError(coursewareErrorMessage(requestError, "AI 初审结果暂时无法读取。"));
     }
   }, [coursewareId]);
 
@@ -45,5 +47,8 @@ export function useCoursewareAiReview(coursewareId: string, recordVersion: numbe
     }
   };
 
-  return { status, error, starting, start, reload };
+  // A document edit invalidates the actionable result immediately, before its
+  // replacement request completes. Bulk confirmation must never use old routing.
+  const currentStatus = status?.coursewareId === coursewareId && status.recordVersion === recordVersion ? status : null;
+  return { status: currentStatus, error, starting, start, reload };
 }

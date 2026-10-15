@@ -80,6 +80,18 @@ class AiReviewRoutingScenarios(unittest.TestCase):
         # Then it is not counted as agreement or disagreement with that verdict
         self.assertEqual(metrics["compared"], 0)
 
+    def test_user_sees_the_latest_teacher_decision_even_if_history_is_returned_out_of_order(self) -> None:
+        # Given a sampled pass rejected by the teacher, then approved after a second check
+        records = [
+            {"pageIds": ["p1"], "decision": "approve", "createdAt": 30.0},
+            {"pageIds": ["p1"], "decision": "request_changes", "createdAt": 20.0},
+        ]
+        # When computing the same-version sample metrics, Then chronological latest wins
+        self.assertEqual(
+            agreement_metrics([_page("p1")], {"p1": _review("pass")}, records, courseware_id="cw", rate=1),
+            {"compared": 1, "agreements": 1, "missed": 0, "falseAlarms": 0},
+        )
+
     def test_user_never_reviews_the_same_input_twice_but_any_content_change_counts(self) -> None:
         reviewer = {"provider": "p", "model": "m"}
         page = _page("p1")

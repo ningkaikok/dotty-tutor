@@ -19,6 +19,8 @@ from application.services.assignment_planning import AssignmentPlanningService
 from application.services.chapter_courses import ChapterCourseService
 from application.services.courseware import CoursewareService
 from application.services.courseware_ai_review import CoursewareAiReviewService
+from application.services.courseware_search import CoursewareSearchService
+from application.services.courseware_unit import CoursewareUnitService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.lesson_media import LessonMediaService
 from application.services.material_courses import MaterialCourseService
@@ -43,6 +45,7 @@ from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.auth_store import AuthSessionStore
 from persistence.courseware_store import CoursewareStore
+from persistence.courseware_unit_store import CoursewareUnitStore
 from persistence.lesson_media_store import LessonMediaStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
@@ -60,6 +63,8 @@ from routers.auth_routes import build_auth_router
 from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
 from routers.courseware_routes import build_courseware_router
+from routers.courseware_search_routes import build_courseware_search_router
+from routers.courseware_unit_routes import build_courseware_unit_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.lesson_media_routes import build_lesson_media_router
@@ -175,6 +180,10 @@ courseware_service = CoursewareService(
 source_preparation_service = MaterialCourseService(chapter_course_service, processing_service.ocr_runtime, courseware=courseware_service)
 app.state.courseware_service = courseware_service
 app.state.courseware_store = courseware_store
+courseware_unit_service = CoursewareUnitService(
+    courseware=courseware_service, store=CoursewareUnitStore(engine=store.engine),
+)
+app.include_router(build_courseware_unit_router(courseware_unit_service))
 app.include_router(build_chapter_router(
     chapter_course_service,
     source_preparation_service=source_preparation_service,
@@ -222,6 +231,9 @@ tutor_input_service = TutorInputService(
 )
 tutor_search_store = TutorSearchStore(engine=store.engine)
 tutor_search_service = TutorSearchService(search_store=tutor_search_store)
+app.include_router(build_courseware_search_router(CoursewareSearchService(
+    service=courseware_service, search_store=tutor_search_store,
+)))
 
 # 错题域复用 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_recognizer = build_mistake_recognizer(
