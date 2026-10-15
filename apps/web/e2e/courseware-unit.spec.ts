@@ -124,7 +124,14 @@ test("user Given a frozen publication When exporting student PDF Then all pages 
   await expect(preview.getByText(/原创测试材料署名/)).toHaveCount(2);
   await expect(preview.getByText(/SECRET_/)).toHaveCount(0);
   await expect(preview.getByText(/发布第 1 版/)).toHaveCount(3);
+  const formula = preview.locator(".courseware-formula-block");
+  const activity = preview.locator(".courseware-activity-block");
+  await expect(formula).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(formula).toHaveCSS("color", "rgb(23, 23, 23)");
+  await expect(activity).toHaveCSS("background-color", "rgb(255, 255, 255)");
   await page.emulateMedia({ media: "print" });
+  await expect(formula).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await expect(activity).toHaveCSS("color", "rgb(23, 23, 23)");
   const pdf = await page.pdf({ format: "A4" });
   expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   await page.emulateMedia({ media: "screen" });

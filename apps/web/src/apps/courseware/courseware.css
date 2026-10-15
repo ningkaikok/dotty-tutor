@@ -447,9 +447,18 @@
 .courseware-function-explorer svg { width: min(100%, 360px); display: block; touch-action: none; }
 .courseware-function-explorer table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 .courseware-function-explorer th, .courseware-function-explorer td { padding: 6px; border: 1px solid var(--c-line); text-align: center; }
-.courseware-print-root { position: fixed; inset: 0; overflow: auto; z-index: 1000; background: white; color: #171717; padding: 24px; }
+.courseware-print-root {
+  --cw-text: #171717;
+  --cw-muted: #454545;
+  --cw-border: #c8c8c8;
+  --cw-accent: #174a80;
+  --cw-accent-strong: #174a80;
+  position: fixed; inset: 0; overflow: auto; z-index: 1000; background: white; color: var(--cw-text); padding: 24px;
+}
 .courseware-print-controls { display: flex; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; background: white; padding: 12px; border-bottom: 1px solid #ccc; }
 .courseware-print-page { max-width: 180mm; margin: 24px auto; padding: 20px; border: 1px solid #ddd; overflow-wrap: anywhere; }
+/* Shared player blocks need a paper palette in both preview and native print. */
+.courseware-print-page :is(.courseware-text-block, .courseware-formula-block, .courseware-activity-block, .courseware-notes, .courseware-answer-view, .courseware-word-cards article, .courseware-asset, .courseware-checklist label, .courseware-reveal-step, .courseware-private-answer, .courseware-choice-list button) { background: white; color: var(--cw-text); }
 .courseware-print-page img { max-width: 100%; max-height: 160mm; object-fit: contain; }
 .courseware-print-page textarea, .courseware-print-page input { min-height: 24px; border: 0; border-bottom: 1px solid #555; background: transparent; }
 @media print {
