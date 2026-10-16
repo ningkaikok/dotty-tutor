@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from application import create_app
+from application.ai_review_jobs import build_ai_review_registry
 from application.chapter_jobs import build_chapter_registry
 from application.courseware_jobs import build_courseware_registry
 from application.job_registry import merge_registries
@@ -17,6 +18,9 @@ from application.quality_review_runs_jobs import build_quality_review_runs_regis
 from application.services.assignment_planning import AssignmentPlanningService
 from application.services.chapter_courses import ChapterCourseService
 from application.services.courseware import CoursewareService
+from application.services.courseware_ai_review import CoursewareAiReviewService
+from application.services.courseware_search import CoursewareSearchService
+from application.services.courseware_unit import CoursewareUnitService
 from application.services.lesson_generation import generate_lesson, question_payload
 from application.services.lesson_media import LessonMediaService
 from application.services.material_courses import MaterialCourseService
@@ -36,10 +40,12 @@ from infrastructure.runtime.tts_runtime import TtsRuntime
 from infrastructure.runtime.tutor_observation_adapter import TutorObservationAdapter
 from infrastructure.runtime.voice_transcription import VoiceTranscriptionRuntime
 from mistake_recognition import build_mistake_recognizer
+from persistence.ai_review_store import AiReviewStore
 from persistence.app_store import get_application_store
 from persistence.assignment_planning_store import AssignmentPlanningStore
 from persistence.auth_store import AuthSessionStore
 from persistence.courseware_store import CoursewareStore
+from persistence.courseware_unit_store import CoursewareUnitStore
 from persistence.lesson_media_store import LessonMediaStore
 from persistence.metrics_store import MetricsStore
 from persistence.mistake_store import MistakeStore
@@ -57,6 +63,8 @@ from routers.auth_routes import build_auth_router
 from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
 from routers.courseware_routes import build_courseware_router
+from routers.courseware_search_routes import build_courseware_search_router
+from routers.courseware_unit_routes import build_courseware_unit_router
 from routers.dependency_preflight_routes import build_dependency_preflight_router
 from routers.learning_routes import build_learning_router
 from routers.lesson_media_routes import build_lesson_media_router
@@ -162,7 +170,6 @@ app.include_router(build_publication_router(
     revision_service=publication_revision_service,
 ))
 chapter_course_service = ChapterCourseService(store, jobs=background_job_store, generation_runtime=generation_runtime)
-source_preparation_service = MaterialCourseService(chapter_course_service)
 courseware_service = CoursewareService(
     store=courseware_store,
     chapters=chapter_course_service,
@@ -170,8 +177,13 @@ courseware_service = CoursewareService(
     runtime=generation_runtime,
     prompt_store=prompt_store,
 )
+source_preparation_service = MaterialCourseService(chapter_course_service, processing_service.ocr_runtime, courseware=courseware_service)
 app.state.courseware_service = courseware_service
 app.state.courseware_store = courseware_store
+courseware_unit_service = CoursewareUnitService(
+    courseware=courseware_service, store=CoursewareUnitStore(engine=store.engine),
+)
+app.include_router(build_courseware_unit_router(courseware_unit_service))
 app.include_router(build_chapter_router(
     chapter_course_service,
     source_preparation_service=source_preparation_service,
@@ -197,7 +209,18 @@ voice_service = VoiceTutorService(
     courseware_service=courseware_service,
 )
 app.include_router(build_voice_router(service=voice_service))
-app.include_router(build_courseware_router(courseware_service, media_service=lesson_media_service, voice_service=voice_service))
+# Advisory AI pre-review uses the separately selected review model; teachers keep every decision.
+ai_review_service = CoursewareAiReviewService(
+    courseware=courseware_service,
+    store=AiReviewStore(engine=store.engine),
+    jobs=background_job_store,
+    runtime=generation_runtime,
+    quality_review=quality_review_service,
+)
+app.include_router(build_courseware_router(
+    courseware_service, media_service=lesson_media_service, voice_service=voice_service,
+    ai_review_service=ai_review_service,
+))
 
 # 多轮消息单独存储，且在归档错题时清理对应线程；题目记录本身仍保留，便于恢复。
 tutoring_store = TutoringStore(engine=store.engine)
@@ -208,6 +231,9 @@ tutor_input_service = TutorInputService(
 )
 tutor_search_store = TutorSearchStore(engine=store.engine)
 tutor_search_service = TutorSearchService(search_store=tutor_search_store)
+app.include_router(build_courseware_search_router(CoursewareSearchService(
+    service=courseware_service, search_store=tutor_search_store,
+)))
 
 # 错题域复用 OCR/生成函数，但使用独立表与路由，防止教材页面状态渗入个人错题。
 mistake_recognizer = build_mistake_recognizer(
@@ -235,6 +261,7 @@ job_registry = merge_registries(
     mistake_job_registry,
     build_chapter_registry(chapter_course_service, source_preparation_service),
     build_courseware_registry(courseware_service),
+    build_ai_review_registry(ai_review_service),
     build_lesson_media_registry(lesson_media_service),
     build_quality_review_runs_registry(quality_review_runs_service),
 )

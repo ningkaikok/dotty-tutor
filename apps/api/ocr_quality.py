@@ -21,6 +21,7 @@ _CHOICE_MARKER = re.compile(r"(?<![A-Za-z])(?:\(([A-H])\)|([A-H])[.．、:：])\
 _IMAGE_REFERENCE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 _GARBLED = re.compile(r"[\uFFFD\x00-\x08\x0B\x0C\x0E-\x1F]")
 _FORMULA_DAMAGE = re.compile(r"\\(?:textbackslash|textcirc|textdegree)\b", re.IGNORECASE)
+_FRAGMENTED_DIGITS = re.compile(r"(?<![\w.])\d+\s+\d+(?![\w.])")
 
 
 def _garbled_rate(text: str) -> float:
@@ -31,23 +32,48 @@ def _garbled_rate(text: str) -> float:
     return sum(bool(_GARBLED.fullmatch(character)) for character in visible) / len(visible)
 
 
-def _formula_problems(text: str) -> list[str]:
+def formula_problems(text: str) -> list[str]:
+    """Detect structural OCR damage, never infer the intended mathematical value.
+
+    Paired delimiters alone cannot establish fidelity to the original page. A
+    syntactically valid wrong formula needs the source's formula_mismatch flag.
+    Scan once so long malformed OCR cannot trigger regex backtracking.
+    """
     problems: list[str] = []
     if _FORMULA_DAMAGE.search(text):
         problems.append("formula_command_corrupted")
-    if text.count("$$") % 2:
-        problems.append("display_formula_delimiter_unbalanced")
-    # Remove paired display delimiters before inspecting inline dollar signs.
-    without_display = re.sub(r"\$\$", "", text)
-    if without_display.count("$") % 2:
-        problems.append("inline_formula_delimiter_unbalanced")
-    # Separated digits adjacent to a fraction/equality are a known rendered-page
-    # badcase. This is only a suspicion flag: never reconstruct the intended math.
-    formulas = re.findall(r"\$\$(.*?)\$\$|(?<!\$)\$([^$]+)\$(?!\$)", text, re.DOTALL)
-    if any(re.search(r"(?<![\w.])\d+\s+\d+(?![\w.])", first or second)
-           and (r"\frac" in (first or second) or "=" in (first or second)) for first, second in formulas):
-        problems.append("formula_digits_fragmented")
-    return problems
+    delimiters = {"$": "$", "$$": "$$", r"\(": r"\)", r"\[": r"\]"}
+    active: tuple[str, int] | None = None
+    for match in re.finditer(r"\\.|\${1,2}", text):
+        token = match.group()
+        if active and token == delimiters[active[0]]:
+            formula = text[active[1]:match.start()]
+            depth = 0
+            for brace in re.finditer(r"\\.|[{}]", formula):
+                if brace.group() == "{":
+                    depth += 1
+                elif brace.group() == "}":
+                    depth -= 1
+                    if depth < 0:
+                        break
+            if depth:
+                problems.append("formula_group_unbalanced")
+            # Separated digits adjacent to a fraction/equality are a known rendered-page
+            # badcase. This is only a suspicion flag: never reconstruct the intended math.
+            if (r"\frac" in formula or "=" in formula) and _FRAGMENTED_DIGITS.search(formula):
+                problems.append("formula_digits_fragmented")
+            active = None
+        elif token in delimiters:
+            if active:
+                problems.append("formula_delimiter_mismatched")
+            else:
+                active = (token, match.end())
+        elif token in {r"\)", r"\]"}:
+            problems.append("formula_delimiter_mismatched")
+    if active:
+        problems.append("display_formula_delimiter_unbalanced" if active[0] in {"$$", r"\["}
+                        else "inline_formula_delimiter_unbalanced")
+    return list(dict.fromkeys(problems))
 
 
 def _choice_problems(text: str) -> list[str]:
@@ -115,7 +141,7 @@ def evaluate_page_quality(
         problems.append("empty_text")
     if _garbled_rate(source) >= 0.03:
         problems.append("garbled_text_rate_high")
-    problems.extend(_formula_problems(source))
+    problems.extend(formula_problems(source))
     decision = _decision(
         problems=problems,
         provider=provider,
@@ -149,7 +175,7 @@ def evaluate_question_quality(
         if not found or found.group(1) != str(question_number):
             problems.append("question_number_missing_or_mismatched")
     problems.extend(_choice_problems(source))
-    problems.extend(_formula_problems(source))
+    problems.extend(formula_problems(source))
     if expected_images is not None:
         found_images = _IMAGE_REFERENCE.findall(source)
         if found_images != expected_images:

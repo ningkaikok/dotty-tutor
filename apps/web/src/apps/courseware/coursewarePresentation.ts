@@ -40,6 +40,7 @@ export type CoursewareBlockView =
       choices: string[];
       selectionMode?: "single" | "multiple";
       practiceReason?: string;
+      responseSchema?: Record<string, string | number | boolean>;
       answerKey?: string;
       acceptedAnswers?: string[];
       teacherRubric?: string;
@@ -110,6 +111,18 @@ export function teacherPlaybackDocument(presentation: ApiPresentation): Coursewa
     sections: document.sections ?? [],
     pages: document.pages ?? [],
     assets: document.assets ?? [],
+  }, true);
+}
+
+/** Teacher-only draft preview reuses the player; it creates no publication or learner attempt. */
+export function draftPlaybackDocument(document: components["schemas"]["CoursewareDocument"]): CoursewarePresentationDocument {
+  return toPlaybackDocument({
+    coursewareId: document.coursewareId, publicationId: `draft:${document.coursewareId}`,
+    version: document.recordVersion, title: document.title, subject: document.subject,
+    sourceUrl: document.sourceUrl, sourceTitle: document.sourceTitle ?? undefined,
+    attributionText: document.attributionText, license: document.sourceLicense,
+    distributionScope: "private", durationMinutes: document.durationMinutes,
+    sections: document.sections ?? [], pages: document.pages ?? [], assets: document.assets ?? [],
   }, true);
 }
 
@@ -200,6 +213,7 @@ function blockView(block: ApiBlock, canRevealAnswers: boolean): CoursewareBlockV
         choices: block.choices ?? [],
         selectionMode: block.selectionMode ?? "single",
         practiceReason: block.practiceReason ?? undefined,
+        responseSchema: block.responseSchema ?? {},
         ...(canRevealAnswers && "answerKey" in block && block.answerKey != null ? { answerKey: Array.isArray(block.answerKey) ? block.answerKey.join("\n") : block.answerKey } : {}),
         ...(canRevealAnswers && "acceptedAnswers" in block && block.acceptedAnswers ? { acceptedAnswers: block.acceptedAnswers } : {}),
         ...(canRevealAnswers && "teacherRubric" in block && block.teacherRubric ? { teacherRubric: block.teacherRubric } : {}),

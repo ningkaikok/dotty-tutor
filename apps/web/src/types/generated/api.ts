@@ -195,6 +195,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chapters/{chapter_id}/courseware-completion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Completion */
+        get: operations["completion_api_chapters__chapter_id__courseware_completion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chapters/{chapter_id}/courseware-coverage": {
         parameters: {
             query?: never;
@@ -242,6 +259,23 @@ export interface paths {
         put?: never;
         /** Approve Plan */
         post: operations["approve_plan_api_chapters__chapter_id__courseware_plan_approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chapters/{chapter_id}/courseware-unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teacher Unit */
+        get: operations["teacher_unit_api_chapters__chapter_id__courseware_unit_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -742,6 +776,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courseware-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Units */
+        get: operations["list_units_api_courseware_units_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courseware/{courseware_id}": {
         parameters: {
             query?: never;
@@ -755,6 +806,24 @@ export interface paths {
         post?: never;
         /** Delete Draft */
         delete: operations["delete_draft_api_courseware__courseware_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/ai-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Ai Review Status */
+        get: operations["ai_review_status_api_courseware__courseware_id__ai_review_get"];
+        put?: never;
+        /** Request Ai Review */
+        post: operations["request_ai_review_api_courseware__courseware_id__ai_review_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -931,6 +1000,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courseware/{courseware_id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Position */
+        put: operations["save_position_api_courseware__courseware_id__progress_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courseware/{courseware_id}/publish": {
         parameters: {
             query?: never;
@@ -976,6 +1062,91 @@ export interface paths {
         put?: never;
         /** Review Document */
         post: operations["review_document_api_courseware__courseware_id__review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/source-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_courseware__courseware_id__source_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/source-search/evidence/{document_id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview */
+        get: operations["preview_api_courseware__courseware_id__source_search_evidence__document_id__preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/source-search/explain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Explain */
+        post: operations["explain_api_courseware__courseware_id__source_search_explain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/teaching-unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Teaching Unit */
+        get: operations["teaching_unit_api_courseware__courseware_id__teaching_unit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/{courseware_id}/unit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Student Unit */
+        get: operations["student_unit_api_courseware__courseware_id__unit_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1988,6 +2159,24 @@ export interface paths {
         get: operations["models_api_quality_review_runs_models_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quality-review/cases/{case_id}/ai-opinion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Case Ai Opinion */
+        get: operations["source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_get"];
+        put?: never;
+        /** Request Source Case Ai Opinion */
+        post: operations["request_source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3040,6 +3229,104 @@ export interface components {
             /** Revisionid */
             revisionId: string;
         };
+        /**
+         * AiAgreementMetrics
+         * @description Teacher decisions recorded after an AI verdict on the same page version.
+         */
+        AiAgreementMetrics: {
+            /**
+             * Agreements
+             * @default 0
+             */
+            agreements: number;
+            /**
+             * Compared
+             * @default 0
+             */
+            compared: number;
+            /**
+             * Falsealarms
+             * @default 0
+             */
+            falseAlarms: number;
+            /**
+             * Missed
+             * @default 0
+             */
+            missed: number;
+        };
+        /**
+         * AiPageReview
+         * @description One page's AI verdict and routing next to the teacher's current decision.
+         */
+        AiPageReview: {
+            /** Issues */
+            issues?: components["schemas"]["AiReviewIssue"][];
+            model?: components["schemas"]["AiReviewModel"] | null;
+            /** Pageid */
+            pageId: string;
+            /** Pageversion */
+            pageVersion: number;
+            /** Reviewedat */
+            reviewedAt?: number | null;
+            /** Reviewedversion */
+            reviewedVersion?: number | null;
+            /**
+             * Reviewstatus
+             * @enum {string}
+             */
+            reviewStatus: "pending" | "approved" | "changes_requested";
+            /**
+             * Route
+             * @enum {string}
+             */
+            route: "not_reviewed" | "stale" | "needs_review" | "bulk_confirmable" | "decided";
+            /** Sampled */
+            sampled: boolean;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Textonly
+             * @default false
+             */
+            textOnly: boolean;
+            /** Title */
+            title: string;
+            /** Verdict */
+            verdict?: ("pass" | "concern" | "fail") | null;
+        };
+        /** AiReviewIssue */
+        AiReviewIssue: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "excerpt_mismatch" | "formula_error" | "figure_mismatch" | "answer_error" | "unsupported_content" | "missing_condition" | "other";
+            /** Message */
+            message: string;
+            /**
+             * Quote
+             * @default
+             */
+            quote: string;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "blocking" | "minor";
+            /** Sourcepage */
+            sourcePage?: number | null;
+        };
+        /** AiReviewModel */
+        AiReviewModel: {
+            /** Model */
+            model: string;
+            /** Provider */
+            provider: string;
+        };
         /** AssignmentCreate */
         AssignmentCreate: {
             /**
@@ -3485,7 +3772,7 @@ export interface components {
         /** ChapterPageFlag */
         ChapterPageFlag: {
             /** Flags */
-            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable")[];
+            flags?: ("missing_conditions" | "wrong_figure" | "missing_page" | "unreadable" | "formula_mismatch")[];
             /** Page */
             page: number;
         };
@@ -3885,6 +4172,48 @@ export interface components {
             /** Teacherrubric */
             teacherRubric?: string | null;
         };
+        /** CoursewareAiReviewRequest */
+        CoursewareAiReviewRequest: {
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+        };
+        /**
+         * CoursewareAiReviewStart
+         * @description Estimate first: pagesToReview equals the model calls this request will make.
+         */
+        CoursewareAiReviewStart: {
+            /** Cachedpages */
+            cachedPages: number;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Jobid */
+            jobId?: string | null;
+            /** Pagestoreview */
+            pagesToReview: number;
+            reviewer: components["schemas"]["AiReviewModel"];
+        };
+        /** CoursewareAiReviewStatus */
+        CoursewareAiReviewStatus: {
+            /**
+             * Countsashumanreview
+             * @default false
+             * @constant
+             */
+            countsAsHumanReview: false;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Jobid */
+            jobId?: string | null;
+            metrics: components["schemas"]["AiAgreementMetrics"];
+            /** Pages */
+            pages: components["schemas"]["AiPageReview"][];
+            /** Pagestoreview */
+            pagesToReview: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Samplingrate */
+            samplingRate: number;
+        };
         /** CoursewareAsset */
         CoursewareAsset: {
             /**
@@ -3986,6 +4315,90 @@ export interface components {
             itemId: string;
             /** Label */
             label: string;
+        };
+        /**
+         * CoursewareCompletion
+         * @description Read-only preparation advice; human decisions stay in the existing workflow.
+         */
+        CoursewareCompletion: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "create_plan" | "continue_plan" | "wait_generation" | "review_generated" | "repair_source" | "complete";
+            /** Alreadygeneratedpages */
+            alreadyGeneratedPages: number[];
+            /** Alreadyplannedpages */
+            alreadyPlannedPages: number[];
+            /** Batches */
+            batches: components["schemas"]["CoursewareCompletionBatch"][];
+            /** Blockedpages */
+            blockedPages: number[];
+            /** Cancreateplan */
+            canCreatePlan: boolean;
+            /** Chapterid */
+            chapterId: string;
+            existingPlan?: components["schemas"]["CoursewareCompletionPlan"] | null;
+            /** Expectedrecordversion */
+            expectedRecordVersion: number;
+            /** Maxpagesperbatch */
+            maxPagesPerBatch: number;
+            /** Pendinggenerationpages */
+            pendingGenerationPages: number[];
+            /** Pendingpublicationpages */
+            pendingPublicationPages: number[];
+            /** Pendingreviewpages */
+            pendingReviewPages: number[];
+            /**
+             * Requireshumanreview
+             * @default true
+             * @constant
+             */
+            requiresHumanReview: true;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /**
+             * Supplementsexistingplan
+             * @default false
+             */
+            supplementsExistingPlan: boolean;
+        };
+        /** CoursewareCompletionBatch */
+        CoursewareCompletionBatch: {
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Sourcepages */
+            sourcePages: number[];
+        };
+        /**
+         * CoursewareCompletionPlan
+         * @description Existing workflow identity, retained when suggestions describe another range.
+         */
+        CoursewareCompletionPlan: {
+            /**
+             * Generationstatus
+             * @enum {string}
+             */
+            generationStatus: "queued" | "running" | "completed" | "failed" | "cancelled";
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
+            /** Recordversion */
+            recordVersion: number;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Stale */
+            stale: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "draft" | "awaiting_confirmation" | "approved" | "superseded";
         };
         /**
          * CoursewareCoverage
@@ -4442,6 +4855,8 @@ export interface components {
             requestedObjectives?: string[];
             /** Requesthash */
             requestHash?: string | null;
+            /** Retainedbatches */
+            retainedBatches?: components["schemas"]["CoursewareRetainedBatch"][];
             /**
              * Schemaversion
              * @default 1
@@ -4485,6 +4900,11 @@ export interface components {
             /** Audience */
             audience: string;
             /**
+             * Autogeneratepages
+             * @default false
+             */
+            autoGeneratePages: boolean;
+            /**
              * Durationminutes
              * @default 40
              */
@@ -4501,6 +4921,11 @@ export interface components {
             pageStart?: number | null;
             /** Subject */
             subject: string;
+            /**
+             * Supplement
+             * @default false
+             */
+            supplement: boolean;
         };
         /** CoursewarePlanEdit */
         CoursewarePlanEdit: {
@@ -4523,6 +4948,17 @@ export interface components {
         CoursewarePlanResult: {
             job?: components["schemas"]["CoursewareJobSummary"] | null;
             plan: components["schemas"]["CoursewarePlan"];
+        };
+        /** CoursewarePositionSave */
+        CoursewarePositionSave: {
+            /** Commandid */
+            commandId: string;
+            /** Expectedversion */
+            expectedVersion: number;
+            /** Pageid */
+            pageId: string;
+            /** Publicationid */
+            publicationId: string;
         };
         /** CoursewarePresentation */
         CoursewarePresentation: {
@@ -4623,7 +5059,7 @@ export interface components {
             publishedAt: number;
             /** Reviewrecords */
             reviewRecords?: {
-                [key: string]: string | number | boolean;
+                [key: string]: string | number | boolean | string[];
             }[];
             snapshot: components["schemas"]["CoursewareDocument"];
             /** Sourcerevisionid */
@@ -4706,8 +5142,31 @@ export interface components {
         };
         /** CoursewarePublishRequest */
         CoursewarePublishRequest: {
+            /**
+             * Confirmreview
+             * @default false
+             */
+            confirmReview: boolean;
             /** Expectedrecordversion */
             expectedRecordVersion: number;
+        };
+        /** CoursewareReadingPosition */
+        CoursewareReadingPosition: {
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Pageid */
+            pageId: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Updatedat */
+            updatedAt: number;
+            /** Version */
+            version: number;
         };
         /** CoursewareRegenerateRequest */
         CoursewareRegenerateRequest: {
@@ -4725,6 +5184,25 @@ export interface components {
         CoursewareRegenerationResult: {
             document: components["schemas"]["CoursewareDocument"];
             job: components["schemas"]["CoursewareJobSummary"];
+        };
+        /**
+         * CoursewareRetainedBatch
+         * @description An earlier approved plan whose courseware stays editable after a supplement.
+         *
+         *     Objectives are frozen with the batch because its pages reference these IDs,
+         *     not the objectives of whichever plan is currently open.
+         */
+        CoursewareRetainedBatch: {
+            /** Coursewareids */
+            coursewareIds?: string[];
+            /** Objectives */
+            objectives?: components["schemas"]["CoursewareObjective"][];
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Planversion */
+            planVersion: number;
         };
         /**
          * CoursewareRevealContent
@@ -4817,6 +5295,58 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** CoursewareSourceEvidence */
+        CoursewareSourceEvidence: {
+            /** Coursewareid */
+            coursewareId: string;
+            /** Coursewarepageid */
+            coursewarePageId: string;
+            /** Documentid */
+            documentId: string;
+            /** Excerpt */
+            excerpt: string;
+            /** Previewurl */
+            previewUrl: string;
+            /** Publicationid */
+            publicationId: string;
+            /** Publicationversion */
+            publicationVersion: number;
+            /**
+             * Rank
+             * @default 0
+             */
+            rank: number;
+            /** Sourcepage */
+            sourcePage: number;
+            sourceRef: components["schemas"]["CoursewareSourceRef"];
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewareSourceExplainRequest */
+        CoursewareSourceExplainRequest: {
+            /** Publicationid */
+            publicationId: string;
+            /** Question */
+            question: string;
+        };
+        /** CoursewareSourceExplanation */
+        CoursewareSourceExplanation: {
+            /** Evidence */
+            evidence: components["schemas"]["CoursewareSourceEvidence"][];
+            /** Explanation */
+            explanation: string;
+            /** Run */
+            run?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "answered" | "insufficient_evidence" | "unavailable";
+        };
         /**
          * CoursewareSourcePreparationRequest
          * @description Explicitly classify a material before creating a source-only chapter.
@@ -4824,6 +5354,11 @@ export interface components {
         CoursewareSourcePreparationRequest: {
             /** Attributiontext */
             attributionText?: string | null;
+            /**
+             * Autogenerate
+             * @default false
+             */
+            autoGenerate: boolean;
             /** Confirmedmaterialkind */
             confirmedMaterialKind?: "textbook" | null;
             /**
@@ -4860,6 +5395,11 @@ export interface components {
             /** Sourcerevisionid */
             sourceRevisionId: string;
         };
+        /** CoursewareSourceSearchResponse */
+        CoursewareSourceSearchResponse: {
+            /** Items */
+            items: components["schemas"]["CoursewareSourceEvidence"][];
+        };
         /** CoursewareTextBlock */
         CoursewareTextBlock: {
             /**
@@ -4879,6 +5419,70 @@ export interface components {
             sourceRefs?: components["schemas"]["CoursewareSourceRef"][];
             /** Text */
             text: string;
+        };
+        /** CoursewareUnit */
+        CoursewareUnit: {
+            /** Chapterid */
+            chapterId: string;
+            /** Lessons */
+            lessons: components["schemas"]["CoursewareUnitLesson"][];
+            resume?: components["schemas"]["CoursewareReadingPosition"] | null;
+            /** Subject */
+            subject: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewareUnitLesson */
+        CoursewareUnitLesson: {
+            /**
+             * Activitycount
+             * @default 0
+             */
+            activityCount: number;
+            /**
+             * Activitystatus
+             * @default not_started
+             * @enum {string}
+             */
+            activityStatus: "not_started" | "answered" | "needs_correction";
+            /**
+             * Answeredactivitycount
+             * @default 0
+             */
+            answeredActivityCount: number;
+            /** Coursewareid */
+            coursewareId: string;
+            /** Currentbatch */
+            currentBatch: boolean;
+            /** Durationminutes */
+            durationMinutes: number;
+            /**
+             * Needscorrectioncount
+             * @default 0
+             */
+            needsCorrectionCount: number;
+            /** Order */
+            order: number;
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            progress?: components["schemas"]["CoursewareReadingPosition"] | null;
+            /** Publicationid */
+            publicationId?: string | null;
+            /** Publicationversion */
+            publicationVersion?: number | null;
+            /** Sourcerevisionid */
+            sourceRevisionId: string;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** CoursewareUnitsResponse */
+        CoursewareUnitsResponse: {
+            /** Items */
+            items: components["schemas"]["CoursewareUnit"][];
         };
         /** CoursewareVoiceSessionCreate */
         CoursewareVoiceSessionCreate: {
@@ -5346,7 +5950,7 @@ export interface components {
              * Provider
              * @enum {string}
              */
-            provider: "ollama" | "codex" | "deepseek" | "mock";
+            provider: "ollama" | "codex" | "deepseek" | "openai_compatible" | "mock";
         };
         /** OcrSelectionRequest */
         OcrSelectionRequest: {
@@ -5984,6 +6588,46 @@ export interface components {
             inviteToken?: string | null;
             /** Teachersecret */
             teacherSecret?: string | null;
+        };
+        /**
+         * SourceCaseAiOpinion
+         * @description Advisory opinion on a source case; never a human decision or gold label.
+         */
+        SourceCaseAiOpinion: {
+            /** Caseid */
+            caseId: string;
+            /** Caseversion */
+            caseVersion: number;
+            /**
+             * Countsashumanreview
+             * @default false
+             * @constant
+             */
+            countsAsHumanReview: false;
+            /** Issues */
+            issues?: components["schemas"]["AiReviewIssue"][];
+            /** Jobid */
+            jobId?: string | null;
+            model?: components["schemas"]["AiReviewModel"] | null;
+            /** Reviewedat */
+            reviewedAt?: number | null;
+            /**
+             * Stale
+             * @default false
+             */
+            stale: boolean;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Textonly
+             * @default false
+             */
+            textOnly: boolean;
+            /** Verdict */
+            verdict?: ("pass" | "concern" | "fail") | null;
         };
         /**
          * StageRerunResponse
@@ -6786,6 +7430,39 @@ export interface operations {
             };
         };
     };
+    completion_api_chapters__chapter_id__courseware_completion_get: {
+        parameters: {
+            query?: {
+                maxPagesPerBatch?: number;
+            };
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareCompletion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     coverage_api_chapters__chapter_id__courseware_coverage_get: {
         parameters: {
             query?: never;
@@ -6942,6 +7619,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoursewarePlanApprovalResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teacher_unit_api_chapters__chapter_id__courseware_unit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chapter_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareUnit"];
                 };
             };
             /** @description Validation Error */
@@ -7954,6 +8662,37 @@ export interface operations {
             };
         };
     };
+    list_units_api_courseware_units_get: {
+        parameters: {
+            query?: {
+                learnerId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareUnitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_document_api_courseware__courseware_id__get: {
         parameters: {
             query?: never;
@@ -8020,6 +8759,72 @@ export interface operations {
             };
         };
     };
+    ai_review_status_api_courseware__courseware_id__ai_review_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareAiReviewStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_ai_review_api_courseware__courseware_id__ai_review_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareAiReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareAiReviewStart"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_asset_api_courseware__courseware_id__assets__asset_id__get: {
         parameters: {
             query?: {
@@ -8054,7 +8859,9 @@ export interface operations {
     };
     record_attempt_api_courseware__courseware_id__attempts_post: {
         parameters: {
-            query?: never;
+            query?: {
+                learnerId?: string | null;
+            };
             header?: never;
             path: {
                 courseware_id: string;
@@ -8389,6 +9196,43 @@ export interface operations {
             };
         };
     };
+    save_position_api_courseware__courseware_id__progress_put: {
+        parameters: {
+            query?: {
+                learnerId?: string | null;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewarePositionSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareReadingPosition"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     publish_api_courseware__courseware_id__publish_post: {
         parameters: {
             query?: never;
@@ -8479,6 +9323,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CoursewareDocument"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_api_courseware__courseware_id__source_search_get: {
+        parameters: {
+            query: {
+                limit?: number;
+                publicationId: string;
+                q?: string;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareSourceSearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_api_courseware__courseware_id__source_search_evidence__document_id__preview_get: {
+        parameters: {
+            query: {
+                publicationId: string;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    explain_api_courseware__courseware_id__source_search_explain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareSourceExplainRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareSourceExplanation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    teaching_unit_api_courseware__courseware_id__teaching_unit_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareUnit"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    student_unit_api_courseware__courseware_id__unit_get: {
+        parameters: {
+            query?: {
+                learnerId?: string | null;
+            };
+            header?: never;
+            path: {
+                courseware_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoursewareUnit"];
                 };
             };
             /** @description Validation Error */
@@ -10498,6 +11508,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCaseAiOpinion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_source_case_ai_opinion_api_quality_review_cases__case_id__ai_opinion_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoursewareAiReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceCaseAiOpinion"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -155,17 +155,6 @@
 .tutor-photo-action { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px; }
 .tutor-photo-action button { border: 2px dashed var(--c-line-strong); border-radius: var(--radius-sm); padding: 8px 12px; color: var(--c-brand); background: var(--c-surface); font-weight: 700; cursor: pointer; }
 .tutor-photo-action .tutor-canvas-toggle { color: var(--c-on-info-soft); border-color: var(--c-info-soft); }
-.interactive-math-canvas { margin: 0 20px; padding: 12px; border: 2px solid var(--c-line); border-radius: var(--radius-md); background: var(--c-surface-tint); }
-.interactive-math-canvas p { margin: 0 0 8px; color: var(--c-ink-soft); font-size: .86rem; }
-.interactive-math-canvas svg { display: block; width: 100%; max-height: 300px; border-radius: 10px; cursor: crosshair; touch-action: none; }
-.interactive-math-canvas svg:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 4px; }
-.math-canvas-paper { fill: var(--c-surface); stroke: var(--c-line-strong); }
-.math-canvas-grid { stroke: var(--c-line); stroke-width: .35; }
-.math-canvas-axis { stroke: var(--c-ink-muted); stroke-width: .7; }
-.math-canvas-student-point { fill: var(--c-accent-strong); stroke: var(--c-surface); stroke-width: 1.2; }
-.math-canvas-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: var(--c-ink-soft); font-size: .88rem; }
-.math-canvas-controls span { margin-right: auto; }
-.math-canvas-controls .ghost { min-width: var(--touch-min); min-height: var(--touch-min); padding: 4px 8px; border: 2px solid var(--c-line); border-radius: 10px; background: var(--c-surface); cursor: pointer; }
 .tutor-observation-review { margin: 12px 20px 0; padding: 14px; border-radius: var(--radius-md); background: var(--c-accent-soft); color: var(--c-ink); }
 .tutor-observation-review p { margin: 7px 0; font-size: 13px; line-height: 1.5; }
 .tutor-observation-review label { font-size: 13px; font-weight: 800; }

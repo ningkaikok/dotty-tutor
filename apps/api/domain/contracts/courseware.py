@@ -246,6 +246,11 @@ class CoursewarePlanCreate(BaseModel):
     expectedRecordVersion: int = Field(ge=1)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
     pageEnd: int | None = Field(default=None, ge=1, le=100_000)
+    # True keeps the approved plan's courseware as a retained batch and only
+    # accepts pages outside every planned/generated range. False replaces the
+    # whole plan, which is the original single-plan behaviour.
+    supplement: bool = False
+    autoGeneratePages: bool = False
 
     @model_validator(mode="after")
     def validate_page_range(self) -> CoursewarePlanCreate:
@@ -254,6 +259,20 @@ class CoursewarePlanCreate(BaseModel):
         if self.pageStart is not None and self.pageEnd is not None and self.pageEnd < self.pageStart:
             raise ValueError("pageEnd 不能早于 pageStart")
         return self
+
+
+class CoursewareRetainedBatch(BaseModel):
+    """An earlier approved plan whose courseware stays editable after a supplement.
+
+    Objectives are frozen with the batch because its pages reference these IDs,
+    not the objectives of whichever plan is currently open.
+    """
+
+    planVersion: int = Field(ge=1)
+    pageStart: int = Field(ge=1, le=100_000)
+    pageEnd: int = Field(ge=1, le=100_000)
+    objectives: list[CoursewareObjective] = Field(default_factory=list, max_length=12)
+    coursewareIds: list[str] = Field(default_factory=list, max_length=120)
 
 
 class CoursewarePlan(BaseModel):
@@ -278,6 +297,7 @@ class CoursewarePlan(BaseModel):
     generationAudit: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=24)
     generationStatus: Literal["queued", "running", "completed", "failed", "cancelled"] = "completed"
     coursewareIds: list[str] = Field(default_factory=list, max_length=120)
+    retainedBatches: list[CoursewareRetainedBatch] = Field(default_factory=list, max_length=50)
     createdAt: float
     updatedAt: float
 
@@ -316,6 +336,11 @@ class CoursewarePlan(BaseModel):
             raise ValueError("session、section 和 page ID 必须唯一")
         if len(objective_ids) != len(set(objective_ids)):
             raise ValueError("教学目标 ID 必须唯一")
+        retained_versions = [batch.planVersion for batch in self.retainedBatches]
+        if len(retained_versions) != len(set(retained_versions)) or any(
+            version >= self.planVersion for version in retained_versions
+        ):
+            raise ValueError("保留批次必须是更早且互不重复的规划版本")
         return self
 
 
@@ -366,6 +391,17 @@ class CoursewarePlanDraftOutput(BaseModel):
             if not isinstance(session, dict) or not isinstance(session.get("sections"), list):
                 continue
             sections = session["sections"]
+            timed_pages = [page for section in sections if isinstance(section, dict)
+                           for page in section.get("pages", []) if isinstance(page, dict)]
+            if timed_pages and all(type(page.get("estimatedMinutes")) is int and 1 <= page["estimatedMinutes"] <= 30 for page in timed_pages):
+                total = sum(page["estimatedMinutes"] for page in timed_pages)
+                if total < 10:
+                    # All generated times are suggestions. Keep a short outline
+                    # within the same ten-minute session contract instead of
+                    # rejecting it only after deriving its aggregate timings.
+                    extra, remainder = divmod(10 - total, len(timed_pages))
+                    for index, page in enumerate(timed_pages):
+                        page["estimatedMinutes"] += extra + (index < remainder)
             for section in sections:
                 if not isinstance(section, dict) or not isinstance(section.get("pages"), list):
                     continue
@@ -411,6 +447,11 @@ class CoursewarePageDraftOutput(BaseModel):
 
     @model_validator(mode="after")
     def validate_generated_ids(self) -> CoursewarePageDraftOutput:
+        # Only an explicit teacher edit can claim human authorship; source excerpts
+        # retain their separate attribution and still pass the publication checks.
+        for block in self.blocks:
+            if isinstance(block, (CoursewareTextBlock, CoursewareActivityBlock)) and block.authorship == "teacher_authored":
+                block.authorship = "ai_supplement"
         block_ids = [block.blockId for block in self.blocks]
         activity_ids = [block.activityId for block in self.blocks if isinstance(block, CoursewareActivityBlock)]
         reveal_ids = [item.revealId for item in self.revealSteps]
@@ -597,6 +638,7 @@ class CoursewareReviewRequest(BaseModel):
 
 class CoursewarePublishRequest(BaseModel):
     expectedRecordVersion: int = Field(ge=1)
+    confirmReview: bool = False
 
 
 class CoursewarePublication(BaseModel):
@@ -610,7 +652,7 @@ class CoursewarePublication(BaseModel):
     distributionScope: Literal["private", "classroom", "public"]
     snapshot: CoursewareDocument
     publishedAt: float
-    reviewRecords: list[dict[str, str | float | bool]] = Field(default_factory=list)
+    reviewRecords: list[dict[str, str | float | bool | list[str]]] = Field(default_factory=list)
 
 
 class CoursewareJobSummary(BaseModel):
@@ -756,6 +798,7 @@ class CoursewareSourcePreparationRequest(BaseModel):
     """Explicitly classify a material before creating a source-only chapter."""
 
     confirmedMaterialKind: Literal["textbook"] | None = None
+    autoGenerate: bool = False
     subject: CoursewareSubject
     title: str | None = Field(default=None, min_length=1, max_length=200)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
@@ -775,6 +818,8 @@ class CoursewareSourcePreparationRequest(BaseModel):
         if self.pageStart is not None and self.pageEnd is not None:
             if self.pageEnd < self.pageStart or self.pageEnd - self.pageStart + 1 > 80:
                 raise ValueError("教材来源页段必须在 1 到 80 页之间")
+            if self.autoGenerate and self.pageEnd - self.pageStart + 1 > 30:
+                raise ValueError("自动生成一次最多选择 30 个物理页")
         return self
 
 
@@ -820,6 +865,48 @@ class CoursewareCoverage(BaseModel):
     unpublishedPages: list[int]
     complete: bool
     qualityAcceptance: Literal["requires_teacher_validation"] = "requires_teacher_validation"
+
+
+class CoursewareCompletionBatch(BaseModel):
+    pageStart: int = Field(ge=1, le=100_000)
+    pageEnd: int = Field(ge=1, le=100_000)
+    sourcePages: list[int] = Field(min_length=1, max_length=20)
+
+
+class CoursewareCompletionPlan(BaseModel):
+    """Existing workflow identity, retained when suggestions describe another range."""
+
+    sourceRevisionId: str
+    planVersion: int
+    recordVersion: int
+    status: Literal["draft", "awaiting_confirmation", "approved", "superseded"]
+    generationStatus: Literal["queued", "running", "completed", "failed", "cancelled"]
+    pageStart: int
+    pageEnd: int
+    stale: bool
+
+
+class CoursewareCompletion(BaseModel):
+    """Read-only preparation advice; human decisions stay in the existing workflow."""
+
+    chapterId: str
+    sourceRevisionId: str
+    expectedRecordVersion: int
+    maxPagesPerBatch: int = Field(ge=1, le=20)
+    batches: list[CoursewareCompletionBatch]
+    blockedPages: list[int]
+    alreadyGeneratedPages: list[int]
+    alreadyPlannedPages: list[int]
+    pendingGenerationPages: list[int]
+    pendingReviewPages: list[int]
+    pendingPublicationPages: list[int]
+    existingPlan: CoursewareCompletionPlan | None = None
+    canCreatePlan: bool
+    # When true the suggested batch must be created with supplement=True so the
+    # approved plan's courseware is retained instead of replaced.
+    supplementsExistingPlan: bool = False
+    action: Literal["create_plan", "continue_plan", "wait_generation", "review_generated", "repair_source", "complete"]
+    requiresHumanReview: Literal[True] = True
 
 
 class CoursewareMediaCreate(BaseModel):

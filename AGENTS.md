@@ -39,7 +39,8 @@
   `scripts/check_test_discipline.py` 的 `ALLOWED_MOCK_FILES` 里登记；时间相关行为用注入的
   `now=` 参数，不要 `time.sleep()` 之后再断言。这两条由该脚本在 CI 和 pre-commit 里强制检查，
   细节和例外条件见 [`apps/api/tests/README.md`](apps/api/tests/README.md)。
-- 覆盖率报告已启用（`coverage`/`@vitest/coverage-v8`），目前只出数字、不设门槛。写测试时该关注的是
+- 覆盖率报告已启用（`coverage`/`@vitest/coverage-v8`），目前只出数字、不设门槛；后端覆盖率只在
+  推送到 main 时收集，本地用 `DOTTY_TEST_COVERAGE=1 bash scripts/test-backend-postgres.sh`。写测试时该关注的是
   "剩下没覆盖的失败路径为什么没测"，不要为了拉高覆盖率数字堆砌无实际断言的测试。
 
 ### React 测试分流规则
@@ -102,13 +103,34 @@ docstring/JSDoc；显而易见的展示组件不需要堆叠注释。详细边�
 失败 PR 就会挂。**交付前必须自己真的执行，不要凭印象报告通过**——只跑了单元测试就声称
 "检查通过"是本仓库反复出现的问题。
 
+### 分层验证
+
+不必每次修改都跑全量（后端全量含数据库测试需要数分钟），但跑了什么必须如实报告：
+
+1. **开发过程中**：lint、类型检查，加上受影响的测试。在仓库根执行
+   `python scripts/test-changed.py`：后端按 `apps/api` 的真实导入关系（含函数内延迟导入）
+   选出受影响的测试模块，经 `uv run` 交给并行 runner 运行（需要 `uv` 在 PATH 上），前端调用
+   `vitest related`；`--list` 只列出选择，`--base HEAD`
+   只看未提交改动。改到迁移、`persistence/schema*`、测试夹具或依赖锁文件时它会自动退回全量。
+2. **准备交付 / 开 PR 前**：跑下方完整命令。改动涉及迁移、存储层、共享契约、测试设施或依赖
+   时，本地必须跑后端全量（需要 `DOTTY_TEST_POSTGRES_ADMIN_URL`）；其他改动可以只跑第 1 层，
+   但交付说明里要写明"后端/前端全量交给 PR CI"，并在 CI 结果出来后再报告通过。
+3. **CI**：按改动路径跳过不受影响的 job（规则见 `scripts/ci-changed-areas.sh`），PR 与 main 的
+   后端都只用 Python 3.12；PR 不收集覆盖率，推送到 main 时所有 job 全部运行并收集覆盖率，作为
+   合并后兜底。
+
 后端（在 `apps/api` 下）：
 
 ```bash
 uv run ruff check .
 uv run pyright
-uv run python -m unittest discover -s tests -p 'test_*.py'
+uv run python -m tests.postgres_test_runner   # 按模块并行；--workers 1 串行，也可只传模块名
 ```
+
+`tests.postgres_test_runner` 默认开 min(4, CPU 数) 个进程，每个进程有独立的运行时数据库和
+`DOTTY_DATA_DIR`；没有 `DOTTY_TEST_POSTGRES_ADMIN_URL` 时数据库测试照常跳过。普通
+`unittest discover` 仍然可用，只是串行。数据库测试从按迁移文件内容哈希命名的模板库复制（`dotty_ci_test_tpl_<hash>`），迁移或
+`persistence/` 变化时自动重建，不需要手工清理。
 
 用 `uv run` 而不是直接写 `.venv/bin/...`：venv 的位置随 `uv sync` 的执行目录而变
 （仓库根生成 `<root>/.venv`，`apps/api` 下生成 `apps/api/.venv`），而本仓库常态使用

@@ -78,7 +78,12 @@ class ChapterSourcePreviewTests(PostgresTestCase):
         chapter = self._create()
         outside = self.data_root / "outside-assets"
         outside.mkdir()
-        (self.directory / "assets").symlink_to(outside, target_is_directory=True)
+        try:
+            (self.directory / "assets").symlink_to(outside, target_is_directory=True)
+        except OSError as error:
+            if getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows 未授予创建符号链接权限；需开发者模式或特权运行此安全场景")
+            raise
         url = self.client.get(f"/api/chapters/{chapter['chapterId']}").json()["sourceRevisions"][0]["pages"][0]["previewUrl"]
         # When the teacher requests the page
         response = self.client.get(url)

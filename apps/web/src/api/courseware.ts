@@ -1,4 +1,5 @@
 import { parse } from "./client";
+import { currentLearnerId } from "./identity";
 import type { components, operations } from "../types/generated/api";
 
 type JsonRequest<Operation extends keyof operations> = operations[Operation] extends { requestBody: { content: { "application/json": infer Body } } } ? Body : never;
@@ -139,7 +140,7 @@ export async function submitCoursewareAttempt(
   input: JsonRequest<"record_attempt_api_courseware__courseware_id__attempts_post">,
 ) {
   return parse<JsonResponse<"record_attempt_api_courseware__courseware_id__attempts_post", 200>>(
-    await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}/attempts`, {
+    await fetch(`/api/courseware/${encodeURIComponent(coursewareId)}/attempts?learnerId=${encodeURIComponent(currentLearnerId())}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
     }),
   );
@@ -154,4 +155,9 @@ export async function deleteCoursewareDraft(coursewareId: string, expectedRecord
 export type CoursewareCoverage = components["schemas"]["CoursewareCoverage"];
 export async function loadCoursewareCoverage(chapterId: string, signal?: AbortSignal): Promise<CoursewareCoverage> {
   return parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/courseware-coverage`, { cache: "no-store", signal }));
+}
+
+export type CoursewareCompletion = components["schemas"]["CoursewareCompletion"];
+export async function loadCoursewareCompletion(chapterId: string, maxPagesPerBatch = 5, signal?: AbortSignal): Promise<CoursewareCompletion> {
+  return parse(await fetch(`/api/chapters/${encodeURIComponent(chapterId)}/courseware-completion?maxPagesPerBatch=${maxPagesPerBatch}`, { cache: "no-store", signal }));
 }

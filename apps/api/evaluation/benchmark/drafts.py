@@ -7,7 +7,6 @@ check review coverage without accepting generated examples as human evidence.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +18,7 @@ from evaluation.benchmark.contract import (
     _has_sensitive_key,
     load_jsonl,
 )
+from evaluation.benchmark.images import asset_digest
 
 PENDING_REVIEW = "pending_human_review"
 OWNER_CONFIRMED_SYNTHETIC = "owner_confirmed_synthetic"
@@ -126,7 +126,7 @@ def validate_drafts(
 
 
 def validate_reviewed_synthetic(
-    records: Iterable[Any], *, asset_root: Path
+    records: Iterable[Any], *, asset_root: Path, validate_assets: bool = True,
 ) -> DraftValidation:
     """Validate an owner-confirmed synthetic cohort without counting it as human gold."""
     rows = list(records)
@@ -155,11 +155,14 @@ def validate_reviewed_synthetic(
             if not isinstance(asset_name, str):
                 problems.append(f"{prefix}: imageAsset is required")
                 continue
+            if not validate_assets:
+                # Runtime reports retain missing/changed image cases individually.
+                continue
             asset = (asset_root / asset_name).resolve()
             if not asset.is_relative_to(asset_root.resolve()) or not asset.is_file():
                 problems.append(f"{prefix}: imageAsset must be a local file")
                 continue
-            if row.get("imageAssetSha256") != hashlib.sha256(asset.read_bytes()).hexdigest():
+            if row.get("imageAssetSha256") != asset_digest(asset):
                 problems.append(f"{prefix}: imageAssetSha256 does not match")
         elif eligible is not True:
             problems.append(f"{prefix}: text case must be evaluationEligible=true")

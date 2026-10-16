@@ -1,0 +1,12 @@
+.interactive-math-canvas { margin: 0 20px; padding: 12px; border: 2px solid var(--c-line); border-radius: var(--radius-md); background: var(--c-surface-tint); }
+.interactive-math-canvas p { margin: 0 0 8px; color: var(--c-ink-soft); font-size: .86rem; }
+.interactive-math-canvas svg { display: block; width: 100%; max-height: 300px; border-radius: 10px; cursor: crosshair; touch-action: none; }
+.interactive-math-canvas svg:focus-visible { outline: 3px solid var(--c-accent); outline-offset: 4px; }
+.math-canvas-paper { fill: var(--c-surface); stroke: var(--c-line-strong); }
+.math-canvas-grid { stroke: var(--c-line); stroke-width: .35; }
+.math-canvas-axis { stroke: var(--c-ink-muted); stroke-width: .7; }
+.math-canvas-student-point { fill: var(--c-accent-strong); stroke: var(--c-surface); stroke-width: 1.2; }
+.math-canvas-guide { stroke: var(--c-brand); stroke-width: 1; }
+.math-canvas-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 8px; color: var(--c-ink-soft); font-size: .88rem; }
+.math-canvas-controls span { margin-right: auto; }
+.math-canvas-controls .ghost { min-width: var(--touch-min); min-height: var(--touch-min); padding: 4px 8px; border: 2px solid var(--c-line); border-radius: 10px; background: var(--c-surface); cursor: pointer; }

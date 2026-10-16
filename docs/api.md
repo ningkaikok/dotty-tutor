@@ -3,7 +3,8 @@
 前端独立部署时可设置 `VITE_API_ORIGIN`；请求路径和响应契约不变，教材预览图片与 API 请求使用同一后端来源。未设置时使用同源 `/api`。此配置不包含密钥，不替代 Cookie/CORS 的身份验证配置。
 
 可选云端适配复用现有 ModelRuntime 和 OCRRuntime：配置 DEEPSEEK_API_KEY 后模型目录显示
-DeepSeek，JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
+DeepSeek；配置 OPENAI_COMPATIBLE_BASE_URL/API_KEY/MODELS 后显示通用 OpenAI 兼容接口（provider
+`openai_compatible`，用于跨厂商模型评测）。JSON 响应仍经过本地结构校验；MinerU 优先使用本机命令，不可用时可通过
 MINERU_API_KEY 使用云端上传、轮询和产物下载。云端 OCR 会向所配置服务上传教材页；
 启用前确认材料允许发送。API 与 Worker 必须使用同一组配置，密钥不进入任务快照或前端。
 现有 Codex/Ollama/Mock 和本机文件目录配置保持兼容。
@@ -50,6 +51,10 @@ pnpm check:api     # 只校验，过期时返回非零状态
 ## 来源关联章节课程
 
 章节使用已有 OCR 产物，来源可指定上传任务及页范围，或提供有页码的文本。页码/区域、来源版本和指纹随修订保留。
+
+来源 `pageFlags[].flags` 和 `pages[].flags` 支持 `formula_mismatch`，表示人工发现 OCR 公式与原页不一致。
+该标记随来源修订持久化并阻止章节发布及课件确认和发布；应通过 `POST /api/chapters/{id}/revisions` 提交核对后的新来源并重新审核。
+公式结构损坏也会生成来源 `issues`，现有来源在发布边界重新校验。自动结构检查不证明符号或数值识别正确。
 工作台接口用于教师审阅；学生只读取已发布视图并提交自己的答案与原文依据。
 数学作答复用已有学习证据与掌握度，英语作答单独记录，不进入数学定量门槛。
 
@@ -196,7 +201,7 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 | --- | --- | --- |
 | `GET` | `/api/health` | 检查 API、数据库连接和 schema readiness；成功响应包含 `schema: current`；schema 落后时返回 `503 + SCHEMA_OUT_OF_DATE`，details 会列出缺失表/列/索引/外键及 orphan count，并以 `autoFixable`/`manualActionRequired` 区分可自动补齐项与需人工处理项，不会等业务查询触发缺列 `500` |
 | `GET` | `/api/system/dependency-preflight` | 环境依赖自检（MinerU/pypdf/Ollama/Codex CLI/Azure Speech/Qwen3-TTS/PostgreSQL）：`response_model=DependencyPreflightReport`，返回 `{ok, checks: [{key, label, ok, detail, optional}]}`；任何一项检查内部失败都会被收敛成 `ok: false` 的记录而不是异常响应，整体 `ok` 只看非 optional 项（当前只有 `pypdf`、`postgresql` 是必需项）。前端页面见 `/studio/dependency-preflight` |
-| `GET` | `/api/models` | 返回可用 Ollama、Codex、DeepSeek 和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
+| `GET` | `/api/models` | 返回可用 Ollama、Codex、DeepSeek、OpenAI 兼容接口和 Mock 模型；每个模型附带 `modelDetails`（角色、能力标签、上下文上限、延迟/成本级别、回退建议、健康状态） |
 | `POST` | `/api/models/select` | 切换当前进程使用的生成模型 |
 | `GET` | `/api/review-models` | 返回当前统一审核模型和可用模型目录 |
 | `POST` | `/api/review-models/select` | 切换后续题目使用的统一审核模型（文字与图片共用） |
@@ -457,6 +462,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 任务类型为 `courseware.source.prepare`，复用 `/api/jobs/{jobId}` 查询、取消和显式重试。
 请求包含显式 `subject`、成对的 `pageStart/pageEnd`（最多 80 页）、标题、`sourceTitle/sourceUrl/license/attributionText/distributionScope`。
+`autoGenerate=true`（前端默认）将页段限制到 30 页，来源准备成功后自动提交教学规划，并在结构/引用校验通过后启动页面生成；任务结果含 `planJobId`。服务兼容默认 false 的旧客户端和手动模式。
+任务会复用已保存的逐页来源；缺失页从受管原 PDF 经现有 OCR 路由逐页读取，检查点与识别记录保存到上传结果的内部 `coursewareSource`，不改写原始 OCR 文本。
 未知材料须传 `confirmedMaterialKind="textbook"`，试卷拒绝进入此路径；未注册学科拒绝，不能回退为数学。
 完成返回来源章节及 `requiresHumanReview=true`；不代表课件已经生成。复用持久化逐页文本和原 PDF，不自动扫描前五章。
 
@@ -465,7 +472,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/courseware/profiles` | 列出已注册学科配置，当前内置英语、数学和科学教师复核试点 |
-| `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202` |
+| `POST` | `/api/chapters/{chapter_id}/courseware-plan` | 教师选择受众、语言、目标、时长和来源范围，创建绑定来源与提示词/模型配置的规划任务，返回 `202`；`supplement: true` 时保留已确认规划的课时为 `retainedBatches`，只接受未规划、未生成、未发布的原页，当前规划未确认时拒绝 |
 | `GET` / `PUT` | `/api/chapters/{chapter_id}/courseware-plan` | 读取或修改完整教学目标、课时、页面大纲和覆盖映射；修改要求 `expectedRecordVersion` |
 | `POST` | `/api/chapters/{chapter_id}/courseware-plan/approve` | 明确确认 `planVersion` 与 `expectedRecordVersion`，以 `commandId` 幂等创建课件及逐页生成任务，返回 `202` |
 | `GET` | `/api/chapters/{chapter_id}/courseware` | 列出该章节的课件制作记录 |
@@ -473,6 +480,9 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `PUT` | `/api/courseware/{courseware_id}/pages/{page_id}` | 编辑完整页面 DTO，保留 block ID、作者属性与句子/区域来源；修改使审核失效 |
 | `POST` | `/api/courseware/{courseware_id}/pages/{page_id}/regenerate` | 以版本、原因和 `commandId` 重生成单页，返回 `202`，保留其他已完成页面 |
 | `POST` | `/api/courseware/{courseware_id}/review` | 教师会话身份追加审核记录；全部页面通过后才进入待发布状态 |
+| `GET` | `/api/courseware/{courseware_id}/ai-review` | 教师读取 AI 初审：逐页结论、问题定位、分流（`needs_review` / `bulk_confirmable` / `stale` / `not_reviewed` / `decided`）、抽检比例、教师与 AI 的一致/漏报/误报统计；`countsAsHumanReview` 恒为 false |
+| `POST` | `/api/courseware/{courseware_id}/ai-review` | 教师按 `expectedRecordVersion` 发起 AI 初审，返回 `202` 与 `pagesToReview`（即将调用审核模型的次数）、`cachedPages`；相同输入不重复调用模型，AI 不批准任何页面 |
+| `GET` / `POST` | `/api/quality-review/cases/{case_id}/ai-opinion` | 教师读取或按 `expectedRecordVersion` 请求来源案例的 AI 参考意见（POST 返回 `202`）；不写入人工决定、不计入金标准，案例修订后旧意见标记 `stale` |
 | `POST` | `/api/courseware/{courseware_id}/publish` | 校验来源、结构、许可、资产与审核，保存不可变发布快照 |
 | `GET` | `/api/courseware/{courseware_id}/presentation` | 教师播放投影，包含讲稿与按步骤揭晓内容 |
 | `GET` | `/api/courseware/{courseware_id}/published` | 学生安全投影，不含答案、评分依据和教师讲稿；可指定 `publicationId` |
@@ -483,6 +493,9 @@ curl -X POST http://127.0.0.1:8010/api/help \
 课件不要求包含练习，讲解可以独立发布；互动提交不写入原试卷掌握度。公开活动字段 `selectionMode=single|multiple` 决定单选或多选；选择题提交 `response.selectedOptions`，单填空提交 `response.text`，开放回答返回 `needs_review`。私有正确项不会随该模式字段公开。
 规划生成失败后，新 Idempotency-Key 可创建新版本；相同命令仍返回原任务。仅模型生成的课时总时长从页面时长汇总，手工编辑仍校验完整时长关系。教材摘录审核检查原页文字，改写或翻译不能标为 `source_excerpt`。
 任务按来源修订、规划、文档、页面版本以及 Worker 认领次数保存检查点。旧认领或教师修改后的迟到结果不能覆盖当前内容。
+规划请求可传 `autoGeneratePages=true`，校验后的大纲自动进入页面生成，页面仍未审核。发布请求可传 `confirmReview=true`，以当前教师身份在同一事务内记录最终预览确认与不可变发布；检查失败时全部回滚。默认 false 保留原先分开审核、发布的协议。
+发布响应的 `reviewRecords` 与草稿记录保持一致，`pageIds` 为字符串列表。摘录校验忽略 OCR 产生的标题和行内格式标记，保留措辞一致性检查；它不证明讲解语义正确。
+私有教程可在没有对外分发许可的情况下保存教师快照，学生接口仍拒绝读取；课堂和公开发布仍要求真实许可与署名。草稿预览仅在教师端复用已有数据与播放器，不提交学生作答。
 
 旧教材产物清理由独立 CLI 的精确 manifest 撤回，不新增删除 HTTP 端点。保留上传完成状态、原文件、OCR 与来源修订；普通读取应过滤 manifest 内旧生成 ID。
 工程验收、真实教材复核及实际清理结果见 [验收记录](textbook-courseware-acceptance.md)，不能把接口存在视为验收通过。
@@ -700,6 +713,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
 | GET | `/api/chapters/{chapter_id}/courseware-coverage` | 教师读取当前来源完整物理页段的覆盖及缺口；不能视为教学质量验收 |
+| GET | `/api/chapters/{chapter_id}/courseware-completion` | 教师只读取得连续缺口分批与后续动作；`maxPagesPerBatch` 默认 5、范围 1–20，不创建规划/任务；已确认且生成完成的规划返回 `supplementsExistingPlan: true`，前端以补齐方式新建规划 |
 | POST / GET | `/api/courseware/{courseware_id}/media` | 教师创建或列出固定 publicationId 的课件媒体；创建需 sourceRevisionId 和 3–8 个不同 pageIds |
 | GET | `/api/courseware/{courseware_id}/media/published` | 按 publicationId 查询仅已批准、可分发的课件媒体 |
 | GET | `/api/courseware/{courseware_id}/media/published/{media_id}/asset` | 绑定课件和发布版本的受控 MP4 |
@@ -709,4 +723,31 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 Coverage 返回 source/planned/generated/reviewed/publishedPages 和 missingSource/unplanned/ungenerated/unreviewed/unpublishedPages，`complete` 是结构交集，`qualityAcceptance=requires_teacher_validation`。
 课件 Asset 增加 sourceRegionId/sourceFileSha256/crop/fallbackReason；crop 必须与冻结原页区域完全匹配，缺可信坐标只返回整页。
 QualityReviewInbox 增加 `coursewareTasks`（当前规划版本的未发布课件及 pendingPageCount）和 `coursewarePendingCount`，与来源意见、旧课程、视频分别计数。语音持久化会话增加 `sourceKind` 和 `coursewareId`，历史 chapter 会话保持原恢复协议。
+
+`CoursewareCompletion` 返回 `chapterId/sourceRevisionId/expectedRecordVersion`、`maxPagesPerBatch`、`batches`（pageStart/pageEnd/sourcePages）、`blockedPages`、`alreadyGeneratedPages`、`alreadyPlannedPages`、`pendingGenerationPages`、`pendingReviewPages`、`pendingPublicationPages`，以及 `existingPlan`、`canCreatePlan`、`action`、固定为 true 的 `requiresHumanReview`。action 为 create_plan/continue_plan/wait_generation/review_generated/repair_source/complete。既有规划身份含来源修订、规划/记录版本、状态、页段和 stale；不构成替换规划授权。客户端选批次仅填写现有表单，实际创建仍走原 POST 的章节版本校验、Worker 和教师确认流程。撤回章节或原 PDF 哈希变化拒绝读取建议。
 渲染、审校、发布与后续语音轮次仍使用既有 `/api/lesson-media`、`/api/voice` 接口。
+
+## 单元目录、续学位置与教材证据
+
+| 方法 | 端点 | 内容与访问边界 |
+| --- | --- | --- |
+| GET | `/api/courseware-units` | 当前学习者可访问的单元，含课时、活动摘要和继续位置；受保护模式要求学生会话 |
+| GET | `/api/courseware/{courseware_id}/unit` | 学生安全单元目录；只包含可访问发布与本人进度 |
+| GET | `/api/chapters/{chapter_id}/courseware-unit` | 教师单元目录，包含草稿和保留批次；不开放给学生 |
+| GET | `/api/courseware/{courseware_id}/teaching-unit` | 从教师课件打开其所属单元 |
+| PUT | `/api/courseware/{courseware_id}/progress` | 保存本人阅读位置；正文 `publicationId,pageId,expectedVersion,commandId`，页必须属于指定发布 |
+| GET | `/api/courseware/{courseware_id}/source-search` | `publicationId,q,limit`；搜索当前发布批准页明确引用的教材句子 |
+| POST | `/api/courseware/{courseware_id}/source-search/explain` | 正文 `publicationId,question`；复用生成模型，返回附证据讲解或明确缺口 |
+| GET | `/api/courseware/{courseware_id}/source-search/evidence/{document_id}/preview` | `publicationId` 必填；重新验证证据归属后返回原 PDF 页 PNG，`Cache-Control: private, no-store` |
+
+单元以现有 `chapterId` 标识。`lessons` 返回 `coursewareId,title,order,pageStart,pageEnd,durationMinutes,status,currentBatch,sourceRevisionId,publicationId,publicationVersion`，以及 `activityCount,answeredActivityCount,needsCorrectionCount,activityStatus,progress`。
+`activityStatus` 为 `not_started/answered/needs_correction`，表示作答情况，不是掌握度。
+`progress` 和单元 `resume` 包含 `coursewareId,publicationId,pageId,version,updatedAt,available`；旧发布不可读时 `available=false`，不得把旧作答套到新发布。
+
+位置写入的 `expectedVersion=0` 仅创建位置，后续必须带已读版本；同一命令和输入重复提交返回已保存位置，竞争更新返回 409。demo 模式可传 `learnerId` 查询参数选择本机学习者；受保护会话传不同学习者返回 403，不信任请求体身份。课件作答 POST 同样支持 demo 的 `learnerId` 查询参数，保护模式始终校验会话归属。
+
+检索 `items` 每项包含 `documentId,coursewareId,publicationId,publicationVersion,sourceRevisionId,sourcePage,coursewarePageId,title,excerpt,sourceRef,previewUrl,rank`。
+讲解返回 `status=answered/insufficient_evidence/unavailable`、`explanation,evidence,run`；无模型时仍提供原文，伪造证据 ID 不作为回答。run 只含安全用量/时延/实际模型元数据，不返回提示词、地址或密钥。
+教材证据接口允许已认证学生和教师读取可分发的发布；匿名在保护模式返回 401。私有、错配、撤回、原文件变化或来源修订后的旧证据不再返回；历史发布在来源修订未变时可以按原 publicationId 查证。新增索引与旧题目全文检索分类隔离。
+
+PDF 导出使用原 `published/presentation/assets` 端点重新校验固定版本与素材，再由浏览器打印，不新增下载 API。学生版与教师答案版分别复用原安全投影和教师认证边界。

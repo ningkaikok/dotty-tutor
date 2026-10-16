@@ -427,6 +427,20 @@ def create_app() -> FastAPI:
                 # against immutable scope and source references.
                 teacher_only = False
                 student_only = False
+        if (path == "/api/courseware-units" and method == "GET") or (
+            re.fullmatch(r"/api/courseware/[^/]+/unit", path) and method == "GET"
+        ) or (re.fullmatch(r"/api/courseware/[^/]+/progress", path) and method == "PUT"):
+            # Reading markers and activity summaries are resolved from the authenticated
+            # learner at the router, never from an arbitrary directory URL.
+            teacher_only = False
+            student_only = True
+        if (
+            re.fullmatch(r"/api/courseware/[^/]+/source-search(?:/evidence/[^/]+/preview)?", path) and method == "GET"
+        ) or (re.fullmatch(r"/api/courseware/[^/]+/source-search/explain", path) and method == "POST"):
+            # Evidence services re-check the requested public frozen publication;
+            # these exact actions accept either role after the session gate above.
+            teacher_only = False
+            student_only = False
         if re.fullmatch(r"/api/courseware/[^/]+/voice-sessions", path) and method == "POST":
             # Courseware voice uses the same learner-bound capability protocol as
             # chapter voice; a page publication is not a teacher preview session.

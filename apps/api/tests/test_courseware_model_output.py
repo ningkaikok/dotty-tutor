@@ -13,6 +13,17 @@ from domain.courseware.quality import document_page_issues
 
 
 class CoursewareModelOutputTests(unittest.TestCase):
+    def test_provider_schema_limits_generated_provenance_to_frozen_source_identifiers(self):
+        schema = generation_schema(CoursewarePageDraftOutput, source={"sourceRevisionId": "frozen-source"},
+            pages=[{"page": 123, "sentences": [{"sentenceId": "p123-s1"}], "regions": []}], asset_ids=["original-p123"])
+        refs = schema["$defs"]["CoursewareSourceRef"]["properties"]
+        self.assertEqual(refs["sourceRevisionId"]["enum"], ["frozen-source"])
+        self.assertEqual(refs["page"]["enum"], [123])
+        self.assertEqual(refs["sentenceIds"]["items"]["enum"], ["p123-s1"])
+        self.assertEqual(refs["regionIds"]["maxItems"], 0)
+        self.assertEqual(refs["assetId"]["enum"], [None, "original-p123"])
+        self.assertEqual(schema["$defs"]["CoursewareImageBlock"]["properties"]["assetId"]["enum"], ["original-p123"])
+
     def test_closed_provider_protocol_accepts_plan_coverage_and_discriminated_page_blocks(self):
         def check(node):
             if isinstance(node, dict):
@@ -45,6 +56,15 @@ class CoursewareModelOutputTests(unittest.TestCase):
         ]}]}])
         self.assertEqual(sessions[0]["durationMinutes"], 40)
 
+    def test_short_generated_outline_has_a_valid_minimum_session_without_mutating_raw_timings(self):
+        raw = [{"durationMinutes": 20, "sections": [{"estimatedMinutes": 20,
+                "pages": [{"estimatedMinutes": 1}, {"estimatedMinutes": 1}, {"estimatedMinutes": 1}]}]}]
+        normalized = CoursewarePlanDraftOutput.derive_generated_timing(raw)
+        self.assertEqual(normalized[0]["durationMinutes"], 10)
+        self.assertEqual(normalized[0]["sections"][0]["estimatedMinutes"], 10)
+        self.assertEqual([page["estimatedMinutes"] for page in normalized[0]["sections"][0]["pages"]], [4, 3, 3])
+        self.assertEqual([page["estimatedMinutes"] for page in raw[0]["sections"][0]["pages"]], [1, 1, 1])
+
     def test_user_types_one_blank_then_receives_objective_feedback_while_open_answers_need_review(self):
         # Given a reviewed single blank and a teacher-reviewed open explanation
         blank = {"activityKind": "fill_blank", "assessmentMode": "objective", "answerKey": "audience"}
@@ -56,6 +76,16 @@ class CoursewareModelOutputTests(unittest.TestCase):
 
 
 class CoursewareExcerptQualityTests(unittest.TestCase):
+    def test_ocr_heading_and_inline_tags_do_not_require_manual_excerpt_repair(self):
+        pages = [{"page": 123, "text": "## 4.2 Trailblazer\n\n## Memoir Trailblazer: Ta-Nehisi Coates\nThe story should not be just <sub>y</sub>ou &amp; your life."}]
+        block = {"kind": "text", "authorship": "source_excerpt", "text": "4.2 Trailblazer Memoir Trailblazer: Ta-Nehisi Coates", "sourceRefs": [{"page": 123}]}
+        document = {"pages": [{"pageId": "opening", "generationStatus": "completed", "sourceRefs": [{"page": 123}], "blocks": [block]}]}
+        self.assertEqual(document_page_issues(document, pages), [])
+        block["text"] = "The story should not be just you & your life."
+        self.assertEqual(document_page_issues(document, pages), [])
+        block["text"] = "The story should be just you & your life."
+        self.assertEqual([item["code"] for item in document_page_issues(document, pages)], ["excerpt_not_verbatim"])
+
     def test_a_paraphrase_cannot_be_approved_as_a_verbatim_textbook_excerpt(self):
         pages = [{"page": 23, "text": "Reading language rhetorically means figuring out why and how it works."}]
         block = {"kind": "text", "authorship": "source_excerpt", "text": "Ask how the message works. 中文辅助。", "sourceRefs": [{"page": 23}]}

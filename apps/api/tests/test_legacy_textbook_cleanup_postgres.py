@@ -268,6 +268,22 @@ class LegacyTextbookCleanupPostgresAcceptance(PostgresTestCase):
             )).scalar_one(), "completed")
             self.assertEqual(connection.execute(select(chapter_records.c.record_version).order_by(chapter_records.c.chapter_id)).scalars().all(), [2] * 10)
 
+    def test_user_given_an_existing_manifest_when_rewriting_it_then_identical_content_is_allowed_and_changes_are_rejected(self) -> None:
+        # Given a reviewed metadata manifest written to an owned output directory
+        manifest = self._plan()["manifest"]
+        path = self.data_root / "reviewed-manifest.json"
+        digest = self.service.write_manifest(manifest, path)
+        original = path.read_bytes()
+        # When saving the same artifact again or trying to replace its identity
+        self.assertEqual(self.service.write_manifest(manifest, path), digest)
+        with self.assertRaisesRegex(LegacyTextbookCleanupError, "拒绝覆盖"):
+            self.service.write_manifest({**manifest, "manifestId": "different-reviewed-manifest"}, path)
+        # Then no platform may overwrite the first reviewed artifact or leave temporary metadata
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(list(path.parent.glob(f".{path.name}.*")), [])
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+
     def test_user_can_apply_idempotently_and_restore_without_reopening_cancelled_workers(self) -> None:
         # Given a fresh exact manifest whose upload, chapters, job states, and protected rows are backed up
         planned = self._plan()
@@ -326,7 +342,9 @@ class LegacyTextbookCleanupPostgresAcceptance(PostgresTestCase):
         self.assertEqual(len(first["jobIds"]), 3)
         self.assertEqual(repeated["status"], "deleted")
         self.assertTrue(repeated["idempotent"])
-        self.assertEqual(backup_path.stat().st_mode & 0o777, 0o600)
+        # POSIX mode bits encode privacy; Windows uses inherited directory ACLs.
+        if os.name != "nt":
+            self.assertEqual(backup_path.stat().st_mode & 0o777, 0o600)
 
         # Then cleanup leaves the source upload intact, tombstones only chapters, and cancels executable jobs
         with self.engine.connect() as connection:

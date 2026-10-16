@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import uuid
 from dataclasses import dataclass
@@ -17,6 +19,11 @@ from sqlalchemy.engine import URL, Engine, make_url
 
 TEST_ADMIN_ENV = "DOTTY_TEST_POSTGRES_ADMIN_URL"
 TEST_DATABASE_PREFIX = "dotty_ci_test_"
+# Templates keep the shared prefix so every existing prefix-guarded cleanup still applies.
+TEMPLATE_PREFIX = f"{TEST_DATABASE_PREFIX}tpl_"
+# Several worktrees may share one local server; only prune templates nobody rebuilt for a week.
+STALE_TEMPLATE_SECONDS = 7 * 24 * 3600
+_API_ROOT = Path(__file__).resolve().parents[1]
 
 
 class PostgresTestConfigurationError(RuntimeError):
@@ -85,9 +92,17 @@ class PostgresTestDatabase:
     _created: bool = False
 
     @classmethod
-    def create(cls) -> PostgresTestDatabase:
+    def create(cls, *, template: str | None = None) -> PostgresTestDatabase:
+        """Create an empty database, or clone ``template`` (a migrated test template)."""
         admin_url = _admin_url_from_environment()
         name = f"{TEST_DATABASE_PREFIX}{uuid.uuid4().hex[:16]}"
+        if template is not None and not template.startswith(TEMPLATE_PREFIX):
+            raise PostgresTestConfigurationError("只允许从本测试前缀的模板库复制")
+        statement = sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name))
+        if template is not None:
+            statement = sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(
+                sql.Identifier(name), sql.Identifier(template),
+            )
         admin_engine = create_engine(
             admin_url,
             future=True,
@@ -96,9 +111,7 @@ class PostgresTestDatabase:
         try:
             with admin_engine.connect() as connection:
                 raw_connection: Any = connection.connection.driver_connection
-                raw_connection.execute(
-                    sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name))
-                )
+                raw_connection.execute(statement)
         finally:
             admin_engine.dispose()
         database = cls(admin_url=admin_url, name=name, _created=True)
@@ -157,6 +170,101 @@ class PostgresTestDatabase:
         self.close()
 
 
+def _schema_fingerprint() -> str:
+    """Hash everything a migration can import, so any schema change rebuilds the template."""
+    digest = hashlib.sha256()
+    paths = sorted({*_API_ROOT.glob("migrations/**/*.py"), *_API_ROOT.glob("persistence/**/*.py")})
+    for path in paths:
+        digest.update(path.relative_to(_API_ROOT).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:16]
+
+
+_template_name: str | None = None
+
+
+def migrated_template() -> str:
+    """Return a template database already upgraded to head, building it once.
+
+    Migrating every test class from scratch dominated suite time (~3s per class).
+    Cloning a template is a file copy. Building happens under an advisory lock and
+    via build-then-rename, so concurrent processes never clone a half-migrated
+    template and a crash leaves only an ordinary prefixed test database behind.
+    """
+    global _template_name
+    if _template_name is not None:
+        return _template_name
+    fingerprint = _schema_fingerprint()
+    name = f"{TEMPLATE_PREFIX}{fingerprint}"
+    admin_engine = create_engine(_admin_url_from_environment(), future=True, isolation_level="AUTOCOMMIT")
+    try:
+        with admin_engine.connect() as connection:
+            raw: Any = connection.connection.driver_connection
+            lock_key = int(fingerprint[:15], 16)
+            raw.execute("SELECT pg_advisory_lock(%s)", (lock_key,))
+            try:
+                exists = raw.execute("SELECT 1 FROM pg_database WHERE datname = %s", (name,)).fetchone()
+                if exists is None:
+                    _build_template(raw, name)
+                _prune_stale_templates(raw, keep=name)
+            finally:
+                raw.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
+    finally:
+        admin_engine.dispose()
+    _template_name = name
+    return name
+
+
+def _build_template(raw: Any, name: str) -> None:
+    from persistence.migration_cli import upgrade_database
+    from persistence.schema_registry import SCHEMA_HEAD_REVISION
+
+    build = PostgresTestDatabase.create()
+    try:
+        result = upgrade_database(build.database_url)
+        if result["current"] != SCHEMA_HEAD_REVISION:
+            raise AssertionError(f"PostgreSQL 测试模板未升级到 head：{result['current']!r}")
+        if build.engine is not None:
+            build.engine.dispose()
+            build.engine = None
+        # RENAME and TEMPLATE both require that nobody is connected to the source.
+        raw.execute(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = %s AND pid <> pg_backend_pid()",
+            (build.name,),
+        )
+        raw.execute(sql.SQL("ALTER DATABASE {} RENAME TO {}").format(
+            sql.Identifier(build.name), sql.Identifier(name)))
+        build._created = False  # renamed: now owned as the shared template
+    except BaseException:
+        build.close()
+        raise
+    raw.execute(sql.SQL("ALTER DATABASE {} WITH IS_TEMPLATE true ALLOW_CONNECTIONS false").format(
+        sql.Identifier(name)))
+    raw.execute(sql.SQL("COMMENT ON DATABASE {} IS {}").format(
+        sql.Identifier(name), sql.Literal(f"built_at={int(time.time())}")))
+
+
+def _prune_stale_templates(raw: Any, *, keep: str) -> None:
+    """Drop old-fingerprint templates nobody rebuilt recently; skip any still in use."""
+    rows = raw.execute(
+        "SELECT d.datname, shobj_description(d.oid, 'pg_database') FROM pg_database d "
+        "WHERE d.datname LIKE %s AND d.datname <> %s",
+        (TEMPLATE_PREFIX.replace("_", r"\_") + "%", keep),
+    ).fetchall()
+    now = time.time()
+    for datname, comment in rows:
+        built_at = int(str(comment or "built_at=0").removeprefix("built_at=") or 0)
+        if now - built_at < STALE_TEMPLATE_SECONDS or not datname.startswith(TEMPLATE_PREFIX):
+            continue
+        try:
+            raw.execute(sql.SQL("ALTER DATABASE {} WITH IS_TEMPLATE false").format(sql.Identifier(datname)))
+            raw.execute(sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(datname)))
+        except Exception:
+            continue  # another process is cloning it; prune on a later run
+
+
 def postgres_tests_enabled() -> bool:
     """Whether the caller supplied the explicit isolated-test admin URL."""
     return bool(os.getenv(TEST_ADMIN_ENV))
@@ -182,18 +290,19 @@ class PostgresTestCase(unittest.TestCase):
             raise unittest.SkipTest(
                 f"需要 {TEST_ADMIN_ENV} 指向隔离 PostgreSQL admin 库"
             )
-        cls.database = PostgresTestDatabase.create()
+        cls.database = PostgresTestDatabase.create(template=migrated_template())
         cls.addClassCleanup(cls.database.close)
         cls._data_directory = tempfile.TemporaryDirectory(prefix="dotty-pg-test-data-")
         cls.addClassCleanup(cls._data_directory.cleanup)
 
-        from persistence.migration_cli import upgrade_database
+        from persistence.migration_cli import current_revision
         from persistence.schema_registry import SCHEMA_HEAD_REVISION, table_registry
 
-        result = upgrade_database(cls.database.database_url)
-        if result["current"] != SCHEMA_HEAD_REVISION:
+        # The clone must still prove it is at head with every registered table.
+        current = current_revision(cls.database.database_url)
+        if current != SCHEMA_HEAD_REVISION:
             raise AssertionError(
-                f"PostgreSQL test fixture 未升级到 head：{result['current']!r}"
+                f"PostgreSQL test fixture 未升级到 head：{current!r}"
             )
         actual_tables = set(inspect(cls.database.engine).get_table_names())
         missing_tables = set(table_registry()) - actual_tables

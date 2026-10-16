@@ -1,5 +1,5 @@
 import { Button } from "../../components/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { editablePage, type CoursewareAuthoringPage, type CoursewareEditableBlock, type CoursewarePageEditView } from "./coursewareAuthoringView";
 
 const pageKinds = ["cover", "explanation", "vocabulary", "reading", "worked_example", "activity", "practice", "summary"] as const;
@@ -11,15 +11,18 @@ export function CoursewarePageEditor({
   onSave,
   onRegenerate,
   onReview,
+  onDirtyChange,
 }: {
   page: CoursewareAuthoringPage;
   busy: boolean;
   onSave: (pageId: string, value: CoursewarePageEditView) => Promise<void>;
   onRegenerate: (pageId: string, reason: string) => Promise<void>;
   onReview: (pageId: string, decision: "approve" | "request_changes", note: string) => Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState<CoursewarePageEditView>(() => editablePage(page));
   const [dirty, setDirty] = useState(false);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   const [reason, setReason] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [actionError, setActionError] = useState("");
@@ -106,9 +109,26 @@ function BlockEditor({ page, block, onChange }: { page: CoursewareAuthoringPage;
   if (block.kind === "word_cards") return <fieldset className="courseware-block-editor"><legend>词卡 · {block.cards.length} 张</legend>{block.cards.map((card, index) => <div className="courseware-editor-fields" key={`${page.pageId}-card-${index}`}><label>词语<input value={card.term} onChange={(event) => onChange((current) => current.kind === "word_cards" ? { ...current, cards: current.cards.map((item, itemIndex) => itemIndex === index ? { ...item, term: event.target.value } : item) } : current)} /></label><label>解释<input value={card.meaning} onChange={(event) => onChange((current) => current.kind === "word_cards" ? { ...current, cards: current.cards.map((item, itemIndex) => itemIndex === index ? { ...item, meaning: event.target.value } : item) } : current)} /></label></div>)}</fieldset>;
   if (block.kind === "input") return <fieldset className="courseware-block-editor"><legend>课堂填写</legend><label>提示语<input value={block.prompt} onChange={(event) => onChange((current) => current.kind === "input" ? { ...current, prompt: event.target.value } : current)} /></label><label>需要填写数量<input type="number" min="1" max="20" value={block.minResponses} onChange={(event) => onChange((current) => current.kind === "input" ? { ...current, minResponses: Number(event.target.value) } : current)} /></label></fieldset>;
   if (block.kind === "checklist") return <fieldset className="courseware-block-editor"><legend>同伴检查</legend><label>标题<input value={block.title} onChange={(event) => onChange((current) => current.kind === "checklist" ? { ...current, title: event.target.value } : current)} /></label>{block.items.map((item, index) => <label key={item.itemId}>检查项 {index + 1}<input value={item.label} onChange={(event) => onChange((current) => current.kind === "checklist" ? { ...current, items: current.items.map((value, itemIndex) => itemIndex === index ? { ...value, label: event.target.value } : value) } : current)} /></label>)}</fieldset>;
-  return <fieldset className="courseware-block-editor"><legend>{block.assessmentMode === "participation" ? "课堂活动" : "可选练习"}</legend><label>活动说明<textarea rows={3} value={block.instructions} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, instructions: event.target.value } : current)} /></label><label>选项（每行一个）<textarea rows={3} value={block.choices?.join("\n") ?? ""} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, choices: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) } : current)} /></label>{block.answerKey !== undefined && <label>示范答案（仅教师可见）<textarea rows={2} value={Array.isArray(block.answerKey) ? block.answerKey.join("\n") : block.answerKey ?? ""} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, answerKey: event.target.value } : current)} /></label>}{block.teacherRubric != null && <label>教师评分建议<textarea rows={2} value={block.teacherRubric} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, teacherRubric: event.target.value } : current)} /></label>}</fieldset>;
+  return <fieldset className="courseware-block-editor"><legend>{block.assessmentMode === "participation" ? "课堂活动" : "可选练习"}</legend><label>活动说明<textarea rows={3} value={block.instructions} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, instructions: event.target.value } : current)} /></label><label>选项（每行一个）<textarea rows={3} value={block.choices?.join("\n") ?? ""} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, choices: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) } : current)} /></label>{block.activityKind === "fill_blank" && <LinearFunctionOption block={block} onChange={onChange} />}{block.answerKey !== undefined && <label>示范答案（仅教师可见）<textarea rows={2} value={Array.isArray(block.answerKey) ? block.answerKey.join("\n") : block.answerKey ?? ""} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, answerKey: event.target.value } : current)} /></label>}{block.teacherRubric != null && <label>教师评分建议<textarea rows={2} value={block.teacherRubric} onChange={(event) => onChange((current) => current.kind === "activity" ? { ...current, teacherRubric: event.target.value } : current)} /></label>}</fieldset>;
 }
 
 function SourceSummary({ page }: { page: CoursewareAuthoringPage }) {
   return <p className="courseware-editor-source">{page.sourceRefs.length ? `本页来源：${[...new Set(page.sourceRefs.map((reference) => reference.page))].join("、")} 页` : "尚未关联教材原文。请复核来源后再批准页面。"}</p>;
+}
+
+/** Optional visual exploration keeps the existing answer contract and teacher-authored instructions. */
+function LinearFunctionOption({ block, onChange }: {
+  block: Extract<CoursewareEditableBlock, { kind: "activity" }>;
+  onChange: (change: (block: CoursewareEditableBlock) => CoursewareEditableBlock) => void;
+}) {
+  return <div><label><input type="checkbox" checked={block.responseSchema?.interaction === "linear_function"} onChange={(event) => {
+    const enabled = event.target.checked;
+    onChange((current) => {
+      if (current.kind !== "activity") return current;
+      const responseSchema = { ...current.responseSchema };
+      if (enabled) Object.assign(responseSchema, { interaction: "linear_function", slope: 1, intercept: 0, sampleX: 2 });
+      else for (const key of ["interaction", "slope", "intercept", "sampleX"]) delete responseSchema[key];
+      return { ...current, responseSchema };
+    });
+  }} />启用函数参数探索</label><p>启用后从 y = x、x = 2 开始探索。请核对活动说明中的参数要求和示范答案；开关不会替你修改答案。</p></div>;
 }

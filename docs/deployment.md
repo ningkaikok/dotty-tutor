@@ -461,7 +461,7 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 
 `.github/workflows/ci.yml` 在推送和 Pull Request 时执行：
 
-- 后端 Python 矩阵的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
+- 后端固定 Python 3.12 的 Ruff、Pyright、unittest 与 PostgreSQL 集成，以及离线重放；
 - 前端 pnpm 锁定安装、lint、Vitest、API 类型漂移、TypeScript 与构建；
 - Playwright E2E、Docker Compose 构建/健康检查与独立 CodeQL 工作流。
 
@@ -469,6 +469,20 @@ Compose 中 Web 通过 Docker DNS 动态解析 API 服务地址；单独重建 A
 
 生产自动部署应使用 GitHub Environments 和 Secrets，并要求 CI 通过后才能发布。当前工作流
 只验证构建，不会自动连接或修改生产服务器。
+
+### v0.40.0 发布分支同步
+
+本次部署候选以 `v0.40.0`（main `4012838`）为基线，保留 Render Blueprint、启动脚本、DeepSeek/MinerU、公网配额、可信代理和 SPA 重写设置。业务代码与发布标签一致，包含单元续学、教材检索与证据、数学探索、打印和课件生成修复。此前 v0.39.0 部署候选一并纳入；Git 分支同步不代表服务已上线。
+
+线上需先核对当前 schema，并在升级前建立数据库恢复点及备份可用文件资源；如果尚处于 0025，需依次应用 `0026_ai_reviews` 和 `0027_courseware_unit_progress`。按照 backup → preflight → upgrade → verify 执行，验证成功后再部署 API/Worker 和 Static Site。Render 启动脚本会自动 upgrade 与 verify，因此恢复点和 preflight 必须在触发部署前完成。
+
+合并部署分支前确认这一步不会在缺少恢复点时自动上线。上线后核对两个服务的实际部署提交，API `/api/health` 的数据库与 schema 状态、OpenAPI `info.version=0.40.0`，以及 `/studio`、单元目录和学生续学等深层路径。免费服务休眠导致的超时应在部署日志与实例状态中排查，不能视为健康通过。教师草稿、原 PDF 和本机数据库不随 Git 发布。
+
+### v0.39.0 发布分支同步
+
+部署分支采用已发布 `v0.39.0` 的主分支代码，保留 Render Blueprint、启动脚本、MinerU/DeepSeek、公网配额及可信代理设置。教材制作默认自动串联识别、规划与生成并在最终预览确认一次，新增完整单元增量补齐、课件与来源 AI 辅助预审、损坏 OCR 公式发布拦截及 Cairo 延迟加载。通用 OpenAI 兼容接口在 `render.yaml` 中未配置，线上仍使用 DeepSeek。
+
+已有数据库须升级至 `0026_ai_reviews`：只新增 AI 预审记录相关的表、列和索引，不修改既有数据，降级时保留预审记录。部署前须为线上数据库建立恢复点，核对实际版本后执行 preflight→upgrade→verify；Render 启动脚本在 verify 成功后才启动 Worker/API。分支同步与 CI 通过不代表线上迁移或实际部署已完成。
 
 ### v0.38.0 发布分支同步
 

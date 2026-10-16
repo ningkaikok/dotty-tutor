@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import unittest
 
 from fastapi import FastAPI
@@ -13,10 +14,12 @@ from application.services.chapter_courses import ChapterCourseService
 from application.services.material_courses import MaterialCourseService
 from domain.chapters.material import classify_material, headings
 from domain.contracts.courseware import CoursewareSourcePreparationRequest
+from infrastructure.runtime.ocr_runtime import OcrRuntime, OcrSelection
 from persistence.app_store import AppStore
 from persistence.job_store import JobStore
 from routers.chapter_routes import build_chapter_router
 from tests.postgres_test_support import PostgresTestCase
+from tests.test_chapter_real_sources import _make_pdf
 
 
 class MaterialRecognitionTests(unittest.TestCase):
@@ -58,7 +61,7 @@ class CoursewareSourcePreparationAcceptanceTests(PostgresTestCase):
             "contentType": "application/pdf", "size": (directory / "source.pdf").stat().st_size,
             "chunkSize": 1000, "totalChunks": 1, "directory": directory, "status": "complete",
             "sourceText": source_text,
-            "result": {"materialKind": "textbook", "extraction": {"pageCount": 8}}})
+            "result": {"materialKind": "textbook", "extraction": {"pageCount": 30}}})
         self.chapters = ChapterCourseService(self.store, self.jobs)
         self.service = MaterialCourseService(self.chapters, None)
 
@@ -124,6 +127,64 @@ class CoursewareSourcePreparationAcceptanceTests(PostgresTestCase):
         # Then no tutorial chapter or courseware preparation job is created
         self.assertEqual(self.store.list_chapters(), [])
         self.assertEqual(self.jobs.list_jobs(), [])
+
+    def test_user_uploads_aggregate_preview_then_selected_pdf_pages_are_prepared_without_overwriting_ocr(self):
+        # Given a real PDF and a legacy aggregate OCR preview with no page markers
+        upload = self.store.load_job("source-book")
+        assert upload is not None
+        _make_pdf(upload["directory"] / "source.pdf", "Read critically and cite evidence from the source.")
+        upload["sourceText"] = "Aggregate MinerU preview without physical-page boundaries."
+        upload["result"]["extraction"]["pageCount"] = 1
+        self.store.save_job(upload)
+        ocr = OcrRuntime()
+        ocr.selection = OcrSelection("pypdf")
+        self.service = MaterialCourseService(self.chapters, ocr)
+        # When the teacher selects the original PDF page through the normal queue
+        queued = self.service.enqueue("source-book", self._request(pageStart=1, pageEnd=1))
+        result = self._execute(queued).value
+        # Then the source has the correct physical page and original OCR stays intact
+        chapter = self.store.load_chapter(result["chapters"][0]["chapterId"])
+        self.assertEqual(chapter["sourceRevisions"][-1]["pages"][0]["page"], 1)
+        self.assertIn("Read critically", chapter["sourceRevisions"][-1]["pages"][0]["text"])
+        stored = self.store.load_job("source-book")
+        self.assertEqual(stored["sourceText"], upload["sourceText"])
+        self.assertEqual(stored["result"]["coursewareSource"]["pages"][0]["ocrRun"]["provider"], "pypdf")
+
+    def test_user_cancels_source_preparation_then_a_late_worker_cannot_save_ocr_pages(self):
+        # Given a claimed source task that the user cancels
+        queued = self.service.enqueue("source-book", self._request())
+        claim = self.jobs.claim_next("late-worker", lease_seconds=600)
+        assert claim is not None
+        self.jobs.request_cancel(queued["jobId"])
+        context = JobExecutionContext(claim["jobId"], claim["leaseOwner"], claim["attemptCount"], claim["leaseExpiresAt"])
+        # When the stale execution tries to checkpoint a page
+        with self.assertRaisesRegex(ValueError, "取消"):
+            self.store.checkpoint_courseware_source(context=context, upload_id="source-book",
+                source_text_sha256="unused", source_file_sha256="unused",
+                page={"page": 23, "text": "Late OCR"}, now=time.time())
+        # Then no new OCR snapshot or chapter is written
+        self.assertNotIn("coursewareSource", self.store.load_job("source-book")["result"])
+
+    def test_user_prepares_an_unreadable_pdf_then_failure_identifies_the_physical_page_without_creating_a_chapter(self):
+        # Given an uploaded PDF whose original bytes cannot be parsed and no reusable page OCR
+        upload = self.store.load_job("source-book")
+        assert upload is not None
+        (upload["directory"] / "source.pdf").write_bytes(b"%PDF-1.7\ninvalid physical page\n%%EOF")
+        upload["sourceText"] = "Aggregate preview without page boundaries."
+        self.store.save_job(upload)
+        ocr = OcrRuntime()
+        ocr.selection = OcrSelection("pypdf")
+        self.service = MaterialCourseService(self.chapters, ocr)
+        job = self.service.enqueue("source-book", self._request(pageStart=1, pageEnd=1))
+        # When source preparation fails at the PDF/OCR boundary
+        with self.assertRaisesRegex(Exception, "教材第 1 页"):
+            self._execute(job)
+        # Then the teacher can locate that page and the original evidence stays untouched
+        progress = self.jobs.get_job(job["jobId"])
+        self.assertIn("第 1 页", progress["message"])
+        self.assertEqual(self.store.list_chapters(), [])
+        self.assertEqual(self.store.load_job("source-book")["sourceText"], upload["sourceText"])
+        self.assertEqual(self.store.list_chapters(), [])
 
     def test_user_selects_a_source_range_then_missing_pages_and_unregistered_profiles_fail_closed(self):
         # Given OCR only covers physical pages 23 through 30

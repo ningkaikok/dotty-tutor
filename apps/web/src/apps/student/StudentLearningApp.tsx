@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { PRODUCT_TERMS } from "../../productTerms";
 import { StudentNav } from "./StudentNav";
 import { useStudentTodayQueue } from "./useStudentTodayQueue";
+import { CoursewareUnitLibrary } from "../courseware/CoursewareUnitNavigation";
 import "./student.css";
 
 interface QueueRow {
@@ -90,6 +91,7 @@ export function StudentLearningApp() {
       <AppHeader backTo="/" subtitle="学生学习空间" actions={<Badge tone="brand">{PRODUCT_TERMS.demoBadge}</Badge>} />
 
       <StudentNav />
+      <CoursewareUnitLibrary />
 
       <section className="student-hero">
         <span className="eyebrow">今日</span>

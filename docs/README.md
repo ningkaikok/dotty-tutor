@@ -12,12 +12,14 @@
 | 理解当前系统 | [系统架构](architecture.md) | 组件职责、实际调用链与持久化边界 |
 | 调用接口 | [API](api.md) | 端点表、请求响应语义与错误边界；精确类型以应用 OpenAPI 为准 |
 | 看下一步 | [优先级索引](roadmap.md) | 简短状态索引与专题导航，不维护完整设计或第二套待办 |
+| 核对本次优先级执行 | [2026-10-16 执行记录](priority-delivery-acceptance.md) | 开放教材来源、英语/数学草稿、本机验证和待真人验收任务 |
 | 定义用户价值 | [产品路线图](product-roadmap.md) | 产品范围、优先级、用户验收与暂缓项 |
 | 安排开发与实验 | [工程路线图](engineering-roadmap.md) | 实施批次、技术选型、依赖、实验与交付门禁 |
 | 理解课程播放 | [可编程课程](programmable-learning.md) | LessonDocument、渲染与学习状态边界 |
 | 改造教材课件生产 | [教材互动课件实施计划](textbook-courseware-plan.md) | 参考本地 OpenMAIC 的课时/页面生成设计、英语先行与数学扩展、旧产物定向清理 |
 | 执行课件改造 | [课件执行与独立验收计划](textbook-courseware-execution-plan.md) | 并行任务、串行门禁、Luna 分工和主代理验收；本地工程及英语/数学试点完成 |
 | 检查课件结果 | [独立验收记录](textbook-courseware-acceptance.md)、[设计验收](design-qa.md) | 实际模型范围、门禁、截图与限制；本机正式清理已完成，教师内容复核与整单元验收待完成 |
+| 执行后续主线 | [已有功能完善与新增功能计划](roadmap-development-execution-plan.md)、[本轮并行开发验收](development-parallel-acceptance.md)、[历史候选准备验收](roadmap-development-acceptance.md) | 制作可靠性、单元学习与 AI 证据三线的实现、实际检查及人工待办；工程与真人批准分开 |
 | 理解单题辅导 | [错题陪练设计](mistake-coach-plan.md) | 单题状态机、用户闭环与专题设计 |
 | 理解内容生产 | [原题处理链路](exam-pipeline-refactor-plan.md) | IR 分阶段改造、兼容设计与实施状态 |
 | 理解任务治理 | [运行治理设计](runtime-governance-plan.md) | 快照、事件、Job/Worker、恢复与网关设计 |

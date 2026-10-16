@@ -54,6 +54,43 @@ function setup(document = draft) {
   return callbacks;
 }
 
+it("user Given a failed generated page When selecting its recovery action Then the located page editor opens with only that page available to redo", async () => {
+  const broken = { ...draft, generationStatus: "partial" as const, pages: draft.pages.map((page) => page.pageId === "write" ? { ...page, generationStatus: "failed" as const, error: "公式与原页不一致" } : page) };
+  setup(broken);
+  const recovery = screen.getByRole("region", { name: "制作恢复与下一步" });
+  expect(recovery).toHaveTextContent("教材第 9 页");
+  await userEvent.click(within(recovery).getByRole("button", { name: "修复 Write first" }));
+  const editor = screen.getByRole("region", { name: "编辑页面：Write first" });
+  expect(editor).toHaveTextContent("公式与原页不一致");
+  await userEvent.click(within(editor).getByRole("button", { name: "重做本页" }));
+  expect(within(editor).getByLabelText("重做原因")).toBeVisible();
+});
+
+it("user Given unsaved teacher edits When another page needs repair Then page navigation cannot discard those edits", async () => {
+  setup();
+  await userEvent.type(screen.getByLabelText("页面标题"), " 教师修改");
+  expect(screen.getByRole("button", { name: /Write first/ })).toBeDisabled();
+  expect(screen.getByLabelText("页面标题")).toHaveValue("Source-based lesson 教师修改");
+  expect(screen.getByText("请先保存当前页面修改，再切换页面。" )).toBeVisible();
+});
+
+it("user Given a fill-blank activity When enabling and disabling parameter exploration Then saved content keeps the answer and unrelated response rules", async () => {
+  const activity = {
+    kind: "activity" as const, authorship: "teacher_authored" as const, blockId: "function-block", activityId: "function-example", activityKind: "fill_blank" as const, instructions: "计算 y = x 在 x = 2 时的值",
+    assessmentMode: "objective", selectionMode: "single", answerKey: "2", responseSchema: { format: "numeric" },
+  } satisfies CoursewareAuthoringDocument["pages"][number]["blocks"][number];
+  const callbacks = setup({ ...draft, pages: draft.pages.map((page) => page.pageId === "cover" ? { ...page, blocks: [activity] } : page) });
+  await userEvent.click(screen.getByRole("checkbox", { name: "启用函数参数探索" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存页面修改" }));
+  expect(callbacks.onSavePage).toHaveBeenLastCalledWith("cover", expect.objectContaining({ blocks: [expect.objectContaining({
+    instructions: activity.instructions, answerKey: "2",
+    responseSchema: { format: "numeric", interaction: "linear_function", slope: 1, intercept: 0, sampleX: 2 },
+  })] }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "启用函数参数探索" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存页面修改" }));
+  expect(callbacks.onSavePage).toHaveBeenLastCalledWith("cover", expect.objectContaining({ blocks: [expect.objectContaining({ responseSchema: { format: "numeric" }, answerKey: "2" })] }));
+});
+
 it("user Given a generated page with source refs When editing its copy and private notes Then save sends stable block identity and teacher-only content", async () => {
   const user = userEvent.setup();
   const callbacks = setup();
@@ -94,7 +131,7 @@ it("user Given an unsaved page When requesting regeneration or review Then the e
   await user.clear(within(editor).getByLabelText("页面标题"));
   await user.type(within(editor).getByLabelText("页面标题"), "A changed title");
   expect(within(editor).getByRole("button", { name: "重做本页" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "发布课件" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "确认并发布教程" })).toBeDisabled();
 
   await user.click(within(editor).getByRole("button", { name: "保存页面修改" }));
   await user.click(within(editor).getByRole("button", { name: "重做本页" }));

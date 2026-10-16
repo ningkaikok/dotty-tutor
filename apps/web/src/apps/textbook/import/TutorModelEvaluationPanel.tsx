@@ -102,7 +102,7 @@ export function TutorModelEvaluationPanel({
         )}
       </div>
       <p className="tutor-evaluation-note">
-        评测使用 42 条已确认的合成文本案例，每轮比较会产生约 84 次模型调用，可能耗时并消耗云端额度。8 条图片案例暂未传图评测。这些案例不计入正式人工金标准；精确匹配只是参考指标，不能替代人工语义判断。报告暂存在 API 进程内，服务重启后会清空。
+        评测保留 50 条合成案例，每轮最多产生 100 次模型调用，可能耗时并消耗云端额度。8 条图像案例实际传入图片；缺少视觉能力或图片转换依赖时会明确跳过，缺图及调用失败保留记录。未知费用不记作零。这些案例不计入正式人工金标准；精确匹配不能替代人工语义判断。报告暂存在 API 进程内，服务重启后会清空。
       </p>
       {evaluationLoading && evaluation && (
         <p className="tutor-evaluation-progress" role="status" aria-live="polite">
@@ -122,6 +122,7 @@ export function TutorModelEvaluationPanel({
               <thead><tr><th scope="col">指标</th><th scope="col">当前模型</th><th scope="col">候选模型</th></tr></thead>
               <tbody>
                 <tr><th scope="row">结构输出成功</th><td>{summary.baseline.successfulCalls}/{summary.baseline.cases}</td><td>{summary.candidate.successfulCalls}/{summary.candidate.cases}</td></tr>
+                <tr><th scope="row">调用失败 / 跳过</th><td>{summary.baseline.failedCalls} / {summary.baseline.skippedCalls ?? 0}</td><td>{summary.candidate.failedCalls} / {summary.candidate.skippedCalls ?? 0}</td></tr>
                 <tr><th scope="row">整题精确匹配</th><td>{summary.baseline.strictReferenceCases}/{summary.baseline.cases}（{Math.round(summary.baseline.strictReferenceCaseRate * 100)}%）</td><td>{summary.candidate.strictReferenceCases}/{summary.candidate.cases}（{Math.round(summary.candidate.strictReferenceCaseRate * 100)}%）</td></tr>
                 <tr><th scope="row">字段精确匹配</th><td>{summary.baseline.exactReferenceFields}/{summary.baseline.referenceFields}</td><td>{summary.candidate.exactReferenceFields}/{summary.candidate.referenceFields}</td></tr>
                 <tr><th scope="row">延迟 P50 / P95</th><td>{formatLatency(summary.baseline.latencyMs.p50)} / {formatLatency(summary.baseline.latencyMs.p95)}</td><td>{formatLatency(summary.candidate.latencyMs.p50)} / {formatLatency(summary.candidate.latencyMs.p95)}</td></tr>
@@ -156,8 +157,8 @@ export function TutorModelEvaluationPanel({
                 <p><strong>输入</strong></p><pre>{JSON.stringify(result.input, null, 2)}</pre>
                 <p><strong>评分 Rubric</strong></p><pre>{JSON.stringify(result.rubric, null, 2)}</pre>
                 <p><strong>参考答案</strong></p><pre>{JSON.stringify(result.expected, null, 2)}</pre>
-                <p><strong>当前模型输出（字段精确匹配）</strong></p><pre>{JSON.stringify({ output: result.baseline.output, matches: result.baseline.referenceFields, status: result.baseline.status, errorType: result.baseline.errorType }, null, 2)}</pre>
-                <p><strong>候选模型输出（字段精确匹配）</strong></p><pre>{JSON.stringify({ output: result.candidate.output, matches: result.candidate.referenceFields, status: result.candidate.status, errorType: result.candidate.errorType }, null, 2)}</pre>
+                <p><strong>当前模型输出（字段精确匹配）</strong></p><pre>{JSON.stringify({ output: result.baseline.output, matches: result.baseline.referenceFields, status: result.baseline.status, reason: result.baseline.reason, inputMode: result.baseline.inputMode, errorType: result.baseline.errorType, sourceAssetSha256: result.baseline.sourceAssetSha256, deliveredImageSha256: result.baseline.deliveredImageSha256, cost: result.baseline.cost }, null, 2)}</pre>
+                <p><strong>候选模型输出（字段精确匹配）</strong></p><pre>{JSON.stringify({ output: result.candidate.output, matches: result.candidate.referenceFields, status: result.candidate.status, reason: result.candidate.reason, inputMode: result.candidate.inputMode, errorType: result.candidate.errorType, sourceAssetSha256: result.candidate.sourceAssetSha256, deliveredImageSha256: result.candidate.deliveredImageSha256, cost: result.candidate.cost }, null, 2)}</pre>
               </article>
             ))}
           </details>

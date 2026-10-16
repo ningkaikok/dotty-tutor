@@ -2,7 +2,7 @@
 # 后端包版本与依赖的唯一事实来源；API 文档读取 project.version，
 # uv.lock 用于 Docker、CI 与本地的精确锁定（`uv sync --frozen`）。
 name = "dotty-tutor-backend"
-version = "0.38.0"
+version = "0.40.0"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0,<2",
@@ -28,6 +28,12 @@ python-preference = "only-system"
 # 只出报告、不设门槛：先看真实分布，再决定要不要按模块定基线（见测试策略讨论）。
 branch = true
 source = ["."]
+# tests.postgres_test_runner 用 spawn 子进程并行跑测试：每个子进程各写一份
+# .coverage.* 数据，由 scripts/test-backend-postgres.sh 执行 coverage combine 合并。
+parallel = true
+concurrency = ["multiprocessing", "thread"]
+# 父进程只运行 tests/ 下的调度代码（已被 omit），它那份数据必然为空，警告没有意义。
+disable_warnings = ["no-data-collected"]
 omit = [
     "tests/*",
     "migrations/*",

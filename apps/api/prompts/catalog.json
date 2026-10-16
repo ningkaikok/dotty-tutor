@@ -44,12 +44,12 @@
     "variables": ["chapter", "audience", "language_policy", "duration_minutes", "objectives", "source"]
   },
   "courseware.page.english": {
-    "version": "english-courseware-page-v1",
+    "version": "english-courseware-page-v2",
     "file": "courseware.page.english.txt",
     "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
   },
   "courseware.page.math": {
-    "version": "math-courseware-page-v1",
+    "version": "math-courseware-page-v2",
     "file": "courseware.page.math.txt",
     "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
   },
@@ -99,7 +99,7 @@
     ]
   },
   "courseware.page.science": {
-    "version": "science-courseware-page-v1",
+    "version": "science-courseware-page-v2",
     "file": "courseware.page.science.txt",
     "variables": [
       "chapter",
@@ -110,5 +110,15 @@
       "language_policy",
       "source"
     ]
+  },
+  "courseware.ai_review": {
+    "version": "courseware-ai-review-v1",
+    "file": "courseware.ai_review.txt",
+    "variables": ["subject", "page", "source"]
+  },
+  "quality_review.ai_opinion": {
+    "version": "quality-review-ai-opinion-v1",
+    "file": "quality_review.ai_opinion.txt",
+    "variables": ["case", "source"]
   }
 }

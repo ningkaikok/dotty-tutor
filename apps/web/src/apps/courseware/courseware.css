@@ -406,3 +406,70 @@
 .courseware-published-media { margin: 20px auto; max-width: 1180px; }
 .courseware-published-media video { width: 100%; max-height: 420px; }
 .courseware-page-voice { margin: 24px 0; color: var(--c-ink); }
+
+/* Completion suggestions retain source-page boundaries and wrap actions on narrow screens. */
+.courseware-completion { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--c-line); }
+.courseware-completion h3 { margin: 0 0 12px; }
+.courseware-completion .ui-notice { margin: 12px 0; }
+.courseware-completion-batches { display: grid; gap: 8px; margin: 16px 0; padding: 0; list-style: none; }
+.courseware-completion-batches li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px; border-radius: var(--radius-md); background: var(--c-surface-tint); }
+
+.courseware-workflow-header > .courseware-eyebrow { display: block; margin-top: 16px; }
+.courseware-final-confirmation { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px clamp(18px, 3vw, 42px); background: var(--c-surface); border-bottom: 1px solid var(--c-line); }
+.courseware-final-confirmation > div { min-width: 0; }
+.courseware-final-confirmation h1 { margin: 0 0 8px; font-size: clamp(22px, 2.4vw, 32px); overflow-wrap: anywhere; }
+.courseware-final-confirmation p { margin: 6px 0; color: var(--c-ink-soft); }
+.courseware-final-actions { display: flex; flex-wrap: wrap; flex-shrink: 0; gap: 8px; }
+.courseware-authoring-route > details { margin: 24px clamp(18px, 3vw, 42px); }
+.courseware-authoring-route > details > summary { padding: 14px 0; cursor: pointer; font-weight: 700; color: var(--c-ink-soft); }
+@media (max-width: 700px) { .courseware-final-confirmation { align-items: stretch; flex-direction: column; gap: 12px; } }
+.courseware-plan-source-range { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--c-line-strong); border-radius: var(--radius-md); }
+.courseware-plan-source-range legend { padding: 0 6px; color: var(--c-ink-soft); line-height: 1.6; }
+
+.courseware-unit { padding: 18px; margin: 16px 0; border: 1px solid var(--c-line); border-radius: 16px; background: var(--c-surface); }
+.courseware-unit h2 { margin-top: 0; }
+.courseware-unit ol { padding-inline-start: 24px; display: grid; gap: 14px; }
+.courseware-unit li { padding: 10px; overflow-wrap: anywhere; }
+.courseware-unit li[aria-current] { background: var(--c-surface-tint); border-radius: 8px; }
+.courseware-unit li > * { display: block; margin-block: 6px; }
+.courseware-unit a { display: inline-block; min-height: 36px; padding-block: 8px; margin-inline-end: 16px; }
+.courseware-unit-menu { margin: 12px 20px; }
+.courseware-unit-menu > summary { cursor: pointer; min-height: 44px; padding-block: 12px; }
+.courseware-playback-actions > button { margin: 8px 12px; min-height: 36px; }
+@media (min-width: 1100px) {
+  .courseware-playback-route { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+  .courseware-playback-actions { flex-shrink: 0; max-height: 35dvh; overflow: auto; }
+  .courseware-playback-route > .courseware-player { height: auto; min-height: 0; flex: 1; }
+}
+.courseware-function-explorer { margin: 16px 0; padding: 16px; border: 1px solid var(--c-line); border-radius: 12px; }
+.courseware-function-explorer label { display: grid; gap: 8px; margin: 12px 0; }
+.courseware-function-explorer input[type="range"] { min-height: 44px; width: 100%; }
+.courseware-function-explorer svg { width: min(100%, 360px); display: block; touch-action: none; }
+.courseware-function-explorer table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+.courseware-function-explorer th, .courseware-function-explorer td { padding: 6px; border: 1px solid var(--c-line); text-align: center; }
+.courseware-print-root {
+  --cw-text: #171717;
+  --cw-muted: #454545;
+  --cw-border: #c8c8c8;
+  --cw-accent: #174a80;
+  --cw-accent-strong: #174a80;
+  position: fixed; inset: 0; overflow: auto; z-index: 1000; background: white; color: var(--cw-text); padding: 24px;
+}
+.courseware-print-controls { display: flex; flex-wrap: wrap; gap: 12px; position: sticky; top: 0; background: white; padding: 12px; border-bottom: 1px solid #ccc; }
+.courseware-print-page { max-width: 180mm; margin: 24px auto; padding: 20px; border: 1px solid #ddd; overflow-wrap: anywhere; }
+/* Shared player blocks need a paper palette in both preview and native print. */
+.courseware-print-page :is(.courseware-text-block, .courseware-formula-block, .courseware-activity-block, .courseware-notes, .courseware-answer-view, .courseware-word-cards article, .courseware-asset, .courseware-checklist label, .courseware-reveal-step, .courseware-private-answer, .courseware-choice-list button) { background: white; color: var(--cw-text); }
+.courseware-print-page img { max-width: 100%; max-height: 160mm; object-fit: contain; }
+.courseware-print-page textarea, .courseware-print-page input { min-height: 24px; border: 0; border-bottom: 1px solid #555; background: transparent; }
+@media print {
+  @page { size: A4; margin: 15mm; }
+  body:has(.courseware-print-root) > *:not(.courseware-print-root) { display: none !important; }
+  .courseware-print-root { position: static; overflow: visible; padding: 0; }
+  .courseware-print-controls { display: none; }
+  .courseware-print-page { break-after: page; border: 0; margin: 0; padding: 0; max-width: none; }
+  .courseware-print-page:last-child { break-after: auto; }
+  .courseware-print-page h1, .courseware-print-page h2 { break-after: avoid; }
+  .courseware-print-page figure, .courseware-print-page .courseware-formula-block { break-inside: avoid; }
+  .courseware-print-page button, .courseware-print-page .courseware-practice-hint { display: none; }
+  .courseware-print-page .courseware-source-footer { margin-top: 18px; }
+}

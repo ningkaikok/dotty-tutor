@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ApiRequestError } from "../../api/client";
 import { listChapters, loadChapter } from "../../api/chapters";
-import { loadLibrary, loadBackgroundJob } from "../../api/textbooks";
+import { loadLibrary, loadBackgroundJob, retryBackgroundJob } from "../../api/textbooks";
 import { approveCoursewarePlan, createCoursewarePlan, editCoursewarePlan, listChapterCourseware, listCoursewareProfiles, loadCoursewarePlan, prepareCoursewareSource } from "../../api/courseware";
 import type { components } from "../../types/generated/api";
 import type { ChapterManagement, ChapterSummary } from "../../types/chapter";
 import type { LibraryItem } from "../../types/textbook";
 import type { CoursewareSourcePreparationInput } from "./CoursewareSourcePrepare";
 import { planView, type CoursewarePlanEditView, type CoursewarePlanView } from "./coursewarePlanView";
+import type { CompletionRange } from "./coursewareCompletionView";
 import { coursewareErrorMessage } from "./coursewareErrors";
 
 type Profile = components["schemas"]["CoursewareProfileView"];
@@ -22,12 +23,14 @@ export function useCoursewarePlanWorkflow() {
   const [params, setParams] = useSearchParams();
   const uploadId = params.get("uploadId") ?? "";
   const chapterId = params.get("chapterId") ?? "";
+  const sourceJobId = params.get("sourceJobId") ?? "";
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
   const [uploads, setUploads] = useState<LibraryItem[]>([]);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [upload, setUpload] = useState<LibraryItem | null>(null);
   const [chapter, setChapter] = useState<ChapterManagement | null>(null);
+  const [planLoaded, setPlanLoaded] = useState(false);
   const [plan, setPlan] = useState<CoursewarePlanView | null>(null);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [job, setJob] = useState<JobView | null>(null);
@@ -43,12 +46,25 @@ export function useCoursewarePlanWorkflow() {
   const [objectives, setObjectives] = useState("");
   const [pageStart, setPageStart] = useState("");
   const [pageEnd, setPageEnd] = useState("");
+  // Supplementing opens a new plan form over an approved plan; its lessons are retained server-side.
+  const [supplementing, setSupplementing] = useState(false);
+
+  const sourceCompleted = useCallback((result: unknown) => {
+    const found = preparedChapterList(result);
+    setPreparedChapters(found);
+    if (found.length === 1 && result && typeof result === "object" && "planJobId" in result) {
+      setParams({ chapterId: found[0].chapterId, mode: "automatic" });
+    }
+    if (!found.length) setError("来源任务已完成，但没有可用章节结果；请重新读取教材库。");
+  }, [setParams]);
 
   const refreshWorkspace = useCallback(async (id: string) => {
     setLoading(true);
     setError("");
     setChapter(null);
     setPlan(null);
+    setPlanLoaded(false);
+    setSupplementing(false);
     try {
       const loadedChapter = await loadChapter(id);
       setChapter(loadedChapter);
@@ -60,11 +76,19 @@ export function useCoursewarePlanWorkflow() {
         setLanguagePolicy(current.languagePolicy);
         setPageStart(String(current.pageStart));
         setPageEnd(String(current.pageEnd));
+        setPlanLoaded(true);
+        if (current.generationJobId) {
+          const resumed = await loadBackgroundJob(current.generationJobId);
+          setJob(resumed);
+          if (resumed.status === "failed") setError(typeof resumed.lastError?.message === "string" ? resumed.lastError.message : "自动制作未能完成，请重试或调整所选范围。");
+          setJobPurpose("plan");
+        }
       } else if (!(planResult.reason instanceof ApiRequestError && planResult.reason.status === 404)) {
         throw planResult.reason;
       } else {
         setPageStart("");
         setPageEnd("");
+        setPlanLoaded(true);
       }
       if (documentResult.status === "fulfilled") setDocuments(documentResult.value.items);
       else setDocuments([]);
@@ -99,6 +123,20 @@ export function useCoursewarePlanWorkflow() {
   }, [chapterId, refreshWorkspace]);
 
   useEffect(() => {
+    if (!uploadId || !sourceJobId) return;
+    let active = true;
+    void loadBackgroundJob(sourceJobId).then((resumed) => {
+      if (!active) return;
+      setJob(resumed); setJobPurpose("source");
+      if (resumed.status === "succeeded") sourceCompleted(resumed.result);
+      if (resumed.status === "failed" || resumed.status === "cancelled") setError(resumed.lastError?.message || resumed.message || "来源准备未能完成。");
+    }).catch((requestError) => {
+      if (active) setError(coursewareErrorMessage(requestError, "来源准备进度暂时无法恢复。"));
+    });
+    return () => { active = false; };
+  }, [sourceJobId, uploadId, sourceCompleted]);
+
+  useEffect(() => {
     if (!job?.jobId || !jobPurpose || isTerminal(job.status)) return;
     let active = true;
     let timer: number | undefined;
@@ -109,12 +147,10 @@ export function useCoursewarePlanWorkflow() {
         setJob(next);
         if (next.status === "succeeded") {
           if (jobPurpose === "source") {
-            const found = preparedChapterList(next.result);
-            setPreparedChapters(found);
-            if (!found.length) setError("来源任务已完成，但没有可用章节结果；请重新读取教材库。");
+            sourceCompleted(next.result);
           } else if (chapterId) {
             await refreshWorkspace(chapterId);
-            setNotice("教材规划已生成，请核对目标、页码覆盖和逐页大纲。");
+            setNotice(params.get("mode") === "automatic" ? "教学大纲已自动校验，教程页面正在制作；完成后打开预览即可。" : "教材规划已生成，请核对目标、页码覆盖和逐页大纲。");
           }
           return;
         }
@@ -132,7 +168,7 @@ export function useCoursewarePlanWorkflow() {
     };
     timer = window.setTimeout(() => void poll(), 500);
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [chapterId, job, jobPurpose, refreshWorkspace]);
+  }, [chapterId, job, jobPurpose, refreshWorkspace, sourceCompleted, params]);
 
   const startSourcePreparation = async (input: CoursewareSourcePreparationInput) => {
     if (!upload) return;
@@ -144,7 +180,8 @@ export function useCoursewarePlanWorkflow() {
       const next = await prepareCoursewareSource(upload.uploadId, input);
       setJob(next);
       setJobPurpose("source");
-      setNotice("已提交教材来源准备任务；任务只建立章节来源，不生成课件页面。");
+      setParams({ uploadId: upload.uploadId, sourceJobId: next.jobId, ...(input.autoGenerate ? { mode: "automatic" } : {}) });
+      setNotice(input.autoGenerate ? "已开始自动制作；系统会准备原页、生成规划和教程，无需分别批准来源与大纲。" : "已提交教材来源准备任务；任务只建立章节来源，不生成课件页面。");
     } catch (requestError) {
       setError(coursewareErrorMessage(requestError, "教材来源准备未能启动。"));
     } finally {
@@ -152,7 +189,7 @@ export function useCoursewarePlanWorkflow() {
     }
   };
 
-  const checkRange = (startValue: number | undefined, endValue: number | undefined) => {
+  const checkRange = (startValue: number | undefined, endValue: number | undefined, maxPages = 80) => {
     const source = chapter?.sourceRevisions[chapter.sourceRevisions.length - 1];
     if (!source || !Number.isInteger(startValue) || !Number.isInteger(endValue) || startValue === undefined || endValue === undefined) {
       return "请明确填写教材起始页和结束页。";
@@ -160,16 +197,39 @@ export function useCoursewarePlanWorkflow() {
     if (startValue < source.pageStart || endValue > source.pageEnd || endValue < startValue) {
       return `规划范围必须位于教材来源第 ${source.pageStart}–${source.pageEnd} 页内。`;
     }
-    if (endValue - startValue + 1 > 80) return "单份课件规划最多处理 80 页，请缩小教材页码范围。";
+    if (endValue - startValue + 1 > maxPages) return `单份课件规划最多处理 ${maxPages} 页，请缩小教材页码范围。`;
     return "";
   };
 
+  const selectCompletionRange = (range: CompletionRange) => {
+    if (!chapter || !planLoaded || busy) return;
+    // Only a finished approved plan can be supplemented; any other plan must be finished first.
+    if (plan && !(range.supplement && plan.status === "approved")) return;
+    const rangeError = checkRange(range.pageStart, range.pageEnd, 30);
+    if (rangeError) { setError(rangeError); return; }
+    setSupplementing(range.supplement);
+    setPageStart(String(range.pageStart));
+    setPageEnd(String(range.pageEnd));
+    if (range.supplement) setObjectives("");
+    setNotice(range.supplement
+      ? `已选择补齐教材原页 ${range.pageStart}–${range.pageEnd}；已确认的课时会保留。请填写本批学习目标，再生成规划供教师确认。`
+      : `已选择教材原页 ${range.pageStart}–${range.pageEnd}；请核对下方规划范围、学习对象与目标，再生成规划供教师确认。`);
+  };
+
+  const cancelSupplement = () => {
+    if (!plan) return;
+    setSupplementing(false);
+    setPageStart(String(plan.pageStart));
+    setPageEnd(String(plan.pageEnd));
+    setNotice("");
+  };
+
   const startPlan = async () => {
-    if (!chapter) return;
+    if (!chapter || !planLoaded || (plan && !supplementing)) return;
     const requested = objectives.split(/\n+/).map((item) => item.trim()).filter(Boolean);
     const start = pageStart.trim() ? Number(pageStart) : undefined;
     const end = pageEnd.trim() ? Number(pageEnd) : undefined;
-    const rangeError = checkRange(start, end);
+    const rangeError = checkRange(start, end, 30);
     if (rangeError || !audience.trim() || !languagePolicy.trim() || requested.length === 0) {
       setError(rangeError || "请填写学习对象、授课语言策略和至少一个学习目标。");
       return;
@@ -186,8 +246,11 @@ export function useCoursewarePlanWorkflow() {
         pageStart: start,
         pageEnd: end,
         expectedRecordVersion: chapter.recordVersion,
+        supplement: supplementing,
+        autoGeneratePages: false,
       });
       setPlan(planView(result.plan));
+      setSupplementing(false);
       if (result.job) {
         setJob(result.job);
         setJobPurpose("plan");
@@ -231,7 +294,9 @@ export function useCoursewarePlanWorkflow() {
         commandId: crypto.randomUUID(),
       });
       setPlan(planView(result.plan));
-      setDocuments(result.documents.map((item) => ({ coursewareId: item.coursewareId, title: item.title, status: item.status, generationStatus: item.generationStatus, pageCount: item.pages?.length ?? 0, recordVersion: item.recordVersion, publicationId: item.publicationId })));
+      // Append: lessons of retained batches stay listed next to the newly confirmed ones.
+      const confirmed = result.documents.map((item) => ({ coursewareId: item.coursewareId, title: item.title, status: item.status, generationStatus: item.generationStatus, pageCount: item.pages?.length ?? 0, recordVersion: item.recordVersion, publicationId: item.publicationId }));
+      setDocuments((current) => [...current.filter((item) => !confirmed.some((next) => next.coursewareId === item.coursewareId)), ...confirmed]);
       setNotice("规划已确认；每个课时已建立独立课件页面任务。可打开页面查看生成进度。");
     } catch (requestError) {
       setError(coursewareErrorMessage(requestError, "确认规划失败；请刷新后检查版本冲突。"));
@@ -248,14 +313,59 @@ export function useCoursewarePlanWorkflow() {
     clearWorkflow();
     setParams({ chapterId: id });
   };
-  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
+  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setSupplementing(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
+
+  const retryAutomatic = async () => {
+    if (!chapter || !plan) return;
+    setBusy(true); setError("");
+    try {
+      const next = await createCoursewarePlan(chapter.chapterId, {
+        subject: chapter.subject, audience: plan.audience, languagePolicy: plan.languagePolicy,
+        durationMinutes: 20, objectives: plan.requestedObjectives?.length ? plan.requestedObjectives : ["根据教材原页覆盖核心概念、示例与学习目标"],
+        expectedRecordVersion: chapter.recordVersion, pageStart: plan.pageStart, pageEnd: plan.pageEnd,
+        supplement: false, autoGeneratePages: true,
+      });
+      setPlan(planView(next.plan)); setJob(next.job ?? null); setJobPurpose("plan");
+      setNotice("已重试自动制作，继续复用已准备的教材来源。");
+    } catch (requestError) { setError(coursewareErrorMessage(requestError, "自动制作重试未能启动。")); }
+    finally { setBusy(false); }
+  };
+
+  const retrySource = async () => {
+    if (!job || jobPurpose !== "source" || job.status !== "failed") return;
+    setBusy(true); setError("");
+    try {
+      // Retry the persisted job so checkpointed original pages and the original
+      // source identity are reused instead of creating another preparation task.
+      setJob(await retryBackgroundJob(job.jobId));
+      setNotice("已重试原来源任务；继续使用原页码范围和已识别页面。");
+    } catch (requestError) {
+      setError(coursewareErrorMessage(requestError, "来源任务重试未能启动，请重新读取状态。"));
+    } finally { setBusy(false); }
+  };
+
+  const retryPlan = async () => {
+    if (!job || jobPurpose !== "plan" || job.status !== "failed" || !plan || plan.status === "approved") return;
+    setBusy(true); setError("");
+    try {
+      setJob(await retryBackgroundJob(job.jobId));
+      setNotice("已重试原规划任务；沿用原教材范围与生成设置，已完成课时保持不变。");
+    } catch (requestError) {
+      setError(coursewareErrorMessage(requestError, "规划任务重试未能启动，请重新读取状态。"));
+    } finally { setBusy(false); }
+  };
 
   return {
+    retryAutomatic,
+    retrySource,
+    retryPlan,
+    automaticGeneration: params.get("mode") === "automatic" || Boolean(plan?.generationAudit?.automaticGeneration),
     uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,
     languagePolicy, setLanguagePolicy, durationMinutes, setDurationMinutes, objectives, setObjectives,
     pageStart, setPageStart, pageEnd, setPageEnd, startSourcePreparation, startPlan, savePlan, approvePlan,
-    chooseUpload, chooseChapter,
+    chooseUpload, chooseChapter, planLoaded, selectCompletionRange, supplementing, cancelSupplement,
+    reloadWorkspace: () => chapterId && refreshWorkspace(chapterId),
   };
 }
 

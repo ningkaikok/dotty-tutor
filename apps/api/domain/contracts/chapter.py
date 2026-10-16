@@ -33,7 +33,7 @@ class ChapterSentence(BaseModel):
 
 class ChapterPageFlag(BaseModel):
     page: int = Field(ge=1, le=100_000)
-    flags: list[Literal["missing_conditions", "wrong_figure", "missing_page", "unreadable"]] = Field(default_factory=list, max_length=20)
+    flags: list[Literal["missing_conditions", "wrong_figure", "missing_page", "unreadable", "formula_mismatch"]] = Field(default_factory=list, max_length=20)
 
 
 class ChapterPage(BaseModel):
