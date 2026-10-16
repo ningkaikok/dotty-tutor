@@ -44,12 +44,12 @@
     "variables": ["chapter", "audience", "language_policy", "duration_minutes", "objectives", "source"]
   },
   "courseware.page.english": {
-    "version": "english-courseware-page-v1",
+    "version": "english-courseware-page-v2",
     "file": "courseware.page.english.txt",
     "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
   },
   "courseware.page.math": {
-    "version": "math-courseware-page-v1",
+    "version": "math-courseware-page-v2",
     "file": "courseware.page.math.txt",
     "variables": ["chapter", "section", "page_outline", "objectives", "audience", "language_policy", "source"]
   },
@@ -99,7 +99,7 @@
     ]
   },
   "courseware.page.science": {
-    "version": "science-courseware-page-v1",
+    "version": "science-courseware-page-v2",
     "file": "courseware.page.science.txt",
     "variables": [
       "chapter",

@@ -105,6 +105,80 @@ class DeterministicCoursewareRuntime:
 
 
 class CoursewarePostgresAcceptanceTests(PostgresTestCase):
+    def test_user_generates_a_lesson_then_ai_content_cannot_claim_teacher_authorship(self) -> None:
+        # Given a model labels its own explanation and activity as teacher-authored
+        chapter, source, refs, service = self._source_course()
+
+        class MislabelledRuntime(DeterministicCoursewareRuntime):
+            def generate_json(self, prompt: str, schema: dict[str, Any], *, task: str, **kwargs: Any):
+                output, run = super().generate_json(prompt, schema, task=task, **kwargs)
+                if task != "courseware_plan_generation":
+                    prefix = output["blocks"][0]["blockId"]
+                    output["blocks"].append({
+                        "kind": "activity", "blockId": f"{prefix}-check", "activityId": f"{prefix}-activity",
+                        "activityKind": "choice", "instructions": "Select the supported claim.",
+                        "assessmentMode": "objective", "choices": ["supported", "unsupported"],
+                        "answerKey": "supported", "sourceRefs": output["blocks"][0]["sourceRefs"],
+                        "authorship": "teacher_authored",
+                    })
+                return output, run
+
+        service.runtime = MislabelledRuntime(refs, source["sourceRevisionId"])
+        service.runtime.fail_second_page_once = False
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=chapter["recordVersion"],
+            pageStart=23, pageEnd=24, autoGeneratePages=True))
+        # When the lesson is generated and persisted through the normal Worker
+        worker = JobWorker(self.jobs, build_courseware_registry(service), worker_id="authorship")
+        planned = worker.run_once()
+        self.assertEqual(planned["status"], "succeeded", planned.get("lastError"))
+        generated = worker.run_once()
+        self.assertEqual(generated["status"], "succeeded", generated.get("lastError"))
+        doc = service.get_document(service.list_chapter_documents(chapter["chapterId"])["items"][0]["coursewareId"])
+        # Then generated content is AI-attributed, while a later teacher edit stays teacher-attributed
+        for page in doc["pages"]:
+            for block in page["blocks"]:
+                if block["kind"] in {"text", "activity"}:
+                    self.assertEqual(block["authorship"], "ai_supplement")
+        page = doc["pages"][0]
+        editable = {key: page[key] for key in CoursewarePageContent.model_fields}
+        editable["revealSteps"] = [{key: value for key, value in step.items() if key != "reviewStatus"}
+                                   for step in page["revealSteps"]]
+        content = CoursewarePageContent.model_validate(editable)
+        first_block = content.blocks[0]
+        assert isinstance(first_block, CoursewareTextBlock)
+        first_block.authorship = "teacher_authored"
+        edited = service.edit_page(doc["coursewareId"], page["pageId"], content=content,
+                                   expected_record_version=doc["recordVersion"])
+        self.assertEqual(edited["pages"][0]["blocks"][0]["authorship"], "teacher_authored")
+
+    def test_user_regenerates_one_page_then_other_pages_and_source_locators_are_preserved(self) -> None:
+        # Given a saved lesson with two generated, source-linked pages
+        chapter, _source, _refs, service = self._source_course()
+        service.runtime.fail_second_page_once = False
+        service.create_plan(chapter["chapterId"], CoursewarePlanCreate(
+            subject="english", audience="Readers", languagePolicy="English", durationMinutes=10,
+            objectives=["Read cited evidence"], expectedRecordVersion=chapter["recordVersion"],
+            pageStart=23, pageEnd=24, autoGeneratePages=True))
+        worker = JobWorker(self.jobs, build_courseware_registry(service), worker_id="page-regeneration")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        self.assertEqual(worker.run_once()["status"], "succeeded")
+        doc = service.get_document(service.list_chapter_documents(chapter["chapterId"])["items"][0]["coursewareId"])
+        first, second = doc["pages"]
+        # When the teacher requests only the second page again
+        service.regenerate_page(doc["coursewareId"], second["pageId"],
+                                expected_record_version=doc["recordVersion"],
+                                reason="Revise the response activity", command_id="regenerate-second")
+        result = worker.run_once()
+        self.assertEqual(result["status"], "succeeded", result.get("lastError"))
+        # Then the first page is unchanged and the regenerated page retains its source
+        updated = service.get_document(doc["coursewareId"])
+        self.assertEqual(updated["pages"][0], first)
+        self.assertGreater(updated["pages"][1]["version"], second["version"])
+        self.assertEqual(updated["pages"][1]["sourceRefs"], second["sourceRefs"])
+        self.assertEqual(updated["pages"][1]["generationStatus"], "completed")
+
     def test_user_supplements_a_published_unit_then_retry_preserves_teacher_edits_and_first_publication(self) -> None:
         # Given a first batch generated, corrected by its teacher, and published
         chapter, source, refs, service = self._source_course()

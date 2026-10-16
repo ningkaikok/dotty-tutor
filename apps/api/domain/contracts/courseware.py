@@ -447,6 +447,11 @@ class CoursewarePageDraftOutput(BaseModel):
 
     @model_validator(mode="after")
     def validate_generated_ids(self) -> CoursewarePageDraftOutput:
+        # Only an explicit teacher edit can claim human authorship; source excerpts
+        # retain their separate attribution and still pass the publication checks.
+        for block in self.blocks:
+            if isinstance(block, (CoursewareTextBlock, CoursewareActivityBlock)) and block.authorship == "teacher_authored":
+                block.authorship = "ai_supplement"
         block_ids = [block.blockId for block in self.blocks]
         activity_ids = [block.activityId for block in self.blocks if isinstance(block, CoursewareActivityBlock)]
         reveal_ids = [item.revealId for item in self.revealSteps]

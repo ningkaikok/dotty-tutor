@@ -868,7 +868,7 @@ class CoursewareService:
                 profile = self.profiles.get(str(document["subject"]))
                 template = self._prompt(profile.page_prompt_id)
                 selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
-                page_source_numbers = {ref.page for ref in page.get("sourceRefs", [])}
+                page_source_numbers = {int(ref["page"]) for ref in page.get("sourceRefs", [])}
                 page_source = [item for item in selected if int(item["page"]) in page_source_numbers]
                 if not page_source:
                     raise ValueError("页面来源引用不在课件选定页段内")
