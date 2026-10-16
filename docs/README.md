@@ -12,6 +12,7 @@
 | 理解当前系统 | [系统架构](architecture.md) | 组件职责、实际调用链与持久化边界 |
 | 调用接口 | [API](api.md) | 端点表、请求响应语义与错误边界；精确类型以应用 OpenAPI 为准 |
 | 看下一步 | [优先级索引](roadmap.md) | 简短状态索引与专题导航，不维护完整设计或第二套待办 |
+| 核对本次优先级执行 | [2026-10-16 执行记录](priority-delivery-acceptance.md) | 开放教材来源、英语/数学草稿、本机验证和待真人验收任务 |
 | 定义用户价值 | [产品路线图](product-roadmap.md) | 产品范围、优先级、用户验收与暂缓项 |
 | 安排开发与实验 | [工程路线图](engineering-roadmap.md) | 实施批次、技术选型、依赖、实验与交付门禁 |
 | 理解课程播放 | [可编程课程](programmable-learning.md) | LessonDocument、渲染与学习状态边界 |

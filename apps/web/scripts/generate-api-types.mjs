@@ -61,7 +61,8 @@ try {
 
   const generated = readFileSync(generatedPath, "utf8");
   if (checkOnly) {
-    if (!existsSync(outputPath) || readFileSync(outputPath, "utf8") !== generated) {
+    // Git may check out CRLF on Windows; line endings do not change the API contract.
+    if (!existsSync(outputPath) || readFileSync(outputPath, "utf8").replace(/\r\n/g, "\n") !== generated.replace(/\r\n/g, "\n")) {
       console.error("OpenAPI types are stale. Run `npm run generate:api` and review the result.");
       process.exitCode = 1;
     } else {

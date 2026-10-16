@@ -5,6 +5,9 @@ Qwen3-TTS 和 Azure Speech。
 
 ## 环境要求
 
+Windows 的 `pnpm check:api` 会忽略 Git 导致的 LF/CRLF 差异；字段或类型变化仍会失败。
+报告实际漂移时，在 `apps/web` 执行 `pnpm generate:api` 并检查生成差异，不要手改生成文件。
+
 - Python 3.12+
 - Node.js 22.22.2+
 - PostgreSQL 16+
