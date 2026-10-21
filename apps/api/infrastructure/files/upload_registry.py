@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -43,7 +44,8 @@ def resolve_inside_upload_root(root: Path, *segments: str) -> Path | None:
     """把校验过的片段拼到可信根上，并确认解析结果仍在根目录内。
 
     根目录来自服务端上传记录（``job["directory"]``），不是请求参数；越界判定用
-    ``resolve()`` 之后的结果与可信根比较，因此符号链接或路径穿越都无法逃逸。
+    ``realpath()`` 之后的结果与可信根比较，因此符号链接或路径穿越都无法逃逸。
+    目录边界包含末尾分隔符，避免把 ``assets-other`` 当作 ``assets`` 内的路径。
     """
     resolved_root = root.resolve()
     candidate = resolved_root
@@ -52,8 +54,13 @@ def resolve_inside_upload_root(root: Path, *segments: str) -> Path | None:
         if safe is None:
             return None
         candidate = candidate / safe
-    resolved = candidate.resolve()
-    return resolved if resolved.is_relative_to(resolved_root) else None
+    # 使用标准库明确表达“先解析真实路径，再检查目录边界”，也让安全扫描可追踪
+    # 校验后的数据流。不要先调用候选路径的 stat/is_file 等文件访问方法。
+    resolved = os.path.realpath(candidate)
+    root_prefix = str(resolved_root).rstrip(os.sep) + os.sep
+    if not resolved.startswith(root_prefix):
+        return None
+    return Path(resolved)
 
 
 class UploadRegistry:

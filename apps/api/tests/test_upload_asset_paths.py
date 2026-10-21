@@ -88,6 +88,24 @@ class UploadAssetPathTests(unittest.TestCase):
             with self.subTest(value=value):
                 self.assertEqual(safe_path_segment(value), value)
 
+    def test_user_cannot_follow_a_symlink_to_a_sibling_with_the_same_directory_prefix(self) -> None:
+        # Given an existing sibling whose name shares the trusted root's prefix
+        sibling = self.root / "assets-other"
+        sibling.mkdir()
+        secret = sibling / "secret.png"
+        secret.write_bytes(b"outside-the-assets-root")
+        link = self.batch / "linked.png"
+        try:
+            link.symlink_to(secret)
+        except OSError as error:
+            if getattr(error, "winerror", None) == 1314:
+                self.skipTest("Windows 创建符号链接需要开发者模式或相应权限")
+            raise
+
+        # When the requested name is valid but its real target is outside the root
+        # Then a string prefix shared by the sibling must not permit the read
+        self.assertIsNone(self.resolve("batch-1", "linked.png"))
+
 
 if __name__ == "__main__":
     unittest.main()
