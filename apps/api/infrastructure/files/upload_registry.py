@@ -3,12 +3,57 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
+from urllib.parse import unquote
 
 from fastapi import HTTPException
 
 from observability import log_event
+
+
+def safe_path_segment(value: str) -> str | None:
+    """仅当 ``value`` 恰好是一个相对路径片段时返回它，否则返回 ``None``。
+
+    路由参数已经被 ASGI 服务器解码过一次，但多重编码仍可能把 ``%2e%2e`` 带到
+    这里，所以校验前反复解码到稳定。这里不用 ``Path(value).name`` 兜底：``Path('..').name``
+    仍然是 ``'..'``，压平不了路径穿越；而反斜杠在 POSIX 上又不是分隔符，只看
+    一种平台语义会得出不同结论。因此显式拒绝 ``.``/``..``、两种分隔符、盘符与
+    NUL，并要求 POSIX 与 Windows 两种语义下的 ``name`` 都等于原值。
+    """
+    candidate = value
+    # 多重编码可能把 ``..`` 藏好几层；解到稳定为止（限次，避免构造恶意无限编码）。
+    for _ in range(3):
+        decoded = unquote(candidate)
+        if decoded == candidate:
+            break
+        candidate = decoded
+    if not candidate or candidate in {".", ".."} or "\x00" in candidate:
+        return None
+    if "/" in candidate or "\\" in candidate:
+        return None
+    if PurePosixPath(candidate).name != candidate or PureWindowsPath(candidate).name != candidate:
+        return None
+    if PureWindowsPath(candidate).drive:
+        return None
+    return candidate
+
+
+def resolve_inside_upload_root(root: Path, *segments: str) -> Path | None:
+    """把校验过的片段拼到可信根上，并确认解析结果仍在根目录内。
+
+    根目录来自服务端上传记录（``job["directory"]``），不是请求参数；越界判定用
+    ``resolve()`` 之后的结果与可信根比较，因此符号链接或路径穿越都无法逃逸。
+    """
+    resolved_root = root.resolve()
+    candidate = resolved_root
+    for segment in segments:
+        safe = safe_path_segment(segment)
+        if safe is None:
+            return None
+        candidate = candidate / safe
+    resolved = candidate.resolve()
+    return resolved if resolved.is_relative_to(resolved_root) else None
 
 
 class UploadRegistry:

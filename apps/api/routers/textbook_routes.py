@@ -53,7 +53,10 @@ from domain.questions.contracts import (
     StudentTutorReply,
 )
 from domain.questions.student_view import student_mistake_item, student_tutor_reply
-from infrastructure.files.upload_registry import UploadRegistry
+from infrastructure.files.upload_registry import (
+    UploadRegistry,
+    resolve_inside_upload_root,
+)
 from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 from observability import log_event
@@ -100,6 +103,11 @@ upload_job = upload_registry.get
 upload_status = upload_registry.status
 update_upload_job = upload_registry.update
 validate_pdf_envelope = upload_registry.validate_pdf_envelope
+
+# 资源出口只开放“上传根/assets/<批次>/<文件>”这一种形状。白名单放在这里而不是
+# 路由体里，是为了让图片与中间产物共用同一份校验，避免两边各写一套后漂移。
+ASSET_SUFFIXES = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+ARTIFACT_NAMES = frozenset({"source.md", "model-prompt.md"})
 
 
 @router.post("/api/textbook/import")
@@ -635,11 +643,10 @@ def list_question_revisions(upload_id: str, question_source_key: str) -> list[di
 def get_pdf_asset(upload_id: str, batch_id: str, filename: str) -> FileResponse:
     """Serve only raster assets located inside the requested batch directory."""
     job = upload_job(upload_id)
-    asset_root = (job["directory"] / "assets" / batch_id).resolve()
-    asset_path = (asset_root / Path(filename).name).resolve()
-    if asset_path.parent != asset_root or not asset_path.is_file():
+    asset_path = resolve_inside_upload_root(job["directory"] / "assets", batch_id, filename)
+    if asset_path is None or not asset_path.is_file():
         raise HTTPException(status_code=404, detail="题目图片不存在")
-    if asset_path.suffix.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+    if asset_path.suffix.lower() not in ASSET_SUFFIXES:
         raise HTTPException(status_code=415, detail="不支持的题目资源类型")
     return FileResponse(
         asset_path,
@@ -651,12 +658,12 @@ def get_pdf_asset(upload_id: str, batch_id: str, filename: str) -> FileResponse:
 def get_pdf_artifact(upload_id: str, batch_id: str, filename: str) -> FileResponse:
     """Expose a small allowlist of review artifacts without directory access."""
     job = upload_job(upload_id)
-    artifact_root = (job["directory"] / "assets" / batch_id).resolve()
-    safe_name = Path(filename).name
-    if safe_name not in {"source.md", "model-prompt.md"}:
-        raise HTTPException(status_code=404, detail="中间产物不存在")
-    artifact_path = (artifact_root / safe_name).resolve()
-    if artifact_path.parent != artifact_root or not artifact_path.is_file():
+    artifact_path = resolve_inside_upload_root(job["directory"] / "assets", batch_id, filename)
+    if (
+        artifact_path is None
+        or artifact_path.name not in ARTIFACT_NAMES
+        or not artifact_path.is_file()
+    ):
         raise HTTPException(status_code=404, detail="中间产物不存在")
     return FileResponse(
         artifact_path,
