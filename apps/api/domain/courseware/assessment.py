@@ -18,6 +18,26 @@ def _sequence(value: Any) -> tuple[str, ...] | None:
     return None
 
 
+def _matches_choice(
+    submitted: tuple[str, ...], answer_key: Any, accepted: list[Any]
+) -> bool:
+    """对应一个选项集：列表答案要求集合全等，标量答案只接受单个选项。"""
+    expected_values = _sequence(answer_key)
+    if expected_values is not None:
+        if tuple(sorted(submitted)) == tuple(sorted(expected_values)):
+            return True
+    elif len(submitted) == 1 and _text(answer_key) == submitted[0]:
+        return True
+    for alternative in accepted:
+        alternative_values = _sequence(alternative)
+        if alternative_values is not None:
+            if tuple(sorted(submitted)) == tuple(sorted(alternative_values)):
+                return True
+        elif len(submitted) == 1 and _text(alternative) == submitted[0]:
+            return True
+    return False
+
+
 def assess_activity(activity: dict[str, Any], response: dict[str, Any]) -> str:
     """Grade only supported objective response shapes; send all other answers to review."""
     mode = activity.get("assessmentMode")
@@ -32,6 +52,10 @@ def assess_activity(activity: dict[str, Any], response: dict[str, Any]) -> str:
     if answer_key is None and not accepted:
         return "needs_review"
     if kind == "choice":
+        # 单元素列表与标量是同一个作答：先归一成提交值元组，再和答案比较。
+        # 这样 ``selectedOption: "A"`` 与 ``selectedOptions: ["A"]`` 对同一答案
+        # 不会得出不同结论；多选仍然要求集合全等，缺失和字典等不支持的形状
+        # 继续交人工复核。
         submitted = response.get("selectedOptions")
         if submitted is None:
             submitted = response.get("selectedOption", response.get("answer"))
@@ -39,25 +63,13 @@ def assess_activity(activity: dict[str, Any], response: dict[str, Any]) -> str:
             submitted_values = _sequence(submitted)
             if not submitted_values or len(submitted_values) > 12:
                 return "needs_review"
-            expected_values = _sequence(answer_key)
-            if expected_values is not None:
-                is_correct = tuple(sorted(submitted_values)) == tuple(sorted(expected_values))
-            else:
-                is_correct = len(submitted_values) == 1 and _text(answer_key) == submitted_values[0]
-            if isinstance(answer_key, str):
-                is_correct = is_correct or (len(submitted_values) == 1 and _text(answer_key) == submitted_values[0])
-            for alternative in accepted:
-                alternative_values = _sequence(alternative)
-                if alternative_values is not None:
-                    is_correct = is_correct or tuple(sorted(submitted_values)) == tuple(sorted(alternative_values))
-                else:
-                    is_correct = is_correct or (len(submitted_values) == 1 and _text(alternative) == submitted_values[0])
         else:
-            if submitted is None or isinstance(submitted, (dict, list)):
+            if submitted is None or isinstance(submitted, dict):
                 return "needs_review"
-            candidate = _text(submitted)
-            is_correct = candidate == _text(answer_key)
-            is_correct = is_correct or any(candidate == _text(item) for item in accepted)
+            submitted_values = (_text(submitted),)
+            if not submitted_values[0]:
+                return "needs_review"
+        is_correct = _matches_choice(submitted_values, answer_key, accepted)
         return "correct" if is_correct else "incorrect"
 
     if kind == "fill_blank":

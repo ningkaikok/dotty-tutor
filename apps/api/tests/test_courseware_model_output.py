@@ -75,6 +75,46 @@ class CoursewareModelOutputTests(unittest.TestCase):
         self.assertEqual(assess_activity({**blank, "activityKind": "short_answer"}, {"text": "audience"}), "needs_review")
 
 
+class CoursewareChoiceAssessmentTests(unittest.TestCase):
+    """单选作答的两种形状必须得出同一个结论，多选仍然要求集合全等。"""
+
+    single = {"activityKind": "choice", "assessmentMode": "objective", "answerKey": ["B"]}
+    multiple = {"activityKind": "choice", "assessmentMode": "objective", "answerKey": ["A", "B"]}
+
+    def test_user_selects_one_option_when_scalar_and_single_element_list_are_graded_alike(self) -> None:
+        # Given a single-choice activity whose answer key is a one-element list
+        # When the player submits a scalar selectedOption / answer or a one-element selectedOptions
+        for response in (
+            {"selectedOption": "B"},
+            {"answer": "B"},
+            {"selectedOptions": ["B"]},
+            {"selectedOption": "b"},
+        ):
+            with self.subTest(response=response):
+                # Then every valid shape is graded as correct
+                self.assertEqual(assess_activity(self.single, response), "correct")
+
+    def test_user_selects_a_wrong_option_then_every_shape_is_marked_incorrect(self) -> None:
+        for response in (
+            {"selectedOption": "C"},
+            {"answer": "C"},
+            {"selectedOptions": ["C"]},
+        ):
+            with self.subTest(response=response):
+                self.assertEqual(assess_activity(self.single, response), "incorrect")
+
+    def test_user_selects_multiple_options_then_the_whole_set_must_match(self) -> None:
+        self.assertEqual(assess_activity(self.multiple, {"selectedOptions": ["B", "A"]}), "correct")
+        self.assertEqual(assess_activity(self.multiple, {"selectedOptions": ["A"]}), "incorrect")
+        # 单选标量不能当作多选的一部分蒙分。
+        self.assertEqual(assess_activity(self.multiple, {"selectedOption": "A"}), "incorrect")
+
+    def test_user_submits_no_supported_answer_shape_then_it_needs_review(self) -> None:
+        self.assertEqual(assess_activity(self.single, {}), "needs_review")
+        self.assertEqual(assess_activity(self.single, {"selectedOptions": []}), "needs_review")
+        self.assertEqual(assess_activity(self.single, {"selectedOption": {"label": "B"}}), "needs_review")
+
+
 class CoursewareExcerptQualityTests(unittest.TestCase):
     def test_ocr_heading_and_inline_tags_do_not_require_manual_excerpt_repair(self):
         pages = [{"page": 123, "text": "## 4.2 Trailblazer\n\n## Memoir Trailblazer: Ta-Nehisi Coates\nThe story should not be just <sub>y</sub>ou &amp; your life."}]
