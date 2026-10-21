@@ -59,6 +59,31 @@ class SystemicFailureSignalTests(unittest.TestCase):
         signal = _systemic_failure_signal(HTTPException(status_code=422, detail="题号切分失败"))
         self.assertIsNone(signal)
 
+    def test_question_or_page_numbers_do_not_trigger_auth_or_rate_limit_breakers(self) -> None:
+        """解析异常里的 401/403/429 只是题号/页码，不能当成上游认证失败或限流。"""
+        for message in (
+            "第 401 题解析失败：无法识别题干",
+            "第 403 页没有文字层",
+            "page 429 could not be parsed",
+            "题号 401 的选项切分失败",
+        ):
+            with self.subTest(message=message):
+                self.assertIsNone(_systemic_failure_signal(RuntimeError(message)))
+
+    def test_explicit_http_wording_still_classifies_the_upstream_failure(self) -> None:
+        """Provider 把状态码写进文案时仍要识别，否则真正的限流/认证错误不会熔断。"""
+        rate_limited = _systemic_failure_signal(RuntimeError("provider returned HTTP 429: too many requests"))
+        self.assertIsNotNone(rate_limited)
+        self.assertEqual(rate_limited[0], "rate_limit")
+
+        forbidden = _systemic_failure_signal(RuntimeError("HTTP 403 Forbidden"))
+        self.assertIsNotNone(forbidden)
+        self.assertEqual(forbidden[0], "quota_or_auth")
+
+        unauthorized = _systemic_failure_signal(RuntimeError("status_code=401"))
+        self.assertIsNotNone(unauthorized)
+        self.assertEqual(unauthorized[0], "quota_or_auth")
+
 
 class TextbookProcessingTests(unittest.TestCase):
     def test_retry_reuses_merged_source_after_chunks_are_cleaned(self) -> None:
