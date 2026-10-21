@@ -259,7 +259,7 @@ flowchart LR
 及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
 
 单元与检索协议分别在 `domain/contracts/courseware_unit.py`、`courseware_search.py`；迁移 0027 只新增阅读位置。
-`CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
+`CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`useCoursewareUnitProgress` 串行保存阅读位置：网络失败或可重试的 5xx/429 沿用同一 commandId/页面/期望版本，下次翻页补发，409 等明确拒绝则停止并提示刷新。`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
 `CoursewareFunctionExplorer` 复用 `InteractiveMathCanvas` 与原活动判题；`CoursewareExport` 用固定发布投影和现有 `BlockView` 打印为 PDF，不创建另一套公式渲染器。
 `evaluation/benchmark/images.py` 校验图像路径/指纹并交给模型 Runtime，SVG 使用已有转换器；`evaluation/chapter/source_review_report.py` 对照原始文字与人工转写，输出待审差异，不改教材或批准状态。
 默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
@@ -369,7 +369,8 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
 THRESHOLD` 可调）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩余批次，不再逐题磨到失败；其他
 失败（OCR 解析、题目质量不达标等）继续按原样逐题记录，不参与计数。判据状态码复用
 `application/job_worker.py` 里的 `RETRYABLE_HTTP_STATUS_CODES`（`textbook_jobs.py` 的 Worker 重试分类
-同样引用这个常量），状态码不可用时才退回错误文案关键词兜底。
+同样引用这个常量），状态码不可用时才退回错误文案关键词兜底；文案里的孤立数字只在明确的 HTTP 措辞
+（如 `HTTP 429`、`status_code=401`）中被读成状态码，`第 401 题`这类题号/页码不会触发熔断。
 
 题目生成的模型边界分为四次调用：`staged_contracts.py` 定义原题结构抽取、独立求解、答案核验和教学脚本四个严格
 Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。原题题干、题号、选项和图片归属以
@@ -705,6 +706,9 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+认证与角色拒绝（401/403）同样经过请求限流与体积检查、带请求 ID 和安全头；模型并发槽只在请求通过
+会话与角色检查且确实要调用模型时占用。教材讲解 `POST /api/courseware/{id}/source-search/explain`
+计入模型工作额度，同一路由下的检索与证据预览不计。
 
 ### 课件扩展链路（2026-10-12）
 

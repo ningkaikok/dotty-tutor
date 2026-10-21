@@ -460,7 +460,8 @@ Compose 默认绑定回环地址并以 `AUTH_MODE=demo` 启动，适合可信的
     `quarantinedQuestions`、`skippedBatches`、`questionCount` 和 `limitReached` 组成可恢复结果汇总。整批重生成会替换
     题目当前视图并清除不再存在的旧题，但保留不可变 revision 审计链。批次循环带一个熔断：只识别三类系统性
     失败信号（API key 过期/配额耗尽、429 限流、上游超时，判据复用 `application/job_worker.py` 的
-    `RETRYABLE_HTTP_STATUS_CODES` 状态码集合，不可用时退回错误文案关键词），连续命中默认 3 次
+    `RETRYABLE_HTTP_STATUS_CODES` 状态码集合，不可用时退回错误文案关键词；纯文本里的数字只在明确的
+    HTTP 措辞（如 `HTTP 429`、`status_code=401`）中当作状态码，题号/页码不会被误判成认证或限流故障），连续命中默认 3 次
     （`DOTTY_SYSTEMIC_FAILURE_HALT_THRESHOLD`）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩余批次，
     不再逐题磨到失败；已经成功或跳过的批次不受影响，其他业务失败（OCR 解析、质量不达标等）仍按原样逐题
     记录、不计入熔断。
@@ -887,6 +888,9 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+认证与角色拒绝（401/403）同样经过请求限流、体积检查，并带请求 ID 与安全头；模型并发槽只在
+请求已通过会话与角色检查、且确实要调用模型时才占用。教材讲解
+`POST /api/courseware/{id}/source-search/explain` 计入模型工作额度，同一路由下的检索和证据预览不计。
 
 ### 教材互动课件与试卷分流
 
@@ -951,7 +955,7 @@ AI 初审是教师审核前的建议层，不是审批者。教师发起后，`c
 
 一个现有章节对应一个单元，`CoursewareUnitService` 汇总当前规划及保留批次课时，按来源起页、规划版本、创建时间和课件 ID 稳定排序。教师目录包含可编辑草稿与授课版本；学生目录只包含当前来源和当前/保留批次中可访问的正式发布，复用原发布投影隐藏答案和教师笔记。旧阅读位置保留其 publicationId，目录明确标记不可用版本。
 
-迁移 0027 新增 `courseware_reading_positions`，以学习者与课件为主键，保存发布、页面、版本、最后命令和更新时间。`CoursewareUnitStore` 使用数据库比较版本写入与命令幂等，拒绝旧设备覆盖；学生身份来自受保护会话，demo 模式才接受本机所选 learnerId。阅读位置与掌握度分离；活动数量、已答和待订正由指定发布的原作答记录汇总，不因观看末页增加学习证据。前端 `useCoursewareUnitProgress` 串行保存位置，学习空间提供继续本人原发布的入口。
+迁移 0027 新增 `courseware_reading_positions`，以学习者与课件为主键，保存发布、页面、版本、最后命令和更新时间。`CoursewareUnitStore` 使用数据库比较版本写入与命令幂等，拒绝旧设备覆盖；学生身份来自受保护会话，demo 模式才接受本机所选 learnerId。阅读位置与掌握度分离；活动数量、已答和待订正由指定发布的原作答记录汇总，不因观看末页增加学习证据。前端 `useCoursewareUnitProgress` 串行保存位置，网络失败或可重试的 5xx/429 会保留同一 `commandId`、页面和期望版本，下次翻页继续补发（服务端已提交时按命令幂等返回，不产生版本冲突）；409/403 等明确拒绝则停止写入并提示刷新目录，不会自动覆盖其他设备位置。学习空间提供继续本人原发布的入口。
 
 `CoursewareSearchService` 只把已批准发布页明确引用的教材句子放入现有 PostgreSQL 全文索引；不索引活动答案或教师笔记。`TutorSearchStore` 按文档类型隔离教材来源与原题索引，原有通用题目检索不会搜出新增教材正文。检索、原图预览和模型讲解的前后均校验课件/发布归属、分发范围、章节撤回和原文件指纹；新增来源修订后不再返回旧来源教材正文，同一来源的历史发布仍按冻结引用读取。索引残留不能绕过检查。原图通过现有 `ChapterSourcePreview` 读取，响应禁止缓存。
 

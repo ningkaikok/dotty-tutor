@@ -54,6 +54,9 @@ _INTERACTION_KEEP = frozenset({"type", "instruction", "points"})
 _SUB_QUESTION_KEEP = frozenset({
     "id", "label", "prompt", "questionType", "evaluation", "options", "contentBlocks",
 })
+# 学生只需要知道这一小问由确定性规则还是陪练打分；``reason`` 是内部判分说明，
+# 以后还可能新增别的答案字段，因此这里再收窄一层，不让整个 evaluation 透传。
+_SUB_QUESTION_EVALUATION_KEEP = frozenset({"mode"})
 _PAYLOAD_KEEP = frozenset({"question", "lessonSteps"})
 _LESSON_STEP_KEEP = frozenset({"id", "title", "text", "speechText", "action"})
 _VARIATION_KEEP = frozenset({
@@ -121,6 +124,11 @@ def _student_sub_question(part: Any) -> dict[str, Any]:
     projected = _pick(part, _SUB_QUESTION_KEEP)
     if not isinstance(part, dict):
         return projected
+    if "evaluation" in part:
+        evaluation = part.get("evaluation")
+        projected["evaluation"] = _pick(evaluation, _SUB_QUESTION_EVALUATION_KEEP)
+        if not projected["evaluation"]:
+            projected.pop("evaluation")
     if "blanks" in part:
         projected["blanks"] = _student_blanks(part.get("blanks"))
     if "answerSpec" in part:

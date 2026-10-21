@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from infrastructure.runtime.contracts import RuntimeExecutionError
@@ -93,6 +95,53 @@ class CodexCommandTests(unittest.TestCase):
         self.assertEqual(run["modelResult"]["error"]["type"], "RuntimeExecutionError")
         self.assertIsInstance(run["error"], str)
         self.assertNotIn("prompt", str(run["modelRequest"]).lower())
+
+
+class ModelCatalogSelectionTests(unittest.TestCase):
+    """查询模型列表是只读操作：临时不可用不得改写用户当前选择。"""
+
+    def runtime(self, *, models: list[str], error: str | None = None, provider: str = "ollama",
+                model: str = "qwen2.5:3b") -> ModelRuntime:
+        """建一个选择文件隔离、不访问真实 Ollama 的运行时。
+
+        Ollama 探测是外部模型边界，用 stub 代替；选择文件用临时路径隔离，
+        不读写开发者本机的真实配置。
+        """
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        patches = (
+            patch.dict(os.environ, {
+                "MODEL_PROVIDER": provider,
+                "MODEL_NAME": model,
+                "DOTTY_RUNTIME_SELECTION_FILE": str(Path(temporary.name) / "selection.json"),
+            }, clear=True),
+            patch.object(ModelRuntime, "ollama_models", return_value=(models, error)),
+        )
+        for item in patches:
+            item.start()
+            self.addCleanup(item.stop)
+        return ModelRuntime()
+
+    def test_user_refreshes_the_catalog_while_ollama_is_offline_then_the_selection_is_unchanged(self) -> None:
+        # Given a runtime that was started with an Ollama model
+        runtime = self.runtime(models=[], error="connection refused")
+        # When the page asks for the catalog while Ollama is temporarily unavailable
+        catalog = runtime.catalog()
+        # Then the reported and stored selection stay on the user's model, not mock/another tag
+        self.assertEqual(catalog["selected"], {"provider": "ollama", "model": "qwen2.5:3b"})
+        self.assertEqual((runtime.selection.provider, runtime.selection.model), ("ollama", "qwen2.5:3b"))
+
+    def test_user_refreshes_the_catalog_when_only_other_local_tags_exist_then_no_silent_switch(self) -> None:
+        runtime = self.runtime(models=["llama3:8b"], error=None)
+        catalog = runtime.catalog()
+        self.assertEqual(catalog["selected"], {"provider": "ollama", "model": "qwen2.5:3b"})
+        self.assertEqual(runtime.selection.model, "qwen2.5:3b")
+
+    def test_user_selects_an_unavailable_model_then_the_existing_selection_remains(self) -> None:
+        runtime = self.runtime(models=[], error="connection refused")
+        with self.assertRaises(ValueError):
+            runtime.select("ollama", "qwen2.5:3b")
+        self.assertEqual((runtime.selection.provider, runtime.selection.model), ("ollama", "qwen2.5:3b"))
 
 
 class DeepSeekProviderTests(unittest.TestCase):

@@ -182,13 +182,40 @@ def create_app() -> FastAPI:
     if trusted_hosts:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
 
-    @app.middleware("http")
+    # 仅用于观测与测试：真实限制仍由下面三个中间件执行。
+    app.state.public_protection = public_protection
+
+    async def enforce_model_concurrency(request: Request, call_next):
+        """只给确实要跑模型的请求占并发槽。
+
+        该中间件是最内层（见 ``create_app`` 末尾的注册顺序），因此认证与角色
+        拒绝会先生效：匿名请求永远不会占用模型并发槽。资源所有者校验仍在各路由
+        内部执行，这里只保证“没通过会话/角色检查的请求不占槽”。
+        """
+        if not (public_protection.enabled and public_protection.is_expensive_request(request)):
+            return await call_next(request)
+        if not await public_protection.acquire_model_slot():
+            return response(
+                request,
+                status_code=429,
+                payload=problem_details(
+                    request_id=current_request_id(request),
+                    error_code="MODEL_CONCURRENCY_LIMITED",
+                    message="当前模型请求较多，请稍后再试",
+                    retryable=True,
+                ),
+                headers={"Retry-After": "5"},
+            )
+        try:
+            return await call_next(request)
+        finally:
+            public_protection.release_model_slot()
+
     async def add_security_headers(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         http_response = None
-        model_slot_acquired = False
 
         def reject(
             status_code: int,
@@ -241,19 +268,6 @@ def create_app() -> FastAPI:
                         "X-RateLimit-Limit": str(decision.limit),
                     },
                 )
-            if public_protection.enabled and public_protection.is_expensive_request(request):
-                model_slot_acquired = await public_protection.acquire_model_slot()
-                if not model_slot_acquired:
-                    return reject(
-                        status_code=429,
-                        payload=problem_details(
-                            request_id=request_id,
-                            error_code="MODEL_CONCURRENCY_LIMITED",
-                            message="当前模型请求较多，请稍后再试",
-                            retryable=True,
-                        ),
-                        headers={"Retry-After": "5"},
-                    )
             http_response = await call_next(request)
             return http_response
         except Exception as error:
@@ -292,11 +306,8 @@ def create_app() -> FastAPI:
                     status_code=status_code,
                     duration_ms=round((time.perf_counter() - started) * 1000, 1),
                 )
-            if model_slot_acquired:
-                public_protection.release_model_slot()
             request_id_var.reset(token)
 
-    @app.middleware("http")
     async def authenticate_protected_requests(request: Request, call_next):
         if auth_mode != "protected" or not request.url.path.startswith("/api/"):
             return await call_next(request)
@@ -470,5 +481,14 @@ def create_app() -> FastAPI:
         if student_only and actor["role"] == "teacher":
             return JSONResponse(status_code=403, content={"detail": "此操作需要学生会话"})
         return await call_next(request)
+
+    # Starlette 把后注册的中间件包在更外层。这里显式按“由内到外”注册：
+    # 1. 模型并发槽最内层——认证与角色拒绝（以及只读请求）不占槽；
+    # 2. 认证与角色校验（资源所有者校验仍留在各路由）；
+    # 3. 请求限流、体积检查、request id 与安全头最外层。
+    # 这样 401/403 同样是经保护的响应：有 request id 与安全头，也计入请求限流。
+    app.middleware("http")(enforce_model_concurrency)
+    app.middleware("http")(authenticate_protected_requests)
+    app.middleware("http")(add_security_headers)
 
     return app

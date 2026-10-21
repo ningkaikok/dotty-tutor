@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -146,7 +147,12 @@ class PublicProtection:
         chapter_generation = path.startswith("/api/chapters/") and path.endswith("/generate-ai")
         media_render = path.startswith("/api/lesson-media/") and path.endswith("/render")
         quality_review_run = path == "/api/quality-review-runs"
-        return chapter_generation or media_render or quality_review_run or path.startswith("/api/chapters/from-upload/") or path.startswith(cls.EXPENSIVE_PREFIXES)
+        # 教材讲解会真的调模型；同一路由下的检索与证据预览不调，保持不计额。
+        source_explain = re.fullmatch(r"/api/courseware/[^/]+/source-search/explain", path) is not None
+        return (
+            chapter_generation or media_render or quality_review_run or source_explain
+            or path.startswith("/api/chapters/from-upload/") or path.startswith(cls.EXPENSIVE_PREFIXES)
+        )
 
     @classmethod
     def is_expensive_request(cls, request: Request) -> bool:
