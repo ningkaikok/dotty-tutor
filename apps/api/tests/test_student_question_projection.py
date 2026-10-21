@@ -92,6 +92,24 @@ class StudentQuestionProjectionTests(unittest.TestCase):
         self.assertEqual(sub["label"], "(1)")
         self.assertEqual(sub["evaluation"]["mode"], "deterministic")
 
+    def test_sub_question_evaluation_only_exposes_the_grading_mode(self) -> None:
+        """学生只需要知道“谁打分”；内部判分理由和未来新增的答案字段不能透传。"""
+        question = {**FULL_QUESTION, "subQuestions": [{
+            **FULL_QUESTION["subQuestions"][0],
+            "evaluation": {
+                "mode": "tutor",
+                "reason": "自由文本由陪练判断",
+                "acceptedAnswers": ["SECRET-ACCEPTED"],
+            },
+        }]}
+
+        projected = student_question(question)
+
+        self.assertEqual(projected["subQuestions"][0]["evaluation"], {"mode": "tutor"})
+        serialized = json.dumps(projected, ensure_ascii=False)
+        self.assertNotIn("自由文本由陪练判断", serialized)
+        self.assertNotIn("SECRET-ACCEPTED", serialized)
+
     def test_unknown_new_field_is_dropped_by_default(self) -> None:
         """白名单的意义：以后新增的字段默认不下发，而不是默认泄漏。"""
         projected = student_question({**FULL_QUESTION, "solutionOutline": "先开方"})
