@@ -241,7 +241,8 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
 
   await browser.getByRole("button", { name: "教师授课预览" }).click();
   await expect(browser).toHaveURL(new RegExp(`/teacher/courseware/${coursewareId}`));
-  await expect(browser.getByRole("link", { name: "返回课件审核" })).toBeVisible();
+  const returnToTutorial = browser.getByRole("link", { name: "返回教程" });
+  await expect(returnToTutorial).toBeVisible();
   await expect(browser.getByRole("heading", { name: "Unit 1: Writing with Evidence" })).toBeVisible();
   await browser.getByRole("tab", { name: "Teacher notes" }).click();
   await expect(browser.getByText("Teacher-only note: compare responses after the discussion.")).toBeVisible();
@@ -250,7 +251,7 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
   await expect(browser.getByRole("navigation", { name: "Page rail" })).toBeVisible();
   await browser.getByRole("button", { name: "Deck" }).click();
   await expect(browser.getByRole("navigation", { name: "Page rail" })).toHaveCount(0);
-  await browser.getByRole("link", { name: "返回课件审核" }).click();
+  await returnToTutorial.click();
   await expect(browser.getByRole("link", { name: "打开学生版" })).toBeVisible();
   const studentRouteStart = apiReads.length;
   await browser.getByRole("link", { name: "打开学生版" }).click();
