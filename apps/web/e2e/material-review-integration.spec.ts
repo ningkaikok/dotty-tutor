@@ -322,8 +322,9 @@ async function installMaterialReviewRoutes(page: Page, options: { mediaTasks?: A
 test("user Given a chapter source inbox with pending, needs-changes, and cross-source cases When the teacher opens and accepts one embedded case Then only that source case leaves the queue and the lesson stays unpublished", async ({ page }) => {
   const fixture = await installMaterialReviewRoutes(page);
   await page.goto("/studio");
-  await page.getByRole("button", { name: /待我复核/ }).click();
-  await expect(page.getByRole("region", { name: "来源复核任务" })).toContainText("6 项待处理");
+  await page.getByRole("button", { name: /待处理/ }).click();
+  await page.getByText(/来源质量抽检（\d+ 项，可选）/).click();
+  await expect(page.getByRole("region", { name: "来源复核任务" })).toContainText("6 项待抽检");
   await expect(page.getByRole("region", { name: "来源复核任务" })).toContainText("2 项尚未关联章节");
   await expect(page.getByRole("listitem").filter({ hasText: "ALG-12-A" }).getByRole("link", { name: "打开来源复核" })).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "ALG-13-B" }).getByRole("link", { name: "打开来源复核" })).toBeVisible();
@@ -352,9 +353,10 @@ test("user Given a chapter source inbox with pending, needs-changes, and cross-s
   await expect(page.getByRole("button", { name: "发布课程" })).toBeDisabled();
   await page.getByRole("button", { name: /我的教材/ }).click();
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
-  await page.getByRole("button", { name: /待我复核/ }).click();
-  await expect(page.getByRole("button", { name: "待我复核（来源 5 · 课程 1 · 视频 0）" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "来源：5 项待处理" })).toContainText("课程：1 章待复核");
+  await page.getByRole("button", { name: /待处理/ }).click();
+  await page.getByText(/来源质量抽检（\d+ 项，可选）/).click();
+  await expect(page.getByRole("button", { name: "待处理（1）" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "课程：1 章待复核" })).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "ALG-13-B" }).getByRole("link", { name: "打开来源复核" })).toBeVisible();
   await expect(page.getByRole("listitem").filter({ hasText: "ALG-12-A" }).getByRole("link", { name: "打开来源复核" })).toHaveCount(0);
   expect(fixture.getPublicationRequests()).toBe(0);
@@ -364,7 +366,8 @@ test("user Given a chapter source inbox with pending, needs-changes, and cross-s
 test("user Given unlinked legacy cases share a display title but have distinct source identities When the teacher opens a case and refreshes its deep link Then the original frozen review and saved decision are restored without merging sources", async ({ page }) => {
   await installMaterialReviewRoutes(page);
   await page.goto("/studio");
-  await page.getByRole("button", { name: /待我复核/ }).click();
+  await page.getByRole("button", { name: /待处理/ }).click();
+  await page.getByText(/来源质量抽检（\d+ 项，可选）/).click();
   await expect(page.getByText("未关联教材的来源包").first()).toBeVisible();
   await expect(page.getByText("未关联教材的来源包")).toHaveCount(2);
   await expect(page.getByRole("listitem").filter({ hasText: "LEGACY-9-A" }).getByRole("link", { name: "打开来源复核" })).toBeVisible();
@@ -423,7 +426,8 @@ test("user Given a published course with a video awaiting review When the teache
   };
   const fixture = await installMaterialReviewRoutes(page, { mediaTasks: [mediaTask], publishedChapter: true });
   await page.goto("/studio");
-  await page.getByRole("button", { name: /待我复核/ }).click();
+  await page.getByRole("button", { name: /待处理/ }).click();
+  await page.getByText(/来源质量抽检（\d+ 项，可选）/).click();
   await expect(page.getByText("教学短视频待审（1）")).toBeVisible();
   await page.getByRole("link", { name: "打开视频审校" }).click();
   await expect(page).toHaveURL(/\/studio\/chapters\/chapter-algebra\?mediaReviewPublicationId=publication-algebra-v4&mediaReviewLessonId=lesson-algebra-1/);

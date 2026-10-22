@@ -7,12 +7,50 @@ import type { QualityReviewInbox } from "../../api/qualityReviews";
 import { MaterialsApp } from "./MaterialsApp";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+it("user Given a published seven-page courseware and no legacy lessons When opening the textbook library Then the lesson can be opened directly", async () => {
+  const book = { uploadId: "book", filename: "Writing Guide.pdf", materialKind: "textbook", questionCount: 0, pageCount: 400, status: "complete" };
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    const path = String(url);
+    const body = path.startsWith("/api/quality-reviews/inbox") ? { ...emptyInbox, total: 18, pendingCount: 18 }
+      : path === "/api/library" ? { items: [book] }
+      : path === "/api/chapters" ? { items: [{ ...course, status: "draft", currentLessonIds: [], uploadId: "book" }] }
+      : { items: [{ coursewareId: "lesson", title: "Memoir and evidence", pageCount: 7, status: "published", generationStatus: "completed", publicationId: "publication", recordVersion: 3 }] };
+    return new Response(JSON.stringify(body));
+  });
+  render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
+  expect(await screen.findByRole("link", { name: "打开授课 · Memoir and evidence" })).toHaveAttribute("href", "/teacher/courseware/lesson?publicationId=publication");
+  expect(screen.getByText("1 份课件 · 7 页 · 1 份可授课")).toBeVisible();
+  expect(screen.queryByText(/0 节旧版/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "待处理（0）" })).toBeVisible();
+});
+
+it("user Given eighteen optional source evaluation cases When opening tasks Then no production work is required and source checks remain optional", async () => {
+  setup(false, { ...emptyInbox, total: 18, pendingCount: 18 }, []);
+  fireEvent.click(await screen.findByRole("button", { name: "待处理（0）" }));
+  expect(screen.getByText("当前没有需要你处理的制作问题")).toBeVisible();
+  fireEvent.click(screen.getByText("来源质量抽检（18 项，可选）"));
+  expect(screen.getByText(/用于可选的来源质量抽检，不影响课件生成或使用/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: /来源 18/ })).not.toBeInTheDocument();
+});
+
+it("user Given courseware listing fails When opening a textbook Then a read error replaces any false zero-courseware claim", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    const path = String(url);
+    if (path.endsWith("/courseware")) return new Response(JSON.stringify({ detail: "课件读取失败" }), { status: 503 });
+    return new Response(JSON.stringify(path.startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: path === "/api/library" ? [{ ...upload, materialKind: "textbook" }] : [{ ...course, uploadId: upload.uploadId }] }));
+  });
+  render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
+  expect(await screen.findByText("课件列表暂时无法读取，已有课件不会因此丢失。")).toBeVisible();
+  expect(screen.queryByText("还没有制作课件")).not.toBeInTheDocument();
+});
 const course = { chapterId: "en-1", title: "A day outdoors", subject: "english", teachingMode: "tutorial", status: "in_review", version: 1, recordVersion: 2, currentLessonIds: ["lesson-1"], reviewIssues: [], publicationId: null };
 const upload = { uploadId: "pdf-1", filename: "数学教材.pdf", pageCount: 12, questionCount: 4, status: "complete" };
 const emptyInbox: QualityReviewInbox = { items: [], total: 0, pendingCount: 0, reviewedCount: 0, unlinkedCount: 0, mediaTasks: [], mediaPendingCount: 0 };
 function setup(failedUploads = false, inbox: QualityReviewInbox = emptyInbox, courseItems: Array<typeof course & { uploadId?: string }> = [course]) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     const path = String(url);
+    if (path.endsWith("/courseware")) return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
     if (path.startsWith("/api/quality-reviews/inbox")) return new Response(JSON.stringify(inbox), { headers: { "Content-Type": "application/json" } });
     return new Response(JSON.stringify({ items: path.endsWith("/api/library") ? [upload] : courseItems }), { status: failedUploads && path.endsWith("/api/library") ? 500 : 200, headers: { "Content-Type": "application/json" } });
   });
@@ -40,7 +78,7 @@ it("user Given upload records cannot be fetched When opening the library Then En
 
 it("user Given a textbook and paper When filtering and deleting the paper Then only the confirmed paper disappears", async () => {
   const paper = { ...upload, uploadId: "exam", filename: "中考试卷.pdf", materialKind: "paper" };
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : init?.method === "DELETE" ? { status: "deleted" } : { items: String(url).endsWith("/api/library") ? [{ ...upload, materialKind: "textbook" }, paper] : [course] }), { headers: { "Content-Type": "application/json" } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(String(url).endsWith("/courseware") ? { items: [] } : String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : init?.method === "DELETE" ? { status: "deleted" } : { items: String(url).endsWith("/api/library") ? [{ ...upload, materialKind: "textbook" }, paper] : [course] }), { headers: { "Content-Type": "application/json" } }));
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   await screen.findByRole("heading", { name: paper.filename });
   fireEvent.click(screen.getByRole("button", { name: "试卷" }));
@@ -57,7 +95,7 @@ it("user Given a textbook and paper When filtering and deleting the paper Then o
   expect(screen.getByRole("heading", { name: course.title })).toBeVisible();
 });
 it("user Given course deletion fails When confirming deletion Then the course remains with a retryable error", async () => {
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : init?.method === "DELETE" ? { detail: "暂时无法删除" } : { items: String(url).endsWith("/api/library") ? [upload] : [course] }), { status: init?.method === "DELETE" ? 503 : 200, headers: { "Content-Type": "application/json" } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => new Response(JSON.stringify(String(url).endsWith("/courseware") ? { items: [] } : String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : init?.method === "DELETE" ? { detail: "暂时无法删除" } : { items: String(url).endsWith("/api/library") ? [upload] : [course] }), { status: init?.method === "DELETE" ? 503 : 200, headers: { "Content-Type": "application/json" } }));
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   await screen.findByRole("heading", { name: course.title });
   fireEvent.click(screen.getByRole("button", { name: `删除 ${course.title}` }));
@@ -70,7 +108,7 @@ it("user Given course deletion fails When confirming deletion Then the course re
 it("user Given one textbook and multiple generated chapters When opening my materials Then one tutorial contains its ordered directory and no independent reading cards", async () => {
   const book = { ...upload, materialKind: "textbook", filename: "English Writing.pdf", questionCount: 0 };
   const contents = [{ ...course, chapterId: "second", title: "Chapter 2 Writing", uploadId: book.uploadId, pageStart: 8, teachingMode: "tutorial" }, { ...course, chapterId: "first", title: "Chapter 1 Writing", uploadId: book.uploadId, pageStart: 2, teachingMode: "tutorial" }];
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify(String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: String(url).endsWith("/api/library") ? [book] : contents }), { headers: { "Content-Type": "application/json" } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify(String(url).endsWith("/courseware") ? { items: [] } : String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: String(url).endsWith("/api/library") ? [book] : contents }), { headers: { "Content-Type": "application/json" } }));
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   expect(await screen.findByRole("heading", { name: book.filename })).toBeVisible();
   expect(screen.getAllByRole("article")).toHaveLength(1);
@@ -87,9 +125,10 @@ it("user Given a regenerated tutorial and preserved reading drafts When opening 
   const book = { ...upload, materialKind: "textbook", questionCount: 0 };
   const fresh = { ...course, chapterId: "fresh", uploadId: book.uploadId, title: "新的讲解章节", teachingMode: "tutorial" };
   const old = { ...course, uploadId: book.uploadId, title: "原阅读练习", teachingMode: "practice" };
-  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify(String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: String(url).endsWith("/api/library") ? [book] : [fresh, old] }), { headers: { "Content-Type": "application/json" } }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => new Response(JSON.stringify(String(url).endsWith("/courseware") ? { items: [] } : String(url).startsWith("/api/quality-reviews/inbox") ? emptyInbox : { items: String(url).endsWith("/api/library") ? [book] : [fresh, old] }), { headers: { "Content-Type": "application/json" } }));
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   await screen.findByRole("heading", { name: book.filename });
+  fireEvent.click(screen.getByText("旧版课程内容"));
   expect(screen.getByText("1 章 · 1 节旧版课程内容")).toBeVisible();
   expect(screen.queryByRole("link", { name: "制作讲解教程" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
@@ -111,8 +150,9 @@ it("user Given same-titled legacy packages and published-video tasks When openin
   };
   setup(false, inbox);
   expect(await screen.findByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
-  const inboxButton = screen.getByRole("button", { name: "待我复核（来源 2 · 课程 1 · 视频 1）" });
+  const inboxButton = screen.getByRole("button", { name: "待处理（2）" });
   fireEvent.click(inboxButton);
+  fireEvent.click(screen.getByText("来源质量抽检（2 项，可选）"));
   await waitFor(() => expect(screen.getAllByRole("heading", { name: "Legacy Workbook" })).toHaveLength(2));
   expect(screen.getAllByRole("heading", { name: "Legacy Workbook" })).toHaveLength(2);
   expect(screen.getByText("未关联教材的来源包")).toBeVisible();
@@ -129,14 +169,15 @@ it("user Given same-titled legacy packages and published-video tasks When openin
 it("user Given the review inbox cannot be read When opening its filter Then materials remain and the count is never shown as zero", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     const path = String(url);
+    if (path.endsWith("/courseware")) return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
     if (path.startsWith("/api/quality-reviews/inbox")) return new Response(JSON.stringify({ detail: "服务不可用" }), { status: 503 });
     return new Response(JSON.stringify({ items: path.endsWith("/api/library") ? [upload] : [course] }), { headers: { "Content-Type": "application/json" } });
   });
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   expect(await screen.findByRole("heading", { name: course.title })).toBeVisible();
-  expect(screen.getByRole("button", { name: /待我复核（数量暂不可用/ })).toBeVisible();
-  expect(screen.queryByRole("button", { name: "待我复核（来源 0 · 课程 0 · 视频 0）" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: /待我复核（数量暂不可用/ }));
+  expect(screen.getByRole("button", { name: /待处理（数量暂不可用/ })).toBeVisible();
+  expect(screen.queryByRole("button", { name: "待处理（0）" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /待处理（数量暂不可用/ }));
   expect(await screen.findByText(/待审列表无法读取/)).toBeVisible();
   expect(screen.getByText(/A day outdoors · 待复核/)).toBeVisible();
 });
@@ -144,14 +185,15 @@ it("user Given the review inbox cannot be read When opening its filter Then mate
 it("user Given chapter loading fails When opening my materials Then course review counts stay unavailable", async () => {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     const path = String(url);
+    if (path.endsWith("/courseware")) return new Response(JSON.stringify({ items: [] }), { headers: { "Content-Type": "application/json" } });
     if (path.startsWith("/api/quality-reviews/inbox")) return new Response(JSON.stringify(emptyInbox), { headers: { "Content-Type": "application/json" } });
     if (path.endsWith("/api/library")) return new Response(JSON.stringify({ items: [upload] }), { headers: { "Content-Type": "application/json" } });
     return new Response(JSON.stringify({ detail: "章节服务暂不可用" }), { status: 503 });
   });
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
   expect(await screen.findByRole("heading", { name: upload.filename })).toBeVisible();
-  expect(screen.getByRole("button", { name: /待我复核（数量暂不可用/ })).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: /待我复核（数量暂不可用/ }));
+  expect(screen.getByRole("button", { name: /待处理（数量暂不可用/ })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: /待处理（数量暂不可用/ }));
   expect(await screen.findByText("课程暂时无法读取，请重试。")).toBeVisible();
   expect(screen.queryByText(/课程：0 章待复核/)).not.toBeInTheDocument();
 });
@@ -161,7 +203,8 @@ it("user Given a course draft now cites another textbook while its published vid
   const inbox: QualityReviewInbox = { items: [currentCase], total: 1, pendingCount: 1, reviewedCount: 0, unlinkedCount: 0,
     mediaTasks: [{ mediaId: "old-video", chapterId: "en-1", publicationId: "pub-old", lessonId: "lesson-old", version: 1, title: "Old publication video", status: "consistency_review_required", sourceKey: "sha256:published-old", uploadId: "old-upload", sourceRevisionId: "old-revision" }], mediaPendingCount: 1 };
   setup(false, inbox, [{ ...course, uploadId: "pdf-1" }]);
-  fireEvent.click(await screen.findByRole("button", { name: "待我复核（来源 1 · 课程 1 · 视频 1）" }));
+  fireEvent.click(await screen.findByRole("button", { name: "待处理（2）" }));
+  fireEvent.click(screen.getByText(/来源质量抽检（\d+ 项，可选）/));
   const search = screen.getByRole("searchbox");
   fireEvent.change(search, { target: { value: "数学教材.pdf" } });
   expect(screen.getByRole("heading", { name: "课程待复核（1）" })).toBeVisible();
@@ -182,7 +225,8 @@ it("user Given a course draft now cites another textbook while its published vid
 
 it("user Given pending courseware drafts When opening the review inbox Then per-page review links appear without claiming teacher approval", async () => {
   setup(false, { ...emptyInbox, coursewarePendingCount: 1, coursewareTasks: [{ coursewareId: "draft-1", chapterId: "en-1", sourceRevisionId: "source-1", sourceKey: "sha256:fixture", uploadId: null, title: "真实教材待审草稿", status: "draft", pageCount: 5, pendingPageCount: 5 }] });
-  fireEvent.click(await screen.findByRole("button", { name: "待我复核（来源 0 · 课程 1 · 课件 1 · 视频 0）" }));
+  fireEvent.click(await screen.findByRole("button", { name: "待处理（2）" }));
+  fireEvent.click(screen.getByText(/来源质量抽检（\d+ 项，可选）/));
   expect(screen.getByRole("region", { name: "互动课件待审任务" })).toBeVisible();
   expect(screen.getByRole("link", { name: "打开课件逐页复核" })).toHaveAttribute("href", "/studio/courseware/draft-1");
   expect(screen.getByText(/5 页待复核/)).toBeVisible();
