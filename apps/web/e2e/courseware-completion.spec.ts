@@ -62,6 +62,7 @@ test("user Given a unit gap When selecting a bounded range on a narrow screen Th
   await expect(page.getByLabel("起始页", { exact: true })).toHaveValue("4");
   await expect(page.getByLabel("结束页", { exact: true })).toHaveValue("8");
   expect(mutations).toEqual([]);
+  await page.getByText("调整教学要求（可选）").click();
   await page.getByLabel("学习对象").fill("八年级");
   await page.getByLabel("授课语言策略").fill("英语授课，中文释义");
   await page.getByLabel("学习目标（每行一个）").fill("用原文支持一个观点");
@@ -74,6 +75,7 @@ test("user Given a unit gap When selecting a bounded range on a narrow screen Th
 test("user Given forty available source pages When requesting thirty-one pages Then the planning limit is explained before any model task is submitted", async ({ page }) => {
   const mutations = await fixture(page, false, false, 40);
   await page.goto(`/studio/courseware?chapterId=${chapterId}`);
+  await page.getByText("调整教学要求（可选）").click();
   await page.getByLabel("学习对象").fill("八年级");
   await page.getByLabel("授课语言策略").fill("英语授课");
   await page.getByLabel("学习目标（每行一个）").fill("找到原文依据");

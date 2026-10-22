@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -102,6 +103,31 @@ class CoursewareStore:
         self._active_connection: ContextVar[Connection | None] = ContextVar(
             f"courseware_connection_{id(self)}", default=None,
         )
+
+    def with_automation_status(self, document: dict[str, Any]) -> dict[str, Any]:
+        """Project terminal jobs as exceptions, including lease loss and cancellation.
+
+        Do not rewrite the document: retrying the same failed job must retain its
+        frozen input version and resume from its exact-input checkpoints.
+        """
+        state = document.get("automation")
+        if not state or state.get("status") not in {"generating", "checking", "repairing"}:
+            return document
+        job_id = state.get("jobId") if state["status"] == "checking" else document.get("generationJobId")
+        if not job_id:
+            return document
+        from persistence.schema import background_jobs
+
+        with self.read_connection() as connection:
+            row = connection.execute(select(background_jobs).where(background_jobs.c.job_id == job_id)).mappings().first()
+        if row and row["status"] in {"failed", "cancelled"}:
+            result = copy.deepcopy(document)
+            error = decode_json(row["last_error_json"]) or {}
+            result["automation"].update(status="needs_attention", jobId=job_id,
+                message=str(error.get("message") or "自动制作已取消，可重新制作或手动编辑。")[:1000],
+                retryable=row["status"] == "failed")
+            return result
+        return document
 
     @contextmanager
     def atomic(self) -> Iterator[Connection]:

@@ -19,9 +19,12 @@ def courseware_review_tasks(chapter_store: Any, courseware_store: Any, *, chapte
             continue
         plan = courseware_store.load_plan(chapter["chapterId"])
         for document in courseware_store.list_documents(chapter["chapterId"]):
+            document = courseware_store.with_automation_status(document)
             if document.get("sourceRevisionId") != source["sourceRevisionId"] or document.get("status") == "published":
                 continue
             if not owns_document(plan, document):
+                continue
+            if (document.get("automation") or {}).get("status") in {"generating", "checking", "repairing"} and document.get("generationStatus") not in {"failed", "partial", "cancelled"}:
                 continue
             pending = sum(page.get("reviewStatus") != "approved" for page in document.get("pages", []))
             tasks.append({"coursewareId": document["coursewareId"], "chapterId": chapter["chapterId"],

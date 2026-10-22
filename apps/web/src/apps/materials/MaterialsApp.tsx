@@ -78,7 +78,7 @@ export function MaterialsApp() {
 
   return <main className="app-shell materials-shell">
     <MaterialsHeader backTo="/" backLabel="返回首页" subtitle="教材与课程" actions={<Button type="button" disabled={loading || inbox.loading} onClick={refreshAll}>刷新</Button>} />
-    <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>上传教材后，先确认材料类型、学科与来源范围，再审核教学规划；确认后逐页生成、编辑和发布互动课件。试卷继续使用原有练习流程。</p></div>
+    <section className="materials-heading"><div><span className="eyebrow">教材与课程，一个地方</span><h1>我的教材</h1><p>选好教材范围后，系统自动完成规划、生成、检查和修复，完成后直接打开教程。只有未解决的问题才需要你处理。试卷继续使用原有练习流程。</p></div>
       <Link className="material-main-action" to="/studio/import">＋ 上传试卷或教材</Link>
     </section>
     <label className="materials-search">查找教材或课程<input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="输入名称、数学或英语" /></label>

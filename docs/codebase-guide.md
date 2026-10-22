@@ -73,6 +73,7 @@ dotty-tutor/
 │   │   │   ├── courseware_completion.py # 当前来源连续缺口分批建议，不创建任务或覆盖已有规划
 │   │   │   ├── courseware_unit.py # 按章节组织保留批次、发布课时与作答摘要
 │   │   │   ├── courseware_search.py # 冻结引用入全文索引，每次重新验证来源/分发范围
+│   │   │   ├── courseware_automation.py # 无人值守原页检查、单页修复与自动完成；独立于人工复核
 │   │   │   ├── courseware_ai_review.py # AI 初审与来源案例 AI 参考意见：估算调用、任务执行、状态视图；从不批准或决定
 │   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
 │   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
@@ -241,8 +242,13 @@ flowchart LR
   Plan --> Confirm[自动通过结构校验 / 可选手动规划]
   Confirm --> Worker[courseware_jobs / 页面检查点]
   Worker --> Draft[CoursewareStore / 课件草稿]
-  Draft --> Review[一次最终预览确认 / 可选逐页修订]
-  Review --> Publication[不可变发布]
+  Draft --> Auto[CoursewareAutomationService / 原页检查]
+  Auto --> Repair[仅修复问题页 / 每页最多两次]
+  Repair --> Worker
+  Auto --> Publication[校验通过后自动保存不可变发布]
+  Auto --> Exception[仅未解决异常交给用户]
+  Draft --> Review[可选手动预览 / 逐页修改]
+  Review --> Publication
   Publication --> Teacher[教师播放投影]
   Publication --> Student[学生安全投影 / 可选互动]
   Publication --> Unit[CoursewareUnitService / 单元目录]
