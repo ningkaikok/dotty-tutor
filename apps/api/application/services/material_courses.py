@@ -262,6 +262,7 @@ class MaterialCourseService:
             languagePolicy="中文讲解；保留教材原文、术语与公式，英语例句保留英文",
             durationMinutes=20, objectives=["根据所选教材原页提炼并覆盖核心概念、示例与学习目标"],
             pageStart=source["pageStart"], pageEnd=source["pageEnd"], autoGeneratePages=True,
+            autoPublish=bool(payload["request"].get("autoPublish")),
         )
         with use_job_runtime_snapshot(payload):
             planned = self.courseware.create_plan(chapter["chapterId"], request, idempotency_key=f"auto-source-{chapter['sourcePreparationJobId']}")
@@ -283,5 +284,5 @@ class MaterialCourseService:
                 "pageEnd": source["pageEnd"],
             }],
             "notices": [],
-            "requiresHumanReview": True,
+            "requiresHumanReview": not bool(payload["request"].get("autoPublish")),
         }

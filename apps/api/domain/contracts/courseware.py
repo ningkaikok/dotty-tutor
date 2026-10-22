@@ -251,9 +251,12 @@ class CoursewarePlanCreate(BaseModel):
     # whole plan, which is the original single-plan behaviour.
     supplement: bool = False
     autoGeneratePages: bool = False
+    autoPublish: bool = False
 
     @model_validator(mode="after")
     def validate_page_range(self) -> CoursewarePlanCreate:
+        if self.autoPublish and not self.autoGeneratePages:
+            raise ValueError("自动完成教程需要同时启用自动生成页面")
         if (self.pageStart is None) != (self.pageEnd is None):
             raise ValueError("pageStart 和 pageEnd 必须同时提供")
         if self.pageStart is not None and self.pageEnd is not None and self.pageEnd < self.pageStart:
@@ -542,6 +545,16 @@ class CoursewareIssue(BaseModel):
     pageId: str | None = None
 
 
+class CoursewareAutomation(BaseModel):
+    """Durable unattended production state, separate from human review evidence."""
+
+    status: Literal["generating", "checking", "repairing", "ready", "needs_attention", "paused"] = "generating"
+    repairs: dict[str, int] = Field(default_factory=dict, max_length=120)
+    message: str = Field(default="", max_length=1000)
+    jobId: str | None = None
+    retryable: bool = False
+
+
 class CoursewareDocument(BaseModel):
     coursewareId: str
     chapterId: str
@@ -570,6 +583,7 @@ class CoursewareDocument(BaseModel):
     reviewStatus: Literal["pending", "in_review", "ready", "changes_requested"]
     publicationId: str | None = None
     generationJobId: str | None = None
+    automation: CoursewareAutomation | None = None
     reviewRecords: list[dict[str, str | float | bool | list[str]]] = Field(default_factory=list, max_length=500)
     generationAudit: dict[str, str | int | float | bool | None] = Field(default_factory=dict, max_length=24)
     createdAt: float
@@ -684,6 +698,7 @@ class CoursewareDocumentSummary(BaseModel):
     recordVersion: int = Field(ge=1)
     pageCount: int = Field(ge=0)
     publicationId: str | None = None
+    automation: CoursewareAutomation | None = None
 
 
 class CoursewareDocumentsResponse(BaseModel):
@@ -799,6 +814,7 @@ class CoursewareSourcePreparationRequest(BaseModel):
 
     confirmedMaterialKind: Literal["textbook"] | None = None
     autoGenerate: bool = False
+    autoPublish: bool = False
     subject: CoursewareSubject
     title: str | None = Field(default=None, min_length=1, max_length=200)
     pageStart: int | None = Field(default=None, ge=1, le=100_000)
@@ -813,6 +829,8 @@ class CoursewareSourcePreparationRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_source_range(self) -> CoursewareSourcePreparationRequest:
+        if self.autoPublish and not self.autoGenerate:
+            raise ValueError("自动完成教程需要同时启用自动生成")
         if (self.pageStart is None) != (self.pageEnd is None):
             raise ValueError("pageStart 和 pageEnd 必须同时提供")
         if self.pageStart is not None and self.pageEnd is not None:
@@ -843,7 +861,7 @@ class CoursewareSourcePreparationResult(BaseModel):
     subject: CoursewareSubject
     chapters: list[CoursewareSourceChapterResult]
     notices: list[str] = Field(default_factory=list, max_length=30)
-    requiresHumanReview: Literal[True] = True
+    requiresHumanReview: bool = True
 
 
 class CoursewareCoverage(BaseModel):

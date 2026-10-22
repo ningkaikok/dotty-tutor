@@ -40,10 +40,10 @@ export function useCoursewarePlanWorkflow() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [audience, setAudience] = useState("");
-  const [languagePolicy, setLanguagePolicy] = useState("");
+  const [audience, setAudience] = useState("依据教材内容与难度适配的学习者");
+  const [languagePolicy, setLanguagePolicy] = useState("中文讲解；保留教材原文、术语与公式，英语例句保留英文");
   const [durationMinutes, setDurationMinutes] = useState(40);
-  const [objectives, setObjectives] = useState("");
+  const [objectives, setObjectives] = useState("根据所选教材原页提炼并覆盖核心概念、示例与学习目标");
   const [pageStart, setPageStart] = useState("");
   const [pageEnd, setPageEnd] = useState("");
   // Supplementing opens a new plan form over an approved plan; its lessons are retained server-side.
@@ -86,8 +86,10 @@ export function useCoursewarePlanWorkflow() {
       } else if (!(planResult.reason instanceof ApiRequestError && planResult.reason.status === 404)) {
         throw planResult.reason;
       } else {
-        setPageStart("");
-        setPageEnd("");
+        const source = loadedChapter.sourceRevisions[loadedChapter.sourceRevisions.length - 1];
+        const shortSource = source && source.pageEnd - source.pageStart < 30;
+        setPageStart(shortSource ? String(source.pageStart) : "");
+        setPageEnd(shortSource ? String(source.pageEnd) : "");
         setPlanLoaded(true);
       }
       if (documentResult.status === "fulfilled") setDocuments(documentResult.value.items);
@@ -170,6 +172,22 @@ export function useCoursewarePlanWorkflow() {
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
   }, [chapterId, job, jobPurpose, refreshWorkspace, sourceCompleted, params]);
 
+  const producingDocuments = documents.some((item) => ["queued", "running"].includes(item.generationStatus) || ["generating", "checking", "repairing"].includes(item.automation?.status ?? ""));
+  useEffect(() => {
+    if (!chapterId || !producingDocuments) return;
+    let active = true;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const current = await listChapterCourseware(chapterId);
+        if (active) setDocuments(current.items);
+      } catch { /* Keep the existing lessons visible during a temporary read failure. */ }
+      if (active) timer = window.setTimeout(() => void poll(), 2000);
+    };
+    timer = window.setTimeout(() => void poll(), 1200);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [chapterId, producingDocuments]);
+
   const startSourcePreparation = async (input: CoursewareSourcePreparationInput) => {
     if (!upload) return;
     setBusy(true);
@@ -224,7 +242,7 @@ export function useCoursewarePlanWorkflow() {
     setNotice("");
   };
 
-  const startPlan = async () => {
+  const startPlan = async (automatic = true) => {
     if (!chapter || !planLoaded || (plan && !supplementing)) return;
     const requested = objectives.split(/\n+/).map((item) => item.trim()).filter(Boolean);
     const start = pageStart.trim() ? Number(pageStart) : undefined;
@@ -247,14 +265,15 @@ export function useCoursewarePlanWorkflow() {
         pageEnd: end,
         expectedRecordVersion: chapter.recordVersion,
         supplement: supplementing,
-        autoGeneratePages: false,
+        autoGeneratePages: automatic,
+        autoPublish: automatic,
       });
       setPlan(planView(result.plan));
       setSupplementing(false);
       if (result.job) {
         setJob(result.job);
         setJobPurpose("plan");
-        setNotice("已提交规划生成任务；页面生成要等你确认规划后才会开始。");
+        setNotice(automatic ? "已开始自动制作，检查和修复完成后即可直接打开教程。" : "已提交规划生成任务；页面生成要等你确认规划后才会开始。");
       } else setNotice("规划已生成，请核对目标、页码覆盖和逐页大纲。");
     } catch (requestError) {
       setError(coursewareErrorMessage(requestError, "课件规划生成未能启动。"));
@@ -323,7 +342,7 @@ export function useCoursewarePlanWorkflow() {
         subject: chapter.subject, audience: plan.audience, languagePolicy: plan.languagePolicy,
         durationMinutes: 20, objectives: plan.requestedObjectives?.length ? plan.requestedObjectives : ["根据教材原页覆盖核心概念、示例与学习目标"],
         expectedRecordVersion: chapter.recordVersion, pageStart: plan.pageStart, pageEnd: plan.pageEnd,
-        supplement: false, autoGeneratePages: true,
+        supplement: false, autoGeneratePages: true, autoPublish: true,
       });
       setPlan(planView(next.plan)); setJob(next.job ?? null); setJobPurpose("plan");
       setNotice("已重试自动制作，继续复用已准备的教材来源。");

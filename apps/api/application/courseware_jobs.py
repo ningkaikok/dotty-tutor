@@ -46,4 +46,15 @@ def build_courseware_registry(service: Any) -> TaskRegistry:
         except Exception as error:
             raise RetryableJobError(f"课件页面生成失败：{error}") from error
 
+    @registry.decorator("courseware.automation")
+    def complete_automatically(payload: dict[str, Any], cancellation_check: Callable[[], bool], context: Any) -> dict[str, Any]:
+        if service.automation is None:
+            raise TerminalJobError("自动课件服务尚未就绪")
+        try:
+            return service.automation.run(payload, cancellation_check, context)
+        except JobCancelled:
+            raise
+        except Exception as error:
+            raise RetryableJobError(f"自动制作检查失败：{error}") from error
+
     return registry

@@ -4292,6 +4292,34 @@ export interface components {
             /** Publicationid */
             publicationId: string;
         };
+        /**
+         * CoursewareAutomation
+         * @description Durable unattended production state, separate from human review evidence.
+         */
+        CoursewareAutomation: {
+            /** Jobid */
+            jobId?: string | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Repairs */
+            repairs?: {
+                [key: string]: number;
+            };
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Status
+             * @default generating
+             * @enum {string}
+             */
+            status: "generating" | "checking" | "repairing" | "ready" | "needs_attention" | "paused";
+        };
         /** CoursewareChecklistBlock */
         CoursewareChecklistBlock: {
             /** Blockid */
@@ -4467,6 +4495,7 @@ export interface components {
              * @default
              */
             audience: string;
+            automation?: components["schemas"]["CoursewareAutomation"] | null;
             /** Chapterid */
             chapterId: string;
             /** Coursewareid */
@@ -4554,6 +4583,7 @@ export interface components {
         };
         /** CoursewareDocumentSummary */
         CoursewareDocumentSummary: {
+            automation?: components["schemas"]["CoursewareAutomation"] | null;
             /** Coursewareid */
             coursewareId: string;
             /**
@@ -4904,6 +4934,11 @@ export interface components {
              * @default false
              */
             autoGeneratePages: boolean;
+            /**
+             * Autopublish
+             * @default false
+             */
+            autoPublish: boolean;
             /**
              * Durationminutes
              * @default 40
@@ -5359,6 +5394,11 @@ export interface components {
              * @default false
              */
             autoGenerate: boolean;
+            /**
+             * Autopublish
+             * @default false
+             */
+            autoPublish: boolean;
             /** Confirmedmaterialkind */
             confirmedMaterialKind?: "textbook" | null;
             /**
