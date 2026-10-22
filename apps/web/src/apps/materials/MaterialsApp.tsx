@@ -137,7 +137,7 @@ export function MaterialsApp() {
         {current.length > 0 && <MaterialCoursewareSummary chapters={current} documents={courseware} loading={coursewareLoading} failed={coursewareErrors} onReload={refreshAll} />}
         {contents.some((chapter) => chapter.currentLessonIds.length > 0) && <details><summary>旧版课程内容</summary><p>{contents.length} 章 · {contents.reduce((total, chapter) => total + chapter.currentLessonIds.length, 0)} 节旧版课程内容</p></details>}
         <details><summary>查看教程目录</summary><ol>{contents.map((chapter) => <li key={chapter.chapterId}>
-          <Link to={`/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {statuses[chapter.status] ?? "待复核"}</span><Link to={`/studio/courseware?chapterId=${encodeURIComponent(chapter.chapterId)}`} aria-label={`制作互动课件 · ${chapter.title}`}>制作互动课件</Link>
+          <Link to={chapter.teachingMode === "tutorial" ? `/studio/courseware?chapterId=${encodeURIComponent(chapter.chapterId)}` : `/studio/chapters/${chapter.chapterId}`}>{chapter.title}</Link><span> · {chapter.teachingMode === "tutorial" ? (courseware[chapter.chapterId] ?? []).some((item) => item.status === "published" && item.publicationId) ? "可授课" : "查看课件与进度" : statuses[chapter.status] ?? "待复核"}</span><Link to={`/studio/courseware?chapterId=${encodeURIComponent(chapter.chapterId)}`} aria-label={`制作互动课件 · ${chapter.title}`}>制作互动课件</Link>
           {chapter.teachingMode !== "tutorial" && <span> · 旧版练习草稿</span>}
           {chapter.publicationId && <Link to={`/learn/chapters/${chapter.chapterId}`}> 学习本章</Link>}
           <MaterialDeleteAction name={chapter.title} onDelete={() => remove("course", chapter.chapterId)} />

@@ -385,7 +385,7 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 
 ### 统一教材入口与课程链路
 
-教材卡片通过既有章节课件接口读取实际课件数量、页数和发布 ID，`MaterialCoursewareSummary` 提供直接授课与制作进度入口；旧版 `currentLessonIds` 仅在历史内容中统计。读取失败单独提示，不显示为零课件。主待处理计数仅包含课程、课件与视频任务，来源评测样例收进可选“来源质量抽检”，保留原记录与深链。
+教材卡片通过既有章节课件接口读取实际课件数量、页数和发布 ID，`MaterialCoursewareSummary` 提供直接授课与制作进度入口；教程目录指向课件工作区，已发布课件显示可授课；旧版 `currentLessonIds` 仅在历史内容中统计。读取失败单独提示，不显示为零课件。主待处理计数仅包含课程、课件与视频任务，来源评测样例收进可选“来源质量抽检”，保留原记录与深链。
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
 `/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；新教程生成后旧练习进入历史区，教程数量不包含历史草稿；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，

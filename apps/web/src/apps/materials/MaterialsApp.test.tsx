@@ -23,6 +23,9 @@ it("user Given a published seven-page courseware and no legacy lessons When open
   expect(screen.getByText("1 份课件 · 7 页 · 1 份可授课")).toBeVisible();
   expect(screen.queryByText(/0 节旧版/)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "待处理（0）" })).toBeVisible();
+  fireEvent.click(screen.getByText("查看教程目录"));
+  expect(screen.getByRole("link", { name: "A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
+  expect(screen.getByText("· 可授课")).toBeVisible();
 });
 
 it("user Given eighteen optional source evaluation cases When opening tasks Then no production work is required and source checks remain optional", async () => {
@@ -114,7 +117,7 @@ it("user Given one textbook and multiple generated chapters When opening my mate
   expect(screen.getAllByRole("article")).toHaveLength(1);
   expect(screen.queryByText("英语阅读")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
-  expect(screen.getByRole("link", { name: "Chapter 1 Writing" })).toHaveAttribute("href", "/studio/chapters/first");
+  expect(screen.getByRole("link", { name: "Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
   expect(screen.getByRole("link", { name: "制作互动课件 · Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
   expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Chapter 1 Writing");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Chapter 2" } });
