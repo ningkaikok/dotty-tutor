@@ -19,6 +19,7 @@ from application.services.assignment_planning import AssignmentPlanningService
 from application.services.chapter_courses import ChapterCourseService
 from application.services.courseware import CoursewareService
 from application.services.courseware_ai_review import CoursewareAiReviewService
+from application.services.courseware_automation import CoursewareAutomationService
 from application.services.courseware_search import CoursewareSearchService
 from application.services.courseware_unit import CoursewareUnitService
 from application.services.lesson_generation import generate_lesson, question_payload
@@ -209,7 +210,7 @@ voice_service = VoiceTutorService(
     courseware_service=courseware_service,
 )
 app.include_router(build_voice_router(service=voice_service))
-# Advisory AI pre-review uses the separately selected review model; teachers keep every decision.
+# Review evidence uses a separate model; automated completion stays in its own orchestration.
 ai_review_service = CoursewareAiReviewService(
     courseware=courseware_service,
     store=AiReviewStore(engine=store.engine),
@@ -217,6 +218,7 @@ ai_review_service = CoursewareAiReviewService(
     runtime=generation_runtime,
     quality_review=quality_review_service,
 )
+courseware_service.automation = CoursewareAutomationService(courseware=courseware_service, reviewer=ai_review_service)
 app.include_router(build_courseware_router(
     courseware_service, media_service=lesson_media_service, voice_service=voice_service,
     ai_review_service=ai_review_service,

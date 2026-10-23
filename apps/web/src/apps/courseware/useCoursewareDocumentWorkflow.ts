@@ -3,6 +3,7 @@ import { editCoursewarePage, loadCourseware, publishCourseware, regenerateCourse
 import type { CoursewareDocument } from "../../api/courseware";
 import { authoringDocument, type CoursewarePageEditView } from "./coursewareAuthoringView";
 import { coursewareErrorMessage } from "./coursewareErrors";
+import { retryBackgroundJob } from "../../api/textbooks";
 
 /** Own version-bound requests and generation polling for the document editor. */
 export function useCoursewareDocumentWorkflow(coursewareId: string) {
@@ -26,8 +27,11 @@ export function useCoursewareDocumentWorkflow(coursewareId: string) {
 
   useEffect(() => { setLoading(true); void reload(); }, [reload]);
 
+  const automaticStatus = document?.automation?.status;
+  const generationStatus = document?.generationStatus;
   useEffect(() => {
-    if (!document?.generationJobId || !["queued", "running", "partial"].includes(document.generationStatus)) return;
+    const automatic = ["generating", "checking", "repairing"].includes(automaticStatus ?? "");
+    if (!automatic && !["queued", "running"].includes(generationStatus ?? "")) return;
     let active = true;
     let timer: number | undefined;
     const poll = async () => {
@@ -35,7 +39,7 @@ export function useCoursewareDocumentWorkflow(coursewareId: string) {
         const current = await loadCourseware(coursewareId);
         if (!active) return;
         setDocument(authoringDocument(current));
-        if (current.generationStatus === "queued" || current.generationStatus === "running") {
+        if (current.generationStatus === "queued" || current.generationStatus === "running" || ["generating", "checking", "repairing"].includes(current.automation?.status ?? "")) {
           timer = window.setTimeout(() => void poll(), 1500);
         }
       } catch (requestError) {
@@ -46,7 +50,7 @@ export function useCoursewareDocumentWorkflow(coursewareId: string) {
     };
     timer = window.setTimeout(() => void poll(), 1200);
     return () => { active = false; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [coursewareId, document?.generationJobId, document?.generationStatus]);
+  }, [coursewareId, generationStatus, automaticStatus]);
 
   const update = async (action: () => Promise<CoursewareDocument>, success: string) => {
     setBusy(true);
@@ -122,5 +126,13 @@ export function useCoursewareDocumentWorkflow(coursewareId: string) {
     }
   };
 
-  return { document, loading, busy, error, notice, reload, savePage, regenerate, review, publish };
+  const retryAutomatic = async () => {
+    if (!document?.automation?.retryable || !document.automation.jobId) return;
+    setBusy(true); setError("");
+    try { await retryBackgroundJob(document.automation.jobId); await reload(); }
+    catch (requestError) { setError(coursewareErrorMessage(requestError, "自动制作暂时无法重试，请稍后重新读取。")); }
+    finally { setBusy(false); }
+  };
+
+  return { document, loading, busy, error, notice, reload, savePage, regenerate, review, publish, retryAutomatic };
 }

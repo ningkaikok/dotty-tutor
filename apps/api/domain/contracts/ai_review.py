@@ -1,7 +1,7 @@
 """Contracts for AI pre-review of courseware pages and source cases.
 
-The model only reports findings. Routing, sampling and every approval stay with
-deterministic code and the teacher; AI verdicts never count as human gold labels.
+The model only reports findings. Routing, sampling and automatic completion stay
+with deterministic code; AI verdicts never count as human gold labels.
 """
 
 from __future__ import annotations

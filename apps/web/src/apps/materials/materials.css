@@ -15,6 +15,9 @@
 .material-card { display:flex; flex-direction:column; align-items:flex-start; gap:12px; min-width:0; }
 .material-card h2 { margin:0; font-size:19px; overflow-wrap:anywhere; }
 .material-card p { margin:0 0 12px; color:var(--c-ink-muted); font-size:14px; }
+.material-courseware-summary { display:grid; gap:12px; width:100%; min-width:0; }
+.material-courseware-summary p { overflow-wrap:anywhere; }
+.material-courseware-summary .material-main-action { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
 .material-kind { font-size:12px; padding:5px 9px; border-radius:6px; color:var(--c-brand); background:var(--c-brand-soft); }
 .material-card .material-main-action { margin-top:auto; font-weight:700; }
 .materials-empty { margin-bottom:20px; }

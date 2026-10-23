@@ -37,9 +37,9 @@ test("user Given a textbook PDF When uploading from the single entry Then type d
   await expect(page.getByText(/自动识别：教材/)).toBeVisible();
   await page.getByRole("link", { name: "制作互动课件 →" }).click();
   await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
-  await expect(page.getByLabel("学科")).toHaveValue("");
-  await expect(page.getByLabel("起始页")).toHaveValue("");
-  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
+  await expect(page.getByLabel("学科")).toHaveValue("english");
+  await expect(page.getByLabel("起始页")).toHaveValue("1");
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
   expect(sourceRequested).toBe(false);
   await page.getByLabel("学科").selectOption("english");
   await page.getByLabel("起始页").fill("6");
@@ -275,21 +275,21 @@ test("user Given a PDF and an English course When using the unified library Then
   await page.route("**/api/courseware/profiles", (route) => route.fulfill({ json: { items: [{ subjectId: "math", label: "数学" }] } }));
   await page.getByRole("link", { name: "为 数学教材.pdf 制作互动课件" }).click();
   await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
-  await expect(page.getByText(/系统尚未识别材料类型/)).toBeVisible();
-  await expect(page.getByLabel("材料类型")).toHaveValue("");
-  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
+  await expect(page.getByText(/继续生成即按所选/)).toBeVisible();
+  await expect(page.getByLabel("材料类型")).toHaveValue("textbook");
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
   await page.getByLabel("材料类型").selectOption("textbook");
   await page.getByLabel("学科").selectOption("math");
   await page.getByLabel("起始页").fill("1");
   await page.getByLabel("结束页").fill("12");
-  await page.getByRole("checkbox", { name: /我确认这份材料用于教材课件制作/ }).check();
+
   await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto("/studio/chapters");
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
 });
 
-test("user Given a textbook tutorial When opening its directory and published chapter Then teaching plays without reading questions", async ({ page }) => {
+test("user Given a legacy textbook tutorial When opening its directory and saved chapter links Then the directory offers courseware and legacy teaching still plays without questions", async ({ page }) => {
   const chapter = { chapterId: "tutorial", title: "Chapter 1 Writing", uploadId: "writing-book", pageStart: 1, subject: "english", teachingMode: "tutorial", status: "published", version: 1, recordVersion: 2, currentLessonIds: ["teaching"], reviewIssues: [], publicationId: "tutorial-publication" };
   const lesson = { lessonId: "teaching", title: "Writing a story", version: 1, status: "published", knowledgePoints: ["Writing"], sourceRevisionId: "source", sourceLocator: { sourceRevisionId: "source", page: 1, regions: [] }, evidenceOptions: [], questionPayload: { question: null }, blocks: [{ id: "explanation", type: "markdown", title: "讲解", payload: { markdown: "用具体细节描述人物。" } }] };
   await page.route("**/api/**", async (route) => {
@@ -306,7 +306,9 @@ test("user Given a textbook tutorial When opening its directory and published ch
   await expect(page.getByRole("heading", { name: "Writing Tutorial.pdf" })).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(1);
   await page.getByText("查看教程目录").click();
-  await page.getByRole("link", { name: "Chapter 1 Writing", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Chapter 1 Writing", exact: true })).toHaveAttribute("href", "/studio/courseware?chapterId=tutorial");
+  // Existing chapter bookmarks remain usable while the directory leads to courseware.
+  await page.goto("/studio/chapters/tutorial");
   await expect(page.getByRole("button", { name: "确认已复核" })).toBeEnabled();
   await expect(page.getByText("确认教程讲解与引用已经人工复核后，发布按钮才会启用。")).toBeVisible();
   await expect(page.getByRole("heading", { name: "检查题", exact: true })).toHaveCount(0);

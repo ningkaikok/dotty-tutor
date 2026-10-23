@@ -37,7 +37,7 @@ function CoursewarePlaybackRoute({ coursewareId, publicationId, role }: { course
   if (!document || !progress.ready) return <main className="courseware-route-state"><p role="status">正在安全读取{role === "student" ? "学生发布版" : "教师授课快照"}…</p></main>;
   return <div className="courseware-playback-route">
     <div className="courseware-playback-actions">
-    <div className="courseware-player-return"><Link to={role === "student" ? "/learn" : `/studio/courseware/${encodeURIComponent(coursewareId)}`}>{role === "student" ? "返回学习空间" : "返回课件审核"}</Link>{role === "student" && busyActivity && <span role="status">正在保存练习…</span>}</div>
+    <div className="courseware-player-return"><Link to={role === "student" ? "/learn" : `/studio/courseware/${encodeURIComponent(coursewareId)}`}>{role === "student" ? "返回学习空间" : "返回教程"}</Link>{role === "student" && busyActivity && <span role="status">正在保存练习…</span>}</div>
     <CoursewareExport key={`export:${playbackScope}:${document.publicationId}`} coursewareId={coursewareId} publicationId={document.publicationId} role={role} />
     {progress.error && <p role="status">{progress.error}</p>}
     {progress.unit && <details className="courseware-unit-menu"><summary>单元目录与切换课时</summary><CoursewareUnitNavigation unit={progress.unit} role={role} currentCoursewareId={coursewareId} /></details>}
