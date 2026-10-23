@@ -81,12 +81,32 @@ SYSTEMIC_FAILURE_HALT_THRESHOLD = _bounded_env_int(
 # roadmap 明确列出的边界；除此之外的失败（OCR 解析、题目质量不达标等）继续按
 # 现状逐题记录，不参与熔断计数。Provider 适配层（Codex CLI/Ollama）大多把错误
 # 包成纯文本，没有统一的结构化错误码，因此在状态码之外仍需要少量文案信号兜底。
-_RATE_LIMIT_MARKERS = ("429", "rate limit", "rate_limit", "too many requests", "限流")
+# 纯文本里的数字不能直接当状态码：解析异常常带“第 401 题”“第 429 页”这类题号/页码，
+# 把它们当作 401/429 会让整批在配置完全正常时熔断。数字只在明确 HTTP 措辞中生效，
+# 其余情况继续看文字关键词。
+_HTTP_STATUS_TEXT = re.compile(
+    r"\b(?:http|status|status_code|statuscode|response|code)\b[\s:=/-]*([1-5]\d\d)\b"
+    r"|\b(?:401|403)\s+(?:unauthorized|forbidden)\b"
+    r"|\b429\s+too many requests\b"
+)
+_RATE_LIMIT_MARKERS = ("rate limit", "rate_limit", "too many requests", "限流")
 _QUOTA_OR_AUTH_MARKERS = (
-    "401", "403", "unauthorized", "invalid_api_key", "invalid api key",
+    "unauthorized", "forbidden", "invalid_api_key", "invalid api key",
     "insufficient_quota", "quota", "api key", "过期", "配额",
 )
 _UPSTREAM_TIMEOUT_MARKERS = ("timed out", "timeout", "deadline exceeded", "超时")
+
+
+def _textual_http_status(text: str) -> int | None:
+    """只从明确的 HTTP 措辞里读取状态码，避免把题号/页码当成上游故障。"""
+    match = _HTTP_STATUS_TEXT.search(text)
+    if not match:
+        return None
+    if match.group(1):
+        return int(match.group(1))
+    if "unauthorized" in match.group(0):
+        return 401
+    return 403 if "forbidden" in match.group(0) else 429
 
 
 def _systemic_failure_signal(error: BaseException) -> tuple[str, str] | None:
@@ -117,6 +137,13 @@ def _systemic_failure_signal(error: BaseException) -> tuple[str, str] | None:
         if status_code in {408, 504}:
             return "upstream_timeout", f"upstream_timeout: HTTP {status_code} {node}"[:300]
         text = str(node).lower()
+        if (textual_status := _textual_http_status(text)) is not None:
+            if textual_status == 429:
+                return "rate_limit", f"rate_limit: HTTP 429 {node}"[:300]
+            if textual_status in {401, 403}:
+                return "quota_or_auth", f"quota_or_auth: HTTP {textual_status} {node}"[:300]
+            if textual_status in {408, 504}:
+                return "upstream_timeout", f"upstream_timeout: HTTP {textual_status} {node}"[:300]
         if any(marker in text for marker in _RATE_LIMIT_MARKERS):
             return "rate_limit", f"rate_limit: {node}"[:300]
         if any(marker in text for marker in _QUOTA_OR_AUTH_MARKERS):

@@ -1,9 +1,9 @@
 """AI pre-review of courseware pages and advisory opinions on source cases.
 
 The reviewer model only reports findings. This service never approves a page,
-decides a source case, or counts anything as a human gold label: teachers keep
-every decision, and the deterministic routing in ``domain.courseware.ai_review``
-decides which pages a teacher must read.
+decides a source case, or counts anything as a human gold label. Manual routing
+uses ``domain.courseware.ai_review``; unattended production consumes the same
+evidence through the separate courseware automation service.
 """
 
 from __future__ import annotations

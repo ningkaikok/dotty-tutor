@@ -111,8 +111,9 @@ def _effective_timeout(requested: float | None, default: float | None) -> float:
 class ModelRuntime:
     """管理生成模型目录、当前选择和结构化调用。
 
-    Catalog 方法可以修正已经失效的选择；实际生成前会复制一次选择快照，避免长请求执行
-    期间用户切换下拉框而让日志中的 provider/model 与真实调用不一致。
+    Catalog 只读：探测可用性不会改写当前选择，切换模型只能通过显式 ``select``。
+    实际生成前会复制一次选择快照，避免长请求执行期间用户切换下拉框而让日志中的
+    provider/model 与真实调用不一致。
     """
 
     def __init__(self, *, env_prefix: str = "", metrics_store: Any = None) -> None:
@@ -235,15 +236,14 @@ class ModelRuntime:
         return provider_specs
 
     def catalog(self) -> dict[str, Any]:
-        providers = self.providers()
-        local_provider = next(item for item in providers if item["id"] == "ollama")
-        local_models = local_provider["models"]
-        if self.selection.provider == "ollama" and self.selection.model not in local_models:
-            if local_models:
-                self.selection.model = local_models[0]
-            else:
-                self.selection = ModelSelection("mock", "static-demo")
+        """纯读当前选择与可用列表；查询本身不改写进程默认模型。
 
+        旧实现会在 Ollama 探测失败时把选择改写成首个本地模型或 mock：一次下拉框
+        刷新/健康探测就能静默换掉用户正在用的模型，并让后续作业与日志里的
+        provider/model 与用户看到的设置不一致。可用性判断交给显式 ``select``，
+        启动时的默认值仍由环境变量与已保存选择决定。
+        """
+        providers = self.providers()
         return {
             "selected": {
                 "provider": self.selection.provider,

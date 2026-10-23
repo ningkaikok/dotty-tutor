@@ -411,7 +411,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
   复用同一套符号判等。
 - `subQuestions`：多小问各自声明 `id`、`questionType` 和 `evaluation.mode`；前端提交
   `interactionResult.subQuestionAnswers`，键为小问 `id`，值沿用选择、填空、数值或文本字段。
-  `deterministic` 小问复用对应题型判题，`tutor` 小问只进入陪练反馈，不自动判分。
+  `deterministic` 小问复用对应题型判题，`tutor` 小问只进入陪练反馈，不自动判分。学生投影中
+  `subQuestions[].evaluation` 只保留 `mode`，判分理由等内部字段不下发。
 - 没有明确答案规格的题目继续交给模型和分层引导卡处理。确定性契约遇到 `undecidable` 时 `/api/help` 不返回
   deterministic incorrect，写入 `/api/learning/sessions/{sessionId}/attempts` 或 `/sync` 也会拒绝客户端自报判定
   （422），避免污染 mastery 证据。
@@ -462,10 +463,10 @@ curl -X POST http://127.0.0.1:8010/api/help \
 
 任务类型为 `courseware.source.prepare`，复用 `/api/jobs/{jobId}` 查询、取消和显式重试。
 请求包含显式 `subject`、成对的 `pageStart/pageEnd`（最多 80 页）、标题、`sourceTitle/sourceUrl/license/attributionText/distributionScope`。
-`autoGenerate=true`（前端默认）将页段限制到 30 页，来源准备成功后自动提交教学规划，并在结构/引用校验通过后启动页面生成；任务结果含 `planJobId`。服务兼容默认 false 的旧客户端和手动模式。
+`autoGenerate=true`（前端默认）将页段限制到 30 页，来源准备成功后自动提交教学规划，并在结构/引用校验通过后启动页面生成；任务结果含 `planJobId`。`autoPublish=true`（新前端默认同时启用）继续自动检查、修复及保存教程；必须同时启用 `autoGenerate`。两者服务端默认 false，保留旧客户端和手动模式。
 任务会复用已保存的逐页来源；缺失页从受管原 PDF 经现有 OCR 路由逐页读取，检查点与识别记录保存到上传结果的内部 `coursewareSource`，不改写原始 OCR 文本。
 未知材料须传 `confirmedMaterialKind="textbook"`，试卷拒绝进入此路径；未注册学科拒绝，不能回退为数学。
-完成返回来源章节及 `requiresHumanReview=true`；不代表课件已经生成。复用持久化逐页文本和原 PDF，不自动扫描前五章。
+完成返回来源章节及 `requiresHumanReview`；自动完成模式为 false，手动模式为 true，这个字段不表示已经生成或通过检查。复用持久化逐页文本和原 PDF，不自动扫描前五章。
 
 ### 教材互动课件
 
@@ -490,10 +491,12 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `POST` | `/api/courseware/{courseware_id}/attempts` | 可选互动提交绑定会话学习者及发布版本，以 `commandId` 幂等；开放回答保持待复核 |
 
 一次规划最多选择 30 个物理页，序列化来源超过 80,000 字符会明确拒绝，要求选择较小的完整教学范围，不静默裁切。
-课件不要求包含练习，讲解可以独立发布；互动提交不写入原试卷掌握度。公开活动字段 `selectionMode=single|multiple` 决定单选或多选；选择题提交 `response.selectedOptions`，单填空提交 `response.text`，开放回答返回 `needs_review`。私有正确项不会随该模式字段公开。
+课件不要求包含练习，讲解可以独立发布；互动提交不写入原试卷掌握度。公开活动字段 `selectionMode=single|multiple` 决定单选或多选；选择题提交 `response.selectedOptions`，单选也接受标量 `selectedOption`/`answer`，单元素列表与标量必须得出同一结论；多选仍要求完整集合相等。单填空提交 `response.text`，开放回答返回 `needs_review`。私有正确项不会随该模式字段公开。
 规划生成失败后，新 Idempotency-Key 可创建新版本；相同命令仍返回原任务。仅模型生成的课时总时长从页面时长汇总，手工编辑仍校验完整时长关系。教材摘录审核检查原页文字，改写或翻译不能标为 `source_excerpt`。
 任务按来源修订、规划、文档、页面版本以及 Worker 认领次数保存检查点。旧认领或教师修改后的迟到结果不能覆盖当前内容。
-规划请求可传 `autoGeneratePages=true`，校验后的大纲自动进入页面生成，页面仍未审核。发布请求可传 `confirmReview=true`，以当前教师身份在同一事务内记录最终预览确认与不可变发布；检查失败时全部回滚。默认 false 保留原先分开审核、发布的协议。
+规划请求可传 `autoGeneratePages=true`，校验后的大纲自动进入页面生成。再传 `autoPublish=true` 时自动检查并完成教程，后者要求前者为 true；两者默认 false。发布请求可传 `confirmReview=true`，以当前教师身份在同一事务内记录最终预览确认与不可变发布；检查失败时全部回滚。默认 false 保留原先分开审核、发布的协议。
+课件及课件列表返回可空的 `automation`：`status` 为 `generating/checking/repairing/ready/needs_attention/paused`，`repairs` 保存逐页修复次数（每页最多两次），`message` 为当前说明，`jobId` 标识后台任务，`retryable` 表示可经现有 `/api/jobs/{job_id}/retry` 恢复。正常制作不调用人工审核/发布端点；后台检查所有引用原页，问题页自动重做。检查、修复或发布仍不能完成时才转为异常，关闭页面不影响后台任务。手动修改/审核暂停自动流程。自动发布沿用所选分发范围、素材许可和教师/学生数据投影；默认私有。`reviewRecords.decision=automated_approve`、`actorId=system:courseware-automation` 区分自动完成与教师复核，不计入人工样本。
+
 发布响应的 `reviewRecords` 与草稿记录保持一致，`pageIds` 为字符串列表。摘录校验忽略 OCR 产生的标题和行内格式标记，保留措辞一致性检查；它不证明讲解语义正确。
 私有教程可在没有对外分发许可的情况下保存教师快照，学生接口仍拒绝读取；课堂和公开发布仍要求真实许可与署名。草稿预览仅在教师端复用已有数据与播放器，不提交学生作答。
 
@@ -522,7 +525,7 @@ curl -X POST http://127.0.0.1:8010/api/help \
   （错误类型 + 截断消息，无完整堆栈）。三重门控：环境变量 `DOTTY_DEBUG_TOKEN` 未配置时
   端点返回 404；token 不匹配返回 403；匹配才返回数据。生产默认关闭（不配置即隐藏）。
 - 默认 `AUTH_MODE=demo` 用于可信本机演示；`AUTH_MODE=protected` 已提供教师/学生服务端会话、角色与学生资源归属检查，配置和限制见[身份与权限](#身份与权限)。当前没有多租户隔离或完整账号管理。
-- `PUBLIC_PROTECTION_ENABLED=true` 可启用进程内请求、模型调用配额、请求大小和并发限制；计数随进程重启清空，多实例部署仍需边缘限流。受保护身份与公共请求保护分别配置，开启其中一个不会自动开启另一个。
+- `PUBLIC_PROTECTION_ENABLED=true` 可启用进程内请求、模型调用配额、请求大小和并发限制；计数随进程重启清空，多实例部署仍需边缘限流。受保护身份与公共请求保护分别配置，开启其中一个不会自动开启另一个。受保护模式下认证/角色拒绝（401/403）同样经过限流与体积检查并带请求 ID；模型并发槽只在请求真正要调用模型时占用。
 - OCR Markdown 和模型提示词属于调试资源，生产环境应限制为管理员访问。
 
 ## 错题录入与确认
@@ -735,9 +738,9 @@ QualityReviewInbox 增加 `coursewareTasks`（当前规划版本的未发布课�
 | GET | `/api/courseware/{courseware_id}/unit` | 学生安全单元目录；只包含可访问发布与本人进度 |
 | GET | `/api/chapters/{chapter_id}/courseware-unit` | 教师单元目录，包含草稿和保留批次；不开放给学生 |
 | GET | `/api/courseware/{courseware_id}/teaching-unit` | 从教师课件打开其所属单元 |
-| PUT | `/api/courseware/{courseware_id}/progress` | 保存本人阅读位置；正文 `publicationId,pageId,expectedVersion,commandId`，页必须属于指定发布 |
+| PUT | `/api/courseware/{courseware_id}/progress` | 保存本人阅读位置；正文 `publicationId,pageId,expectedVersion,commandId`，页必须属于指定发布。`commandId` 幂等：响应丢失后可用相同命令与版本重试，服务端已提交时返回当前位置；版本不匹配返回 `409 COURSEWARE_POSITION_CONFLICT`，需刷新目录而不是覆盖 |
 | GET | `/api/courseware/{courseware_id}/source-search` | `publicationId,q,limit`；搜索当前发布批准页明确引用的教材句子 |
-| POST | `/api/courseware/{courseware_id}/source-search/explain` | 正文 `publicationId,question`；复用生成模型，返回附证据讲解或明确缺口 |
+| POST | `/api/courseware/{courseware_id}/source-search/explain` | 正文 `publicationId,question`；复用生成模型，返回附证据讲解或明确缺口。计入公网保护的模型工作额度与并发限制 |
 | GET | `/api/courseware/{courseware_id}/source-search/evidence/{document_id}/preview` | `publicationId` 必填；重新验证证据归属后返回原 PDF 页 PNG，`Cache-Control: private, no-store` |
 
 单元以现有 `chapterId` 标识。`lessons` 返回 `coursewareId,title,order,pageStart,pageEnd,durationMinutes,status,currentBatch,sourceRevisionId,publicationId,publicationVersion`，以及 `activityCount,answeredActivityCount,needsCorrectionCount,activityStatus,progress`。

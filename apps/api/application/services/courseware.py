@@ -11,6 +11,7 @@ import hashlib
 import json
 import time
 import uuid
+from contextlib import nullcontext
 from typing import Any
 
 from application.job_worker import JobCancelled, JobExecutionContext, TerminalJobError
@@ -70,6 +71,7 @@ class CoursewareService:
         self.runtime = runtime or generation_runtime
         self.prompt_store = prompt_store
         self.profiles = profiles
+        self.automation: Any | None = None
 
     def list_profiles(self) -> dict[str, Any]:
         return {"items": [
@@ -268,6 +270,7 @@ class CoursewareService:
         items = []
         plan = self.store.load_plan(chapter_id)
         for document in self.store.list_documents(chapter_id):
+            document = self.store.with_automation_status(document)
             if document.get("status") == "deleted":
                 continue
             # Retained batches stay listed; only drafts of replaced plans drop out.
@@ -277,7 +280,7 @@ class CoursewareService:
                 continue
             items.append({key: document.get(key) for key in (
                 "coursewareId", "title", "status", "generationStatus", "recordVersion",
-                "publicationId",
+                "publicationId", "automation",
             )} | {"pageCount": len(document.get("pages", []))})
         return {"items": items}
 
@@ -372,6 +375,7 @@ class CoursewareService:
                     "expectedPlanRecordVersion": next_record_version, "planVersion": next_plan_version,
                     "runtimeSnapshot": runtime_snapshot,
                     "autoGeneratePages": request.autoGeneratePages,
+                    "autoPublish": request.autoPublish,
                     "frozenTemplate": self._frozen_template(template), "requestHash": request_hash,
                 }
                 previous_job = self.jobs.get_by_idempotency_key(job_key, connection=connection, lock=True)
@@ -399,7 +403,7 @@ class CoursewareService:
                     "coverageMap": {}, "status": "draft", "planVersion": next_plan_version,
                     "recordVersion": max(1, next_record_version), "generationJobId": job_id,
                     "generationStatus": "queued", "coursewareIds": [], "requestHash": request_hash,
-                    "generationAudit": {"automaticGeneration": request.autoGeneratePages},
+                    "generationAudit": {"automaticGeneration": request.autoGeneratePages, "automaticPublication": request.autoPublish},
                     "retainedBatches": retained_batches,
                     "createdAt": existing.get("createdAt", now) if existing else now, "updatedAt": now,
                 }).model_dump()
@@ -507,6 +511,7 @@ class CoursewareService:
             for session in draft.get("sessions", [])
         )
         result["generationAudit"]["automaticGeneration"] = bool(payload.get("autoGeneratePages"))
+        result["generationAudit"]["automaticPublication"] = bool(payload.get("autoPublish"))
         validated = CoursewarePlan.model_validate(result).model_dump()
         saved = self.store.checkpoint_plan(
             context=context,
@@ -689,6 +694,7 @@ class CoursewareService:
                         "publicationId": None,
                         "generationJobId": None,
                         "reviewRecords": [],
+                        "automation": {"status": "generating"} if plan.get("generationAudit", {}).get("automaticPublication") else None,
                         "createdAt": now,
                         "updatedAt": now,
                     }).model_dump()
@@ -761,7 +767,7 @@ class CoursewareService:
         _, source, document = self._document(courseware_id)
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         self._validate_refs(document, source, selected)
-        result = CoursewareDocument.model_validate(document).model_dump()
+        result = CoursewareDocument.model_validate(self.store.with_automation_status(document)).model_dump()
         return self._with_asset_urls(result)
 
     @staticmethod
@@ -834,7 +840,7 @@ class CoursewareService:
         return str(path), "image/png"
 
     def regenerate_page(self, courseware_id: str, page_id: str, *, expected_record_version: int,
-                        reason: str, command_id: str) -> dict[str, Any]:
+                        reason: str, command_id: str, _chapter_lock_held: bool = False) -> dict[str, Any]:
         initial = self.store.load_document(courseware_id)
         if not initial:
             raise LookupError("课件不存在")
@@ -843,7 +849,9 @@ class CoursewareService:
         request_hash = hashlib.sha256(
             f"{courseware_id}:{page_id}:{expected_record_version}:{reason.strip()}".encode(),
         ).hexdigest()
-        with self.chapters.store.chapter_lock(chapter_id):
+        # Automation already holds the session advisory lock; acquiring it through
+        # another connection would wait for itself indefinitely.
+        with nullcontext() if _chapter_lock_held else self.chapters.store.chapter_lock(chapter_id):
             with self.store.atomic() as connection:
                 chapter, source = self._chapter(chapter_id, lock=True)
                 document = self.store.load_document(courseware_id, lock=True)
@@ -983,6 +991,8 @@ class CoursewareService:
                             "assets": page_assets,
                         }, ensure_ascii=False),
                     )
+                    if payload.get("regenerationReason"):
+                        prompt += "\nRepair instructions from the previous check (retain the outline and valid source references):\n" + str(payload["regenerationReason"])
                     draft, run = self.runtime.generate_json(
                         prompt, generation_schema(CoursewarePageDraftOutput, source=source, pages=page_source,
                             asset_ids=sorted(allowed_asset_ids)), max_tokens=3600,
@@ -1033,13 +1043,19 @@ class CoursewareService:
                         now=time.time(),
                     )
                     expected_doc_version = int(saved["recordVersion"])
-            final = self.store.finish_generation(
-                context=context,
-                chapter_id=str(payload["chapterId"]), chapter_version=int(payload["chapterVersion"]),
-                source_revision_id=str(payload["sourceRevisionId"]), plan_version=int(payload["planVersion"]),
-                courseware_id=str(payload["coursewareId"]), expected_document_version=expected_doc_version,
-                now=time.time(),
-            )
+            # The next job and completed pages commit together: closing the browser
+            # or losing this Worker's response cannot strand an automatic lesson.
+            with self.store.atomic():
+                final = self.store.finish_generation(
+                    context=context,
+                    chapter_id=str(payload["chapterId"]), chapter_version=int(payload["chapterVersion"]),
+                    source_revision_id=str(payload["sourceRevisionId"]), plan_version=int(payload["planVersion"]),
+                    courseware_id=str(payload["coursewareId"]), expected_document_version=expected_doc_version,
+                    now=time.time(),
+                )
+                if self.automation is not None:
+                    with use_job_runtime_snapshot(payload):
+                        final = self.automation.enqueue(final)
             return {"coursewareId": payload["coursewareId"], "generationStatus": "completed", "recordVersion": final["recordVersion"]}
         except JobCancelled:
             raise
@@ -1089,6 +1105,8 @@ class CoursewareService:
             if isinstance(block, CoursewareImageBlock) and block.assetId not in asset_ids:
                 raise ValueError("图片块必须引用课件中已登记且可用的素材")
         page.update(content.model_dump())
+        if document.get("automation"):
+            document["automation"].update(status="paused", message="已保留手动修改，可预览后自行保存教程。")
         page["version"] = int(page["version"]) + 1
         page["reviewStatus"] = "pending"
         page["generationStatus"] = "completed"
@@ -1133,6 +1151,8 @@ class CoursewareService:
         chapter, source, document = self._document(courseware_id, lock=True)
         if int(document["recordVersion"]) != expected_record_version:
             raise ValueError("课件已更新，请刷新后重新审核")
+        if document.get("automation"):
+            document["automation"].update(status="paused", message="已切换为手动处理。")
         selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
         pages = document.get("pages", [])
         targets = page_ids or [item["pageId"] for item in pages]

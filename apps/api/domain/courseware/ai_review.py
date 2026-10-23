@@ -76,7 +76,8 @@ def agreement_metrics(pages: list[dict[str, Any]], reviews: dict[str, dict[str, 
         if review["verdict"] == "pass" and not sampled:
             continue
         later = [record for record in records
-                 if page["pageId"] in (record.get("pageIds") or []) and float(record.get("createdAt", 0)) > review["createdAt"]]
+                 if record.get("decision") in {"approve", "request_changes"}
+                 and page["pageId"] in (record.get("pageIds") or []) and float(record.get("createdAt", 0)) > review["createdAt"]]
         if not later:
             continue
         latest = max(later, key=lambda record: float(record.get("createdAt", 0)))

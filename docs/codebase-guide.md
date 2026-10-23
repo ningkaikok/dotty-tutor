@@ -73,6 +73,7 @@ dotty-tutor/
 │   │   │   ├── courseware_completion.py # 当前来源连续缺口分批建议，不创建任务或覆盖已有规划
 │   │   │   ├── courseware_unit.py # 按章节组织保留批次、发布课时与作答摘要
 │   │   │   ├── courseware_search.py # 冻结引用入全文索引，每次重新验证来源/分发范围
+│   │   │   ├── courseware_automation.py # 无人值守原页检查、单页修复与自动完成；独立于人工复核
 │   │   │   ├── courseware_ai_review.py # AI 初审与来源案例 AI 参考意见：估算调用、任务执行、状态视图；从不批准或决定
 │   │   │   ├── courseware_publication.py # 冻结课件到视频与语音的公开讲解适配
 │   │   │   ├── courseware_restore.py # 幂等恢复原始草稿，保留待审状态
@@ -183,7 +184,7 @@ dotty-tutor/
 │   │   │   ├── components/ui/ # Bright token、布局、表单、反馈、导航、原生对话框与开发目录
 │   │   │   ├── apps/teacher/useTeacherClassroomWorkspace.ts # 教师工作台请求、并发状态与派生视图
 │   │   │   ├── apps/home/      # 角色入口选择
-│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 合并读取 PDF 与课程、独立错误及搜索；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
+│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 读取 PDF、章节与实际课件；MaterialCoursewareSummary 展示页数及直接授课；来源样例为可选抽检；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
 │   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
 │   │   │   ├── apps/chapters/  # 章节工作台、来源/课程复核；useChapterPublishedMedia 读取冻结发布课时
 │   │   │   ├── apps/courseware/ # 来源准备/规划确认/逐页审核与 Deck/Rail 播放；useCoursewarePlanWorkflow/useCoursewareDocumentWorkflow/useCoursewarePresentation 网络 Hook、完整编辑 DTO 与学生安全播放视图
@@ -241,8 +242,13 @@ flowchart LR
   Plan --> Confirm[自动通过结构校验 / 可选手动规划]
   Confirm --> Worker[courseware_jobs / 页面检查点]
   Worker --> Draft[CoursewareStore / 课件草稿]
-  Draft --> Review[一次最终预览确认 / 可选逐页修订]
-  Review --> Publication[不可变发布]
+  Draft --> Auto[CoursewareAutomationService / 原页检查]
+  Auto --> Repair[仅修复问题页 / 每页最多两次]
+  Repair --> Worker
+  Auto --> Publication[校验通过后自动保存不可变发布]
+  Auto --> Exception[仅未解决异常交给用户]
+  Draft --> Review[可选手动预览 / 逐页修改]
+  Review --> Publication
   Publication --> Teacher[教师播放投影]
   Publication --> Student[学生安全投影 / 可选互动]
   Publication --> Unit[CoursewareUnitService / 单元目录]
@@ -259,7 +265,7 @@ flowchart LR
 及英语、数学、科学六份 plan/page 提示词中维护，结构门禁在 `domain/courseware/quality.py`。
 
 单元与检索协议分别在 `domain/contracts/courseware_unit.py`、`courseware_search.py`；迁移 0027 只新增阅读位置。
-`CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
+`CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`useCoursewareUnitProgress` 串行保存阅读位置：网络失败或可重试的 5xx/429 沿用同一 commandId/页面/期望版本，下次翻页补发，409 等明确拒绝则停止并提示刷新。`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
 `CoursewareFunctionExplorer` 复用 `InteractiveMathCanvas` 与原活动判题；`CoursewareExport` 用固定发布投影和现有 `BlockView` 打印为 PDF，不创建另一套公式渲染器。
 `evaluation/benchmark/images.py` 校验图像路径/指纹并交给模型 Runtime，SVG 使用已有转换器；`evaluation/chapter/source_review_report.py` 对照原始文字与人工转写，输出待审差异，不改教材或批准状态。
 默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
@@ -369,7 +375,8 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
 THRESHOLD` 可调）就把 `summary.haltedEarly`/`haltReason` 置位并停止剩余批次，不再逐题磨到失败；其他
 失败（OCR 解析、题目质量不达标等）继续按原样逐题记录，不参与计数。判据状态码复用
 `application/job_worker.py` 里的 `RETRYABLE_HTTP_STATUS_CODES`（`textbook_jobs.py` 的 Worker 重试分类
-同样引用这个常量），状态码不可用时才退回错误文案关键词兜底。
+同样引用这个常量），状态码不可用时才退回错误文案关键词兜底；文案里的孤立数字只在明确的 HTTP 措辞
+（如 `HTTP 429`、`status_code=401`）中被读成状态码，`第 401 题`这类题号/页码不会触发熔断。
 
 题目生成的模型边界分为四次调用：`staged_contracts.py` 定义原题结构抽取、独立求解、答案核验和教学脚本四个严格
 Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。原题题干、题号、选项和图片归属以
@@ -377,6 +384,8 @@ Schema；`lesson_generation.py` 只把前一阶段的结果传给后一阶段。
 provider、model 和回退状态；前端继续消费原有的 `questionPayload` 契约。
 
 ### 统一教材入口与课程链路
+
+教材卡片通过既有章节课件接口读取实际课件数量、页数和发布 ID，`MaterialCoursewareSummary` 提供直接授课与制作进度入口；教程目录指向课件工作区，已发布课件显示可授课；旧版 `currentLessonIds` 仅在历史内容中统计。读取失败单独提示，不显示为零课件。主待处理计数仅包含课程、课件与视频任务，来源评测样例收进可选“来源质量抽检”，保留原记录与深链。
 
 内容生产统一从 `/studio` 的 `MaterialsApp` 进入，可筛选教材课程、试卷及待识别材料。`MaterialDeleteAction` 组合确认、取消和失败提示，`useMaterials` 调用上传或课程软删除接口，成功后更新列表。`useMaterials` 分别读取既有 `/api/library` 与
 `/api/chapters`，按摘要的 `uploadId/pageStart` 归并成一本教材的教程目录并按页码排序，不搬迁数据；新教程生成后旧练习进入历史区，教程数量不包含历史草稿；一侧失败不会隐藏另一侧内容。已有 PDF 可直接恢复练习，
@@ -705,6 +714,9 @@ app_factory 装配 public_protection.py 中的进程内保护，PUBLIC_PROTECTIO
 Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 400 INVALID_CONTENT_LENGTH；
 无该头的流式请求需由网关限制。配额超限返回 429 PUBLIC_RATE_LIMITED，并发超限返回
 429 MODEL_CONCURRENCY_LIMITED；429 包含 Retry-After，沿用标准 problem-details 和请求 ID。
+认证与角色拒绝（401/403）同样经过请求限流与体积检查、带请求 ID 和安全头；模型并发槽只在请求通过
+会话与角色检查且确实要调用模型时占用。教材讲解 `POST /api/courseware/{id}/source-search/explain`
+计入模型工作额度，同一路由下的检索与证据预览不计。
 
 ### 课件扩展链路（2026-10-12）
 
