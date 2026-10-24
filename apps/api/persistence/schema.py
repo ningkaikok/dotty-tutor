@@ -47,6 +47,21 @@ upload_jobs = Table(
     Column("completed_at", Float),
 )
 
+# Managed binaries stay outside PostgreSQL. This manifest is the durable pointer
+# from a private logical path to bounded, content-addressed Storage objects.
+managed_file_objects = Table(
+    "managed_file_objects", metadata,
+    Column("file_key", String(768), primary_key=True),
+    Column("content_sha256", String(64), nullable=False),
+    Column("size_bytes", BigInteger, nullable=False),
+    Column("content_type", String(255), nullable=False),
+    Column("manifest_json", json_document, nullable=False),
+    Column("created_at", Float, nullable=False),
+    Column("updated_at", Float, nullable=False),
+    CheckConstraint("size_bytes >= 0", name="ck_managed_file_objects_size"),
+)
+Index("idx_managed_file_objects_updated", managed_file_objects.c.updated_at.desc())
+
 chapter_records = Table(
     "chapter_records", metadata,
     Column("chapter_id", String(64), primary_key=True),

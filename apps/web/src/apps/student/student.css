@@ -96,6 +96,61 @@
   font-size: 14px;
 }
 
+.student-continuous-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 18px;
+  padding: 20px clamp(18px, 4vw, 28px);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-lg);
+  background: var(--c-surface);
+}
+
+.student-continuous-entry h2 {
+  margin: 4px 0;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.student-continuous-entry p {
+  margin: 0;
+  color: var(--c-ink-muted);
+  line-height: 1.6;
+}
+
+.continuous-entry-action { flex: 0 0 auto; }
+
+.continuous-learning-shell {
+  width: min(900px, calc(100% - 32px));
+  margin: 20px auto 56px;
+  color: var(--c-ink);
+  font-family: var(--font-bright);
+}
+
+.continuous-learning-action,
+.continuous-retry {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  color: var(--c-ink);
+  background: var(--c-surface);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.continuous-retry { margin-top: 12px; }
+
+@media (max-width: 620px) {
+  .student-continuous-entry {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
 /* 今日任务队列：一条有序列表，每行只有一个主按钮，取代旧版三张等权重卡片。 */
 .student-today-queue {
   display: grid;
@@ -187,12 +242,9 @@
 .student-paper-shell { color: var(--c-ink); font-family: var(--font-bright); }
 .student-paper-shell .panel { border: 0; border-radius: var(--radius-xl); background: var(--c-surface); box-shadow: none; }
 .student-paper-shell .eyebrow { color: var(--c-brand); letter-spacing: .08em; }
-.student-paper-topbar .brand-mark { border-radius: 14px 14px 14px 4px; color: var(--c-surface); background: var(--c-brand); font-weight: 900; }
-.student-paper-topbar strong { font-weight: 900; }
-.student-paper-topbar span { color: var(--c-ink-muted); }
-.student-paper-topbar .product-home-button { border: 0; color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
-.student-paper-topbar .product-home-button:hover { color: var(--c-ink); background: var(--c-surface-tint); }
-.student-paper-topbar .paper-sync-badge { color: var(--c-on-success-soft); background: var(--c-success-soft); font-family: inherit; font-size: 12px; }
+.student-paper-header .paper-sync-badge { color: var(--c-on-success-soft); background: var(--c-success-soft); font-family: inherit; font-size: 12px; }
+.student-paper-route-state { min-height: 42vh; display: grid; align-content: center; justify-items: center; gap: 12px; text-align: center; }
+.student-paper-route-state span { color: var(--c-ink-muted); }
 
 .paper-question-progress {
   display: block;
@@ -415,15 +467,7 @@
 
 @media (max-width: 560px) {
   .app-shell { width: calc(100% - 24px); margin-top: 16px; }
-  .student-paper-topbar {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    height: auto;
-  }
-  .student-paper-topbar .product-home-button { display: block; grid-column: 1 / -1; justify-self: start; }
-  .student-paper-topbar > div:not(.brand-mark) { min-width: 0; }
-  .student-paper-topbar > div:not(.brand-mark) span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .student-paper-topbar .paper-sync-badge { display: none; }
+  .student-paper-header .ui-header-actions { display: none; }
   .student-shell { width: calc(100% - 24px); margin-top: 16px; }
   .student-header .route-back-button { padding-inline: 10px; }
   .today-queue-row {

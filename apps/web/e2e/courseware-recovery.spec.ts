@@ -23,10 +23,10 @@ test("user Given source recognition failed on one original page When refreshing 
   const recovery = page.getByRole("region", { name: "来源准备恢复" });
   await expect(recovery).toContainText("教材第 12 页未能识别");
   await recovery.getByRole("button", { name: "重试原来源任务" }).click();
-  await expect(page.getByText("来源准备任务：排队中")).toBeVisible();
+  await expect(page.getByText("教材来源准备：排队中")).toBeVisible();
   await expect(page.getByText(/继续使用原页码范围和已识别页面/)).toBeVisible();
   await page.reload();
-  await expect(page.getByText("来源准备任务：排队中")).toBeVisible();
+  await expect(page.getByText("教材来源准备：排队中")).toBeVisible();
   expect(mutations).toEqual(["/api/jobs/failed-source/retry"]);
 });
 
@@ -58,7 +58,7 @@ test("user Given a failed manual planning task When returning to the chapter The
   const recovery = page.getByRole("region", { name: "规划恢复" });
   await expect(recovery).toContainText("审核模型暂时不可用");
   await recovery.getByRole("button", { name: "重试原规划任务" }).click();
-  await expect(page.getByText("教学规划生成：排队中")).toBeVisible();
+  await expect(page.getByText("教学规划：排队中")).toBeVisible();
   expect(mutations).toEqual(["/api/jobs/failed-plan/retry"]);
 });
 
@@ -98,7 +98,7 @@ for (const failed of [true, false]) test(`user Given ${failed ? "a failed page" 
   if (failed) {
     await expect(page.getByText("部分页面未能完成。打开问题页核对教材来源，修订或重做后再预览发布。", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "打开问题页与恢复操作" }).click();
-    await expect(page.getByRole("button", { name: "确认并保存私有教程", exact: true }).first()).toBeDisabled();
+    await expect(page.getByRole("button", { name: "保存并使用", exact: true })).toHaveCount(0);
   } else {
     await page.getByText("编辑页面与详细审核（可选）", { exact: true }).click();
     await page.getByRole("region", { name: "AI 初审", exact: true }).getByRole("button", { name: "打开此页" }).click();

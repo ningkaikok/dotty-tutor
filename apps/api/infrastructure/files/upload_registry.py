@@ -10,6 +10,7 @@ from urllib.parse import unquote
 
 from fastapi import HTTPException
 
+from infrastructure.files.file_storage import FileStorageError
 from observability import log_event
 
 
@@ -137,10 +138,30 @@ class UploadRegistry:
 
     def update(self, job: dict[str, Any], status: str, progress: int, message: str) -> None:
         previous_status = job.get("status")
+        previous_progress = job.get("progress", 0)
+        previous_message = job.get("message", "")
+        previous_updated_at = job.get("updatedAt")
         job["status"] = status
         job["progress"] = max(0, min(progress, 100))
         job["message"] = message
         job["updatedAt"] = time.time()
+        file_assets = getattr(self.store, "file_assets", None)
+        if status == "complete" and file_assets is not None and getattr(file_assets, "enabled", False):
+            try:
+                file_assets.persist_upload_namespace(job["uploadId"], Path(job["directory"]))
+            except Exception as error:
+                # The PostgreSQL job remains at its previous state if remote
+                # persistence is incomplete. A retry can safely reuse verified
+                # content-addressed objects without claiming success early.
+                job["status"] = previous_status
+                job["progress"] = previous_progress
+                job["message"] = previous_message
+                if previous_updated_at is None:
+                    job.pop("updatedAt", None)
+                else:
+                    job["updatedAt"] = previous_updated_at
+                detail = str(error) if isinstance(error, (FileStorageError, FileNotFoundError)) else "请稍后重试"
+                raise HTTPException(status_code=503, detail=f"教材文件未能完成远端持久化：{detail}") from error
         self.store.save_job(job)
         log_event(
             "upload.status.changed" if previous_status != status else "upload.progress",

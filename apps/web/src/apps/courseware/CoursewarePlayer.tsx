@@ -33,8 +33,12 @@ function blockActivityKey(page: CoursewarePageView, blockIndex: number, block: C
   return `${page.pageId}:block-${blockIndex}`;
 }
 
-export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local", renderPageTools, initialPageId, onPageChange }: {
+export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitActivity, playbackScope = "teacher:local", renderPageTools, initialPageId, onPageChange, displayMode = "full", showBrand = true }: {
   document: CoursewarePresentationDocument;
+  /** Embedded previews retain lesson content and navigation without duplicating the standalone toolbar. */
+  displayMode?: "full" | "embedded";
+  /** Hide the player brand only when the route already supplies the shared app header. */
+  showBrand?: boolean;
   now?: () => number;
   renderPageTools?: (page: CoursewarePageView) => ReactNode;
   /** UI identity scope prevents classroom state from crossing learner or role boundaries. */
@@ -137,9 +141,9 @@ export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitAct
     }
   };
 
-  return <main className={`courseware-player ${state.highContrast ? "is-high-contrast" : ""} ${state.mode === "rail" ? "is-rail" : "is-deck"} ${fullscreen ? "is-fullscreen" : ""}`}>
-    <header className="courseware-toolbar">
-      <div className="courseware-brand"><span className="courseware-brand-mark" aria-hidden="true">DT</span><div><strong>{lesson.title}</strong><span>{subjectLabel(lesson.subject)} · 第 {lesson.version} 版</span></div></div>
+  return <main className={`courseware-player ${displayMode === "embedded" ? "is-embedded" : ""} ${state.highContrast ? "is-high-contrast" : ""} ${state.mode === "rail" ? "is-rail" : "is-deck"} ${fullscreen ? "is-fullscreen" : ""}`}>
+    {displayMode === "full" && <header className="courseware-toolbar">
+      {showBrand && <div className="courseware-brand"><span className="courseware-brand-mark" aria-hidden="true">DT</span><div><strong>{lesson.title}</strong><span>{subjectLabel(lesson.subject)} · 第 {lesson.version} 版</span></div></div>}
       <div className="courseware-tools" aria-label="授课工具">
         <button type="button" className="courseware-timer" aria-label={state.timerDeadline === null ? state.timerSeconds === 0 ? "Restart timer" : "Start timer" : "Pause timer"} title={state.timerSeconds === 0 && state.timerDeadline === null ? "倒计时已结束；点击重新开始" : undefined} onClick={playback.startOrPauseTimer}>
           <span>{state.timerSeconds === 0 && state.timerDeadline === null ? "Restart timer" : "Timer"}</span><time>{formatTime(state.timerSeconds)}</time>
@@ -154,7 +158,7 @@ export function CoursewarePlayer({ document: lesson, now = Date.now, onSubmitAct
         <button type="button" aria-pressed={fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? "Exit full screen" : "Full screen"}</button>
         <button type="button" aria-expanded={helpOpen} onClick={() => setHelpOpen((open) => !open)}>Help</button>
       </div>
-    </header>
+    </header>}
 
     {helpOpen && <div className="courseware-help" role="status">Use ← / → to change pages, R to reveal the next answer, M for teacher notes, and T to pause or resume the timer. Shortcuts stay inactive while you type.</div>}
 

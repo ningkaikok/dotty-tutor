@@ -351,7 +351,7 @@ test("user Given a chapter source inbox with pending, needs-changes, and cross-s
   await page.getByRole("button", { name: "提交最终单人决定" }).click();
   await expect(page.getByRole("status").filter({ hasText: "教材决定已保存" })).toBeVisible();
   await expect(page.getByRole("button", { name: "发布课程" })).toBeDisabled();
-  await page.getByRole("button", { name: /我的教材/ }).click();
+  await page.getByRole("link", { name: /我的教材/ }).click();
   await expect(page.getByRole("heading", { name: "我的教材" })).toBeVisible();
   await page.getByRole("button", { name: /待处理/ }).click();
   await page.getByText(/来源质量抽检（\d+ 项，可选）/).click();

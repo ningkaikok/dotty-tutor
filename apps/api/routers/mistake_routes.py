@@ -15,6 +15,7 @@ from application.mistake_jobs import mistake_id_for_capture
 from auth_context import learner_for_request, require_owner
 from domain.contracts.mistake import MistakeArchiveRequest, MistakeConfirmation
 from domain.questions.student_view import student_mistake_item
+from infrastructure.files.file_storage import FileStorageError
 from infrastructure.runtime.job_snapshot import current_job_runtime_snapshot
 from observability import log_event
 
@@ -34,6 +35,11 @@ def build_mistake_router(
     job_store: Any | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/mistakes", tags=["mistakes"])
+
+    def persist_capture_files(learner_id: str, mistake_id: str, directory: Path) -> None:
+        persist = getattr(store, "persist_capture_files", None)
+        if callable(persist):
+            persist(learner_id, mistake_id, directory)
 
     @router.post("/import")
     async def import_mistake(
@@ -60,6 +66,12 @@ def build_mistake_router(
         directory = store.item_directory(mistake_id)
         source_path = directory / f"source{suffix or '.jpg'}"
         source_path.write_bytes(content)
+        try:
+            persist_capture_files(learnerId, mistake_id, directory)
+        except Exception as error:
+            shutil.rmtree(directory, ignore_errors=True)
+            detail = str(error) if isinstance(error, (ValueError, FileStorageError)) else "请稍后重试"
+            raise HTTPException(status_code=503, detail=f"错题原图未能完成远端持久化：{detail}") from error
         asset_directory = directory / "assets"
         asset_prefix = f"/api/mistakes/{mistake_id}/assets"
         log_event("mistake.import.started", mistake_id=mistake_id, filename=filename, size_bytes=len(content))
@@ -83,6 +95,12 @@ def build_mistake_router(
             raise HTTPException(status_code=422, detail=f"错题识别失败：{error}") from error
 
         question = payload.get("question", {})
+        try:
+            persist_capture_files(learnerId, mistake_id, directory)
+        except Exception as error:
+            shutil.rmtree(directory, ignore_errors=True)
+            detail = str(error) if isinstance(error, (ValueError, FileStorageError)) else "请稍后重试"
+            raise HTTPException(status_code=503, detail=f"错题识别素材未能完成远端持久化：{detail}") from error
         now = time.time()
         item = store.create({
             "mistakeId": mistake_id,
@@ -152,6 +170,12 @@ def build_mistake_router(
         try:
             directory.mkdir(parents=True, exist_ok=True)
             source_path.write_bytes(content)
+            try:
+                persist_capture_files(learnerId, mistake_id, directory)
+            except Exception as error:
+                shutil.rmtree(directory, ignore_errors=True)
+                detail = str(error) if isinstance(error, (ValueError, FileStorageError)) else "请稍后重试"
+                raise HTTPException(status_code=503, detail=f"错题原图未能完成远端持久化：{detail}") from error
             job = job_store.create_job(
                 "mistake.image.import",
                 {
@@ -162,7 +186,9 @@ def build_mistake_router(
                     "contentType": content_type or "application/octet-stream",
                     "sourceText": sourceText,
                     "originalAnswer": originalAnswer,
-                    "sourcePath": str(source_path),
+                    # Background jobs survive data-root relocation. The Worker
+                    # rebuilds this pointer under its current DOTTY_DATA_DIR.
+                    "sourcePath": f"mistakes/{mistake_id}/{job_id}/{source_path.name}",
                     "jobId": job_id,
                     "runtimeSnapshot": current_job_runtime_snapshot(),
                 },
@@ -242,7 +268,10 @@ def build_mistake_router(
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
         require_owner(request, item["learnerId"])
-        path = store.source_path(mistake_id)
+        try:
+            path = store.source_path(mistake_id)
+        except FileStorageError as error:
+            raise HTTPException(status_code=503, detail=f"错题原图暂不可恢复：{error}") from error
         if not path or not path.is_file():
             raise HTTPException(status_code=404, detail="错题原图不存在")
         return FileResponse(path, media_type=item["contentType"], filename=item["sourceFilename"])
@@ -256,12 +285,17 @@ def build_mistake_router(
         if not item:
             raise HTTPException(status_code=404, detail="错题不存在")
         require_owner(request, str(item.get("learnerId") or ""))
-        source_path = Path(str(item.get("sourceImagePath") or "")).expanduser().resolve()
-        expected_root = store.mistake_root.resolve()
-        if expected_root not in source_path.parents:
-            raise HTTPException(status_code=404, detail="错题资源不存在")
-        path = source_path.parent / "assets" / safe_name
-        if not path.is_file():
+        try:
+            resolve_asset = getattr(store, "asset_path", None)
+            if callable(resolve_asset):
+                path = resolve_asset(mistake_id, safe_name)
+            else:
+                source_path = Path(str(item.get("sourceImagePath") or "")).expanduser().resolve()
+                expected_root = store.mistake_root.resolve()
+                path = source_path.parent / "assets" / safe_name if expected_root in source_path.parents else None
+        except FileStorageError as error:
+            raise HTTPException(status_code=503, detail=f"错题识别图片暂不可恢复：{error}") from error
+        if not isinstance(path, Path) or not path.is_file():
             raise HTTPException(status_code=404, detail="错题资源不存在")
         return FileResponse(path)
 

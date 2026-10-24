@@ -76,12 +76,14 @@ class VariationPracticeTests(PostgresTestCase):
 
     def _create_confirmed_mistake(self) -> None:
         now = time.time()
+        source_path = self.mistakes.item_directory("mistake-1") / "source.jpg"
+        source_path.write_bytes(b"test source image")
         self.mistakes.create({
             "mistakeId": "mistake-1",
             "learnerId": "local-demo",
-            "sourceFilename": "source.png",
-            "contentType": "image/png",
-            "sourceImagePath": str(self.data_root / "source.png"),
+            "sourceFilename": "source.jpg",
+            "contentType": "image/jpeg",
+            "sourceImagePath": str(source_path),
             "sourceImageUrl": "/api/mistakes/mistake-1/source",
             "questionPayload": {
                 "question": {

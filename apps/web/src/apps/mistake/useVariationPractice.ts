@@ -1,14 +1,18 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { answerVariation, createVariation, listVariations } from "../../api/practice";
 import type { VariationExercise } from "../../types/index";
 import type { TutorStage } from "../../types/index";
 import { buildStructuredAnswer } from "./structuredAnswer";
 
 /** 管理一次可计分的变式作答，不把掌握证据混入自由对话消息。 */
+const MAX_AUTOMATIC_CONTINUOUS_VARIATIONS = 4;
+
 export function useVariationPractice(
   mistakeId: string,
   autoStart = false,
   onStageChange?: (stage: TutorStage) => void,
+  autoContinue = false,
+  autoContinuationPaused = false,
 ) {
   const [items, setItems] = useState<VariationExercise[]>([]);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
@@ -18,6 +22,10 @@ export function useVariationPractice(
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const autoStarted = useRef(false);
+  const generationInFlight = useRef(false);
+  const autoFollowedAttempt = useRef("");
+  const autoContinuationPausedRef = useRef(autoContinuationPaused);
+  useLayoutEffect(() => { autoContinuationPausedRef.current = autoContinuationPaused; }, [autoContinuationPaused]);
   const active = items.length ? items[items.length - 1] : null;
 
   useEffect(() => {
@@ -35,16 +43,20 @@ export function useVariationPractice(
   // 进入 verify 就代表学生已确认可以继续；第一道验证题直接开始生成，
   // 不再要求学生在对话区和验证区之间寻找第二个“下一题”按钮。已有记录
   // 会被复用，因此刷新页面不会重复创建题目。
-  const resetDraft = () => {
+  const resetDraft = useCallback(() => {
     setSelectedOptions([]);
     setBlankAnswers({});
     setNumericAnswer("");
-  };
+  }, []);
 
-  const generate = async () => {
+  const generate = useCallback(async () => {
     // A correct answer that has not passed the domain gate needs another
     // evidence-bearing exercise; a mastered item remains terminal.
-    if (submitting || active?.mastery?.mastered) return;
+    if (submitting || generationInFlight.current || active?.mastery?.mastered) return;
+    // State updates can be batched while two click handlers are already queued.
+    // Keep the one-request limit synchronous so a manual continuation never
+    // fans out into multiple generated exercises.
+    generationInFlight.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -54,18 +66,32 @@ export function useVariationPractice(
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "验证题生成失败");
     } finally {
+      generationInFlight.current = false;
       setSubmitting(false);
     }
-  };
+  }, [active?.mastery?.mastered, mistakeId, resetDraft, submitting]);
 
   useEffect(() => {
     if (!autoStart || loading || items.length > 0 || autoStarted.current || submitting) return;
     autoStarted.current = true;
     void generate();
-    // auto-start-once 语义：generate 每次渲染重建，纳入依赖只会让 effect 空转；
-    // autoStarted 守卫保证整个生命周期只触发一次。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, items.length, loading, submitting]);
+  }, [autoStart, generate, items.length, loading, submitting]);
+
+  useEffect(() => {
+    const attemptId = active?.attemptId;
+    if (!autoContinue || autoContinuationPaused || loading || submitting || !active || !attemptId
+      || active.status !== "answered" || active.assessment !== "correct"
+      || active.mastery?.mastered || active.sequence >= MAX_AUTOMATIC_CONTINUOUS_VARIATIONS
+      || autoFollowedAttempt.current === attemptId) return;
+    const timeout = window.setTimeout(() => {
+      // A learner can pause while the timeout is queued. Record the attempt only
+      // after the callback actually starts, so resuming can still prepare it.
+      if (autoContinuationPausedRef.current) return;
+      autoFollowedAttempt.current = attemptId;
+      void generate();
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [active, autoContinue, autoContinuationPaused, generate, loading, submitting]);
 
   const selectOption = (label: string) => {
     if (!active || (active.status === "answered" && active.assessment === "correct")) return;
@@ -103,6 +129,9 @@ export function useVariationPractice(
   return {
     items,
     active,
+    automaticContinuationCapped: Boolean(autoContinue && active?.status === "answered"
+      && active.assessment === "correct" && !active.mastery?.mastered
+      && active.sequence >= MAX_AUTOMATIC_CONTINUOUS_VARIATIONS),
     selectedOptions,
     blankAnswers,
     numericAnswer,

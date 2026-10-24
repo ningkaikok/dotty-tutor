@@ -8,24 +8,28 @@ import { MaterialsApp } from "./MaterialsApp";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-it("user Given a published seven-page courseware and no legacy lessons When opening the textbook library Then the lesson can be opened directly", async () => {
-  const book = { uploadId: "book", filename: "Writing Guide.pdf", materialKind: "textbook", questionCount: 0, pageCount: 400, status: "complete" };
+it("user Given a 773-page textbook with one seven-page published courseware and a draft chapter When opening the library Then the lesson is teachable and the book remains manageable", async () => {
+  const book = { uploadId: "book", filename: "Writing Guide.pdf", materialKind: "textbook", questionCount: 0, pageCount: 773, status: "complete" };
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     const path = String(url);
     const body = path.startsWith("/api/quality-reviews/inbox") ? { ...emptyInbox, total: 18, pendingCount: 18 }
       : path === "/api/library" ? { items: [book] }
       : path === "/api/chapters" ? { items: [{ ...course, status: "draft", currentLessonIds: [], uploadId: "book" }] }
-      : { items: [{ coursewareId: "lesson", title: "Memoir and evidence", pageCount: 7, status: "published", generationStatus: "completed", publicationId: "publication", recordVersion: 3 }] };
+      : { items: [{ coursewareId: "lesson", title: "Memoir and evidence", pageCount: 7, status: "published", generationStatus: "completed", publicationId: "publication", recordVersion: 3, automation: null }] };
     return new Response(JSON.stringify(body));
   });
   render(<MemoryRouter><MaterialsApp /></MemoryRouter>);
-  expect(await screen.findByRole("link", { name: "打开授课 · Memoir and evidence" })).toHaveAttribute("href", "/teacher/courseware/lesson?publicationId=publication");
+  expect(await screen.findByRole("link", { name: "直接授课 · Memoir and evidence" })).toHaveAttribute("href", "/teacher/courseware/lesson?publicationId=publication");
+  expect(screen.getByRole("link", { name: "管理教材 · Writing Guide.pdf" })).toHaveAttribute("href", "/studio/courseware?uploadId=book");
   expect(screen.getByText("1 份课件 · 7 页 · 1 份可授课")).toBeVisible();
+  expect(screen.getByText("已发布", { selector: "span" })).toBeVisible();
+  expect(screen.queryByText(/completed|published/)).not.toBeInTheDocument();
   expect(screen.queryByText(/0 节旧版/)).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "待处理（0）" })).toBeVisible();
   fireEvent.click(screen.getByText("查看教程目录"));
-  expect(screen.getByRole("link", { name: "A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
-  expect(screen.getByText("· 可授课")).toBeVisible();
+  expect(screen.getByRole("link", { name: "管理章节课件 · A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
+  expect(screen.getAllByRole("link", { name: /A day outdoors/ }).filter((link) => link.getAttribute("href") === "/studio/courseware?chapterId=en-1")).toHaveLength(1);
+  expect(screen.getByText("A day outdoors", { selector: "strong" })).toBeVisible();
 });
 
 it("user Given eighteen optional source evaluation cases When opening tasks Then no production work is required and source checks remain optional", async () => {
@@ -64,8 +68,8 @@ it("user Given an uploaded PDF and an English course When opening my materials T
   expect(await screen.findByRole("heading", { name: "A day outdoors" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
   expect(screen.getByRole("link", { name: "继续复核 →" })).toHaveAttribute("href", "/studio/chapters/en-1");
-  expect(screen.getByRole("link", { name: "制作互动课件 · A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
-  expect(screen.getByRole("link", { name: "为 数学教材.pdf 制作互动课件" })).toHaveAttribute("href", "/studio/courseware?uploadId=pdf-1");
+  expect(screen.getByRole("link", { name: "管理章节课件 · A day outdoors" })).toHaveAttribute("href", "/studio/courseware?chapterId=en-1");
+  expect(screen.getByRole("link", { name: "管理教材 · 数学教材.pdf" })).toHaveAttribute("href", "/studio/courseware?uploadId=pdf-1");
   expect(screen.queryByRole("link", { name: "自动制作课程" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "查看练习 →" })).toHaveAttribute("href", "/studio/import?uploadId=pdf-1");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "英语" } });
@@ -117,8 +121,8 @@ it("user Given one textbook and multiple generated chapters When opening my mate
   expect(screen.getAllByRole("article")).toHaveLength(1);
   expect(screen.queryByText("英语阅读")).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
-  expect(screen.getByRole("link", { name: "Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
-  expect(screen.getByRole("link", { name: "制作互动课件 · Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
+  expect(screen.getByText("Chapter 1 Writing", { selector: "strong" })).toBeVisible();
+  expect(screen.getByRole("link", { name: "管理章节课件 · Chapter 1 Writing" })).toHaveAttribute("href", "/studio/courseware?chapterId=first");
   expect(screen.getAllByRole("listitem")[0]).toHaveTextContent("Chapter 1 Writing");
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Chapter 2" } });
   expect(screen.getByRole("heading", { name: book.filename })).toBeVisible();
@@ -135,7 +139,7 @@ it("user Given a regenerated tutorial and preserved reading drafts When opening 
   expect(screen.getByText("1 章 · 1 节旧版课程内容")).toBeVisible();
   expect(screen.queryByRole("link", { name: "制作讲解教程" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("查看教程目录"));
-  expect(screen.getByRole("link", { name: fresh.title })).toBeVisible();
+  expect(screen.getByText(fresh.title, { selector: "strong" })).toBeVisible();
   expect(screen.getByRole("link", { name: old.title })).not.toBeVisible();
   fireEvent.click(screen.getByText("旧版练习草稿（1 章）"));
   expect(screen.getByRole("link", { name: old.title })).toHaveAttribute("href", `/studio/chapters/${old.chapterId}`);

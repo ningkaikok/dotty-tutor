@@ -34,6 +34,8 @@ from persistence.schema import (
 )
 from publication_quality import PublicationQualityError
 
+MAX_FREE_SESSION_HISTORY = 2_000
+
 
 class LearningStore(DatabaseStore):
     """保存可编程课程和可追溯学习证据。
@@ -317,6 +319,53 @@ class LearningStore(DatabaseStore):
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         } for row in rows]
+
+    def list_free_publication_progress(self, learner_id: str) -> list[dict[str, Any]]:
+        """Aggregate only free-paper sessions into resumable publication progress.
+
+        Distinct question IDs make retries and duplicate sessions harmless. The
+        assignment filter keeps class work in the assignment progression path.
+        """
+        self._ensure_initialized()
+        with self.engine.connect() as connection:
+            sessions = connection.execute(
+                select(
+                    learning_sessions.c.session_id,
+                    learning_sessions.c.publication_id,
+                    learning_sessions.c.updated_at,
+                )
+                .where(
+                    learning_sessions.c.learner_id == learner_id,
+                    learning_sessions.c.assignment_id.is_(None),
+                )
+                .order_by(learning_sessions.c.updated_at.desc(), learning_sessions.c.session_id.desc())
+                .limit(MAX_FREE_SESSION_HISTORY)
+            ).mappings().all()
+            session_ids = [row["session_id"] for row in sessions]
+            attempts = connection.execute(
+                select(exercise_attempts.c.session_id, exercise_attempts.c.question_id)
+                .where(exercise_attempts.c.session_id.in_(session_ids or ["__none__"]))
+            ).mappings().all()
+        questions_by_session: dict[str, set[str]] = {}
+        for attempt in attempts:
+            questions_by_session.setdefault(attempt["session_id"], set()).add(attempt["question_id"])
+        progress: dict[str, dict[str, Any]] = {}
+        for session in sessions:
+            publication_id = session["publication_id"]
+            item = progress.setdefault(publication_id, {
+                "publicationId": publication_id,
+                "attemptedQuestionIds": set(),
+                "sessionId": session["session_id"],
+                "lastActivityAt": float(session["updated_at"] or 0),
+            })
+            item["attemptedQuestionIds"].update(questions_by_session.get(session["session_id"], set()))
+            item["lastActivityAt"] = max(item["lastActivityAt"], float(session["updated_at"] or 0))
+        return [{
+            "publicationId": item["publicationId"],
+            "attemptedCount": len(item["attemptedQuestionIds"]),
+            "lastActivityAt": item["lastActivityAt"],
+            "sessionId": item["sessionId"],
+        } for item in progress.values()]
 
     def update_publication_status(self, publication_id: str, status: str) -> dict[str, Any] | None:
         """只发布安全课程，并隔离自动重试后仍失败的候选题。

@@ -5,9 +5,12 @@ import { CoursewareMediaPanel } from "./CoursewareMediaPanel";
 import { useNavigate } from "react-router";
 import { CoursewareDraftEditor } from "./CoursewareDraftEditor";
 import { useCoursewareDocumentWorkflow } from "./useCoursewareDocumentWorkflow";
-import { Button, ButtonLink } from "../../components/ui";
+import { Badge, Button, ButtonLink, PageHeader } from "../../components/ui";
 import { CoursewarePlayer } from "./CoursewarePlayer";
 import { draftPlaybackDocument } from "./coursewarePresentation";
+import { MaterialsHeader } from "../materials/MaterialsHeader";
+import { coursewareDocumentStatus } from "./coursewareDocumentStatus";
+import { coursewareSubjectLabel } from "./coursewareWorkspaceView";
 import { useRef, useState } from "react";
 
 /** Compose the teacher editor from the version-bound document workflow. */
@@ -24,29 +27,39 @@ export function CoursewareDocumentWorkspace({ coursewareId }: { coursewareId: st
     setSelectedPageId(pageId);
     if (editorDetails.current) editorDetails.current.open = true;
   };
-  if (loading) return <main className="courseware-route-state"><p role="status">正在读取教师课件草稿…</p></main>;
-  if (!document) return <main className="courseware-route-state"><h1>课件草稿暂不可用</h1><p role="alert">{error || "找不到这份课件。"}</p><Button type="button" onClick={() => void reload()}>重新读取课件</Button><button type="button" onClick={() => navigate("/studio/courseware")}>返回教材课件</button></main>;
-  const automaticBusy = ["generating", "checking", "repairing"].includes(document.automation?.status ?? "");
-  const automaticReady = document.automation?.status === "ready" && document.status === "published";
-  return <div className="courseware-authoring-route">
+  const backTo = document ? `/studio/courseware?chapterId=${encodeURIComponent(document.chapterId)}` : "/studio/courseware";
+  const header = <MaterialsHeader backTo={backTo} backLabel="返回所属章节" subtitle="课件管理" />;
+  if (loading) return <main className="courseware-route-state app-shell">{header}<PageHeader className="courseware-workflow-header" title="正在读取课件" description="正在读取课件内容、发布状态和教材来源。" /><p role="status">请稍候…</p></main>;
+  if (!document) return <main className="courseware-route-state app-shell">{header}<PageHeader className="courseware-workflow-header" title="课件暂不可用" description="请重新读取课件，或返回教材库。" /><p role="alert">{error || "找不到这份课件，或当前账号无权读取。"}</p><Button type="button" onClick={() => void reload()}>重新读取课件</Button><ButtonLink to="/studio">返回教材库</ButtonLink></main>;
+  const status = coursewareDocumentStatus(document);
+  const automaticBusy = status.kind === "making";
+  const subject = coursewareSubjectLabel(document.subject);
+  const pageDescription = `${subject} · ${document.durationMinutes} 分钟 · ${document.pages.length} 页 · 教材第 ${document.pageStart}–${document.pageEnd} 页`;
+  const headerActions = <>
+    {status.kind === "published" && document.publicationId && <ButtonLink variant="primary" to={`/teacher/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`}>直接授课</ButtonLink>}
+    {status.kind !== "published" && document.publicationId && <ButtonLink to={`/teacher/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`}>查看已发布版本</ButtonLink>}
+    {document.publicationId && document.sourceDistributionScope !== "private" && <ButtonLink to={`/learn/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`}>学生版</ButtonLink>}
+  </>;
+
+  return <main className="courseware-authoring-route app-shell">
+    {header}
+    <PageHeader className="courseware-workflow-header" eyebrow="课件详情" title={document.title} description={pageDescription} actions={headerActions} />
     {error && <p role="alert" className="courseware-editor-error">{error}</p>}
-    <section className="courseware-final-confirmation"><div><h1>{document.title}</h1><p role="status">{document.automation?.message || (document.generationStatus === "completed" ? "教程已生成。先预览，需要时再修改；最后一次确认即可保存或发布。" : document.generationStatus === "failed" || document.generationStatus === "partial" ? "部分页面未能完成。打开问题页核对教材来源，修订或重做后再预览发布。" : "正在自动生成教程页面；完成后即可预览，不需要逐页批准。")}</p>
+    <section className="courseware-final-confirmation" aria-label="课件状态"><div><div className="courseware-document-title"><h2>发布状态</h2><Badge tone={status.tone}>{status.label}</Badge></div><p role="status">{status.message}</p>
       {notice && <p role="status">{notice}</p>}
-      {draftDirty && <p role="status">请先保存当前页面修改，再确认教程。</p>}
+      {draftDirty && <p role="status">请先保存当前页面修改，再继续发布。</p>}
       </div><div className="courseware-final-actions">
-      {!automaticBusy && !automaticReady && <Button variant="primary" disabled={busy || draftDirty || document.status === "published" || document.generationStatus !== "completed" || document.sourceReadiness !== "ready" || document.reviewIssues.length > 0 || !document.pages.length || document.pages.some((page) => page.generationStatus !== "completed" || Boolean(page.error))} onClick={() => void publish()}>{document.status === "published" ? "已发布" : document.sourceDistributionScope === "private" ? "确认并保存私有教程" : "确认并发布教程"}</Button>}
-      {document.publicationId && <ButtonLink to={`/teacher/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`}>打开授课</ButtonLink>}
-      {document.publicationId && document.sourceDistributionScope !== "private" && <ButtonLink to={`/learn/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`}>打开学生版</ButtonLink>}
+      {status.canPublish && <Button variant="primary" disabled={busy || draftDirty} onClick={() => void publish()}>{document.sourceDistributionScope === "private" ? "保存并使用" : "发布课件"}</Button>}
       </div>
     </section>
-    {(document.automation?.status === "needs_attention" || document.generationStatus === "failed" || document.generationStatus === "partial" || document.reviewIssues.length > 0 || document.sourceReadiness !== "ready") && <section className="courseware-job-status" aria-label="下一步操作">
+    {(status.kind === "needs-attention" || document.sourceReadiness !== "ready" || document.reviewIssues.length > 0 || document.generationStatus === "failed" || document.generationStatus === "partial") && <section className="courseware-job-status" aria-label="下一步操作">
       {document.automation?.retryable && <Button disabled={busy || draftDirty} onClick={() => void retryAutomatic()}>重试自动制作</Button>}
       {document.sourceReadiness !== "ready" && <p>教材来源不可用或需复核；请先回到教材来源检查原页、修订和分发范围。</p>}
       <Button type="button" disabled={busy || draftDirty} onClick={() => openPage(document.pages.find((page) => page.generationStatus === "failed" || page.error)?.pageId ?? document.pages[0]?.pageId ?? "")}>打开问题页与恢复操作</Button>
       <ButtonLink to={`/studio/chapters/${encodeURIComponent(document.chapterId)}`}>检查教材原页</ButtonLink>
       <Button type="button" disabled={busy || draftDirty} onClick={() => void reload()}>重新读取制作状态</Button>
     </section>}
-    {document.generationStatus === "completed" && document.pages.length > 0 && <section aria-label="教程最终预览"><CoursewarePlayer document={draftPlaybackDocument(document)} playbackScope={`teacher:draft:${coursewareId}`} /></section>}
+    {document.generationStatus === "completed" && document.pages.length > 0 && <section className="courseware-document-preview" aria-label="课件预览"><CoursewarePlayer document={draftPlaybackDocument(document)} playbackScope={`teacher:draft:${coursewareId}`} displayMode="embedded" /></section>}
     <details ref={editorDetails}><summary>编辑页面与详细审核（可选）</summary>
     <CoursewareCoveragePanel chapterId={document.chapterId} revisionKey={document.recordVersion} sourceRevisionId={document.sourceRevisionId} />
     <CoursewareAiReviewPanel
@@ -69,6 +82,8 @@ export function CoursewareDocumentWorkspace({ coursewareId }: { coursewareId: st
       onReviewPage={(pageId, decision, note) => review(decision, [pageId], note)}
       onReviewDocument={review}
       onPublish={publish}
+      showPublishAction={false}
+      embedded
       onReload={reload}
       onPresent={() => document.publicationId && navigate(`/teacher/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`)}
       onLearn={() => document.publicationId && navigate(`/learn/courseware/${encodeURIComponent(coursewareId)}?publicationId=${encodeURIComponent(document.publicationId)}`)}
@@ -78,5 +93,5 @@ export function CoursewareDocumentWorkspace({ coursewareId }: { coursewareId: st
     />
     </details>
     {document.publicationId && <details onToggle={(event) => setMediaOpen(event.currentTarget.open)}><summary>制作视频与语音（可选）</summary>{mediaOpen && <CoursewareMediaPanel coursewareId={coursewareId} publicationId={document.publicationId} />}</details>}
-  </div>;
+  </main>;
 }

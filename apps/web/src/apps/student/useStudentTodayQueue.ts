@@ -4,6 +4,7 @@ import { loadStudentAssignments } from "../../api/classroom";
 import { useLearnerId } from "../../api/identity";
 import { loadMistakes } from "../../api/mistakes";
 import { loadLearningProgress } from "../../api/reviews";
+import { loadNextLearningAction, type ContinuousLearningAction } from "../../api/continuousLearning";
 import type { PublicationSummary } from "../../types/index";
 import type { StudentAssignment } from "../../types/classroom";
 import { learningSessionStorageKey } from "./learningSessionStorage";
@@ -19,11 +20,12 @@ export interface StudentTodayQueue {
   unmasteredCount: number;
   papers: TodayQueuePaper[];
   assignments: StudentAssignment[];
+  nextLearningAction: ContinuousLearningAction | null;
   loading: boolean;
-  /** 四路请求里失败的部分才会在这里留言；能拿到的数据仍然照常展示。 */
+  /** 读取失败的部分会在这里留言；能拿到的数据仍然照常展示。 */
   error: string;
   /**
-   * 四路全部失败。此时“没有待办”是读不到数据的假象，不是真的做完了——
+   * 所有只读来源全部失败。此时“没有待办”是读不到数据的假象，不是真的做完了——
    * 页面必须据此换一套文案，否则会让学生以为今天的任务已经清空。
    */
   allFailed: boolean;
@@ -45,12 +47,13 @@ const EMPTY_QUEUE: StudentTodayQueue = {
   unmasteredCount: 0,
   papers: [],
   assignments: [],
+  nextLearningAction: null,
   loading: true,
   error: "",
   allFailed: false,
 };
 
-/** 四路只读数据形成一个身份绑定的快照，失败项留空，不沿用上一位学生的数据。 */
+  /** 只读数据形成一个身份绑定的快照，失败项留空，不沿用上一位学生的数据。 */
 export function useStudentTodayQueue(): StudentTodayQueue {
   const learnerId = useLearnerId();
   const [snapshot, setSnapshot] = useState<{ learnerId: string; queue: StudentTodayQueue } | null>(null);
@@ -61,25 +64,36 @@ export function useStudentTodayQueue(): StudentTodayQueue {
     void Promise.allSettled([
       loadStudentAssignments(learnerId),
       loadPublishedPublications(controller.signal),
-      loadMistakes(),
+      loadMistakes(learnerId, controller.signal),
       loadLearningProgress(),
-    ]).then(([assignments, publications, mistakes, progress]) => {
+      loadNextLearningAction(learnerId),
+    ]).then(([assignments, publications, mistakes, progress, nextAction]) => {
       if (cancelled) return;
-      const results = [assignments, publications, mistakes, progress];
-      const labels = ["作业", "练习目录", "错题本", "复习进度"];
+      const results = [assignments, publications, mistakes, progress, nextAction];
+      const labels = ["作业", "练习目录", "错题本", "复习进度", "继续学习"];
       const errors = results.flatMap((result, index) => result.status === "rejected"
         ? [`${labels[index]}：${result.reason instanceof Error ? result.reason.message : "加载失败"}`]
         : []);
       const items = mistakes.status === "fulfilled" ? mistakes.value : [];
+      const publishedPending = (item: (typeof items)[number]) => item.status === "pending_confirmation"
+        && item.contentType === "application/vnd.dotty.publication+json";
+      const nextSnapshot = nextAction.status === "fulfilled" ? nextAction.value : null;
       setSnapshot({
         learnerId,
         queue: {
-          pendingConfirmCount: items.filter((item) => item.status === "pending_confirmation").length,
-          unmasteredCount: items.filter((item) => item.status === "unmastered").length,
-          dueReviewCount: progress.status === "fulfilled" ? progress.value.dueReviewCount : 0,
+          // The server next snapshot already applies the legacy-published repair
+          // rule, so its summary and next action stay consistent on the landing page.
+          pendingConfirmCount: nextSnapshot?.summary?.pendingConfirmationCount
+            ?? items.filter((item) => item.status === "pending_confirmation" && !publishedPending(item)).length,
+          unmasteredCount: nextSnapshot?.summary?.unmasteredCount
+            ?? items.filter((item) => item.status === "unmastered" || publishedPending(item)).length,
+          // The older progress endpoint omits reviews that are still generating.
+          dueReviewCount: nextSnapshot?.summary?.dueReviewCount
+            ?? (progress.status === "fulfilled" ? progress.value.dueReviewCount : 0),
           papers: publications.status === "fulfilled"
             ? publications.value.map((item) => ({ ...item, started: hasStartedSession(learnerId, item.publicationId) })) : [],
           assignments: assignments.status === "fulfilled" ? assignments.value : [],
+          nextLearningAction: nextSnapshot?.next ?? null,
           loading: false,
           error: errors.join("；"),
           allFailed: errors.length === results.length,

@@ -41,13 +41,25 @@ def restore_courseware_draft(service: Any, source_packet: dict[str, Any], plan: 
                "license": document["sourceLicense"], "sourceTitle": source_packet["title"],
                "sourceUrl": document["sourceUrl"], "attributionText": document["attributionText"],
                "distributionScope": "private"}
-        source = service.chapters._normalize_source(raw)
+        audit: dict[str, Any] = (
+            document["generationAudit"] if isinstance(document.get("generationAudit"), dict) else {}
+        )
+        allow_blank_source_pages = (
+            audit.get("wholeBookSourceRevisionId") == document["sourceRevisionId"]
+            and audit.get("wholeBookSourceFileSha256") == source_packet["sourceFileSha256"]
+            and isinstance(audit.get("wholeBookPageDispositions"), str)
+        )
+        source = service.chapters._normalize_source(raw, allow_blank_source_pages=allow_blank_source_pages)
         revision_id = document["sourceRevisionId"]
         if revision_id != plan["sourceRevisionId"]:
             raise ValueError("规划和页面来源修订不一致")
         for page in source["pages"]:
             page["sentences"] = sentences(page["text"], page["page"], revision_id)
-        source.update(sourceRevisionId=revision_id, issues=service.chapters._source_issues(source), createdAt=time.time())
+        source.update(
+            sourceRevisionId=revision_id,
+            issues=service.chapters._source_issues(source, allow_blank_source_pages=allow_blank_source_pages),
+            createdAt=time.time(),
+        )
         chapter = {"chapterId": chapter_id, "subject": document["subject"], "title": "待复核 · " + document["title"],
                    "teachingMode": "tutorial", "status": "needs_review" if source["issues"] else "draft",
                    "version": 1, "recordVersion": 1, "sourceRevisions": [source], "lessons": [],
@@ -58,13 +70,17 @@ def restore_courseware_draft(service: Any, source_packet: dict[str, Any], plan: 
         draft = copy.deepcopy(document)
         draft.update(chapterId=chapter_id, coursewareId=courseware_id, recordVersion=1,
                      generationJobId=None, reviewRecords=[], publicationId=None, sourceDistributionScope="private")
-        draft["assets"] = service._source_assets(source, service._selected_pages(source, draft["pageStart"], draft["pageEnd"]))
+        skipped_pages = service._verified_whole_book_skip_pages(draft, source)
+        selected = service._selected_pages(
+            source, draft["pageStart"], draft["pageEnd"], allowed_skip_pages=skipped_pages,
+        )
+        draft["assets"] = service._source_assets(source, selected)
         draft = CoursewareDocument.model_validate(draft).model_dump()
         restored_plan = copy.deepcopy(plan)
         restored_plan.update(chapterId=chapter_id, coursewareIds=[courseware_id], recordVersion=1,
                              status="awaiting_confirmation", approvalCommandId=None, generationJobId=None)
         restored_plan = CoursewarePlan.model_validate(restored_plan).model_dump()
-        service._validate_refs(draft, source, service._selected_pages(source, draft["pageStart"], draft["pageEnd"]))
+        service._validate_refs(draft, source, selected)
         service._validate_refs(restored_plan, source, source["pages"])
         store.create_chapter(chapter)
         for record, kind, record_id, cid in ((restored_plan, "plan", f"plan:{chapter_id}", None), (draft, "document", f"document:{courseware_id}", courseware_id)):

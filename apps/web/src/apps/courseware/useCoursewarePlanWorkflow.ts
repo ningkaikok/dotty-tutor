@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { ApiRequestError } from "../../api/client";
 import { listChapters, loadChapter } from "../../api/chapters";
@@ -25,14 +25,23 @@ export function useCoursewarePlanWorkflow() {
   const chapterId = params.get("chapterId") ?? "";
   const sourceJobId = params.get("sourceJobId") ?? "";
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
   const [profilesLoaded, setProfilesLoaded] = useState(false);
+  const [profilesError, setProfilesError] = useState("");
   const [uploads, setUploads] = useState<LibraryItem[]>([]);
   const [chapters, setChapters] = useState<ChapterSummary[]>([]);
   const [upload, setUpload] = useState<LibraryItem | null>(null);
+  const [uploadError, setUploadError] = useState("");
+  const [chaptersError, setChaptersError] = useState("");
   const [chapter, setChapter] = useState<ChapterManagement | null>(null);
   const [planLoaded, setPlanLoaded] = useState(false);
   const [plan, setPlan] = useState<CoursewarePlanView | null>(null);
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [documentsLoaded, setDocumentsLoaded] = useState(false);
+  const [documentsError, setDocumentsError] = useState("");
+  const [uploadDocuments, setUploadDocuments] = useState<Record<string, DocumentSummary[]>>({});
+  const [uploadDocumentErrors, setUploadDocumentErrors] = useState<string[]>([]);
+  const [uploadDocumentsLoading, setUploadDocumentsLoading] = useState(false);
   const [job, setJob] = useState<JobView | null>(null);
   const [jobPurpose, setJobPurpose] = useState<JobPurpose | null>(null);
   const [preparedChapters, setPreparedChapters] = useState<PreparedChapter[]>([]);
@@ -48,6 +57,37 @@ export function useCoursewarePlanWorkflow() {
   const [pageEnd, setPageEnd] = useState("");
   // Supplementing opens a new plan form over an approved plan; its lessons are retained server-side.
   const [supplementing, setSupplementing] = useState(false);
+  const [baseRefreshVersion, setBaseRefreshVersion] = useState(0);
+  const workspaceRequest = useRef(0);
+  const uploadDocumentsRequest = useRef(0);
+
+  const loadUploadCourseware = useCallback(async (id: string, relatedChapters: ChapterSummary[], signal?: AbortSignal) => {
+    const requestId = ++uploadDocumentsRequest.current;
+    const targets = relatedChapters.filter((item) => item.uploadId === id && item.teachingMode === "tutorial");
+    setUploadDocuments({});
+    setUploadDocumentErrors([]);
+    setUploadDocumentsLoading(true);
+    try {
+      const results = await Promise.allSettled(targets.map((item) => listChapterCourseware(item.chapterId, signal)));
+      if (signal?.aborted || requestId !== uploadDocumentsRequest.current) return;
+      const byChapter: Record<string, DocumentSummary[]> = {};
+      const failed: string[] = [];
+      results.forEach((result, index) => {
+        const chapterId = targets[index].chapterId;
+        if (result.status === "fulfilled") byChapter[chapterId] = result.value.items;
+        else failed.push(chapterId);
+      });
+      setUploadDocuments(byChapter);
+      setUploadDocumentErrors(failed);
+    } finally {
+      if (!signal?.aborted && requestId === uploadDocumentsRequest.current) setUploadDocumentsLoading(false);
+    }
+  }, []);
+
+  const reloadUploadCourseware = useCallback(() => {
+    if (uploadId) return loadUploadCourseware(uploadId, chapters);
+  }, [chapters, loadUploadCourseware, uploadId]);
+  const reloadMaterialLists = useCallback(() => setBaseRefreshVersion((version) => version + 1), []);
 
   const sourceCompleted = useCallback((result: unknown) => {
     const found = preparedChapterList(result);
@@ -59,16 +99,34 @@ export function useCoursewarePlanWorkflow() {
   }, [setParams]);
 
   const refreshWorkspace = useCallback(async (id: string) => {
+    const requestId = ++workspaceRequest.current;
+    const isCurrent = () => requestId === workspaceRequest.current;
     setLoading(true);
     setError("");
     setChapter(null);
     setPlan(null);
     setPlanLoaded(false);
     setSupplementing(false);
+    setJob(null);
+    setJobPurpose(null);
+    setDocuments([]);
+    setDocumentsLoaded(false);
+    setDocumentsError("");
     try {
       const loadedChapter = await loadChapter(id);
+      if (!isCurrent()) return;
       setChapter(loadedChapter);
       const [planResult, documentResult] = await Promise.allSettled([loadCoursewarePlan(id), listChapterCourseware(id)]);
+      if (!isCurrent()) return;
+      if (documentResult.status === "fulfilled") {
+        setDocuments(documentResult.value.items);
+        setDocumentsLoaded(true);
+        setDocumentsError("");
+      } else {
+        setDocuments([]);
+        setDocumentsLoaded(false);
+        setDocumentsError(coursewareErrorMessage(documentResult.reason, "课件列表暂时无法读取。"));
+      }
       if (planResult.status === "fulfilled") {
         const current = planView(planResult.value);
         setPlan(current);
@@ -79,6 +137,7 @@ export function useCoursewarePlanWorkflow() {
         setPlanLoaded(true);
         if (current.generationJobId) {
           const resumed = await loadBackgroundJob(current.generationJobId);
+          if (!isCurrent()) return;
           setJob(resumed);
           if (resumed.status === "failed") setError(typeof resumed.lastError?.message === "string" ? resumed.lastError.message : "自动制作未能完成，请重试或调整所选范围。");
           setJobPurpose("plan");
@@ -92,12 +151,10 @@ export function useCoursewarePlanWorkflow() {
         setPageEnd(shortSource ? String(source.pageEnd) : "");
         setPlanLoaded(true);
       }
-      if (documentResult.status === "fulfilled") setDocuments(documentResult.value.items);
-      else setDocuments([]);
     } catch (requestError) {
-      setError(coursewareErrorMessage(requestError, "教材章节暂时无法读取。"));
+      if (isCurrent()) setError(coursewareErrorMessage(requestError, "教材章节暂时无法读取。"));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, []);
 
@@ -105,24 +162,81 @@ export function useCoursewarePlanWorkflow() {
     const controller = new AbortController();
     setLoading(true);
     setError("");
+    setProfilesLoading(true);
+    setProfilesLoaded(false);
+    setProfilesError("");
+    setUploadError("");
+    setChaptersError("");
+    setUpload(null);
+    setUploads([]);
+    setChapters([]);
     Promise.allSettled([listCoursewareProfiles(controller.signal), loadLibrary(), listChapters()]).then(([profileResult, uploadResult, chapterResult]) => {
       if (controller.signal.aborted) return;
-      setProfilesLoaded(profileResult.status === "fulfilled");
-      if (profileResult.status === "fulfilled") setProfiles(profileResult.value.items);
-      else setError(coursewareErrorMessage(profileResult.reason, "学科配置暂时无法读取。"));
+      if (profileResult.status === "fulfilled") {
+        setProfiles(profileResult.value.items);
+        setProfilesLoading(false);
+        setProfilesLoaded(true);
+        setProfilesError("");
+      } else {
+        const message = coursewareErrorMessage(profileResult.reason, "学科配置暂时无法读取。");
+        setProfilesLoading(false);
+        setProfilesLoaded(false);
+        setProfilesError(message);
+        setError(message);
+      }
       if (uploadResult.status === "fulfilled") {
         setUploads(uploadResult.value);
-        setUpload(uploadResult.value.find((item) => item.uploadId === uploadId) ?? null);
-      } else if (uploadId) setError(coursewareErrorMessage(uploadResult.reason, "教材库暂时无法读取。"));
-      if (chapterResult.status === "fulfilled") setChapters(chapterResult.value);
+        const selectedUpload = uploadResult.value.find((item) => item.uploadId === uploadId) ?? null;
+        setUpload(selectedUpload);
+        setUploadError(uploadId && !selectedUpload ? "找不到所选上传文件；文件可能已删除或当前账号无权读取。" : "");
+      } else {
+        const message = coursewareErrorMessage(uploadResult.reason, "教材库暂时无法读取。");
+        setUploadError(message);
+        if (uploadId) setError(message);
+      }
+      if (chapterResult.status === "fulfilled") {
+        setChapters(chapterResult.value);
+        setChaptersError("");
+      } else {
+        setChapters([]);
+        setChaptersError(coursewareErrorMessage(chapterResult.reason, "教材章节暂时无法读取。"));
+      }
       setLoading(false);
     });
     return () => controller.abort();
-  }, [uploadId]);
+  }, [baseRefreshVersion, uploadId]);
 
   useEffect(() => {
-    if (chapterId) void refreshWorkspace(chapterId);
-  }, [chapterId, refreshWorkspace]);
+    if (!uploadId || loading) {
+      if (!uploadId) {
+        uploadDocumentsRequest.current += 1;
+        setUploadDocuments({});
+        setUploadDocumentErrors([]);
+        setUploadDocumentsLoading(false);
+      }
+      return;
+    }
+    const controller = new AbortController();
+    void loadUploadCourseware(uploadId, chapters, controller.signal);
+    return () => controller.abort();
+  }, [chapters, loadUploadCourseware, loading, uploadId]);
+
+  useEffect(() => {
+    if (chapterId) {
+      void refreshWorkspace(chapterId);
+      return;
+    }
+    workspaceRequest.current += 1;
+    setChapter(null);
+    setPlan(null);
+    setPlanLoaded(false);
+    setSupplementing(false);
+    setDocuments([]);
+    setDocumentsLoaded(false);
+    setDocumentsError("");
+    setJob(null);
+    setJobPurpose(null);
+  }, [chapterId, uploadId, refreshWorkspace]);
 
   useEffect(() => {
     if (!uploadId || !sourceJobId) return;
@@ -332,7 +446,11 @@ export function useCoursewarePlanWorkflow() {
     clearWorkflow();
     setParams({ chapterId: id });
   };
-  const clearWorkflow = () => { setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setSupplementing(false); setDocuments([]); setChapter(null); setUpload(null); setError(""); setNotice(""); };
+  const clearWorkflow = () => {
+    workspaceRequest.current += 1;
+    setJob(null); setJobPurpose(null); setPreparedChapters([]); setPlan(null); setPlanLoaded(false); setSupplementing(false);
+    setDocuments([]); setDocumentsLoaded(false); setDocumentsError(""); setChapter(null); setUpload(null); setError(""); setNotice("");
+  };
 
   const retryAutomatic = async () => {
     if (!chapter || !plan) return;
@@ -379,7 +497,8 @@ export function useCoursewarePlanWorkflow() {
     retrySource,
     retryPlan,
     automaticGeneration: params.get("mode") === "automatic" || Boolean(plan?.generationAudit?.automaticGeneration),
-    uploadId, chapterId, profiles, profilesLoaded, uploads, chapters, upload, chapter, plan, documents,
+    uploadId, chapterId, profiles, profilesLoading, profilesLoaded, profilesError, uploads, chapters, upload, uploadError, chaptersError, chapter, plan, documents,
+    documentsLoaded, documentsError, uploadDocuments, uploadDocumentErrors, uploadDocumentsLoading, reloadUploadCourseware, reloadMaterialLists,
     job, jobPurpose, preparedChapters, loading, busy, error, notice, audience, setAudience,
     languagePolicy, setLanguagePolicy, durationMinutes, setDurationMinutes, objectives, setObjectives,
     pageStart, setPageStart, pageEnd, setPageEnd, startSourcePreparation, startPlan, savePlan, approvePlan,

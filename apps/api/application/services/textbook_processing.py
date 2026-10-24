@@ -46,6 +46,7 @@ from domain.questions.source import (
     question_key,
     split_question_sources,
 )
+from infrastructure.files.file_storage import FileStorageError
 from observability import log_event
 from run_audit import RunAudit, build_run_config
 from textbook_ocr_pipeline import resolve_routed_ocr_source
@@ -190,6 +191,9 @@ class TextbookProcessingService:
                "status": "complete", "progress": 100, "message": "教材原文已识别",
                "startedAt": now, "updatedAt": now, "completedAt": now, "sourceText": source}
         job["result"] = material_preview(job, source, ocr_run, detection, page_count)
+        file_assets = getattr(self.store, "file_assets", None)
+        if file_assets is not None and getattr(file_assets, "enabled", False):
+            file_assets.persist_upload_namespace(upload_id, directory)
         self.store.save_job(job)
         self.upload_registry.uploads[upload_id] = job
         return job["result"]
@@ -255,12 +259,32 @@ class TextbookProcessingService:
         """
         source_path = job["directory"] / "source.pdf"
         digest = hashlib.sha256()
+        file_assets = getattr(self.store, "file_assets", None)
+        if file_assets is not None and getattr(file_assets, "enabled", False):
+            try:
+                file_assets.restore_upload_file(job["uploadId"], source_path)
+            except FileNotFoundError:
+                pass
+            except FileStorageError as error:
+                raise HTTPException(status_code=503, detail=f"教材原件暂不可恢复：{error}") from error
         if source_path.is_file() and source_path.stat().st_size == job["size"]:
             with source_path.open("rb") as source_file:
                 while block := source_file.read(1024 * 1024):
                     self._check_cancel(cancellation_check)
                     digest.update(block)
-            return source_path, digest.hexdigest()
+            source_fingerprint = digest.hexdigest()
+            if file_assets is not None and getattr(file_assets, "enabled", False):
+                file_assets.persist_upload_file(job["uploadId"], source_path, content_type="application/pdf")
+            return source_path, source_fingerprint
+
+        if file_assets is not None and getattr(file_assets, "enabled", False):
+            for chunk_path in chunk_paths:
+                try:
+                    file_assets.restore_upload_file(job["uploadId"], chunk_path)
+                except FileNotFoundError:
+                    continue
+                except FileStorageError as error:
+                    raise HTTPException(status_code=503, detail=f"PDF 分块暂不可恢复：{error}") from error
 
         missing = [index for index, path in enumerate(chunk_paths) if not path.exists()]
         if missing:
@@ -284,6 +308,9 @@ class TextbookProcessingService:
             if written != job["size"]:
                 raise HTTPException(status_code=400, detail="合并后的 PDF 大小校验失败")
             os.replace(partial_path, source_path)
+            file_assets = getattr(self.store, "file_assets", None)
+            if file_assets is not None and getattr(file_assets, "enabled", False):
+                file_assets.persist_upload_file(job["uploadId"], source_path, content_type="application/pdf")
         except Exception:
             partial_path.unlink(missing_ok=True)
             raise
@@ -306,6 +333,16 @@ class TextbookProcessingService:
         时才重新启动 Provider，避免一次修复无谓地重复 MinerU。
         """
         source_path = job["directory"] / "source.pdf"
+        file_assets = getattr(self.store, "file_assets", None)
+        if file_assets is not None and getattr(file_assets, "enabled", False):
+            try:
+                file_assets.restore_upload_file(upload_id, source_path)
+            except FileNotFoundError as error:
+                raise HTTPException(status_code=409, detail="教材原 PDF 不可恢复，请重新上传") from error
+            except FileStorageError as error:
+                raise HTTPException(status_code=503, detail=f"教材原 PDF 暂不可恢复：{error}") from error
+        if not source_path.is_file():
+            raise HTTPException(status_code=409, detail="教材原 PDF 不可用，请重新上传")
         start_page = batch["startPage"] - 1
         end_page = batch["endPage"] - 1
         ocr_start_page = max(0, start_page - 1)

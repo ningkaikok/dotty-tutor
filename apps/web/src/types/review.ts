@@ -12,7 +12,7 @@ export interface ReviewTask {
   learnerId: string;
   intervalDays: number;
   dueAt: number;
-  status: "scheduled" | "ready" | "completed" | "cancelled" | "superseded";
+  status: "scheduled" | "generating" | "ready" | "completed" | "cancelled" | "superseded";
   questionPayload?: QuestionPayload;
   response: StructuredAnswerInput | Record<string, never>;
   assessment?: "correct" | "partial" | "incorrect";

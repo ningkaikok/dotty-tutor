@@ -49,15 +49,15 @@ export async function retryMistakeImportJob(jobId: string): Promise<BackgroundJo
   );
 }
 
-export async function loadMistakes(learnerId: string = currentLearnerId()): Promise<MistakeItem[]> {
+export async function loadMistakes(learnerId: string = currentLearnerId(), signal?: AbortSignal): Promise<MistakeItem[]> {
   const result = await parse<{ items: MistakeItem[] }>(
-    await fetch(`/api/mistakes?learnerId=${encodeURIComponent(learnerId)}`, { cache: "no-store" }),
+    await fetch(`/api/mistakes?learnerId=${encodeURIComponent(learnerId)}`, { cache: "no-store", signal }),
   );
   return result.items;
 }
 
-export async function loadMistake(mistakeId: string): Promise<MistakeItem> {
-  return parse<MistakeItem>(await fetch(`/api/mistakes/${mistakeId}`, { cache: "no-store" }));
+export async function loadMistake(mistakeId: string, signal?: AbortSignal): Promise<MistakeItem> {
+  return parse<MistakeItem>(await fetch(`/api/mistakes/${encodeURIComponent(mistakeId)}`, { cache: "no-store", signal }));
 }
 
 export async function confirmMistake(mistakeId: string, input: MistakeConfirmation): Promise<MistakeItem> {

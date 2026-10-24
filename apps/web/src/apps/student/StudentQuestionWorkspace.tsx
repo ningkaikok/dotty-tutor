@@ -21,9 +21,12 @@ interface StudentQuestionWorkspaceProps {
   lastAssessment?: ExerciseAttemptInput["assessment"];
   /** 答对后到自动切题之间的等待窗口；为真时禁止重复提交，并露出手动推进按钮。 */
   autoAdvancing: boolean;
+  /** 连续学习反馈停留时为学生保留暂停自动推进的能力。 */
+  autoAdvancePaused: boolean;
   /** 最后一题答对后显示完成页之前的短暂停留。 */
   finishingPaper: boolean;
   onAdvanceNow: () => void;
+  onPauseAutoAdvance: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSelectOption: (label: string, answerText: string) => void;
@@ -60,8 +63,10 @@ export function StudentQuestionWorkspace({
   hasSubmitted,
   lastAssessment,
   autoAdvancing,
+  autoAdvancePaused,
   finishingPaper,
   onAdvanceNow,
+  onPauseAutoAdvance,
   onPrevious,
   onNext,
   onSelectOption,
@@ -174,9 +179,21 @@ export function StudentQuestionWorkspace({
 
       {autoAdvancing && (
         <div className="student-auto-advance">
-          <button className="student-submit-button" onClick={onAdvanceNow}>
-            {finishingPaper ? "查看完成结果 →" : "继续下一题 →"}
-          </button>
+          {autoAdvancePaused ? (
+            <>
+              <span role="status">自动继续已暂停，这道题的反馈会保留。</span>
+              <button className="student-submit-button" onClick={onAdvanceNow}>
+                {finishingPaper ? "继续下一项 →" : "继续下一题 →"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="student-submit-button" onClick={onAdvanceNow}>
+                {finishingPaper ? "继续下一项 →" : "继续下一题 →"}
+              </button>
+              <button type="button" onClick={onPauseAutoAdvance}>暂停自动继续</button>
+            </>
+          )}
         </div>
       )}
 

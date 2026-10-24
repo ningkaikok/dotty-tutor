@@ -33,6 +33,11 @@ from application.services.tutor_input_service import TutorInputService
 from application.services.tutor_model_evaluation import TutorModelEvaluationService
 from application.services.tutor_search_service import TutorSearchService
 from application.services.voice_tutor import VoiceTutorService
+from application.services.whole_book import WholeBookService
+from application.whole_book_jobs import (
+    add_whole_book_completion_hooks,
+    build_whole_book_registry,
+)
 from domain.questions.pipeline import build_question_content_blocks
 from domain.questions.student_view import student_mistake_item
 from infrastructure.runtime.model_runtime import ModelRuntime
@@ -63,6 +68,7 @@ from publication_revision import PublicationRevisionService
 from routers.auth_routes import build_auth_router
 from routers.chapter_routes import build_chapter_router
 from routers.classroom_routes import build_classroom_router
+from routers.continuous_learning_routes import build_continuous_learning_router
 from routers.courseware_routes import build_courseware_router
 from routers.courseware_search_routes import build_courseware_search_router
 from routers.courseware_unit_routes import build_courseware_unit_router
@@ -84,6 +90,7 @@ from routers.tutor_input_routes import build_tutor_input_router
 from routers.tutor_search_routes import build_tutor_search_router
 from routers.tutoring_routes import build_tutoring_router
 from routers.voice_routes import build_voice_router
+from routers.whole_book_routes import build_whole_book_router
 from run_audit import RunAudit
 from textbook_ocr import resolve_ocr_text
 from variation_service import VariationService
@@ -142,7 +149,7 @@ app.include_router(build_runtime_router(
     tutor_model_evaluation=tutor_model_evaluation,
 ))
 # 错题域复用同一引擎；学习路由通过显式依赖把试卷错答写入错题本，不让 app.py 承担业务判断。
-mistake_store = MistakeStore(engine=store.engine, data_root=store.root)
+mistake_store = MistakeStore(engine=store.engine, data_root=store.root, file_assets=store.file_assets)
 assignment_planning_service = AssignmentPlanningService(
     store=store,
     planning_store=AssignmentPlanningStore(engine=store.engine),
@@ -219,6 +226,14 @@ ai_review_service = CoursewareAiReviewService(
     quality_review=quality_review_service,
 )
 courseware_service.automation = CoursewareAutomationService(courseware=courseware_service, reviewer=ai_review_service)
+whole_book_service = WholeBookService(
+    store=store,
+    jobs=background_job_store,
+    material_courses=source_preparation_service,
+    courseware=courseware_service,
+)
+app.state.whole_book_service = whole_book_service
+app.include_router(build_whole_book_router(whole_book_service))
 app.include_router(build_courseware_router(
     courseware_service, media_service=lesson_media_service, voice_service=voice_service,
     ai_review_service=ai_review_service,
@@ -266,7 +281,9 @@ job_registry = merge_registries(
     build_ai_review_registry(ai_review_service),
     build_lesson_media_registry(lesson_media_service),
     build_quality_review_runs_registry(quality_review_runs_service),
+    build_whole_book_registry(whole_book_service),
 )
+job_registry = add_whole_book_completion_hooks(job_registry, whole_book_service)
 
 app.include_router(build_tutoring_router(
     mistake_store=mistake_store,
@@ -302,4 +319,11 @@ app.include_router(build_review_router(
     review_store=review_store,
     variation_service=variation_service,
     engine=store.engine,
+))
+app.include_router(build_continuous_learning_router(
+    assignment_store=store,
+    learning_store=store,
+    mistake_store=mistake_store,
+    review_store=review_store,
+    variation_service=variation_service,
 ))

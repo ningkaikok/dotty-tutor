@@ -1,5 +1,6 @@
 import "./apps/chapters/chapters.css";
 import { Link, useSearchParams } from "react-router";
+import { AppHeader, Badge, PageHeader } from "./components/ui";
 import { PipelinePanel } from "./apps/textbook/import/PipelinePanel";
 import { RuntimeSettings } from "./apps/textbook/import/RuntimeSettings";
 import { TextbookLibrary } from "./apps/textbook/import/TextbookLibrary";
@@ -23,29 +24,17 @@ export function TextbookImport({ onContinue, onExit }: TextbookImportProps) {
 
   return (
     <main className="import-shell">
-      <header className="import-header">
-        {onExit && <button className="route-back-button" onClick={onExit}>← 我的教材</button>}
-        <div className="brand-mark">D</div>
-        <div>
-          <strong>Dotty</strong>
-          <span>内容生产工作台</span>
-        </div>
-        <Link to="/studio/prompts" className="metrics-link">教学策略 · 提示词管理 →</Link>
-        {/* 只读指标面板入口；学生端不可见 */}
-        <Link to="/studio/metrics" className="metrics-link">
-          模型调用指标 <span aria-hidden="true">→</span>
-        </Link>
-        <Link to="/studio/dependency-preflight" className="metrics-link">
-          环境依赖自检 <span aria-hidden="true">→</span>
-        </Link>
-        <span className="demo-badge">{PRODUCT_TERMS.demoBadge}</span>
-      </header>
+      <AppHeader className="materials-header import-header" subtitle="教材与试卷导入" backTo="/studio" onBack={onExit} backLabel="我的教材" actions={<div className="import-header-actions">
+        <details className="import-tools"><summary>工具</summary><nav aria-label="内容制作工具">
+          <Link to="/studio/prompts">教学策略与提示词</Link>
+          <Link to="/studio/metrics">模型调用指标</Link>
+          <Link to="/studio/dependency-preflight">环境依赖自检</Link>
+        </nav></details>
+        <Badge tone="neutral">{PRODUCT_TERMS.demoBadge}</Badge>
+      </div>} />
 
-      <section className="import-intro">
-        <span className="eyebrow">教材数字化</span>
-        <h1>上传试卷或教材</h1>
-        <p>支持 PDF 与图片。试卷继续识别原题；教材上传后选择学科和页码范围，自动制作教程，最后一次预览确认即可。</p>
-      </section>
+      <PageHeader className="import-page-heading" eyebrow="教材数字化" title="上传试卷或教材"
+        description="支持 PDF 与图片。试卷继续识别原题；教材识别后可选择学科与页码，进入课件制作流程。" />
 
       <details className="chapter-advanced"><summary>识别与模型设置</summary>
       <RuntimeSettings

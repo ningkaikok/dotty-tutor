@@ -1,4 +1,4 @@
-import { Button } from "../../components/ui";
+import { Button, PageHeader } from "../../components/ui";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { loadLibrary } from "../../api/textbooks";
@@ -15,6 +15,7 @@ import { useChapterStudioIndex } from "./useChapterStudioIndex";
 import { CaseReviewPanel } from "../quality-review/CaseReviewPanel";
 import { MediaStudioPanel } from "../media/MediaStudioPanel";
 import { useChapterPublishedMedia } from "./useChapterPublishedMedia";
+import { MaterialsHeader } from "../materials/MaterialsHeader";
 import type { QualityReviewInboxItem } from "../../api/qualityReviews";
 import "./chapters.css";
 
@@ -55,8 +56,9 @@ function ChapterCreator() {
 
   return (
     <main className="chapter-shell">
-      <header className="chapter-topbar"><Button type="button" onClick={() => navigate("/studio")}>← 我的教材</Button><strong>Dotty · 课程编辑</strong></header>
-      <section className="chapter-page-heading"><span className="eyebrow">1 · 选择教材内容</span><h1>制作一节课程</h1><p>选择教材页或粘贴原文。保存后生成草稿，确认内容无误再发布。</p></section>
+      <MaterialsHeader backTo="/studio" backLabel="我的教材" subtitle="课程制作" />
+      <PageHeader className="chapter-page-heading" eyebrow="1 · 选择教材内容" title="制作一节课程"
+        description="选择教材页或粘贴原文。保存后生成草稿，确认内容无误再发布。" />
       <div className="chapter-creator-grid chapter-creator-simple">
         <section className="chapter-panel">
           <h2>这节课讲什么？</h2>
@@ -102,8 +104,8 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
     loadLibrary().then(setLibraries).catch((requestError) => setLibraryError(requestError instanceof Error ? requestError.message : "教材库读取失败"));
   }, []);
 
-  if (loading && !chapter) return <main className="chapter-shell"><p role="status">正在读取章节…</p></main>;
-  if (!chapter) return <main className="chapter-shell"><div className="chapter-error" role="alert">{error || "章节不存在"}<Button type="button" onClick={() => void reload()}>重试</Button></div></main>;
+  if (loading && !chapter) return <main className="chapter-shell"><MaterialsHeader backTo="/studio" backLabel="我的教材" subtitle="课程制作" /><p className="chapter-route-feedback" role="status">正在读取章节…</p></main>;
+  if (!chapter) return <main className="chapter-shell"><MaterialsHeader backTo="/studio" backLabel="我的教材" subtitle="课程制作" /><div className="chapter-error" role="alert">{error || "章节不存在"}<Button type="button" onClick={() => void reload()}>重试</Button></div></main>;
 
   const source = chapter.sourceRevisions[chapter.sourceRevisions.length - 1];
   const sourceReviewCaseId = searchParams.get("sourceReviewCaseId") ?? undefined;
@@ -129,15 +131,11 @@ function ChapterWorkspace({ chapterId }: { chapterId: string }) {
 
   return (
     <main className="chapter-shell">
-      <header className="chapter-topbar">
-        <Button type="button" onClick={() => navigate("/studio")}>← 我的教材</Button>
-        <strong>Dotty · 课程编辑</strong>
-        <Button type="button" onClick={() => void reload()} disabled={loading}>刷新</Button>
-      </header>
-      <section className="chapter-page-heading">
-        <span className="eyebrow">{chapter.teachingMode === "tutorial" ? "教程章节" : chapter.subject === "math" ? "数学章节" : "英语阅读"} · 版本 {chapter.version}</span>
-        <h1>{chapter.title}</h1>
-        <p>状态：{({ draft: "草稿", needs_review: "需复核", in_review: "审核中", published: "已发布" } as const)[chapter.status]} · 来源修订 {chapter.sourceRevisions.length} 个 · 发布历史 {chapter.publications.length} 个</p>
+      <MaterialsHeader backTo="/studio" backLabel="我的教材" subtitle="课程制作" actions={<Button type="button" onClick={() => void reload()} disabled={loading}>刷新</Button>} />
+      <PageHeader className="chapter-page-heading" eyebrow={`${chapter.teachingMode === "tutorial" ? "教程章节" : chapter.subject === "math" ? "数学章节" : "英语阅读"} · 版本 ${chapter.version}`}
+        title={chapter.title}
+        description={`状态：${({ draft: "草稿", needs_review: "需复核", in_review: "审核中", published: "已发布" } as const)[chapter.status]} · 来源修订 ${chapter.sourceRevisions.length} 个 · 发布历史 ${chapter.publications.length} 个`} />
+      <section className="chapter-workflow-overview">
         <ol className="chapter-steps" aria-label="课程制作进度">
           <li aria-current={!currentLessons.length ? "step" : undefined}>1 生成草稿</li>
           <li aria-current={currentLessons.length && !canPublish && chapter.status !== "published" ? "step" : undefined}>2 复核内容</li>

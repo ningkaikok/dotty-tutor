@@ -58,13 +58,16 @@ class PostgresIntegrationTests(PostgresTestCase):
         from persistence.mistake_store import MistakeStore
 
         store = MistakeStore(engine=self.store.engine, data_root=Path(self.store.root))
+        mistake_id = f"pg-{self.run_id}-1"
+        source_path = store.item_directory(mistake_id) / "source.jpg"
+        source_path.write_bytes(b"test source image")
         item = {
-            "mistakeId": f"pg-{self.run_id}-1",
+            "mistakeId": mistake_id,
             "learnerId": f"pg-{self.run_id}",
-            "sourceFilename": "x.jpg",
+            "sourceFilename": "source.jpg",
             "contentType": "image/jpeg",
-            "sourceImagePath": "/data/x.jpg",
-            "sourceImageUrl": f"/api/mistakes/{self.run_id}-1/source",
+            "sourceImagePath": str(source_path),
+            "sourceImageUrl": f"/api/mistakes/{mistake_id}/source",
             "questionPayload": {
                 "question": {
                     "id": "q-pg",

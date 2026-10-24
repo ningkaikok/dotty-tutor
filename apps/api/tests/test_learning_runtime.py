@@ -464,11 +464,47 @@ class LearningRouteTests(PostgresTestCase):
             repeated = client.post(f"/api/learning/sessions/{session['sessionId']}/attempts", json=attempt)
 
             self.assertEqual(first.status_code, 200)
-            self.assertEqual(first.json()["autoMistake"]["status"], "pending_confirmation")
+            self.assertEqual(first.json()["autoMistake"]["status"], "unmastered")
             self.assertIsNone(first.json()["autoMistake"]["errorReason"])
+            self.assertIsNone(first.json()["autoMistake"]["confirmedAt"])
             self.assertEqual(first.json()["autoMistake"]["contentType"], "application/vnd.dotty.publication+json")
             self.assertEqual(repeated.json()["autoMistake"]["mistakeId"], first.json()["autoMistake"]["mistakeId"])
             self.assertEqual(len(mistake_store.list("student-1")), 1)
+
+    def test_user_starts_an_older_published_mistake_without_faking_confirmation(self) -> None:
+        # Given a legacy paper mistake in the old pending-confirmation state
+        with TemporaryDirectory() as directory:
+            store = AppStore(database_url=self.database_url, data_root=directory)
+            mistakes = MistakeStore(engine=store.engine, data_root=directory)
+            self.addCleanup(store.close)
+            mistakes.create({
+                "mistakeId": "legacy-paper-mistake",
+                "learnerId": "student-1",
+                "sourceFilename": "已发布练习",
+                "contentType": "application/vnd.dotty.publication+json",
+                "sourceImagePath": "",
+                "sourceImageUrl": "",
+                "questionPayload": {"question": {"id": "paper-question", "prompt": "原题"}},
+                "guideCards": [],
+                "ocrRun": {},
+                "modelRun": {},
+                "originalAnswer": "错误答案",
+                "chapter": "章节",
+                "knowledgePoint": "知识点",
+                "status": "pending_confirmation",
+                "confirmedAt": None,
+                "createdAt": 1,
+                "updatedAt": 1,
+            })
+
+            # When explicit learning start upgrades this trusted source record
+            upgraded = mistakes.activate_published_attempt("legacy-paper-mistake", "student-1")
+
+            # Then only workflow status changes; student-owned evidence remains absent
+            self.assertEqual(upgraded["status"], "unmastered")
+            self.assertIsNone(upgraded["confirmedAt"])
+            self.assertIsNone(upgraded["errorReason"])
+            self.assertIsNone(mistakes.activate_published_attempt("legacy-paper-mistake", "student-2"))
 
 
 if __name__ == "__main__":

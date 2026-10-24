@@ -68,6 +68,12 @@ sudo chmod 600 /etc/dotty-tutor/api.env
 ```dotenv
 DATABASE_URL=postgresql+psycopg://dotty_app:replace-with-url-encoded-password@db.example.com:5432/dotty_tutor?sslmode=require
 DOTTY_DATA_DIR=/srv/dotty-tutor/data
+# Keep local behavior unless private remote file recovery is configured explicitly.
+DOTTY_FILE_STORAGE_BACKEND=local
+# DOTTY_FILE_STORAGE_BACKEND=supabase
+# DOTTY_SUPABASE_URL=https://project-ref.supabase.co
+# DOTTY_SUPABASE_STORAGE_BUCKET=dotty-private
+# DOTTY_SUPABASE_SERVICE_ROLE_KEY=inject-from-the-server-secret-store
 CORS_ORIGINS=https://tutor.example.com
 TRUSTED_HOSTS=tutor.example.com
 
@@ -95,6 +101,7 @@ TEACHER_BOOTSTRAP_SECRET=generate-at-least-32-random-characters-and-store-as-a-s
 
 - 数据库连接串和云服务密钥只放在服务器密钥文件或部署平台 Secrets 中。
 - `DOTTY_DATA_DIR` 必须位于持久化磁盘。
+- API 与 Worker 必须使用相同的 `DOTTY_FILE_STORAGE_BACKEND`、Supabase 项目地址、桶和服务端密钥。
 - 正式 API、Worker 和业务脚本必须显式配置 PostgreSQL；`DOTTY_DATA_DIR` 只决定文件资产目录，缺少数据库配置会在启动前失败，不会回退到本机 socket 或本地文件。
 - `CORS_ORIGINS` 填完整来源地址；`TRUSTED_HOSTS` 填域名，不使用任意通配符。
 - 默认 `AUTH_MODE=demo` 只供可信本机操作者和完全合成数据使用，不能提供学生身份隔离。Compose 的 Web 与 PostgreSQL 端口绑定 `127.0.0.1`。
@@ -105,6 +112,22 @@ TEACHER_BOOTSTRAP_SECRET=generate-at-least-32-random-characters-and-store-as-a-s
   `uv run python -m persistence.migration_cli preflight`、`upgrade` 和 `verify`，顺序固定为
   `backup → preflight → upgrade → verify → deploy/restart`。每个 worktree/session 使用独立 `POSTGRES_DB`，
   不得共享可写开发库。后端数据库测试统一通过专用 admin 库创建一次性 PostgreSQL 测试库；测试建库不应被当作生产升级步骤。
+
+## 可选私有 Supabase 文件存储
+
+默认 `DOTTY_FILE_STORAGE_BACKEND=local` 保留现有目录行为。启用 Supabase 时，先在目标项目手动创建一个**私有** Storage 桶（默认名为 `dotty-private`），再通过服务器 Secret 同时注入 API 和 Worker 的配置。首次远端读写时会按需检查桶仍为私有；服务端密钥不会发送到浏览器或业务 API 响应，也不会自动创建公开桶或购买升级套餐。
+
+Dotty 把文件拆成不超过 4 MiB 的不可变对象。每个对象都低于 Supabase Free 项目的 50 MB 单对象限制；完整 PDF 不受该对象限制缩小，实际范围仍由 Dotty 的上传协议控制。[Supabase 文件限制](https://supabase.com/docs/guides/storage/uploads/file-limits)；写入通过 [Storage 对象 API](https://supabase.github.io/storage/) 完成。数据库只在所有分块上传并读回 SHA-256 校验后登记文件清单；恢复仍走 Dotty 原有的上传、课件和错题身份检查。
+
+已有本机数据需要显式、可重复地补存。先只读盘点，再执行迁移；命令不删除本地原件，失败的记录会单独计数：
+
+```bash
+cd /opt/dotty-tutor/apps/api
+uv run python -m infrastructure.files.storage_migration inspect
+uv run python -m infrastructure.files.storage_migration migrate
+```
+
+`migrate` 需要有效的 PostgreSQL 配置、Supabase 私有桶和服务端密钥。运行期间仍使用本机缓存，API/Worker 重启后可以在新的 `DOTTY_DATA_DIR` 中按需恢复原 PDF、OCR/题图和错题照片；只有远端校验成功的文件才进入清单。远端未配置时不会声称已有本机文件已云端持久化。
 
 ## 启动前检查
 

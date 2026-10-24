@@ -65,6 +65,18 @@ Qwen3-TTS 同理：如果其独立环境或模型存放在其他 checkout，在 
 `DOTTY_DATA_DIR` 默认是当前 checkout 的 `data/`，如需沿用其他 checkout 的上传文件，也要在 `.env.local` 中设为原文件目录。
 数据库和文件目录都不会因启动脚本自动迁移或合并。
 
+### 可选远端文件恢复
+
+本地开发默认使用 `DOTTY_FILE_STORAGE_BACKEND=local`，不需要云端凭据。要单独演示缓存丢失后的恢复，需在 `.env.local` 为 API 和 Worker 同时设置 `DOTTY_FILE_STORAGE_BACKEND=supabase`、`DOTTY_SUPABASE_URL`、`DOTTY_SUPABASE_STORAGE_BUCKET` 和仅服务端可见的 `DOTTY_SUPABASE_SERVICE_ROLE_KEY`，并先在 Supabase 控制台创建同名私有桶。服务会拒绝公开桶；密钥不要放入 Vite、浏览器、请求参数或提交内容。
+
+启用后，每个文件拆为至多 4 MiB 的私有 Storage 对象，完整 PDF 不受该单对象尺寸限制。当前电脑上的本机原件不会自动搬迁：先在 `apps/api` 只读检查，再显式运行可重复迁移命令。迁移不删除本地原件，也不会代替真实部署的生产存储验收。
+
+```bash
+cd apps/api
+uv run python -m infrastructure.files.storage_migration inspect
+uv run python -m infrastructure.files.storage_migration migrate
+```
+
 前端单元测试使用 Vitest（`pnpm test`，纯函数模块优先，组件测试按需引入 jsdom）。
 本地提交前检查可选用 [pre-commit](https://pre-commit.com/)：`pip install pre-commit && pre-commit install`，
 钩子会在提交时自动运行 ruff 与 eslint（与 CI 相同的命令；未安装也不影响推送，CI 仍是最终门禁）。
@@ -425,6 +437,10 @@ pwsh scripts/upgrade-local.ps1 -RestartApi  # 另外只重启命令行为 uvicor
 | `POSTGRES_DB` | `dotty_tutor` | 数据库名称 |
 | `POSTGRES_SSLMODE` | 空 | 云数据库可设为 `require` |
 | `DOTTY_DATA_DIR` | 项目下 `data/` | 仅用于 PDF、Markdown 和题图目录，不决定数据库 |
+| `DOTTY_FILE_STORAGE_BACKEND` | `local` | `local` 保持本机目录；`supabase` 启用远端私有文件清单与缓存恢复 |
+| `DOTTY_SUPABASE_URL` | 空 | 远端 Supabase 项目 URL；仅 API/Worker 读取 |
+| `DOTTY_SUPABASE_SERVICE_ROLE_KEY` | 空 | 仅服务器存储密钥；绝不配置到 Web 前端 |
+| `DOTTY_SUPABASE_STORAGE_BUCKET` | `dotty-private` | 必须预先创建且设为私有的 Storage 桶 |
 | `CORS_ORIGINS` | 本地 Vite 地址 | 允许访问 API 的来源列表 |
 | `TRUSTED_HOSTS` | 空 | 可选可信 Host 列表 |
 | `MODEL_PROVIDER` | `codex` | `ollama`、`codex` 或 `mock` |

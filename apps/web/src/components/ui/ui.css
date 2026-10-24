@@ -56,7 +56,7 @@
 
 .ui-app-header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 64px; margin-bottom: 18px; }
 .ui-brand-mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: var(--radius-md); background: var(--c-ink); color: var(--c-surface); font-size: 22px; font-weight: 900; }
-.ui-brand { display: grid; gap: 3px; }
+.ui-brand { display: grid; flex: 1 1 0; min-width: 0; gap: 3px; }
 .ui-brand strong { font-size: 18px; }
 .ui-brand span { color: var(--c-ink-soft); font-size: 13px; }
 .ui-header-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }

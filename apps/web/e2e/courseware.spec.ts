@@ -55,7 +55,7 @@ function chapter() {
   };
 }
 
-test("user Given unattended production When reopening the lesson during checking Then it becomes playable without any review or publish click", async ({ page: browser }) => {
+test("user Given unattended production When reopening the lesson during checking Then the published lesson is directly teachable without another publish action", async ({ page: browser }) => {
   let finished = false;
   const mutations: string[] = [];
   await browser.route("**/api/**", async (route) => {
@@ -67,7 +67,7 @@ test("user Given unattended production When reopening the lesson during checking
     if (path === "/api/auth/config") return json({ protected: false });
     if (path === `/api/courseware/${coursewareId}`) return json({
       ...document(finished ? "published" : "draft"), sourceDistributionScope: "private",
-      automation: { status: finished ? "ready" : "checking", repairs: {}, message: finished ? "教程已完成，可直接打开授课。" : "正在自动检查内容、答案与教材原页。" },
+      automation: finished ? null : { status: "checking", repairs: {}, message: "正在自动检查内容、答案与教材原页。" },
     });
     return json({ detail: "Optional details are unavailable" }, 404);
   });
@@ -77,16 +77,18 @@ test("user Given unattended production When reopening the lesson during checking
   await browser.reload();
   await expect(browser.getByText("正在自动检查内容、答案与教材原页。")).toBeVisible();
   finished = true;
-  await expect(browser.getByRole("link", { name: "打开授课", exact: true }).first()).toBeVisible();
-  await expect(browser.getByText("教程已完成，可直接打开授课。")).toBeVisible();
+  await expect(browser.getByRole("link", { name: "直接授课", exact: true })).toBeVisible();
+  await expect(browser.getByRole("region", { name: "课件状态" }).getByText("已发布", { exact: true })).toBeVisible();
+  await expect(browser.getByText("课件已发布，可直接授课。")).toBeVisible();
   await expect(browser.getByRole("button", { name: /确认并/ })).toHaveCount(0);
+  await expect(browser.getByRole("button", { name: "发布课件", exact: true })).toHaveCount(0);
   expect(mutations).toEqual([]);
   await browser.setViewportSize({ width: 390, height: 844 });
   expect(await browser.evaluate(() => window.document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await browser.screenshot({ path: test.info().outputPath("automatic-ready-mobile.png"), fullPage: true });
 });
 
-for (const lostResponse of [false, true]) test(`user Given automatic source preparation When refreshing and previewing ${lostResponse ? "despite a lost publish response" : "the result"} Then one final confirmation publishes without intermediate reviews`, async ({ page: browser }) => {
+for (const lostResponse of [false, true]) test(`user Given automatic source preparation When refreshing and previewing ${lostResponse ? "despite a lost publish response" : "the result"} Then the existing publish action works without intermediate reviews`, async ({ page: browser }) => {
   let sourceReady = false;
   let currentDocument = document();
   let publishBody: Record<string, unknown> | null = null;
@@ -116,15 +118,20 @@ for (const lostResponse of [false, true]) test(`user Given automatic source prep
   });
 
   await browser.goto("/studio/courseware?uploadId=upload-acceptance&sourceJobId=source-job&mode=automatic");
-  await expect(browser.getByText("来源准备任务：处理中")).toBeVisible();
+  await expect(browser.getByText("教材来源准备：处理中")).toBeVisible();
   await browser.reload();
-  await expect(browser.getByText("来源准备任务：处理中")).toBeVisible();
+  await expect(browser.getByText("教材来源准备：处理中")).toBeVisible();
   sourceReady = true;
-  await expect(browser.getByRole("link", { name: /打开教程预览/ })).toBeVisible();
-  await browser.getByRole("link", { name: /打开教程预览/ }).click();
-  await expect(browser.getByRole("region", { name: "教程最终预览" })).toBeVisible();
+  await expect(browser.getByRole("link", { name: "查看课件与进度" })).toBeVisible();
+  await browser.getByRole("link", { name: "查看课件与进度" }).click();
+  await expect(browser.getByRole("region", { name: "课件预览" })).toBeVisible();
+  await expect(browser.locator(".courseware-toolbar")).toHaveCount(0);
+  await expect(browser.getByRole("button", { name: "Next ›" })).toBeVisible();
+  const navigation = browser.locator(".courseware-pagination");
+  const content = browser.locator(".courseware-stage");
+  expect((await navigation.boundingBox())!.y).toBeLessThan((await content.boundingBox())!.y);
   await expect(browser.getByLabel("讲解内容")).not.toBeVisible();
-  await browser.getByRole("button", { name: "确认并发布教程", exact: true }).first().click();
+  await browser.getByRole("button", { name: "发布课件", exact: true }).first().click();
   await expect(browser.getByText(/课件已发布/).first()).toBeVisible();
   expect(publishBody).toMatchObject({ expectedRecordVersion: 1, confirmReview: true });
   expect(mutations).toEqual([`/api/courseware/${coursewareId}/publish`]);
@@ -186,6 +193,7 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
       return json({ coursewareId, publicationId, version: 1, publishedAt: 2, distributionScope: "classroom", sourceRevisionId: revisionId, sourceTitle: "English textbook", sourceUrl: "https://example.test/book", attributionText: "Selected textbook source", snapshot: currentDocument });
     }
     if (path === `/api/courseware/${coursewareId}/presentation` && method === "GET") return json({ coursewareId, publicationId, version: 1, distributionScope: "classroom", sourceTitle: "English textbook", sourceUrl: "https://example.test/book", attributionText: "Selected textbook source", sourceLicense: "Classroom permission", document: currentDocument });
+    if (path === `/api/courseware/${coursewareId}/teaching-unit` && method === "GET") return json({ chapterId, title: "Unit 1: Writing with Evidence", subject: "english", lessons: [], resume: null });
     if (path === `/api/courseware/${coursewareId}/published` && method === "GET") {
       const publishedPage = page("Unit 1 · Cover");
       const { teacherNotes: _teacherNotes, revealSteps: _revealSteps, ...safePage } = publishedPage;
@@ -198,7 +206,11 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
   });
 
   await browser.goto("/studio/courseware?uploadId=upload-acceptance");
-  await expect(browser.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
+  await expect(browser.getByRole("heading", { name: "English textbook.pdf" })).toBeVisible();
+  await expect(browser.getByLabel("学科")).toHaveValue("");
+  await expect(browser.getByRole("button", { name: "开始整本自动制作" })).toBeVisible();
+  expect(apiReads.filter((entry) => !entry.startsWith("GET "))).toEqual([]);
+  await browser.getByLabel("制作指定页段（每次最多 30 页）").check();
   await browser.getByLabel("学科").selectOption("english");
   await browser.getByLabel("起始页").fill("23");
   await browser.getByLabel("结束页").fill("52");
@@ -209,25 +221,25 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
   await browser.getByRole("button", { name: "确认并准备教材来源" }).click();
   await expect(browser.getByText("Unit 1: Writing with Evidence")).toBeVisible();
   await expect.poll(() => sourcePrepBody).toMatchObject({ subject: "english", pageStart: 23, pageEnd: 52, distributionScope: "classroom" });
-  await browser.getByRole("button", { name: "开始规划这份课件" }).click();
+  await browser.getByRole("button", { name: "继续制作课件" }).click();
 
   await expect(browser.getByRole("heading", { name: "Unit 1: Writing with Evidence" })).toBeVisible();
-  await expect(browser.getByText("来源修订 1")).toBeVisible();
+  await expect(browser.getByText("英语 · 教材第 23–52 页")).toBeVisible();
   await browser.getByText("调整教学要求（可选）").click();
   await browser.getByLabel("学习对象").fill("Grade 8");
   await browser.getByLabel("授课语言策略").fill("English with short Chinese glosses");
   await browser.getByLabel("起始页").fill("23");
   await browser.getByLabel("结束页").fill("25");
   await browser.getByLabel("学习目标（每行一个）").fill("Support a claim with a source detail.");
-  await browser.getByRole("button", { name: "生成规划供教师确认" }).click();
+  await browser.getByRole("button", { name: "手动生成规划并编辑" }).click();
   await expect(browser.getByRole("heading", { name: "确认课时与页面规划" })).toBeVisible();
   await expect(browser.getByText("规划来源起始页")).toBeVisible();
   await browser.getByRole("button", { name: "确认规划并生成课件" }).click();
-  await expect(browser.getByRole("link", { name: /打开课件审核/ })).toBeVisible();
-  await browser.getByRole("link", { name: /打开课件审核/ }).click();
+  await expect(browser.getByRole("link", { name: /查看课件与进度/ })).toBeVisible();
+  await browser.getByRole("link", { name: /查看课件与进度/ }).click();
   await browser.getByText("编辑页面与详细审核（可选）").click();
 
-  await expect(browser.locator(".courseware-authoring-header").getByRole("heading", { name: "Unit 1: Writing with Evidence" })).toBeVisible();
+  await expect(browser.locator(".courseware-workflow-header").getByRole("heading", { level: 1, name: "Unit 1: Writing with Evidence" })).toBeVisible();
   await expect(browser.getByText("教师讲稿")).toBeVisible();
   await browser.getByLabel("讲解内容").fill("Revised from the selected page of the textbook.");
   await browser.getByRole("button", { name: "保存页面修改" }).click();
@@ -239,10 +251,10 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
   await browser.getByRole("button", { name: "发布课件" }).click();
   await expect(browser.getByText(/课件已发布/).first()).toBeVisible();
 
-  await browser.getByRole("button", { name: "教师授课预览" }).click();
+  await browser.getByRole("link", { name: "直接授课" }).click();
   await expect(browser).toHaveURL(new RegExp(`/teacher/courseware/${coursewareId}`));
-  const returnToTutorial = browser.getByRole("link", { name: "返回教程" });
-  await expect(returnToTutorial).toBeVisible();
+  const returnToEditor = browser.getByRole("link", { name: "课件管理" });
+  await expect(returnToEditor).toHaveAttribute("href", `/studio/courseware/${coursewareId}`);
   await expect(browser.getByRole("heading", { name: "Unit 1: Writing with Evidence" })).toBeVisible();
   await browser.getByRole("tab", { name: "Teacher notes" }).click();
   await expect(browser.getByText("Teacher-only note: compare responses after the discussion.")).toBeVisible();
@@ -251,11 +263,11 @@ test("user prepares one textbook section, confirms its plan, reviews a page, and
   await expect(browser.getByRole("navigation", { name: "Page rail" })).toBeVisible();
   await browser.getByRole("button", { name: "Deck" }).click();
   await expect(browser.getByRole("navigation", { name: "Page rail" })).toHaveCount(0);
-  await returnToTutorial.click();
-  await expect(browser.getByRole("link", { name: "打开学生版" })).toBeVisible();
+  await returnToEditor.click();
+  await expect(browser.getByRole("link", { name: "学生版", exact: true })).toBeVisible();
   const studentRouteStart = apiReads.length;
-  await browser.getByRole("link", { name: "打开学生版" }).click();
-  await expect(browser.getByRole("link", { name: "返回学习空间" })).toBeVisible();
+  await browser.getByRole("link", { name: "学生版", exact: true }).click();
+  await expect(browser.getByRole("link", { name: /学习空间/ })).toBeVisible();
   await expect(browser.getByRole("heading", { name: "Unit 1: Writing with Evidence" })).toBeVisible();
   await expect(browser.getByRole("tab", { name: "Teacher notes" })).toHaveCount(0);
   await expect(browser.getByText("Teacher-only note: compare responses after the discussion.")).toHaveCount(0);

@@ -39,7 +39,7 @@ const draft: CoursewareAuthoringDocument = {
   reviewIssues: [],
 };
 
-function setup(document = draft) {
+function setup(document = draft, embedded = false) {
   const callbacks = {
     onSavePage: vi.fn(async () => undefined),
     onRegeneratePage: vi.fn(async () => undefined),
@@ -50,7 +50,7 @@ function setup(document = draft) {
     onPresent: vi.fn(),
     onLearn: vi.fn(),
   };
-  render(<CoursewareDraftEditor document={document} {...callbacks} />);
+  render(<CoursewareDraftEditor document={document} embedded={embedded} {...callbacks} />);
   return callbacks;
 }
 
@@ -131,7 +131,7 @@ it("user Given an unsaved page When requesting regeneration or review Then the e
   await user.clear(within(editor).getByLabelText("页面标题"));
   await user.type(within(editor).getByLabelText("页面标题"), "A changed title");
   expect(within(editor).getByRole("button", { name: "重做本页" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "确认并发布教程" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "发布课件" })).toBeDisabled();
 
   await user.click(within(editor).getByRole("button", { name: "保存页面修改" }));
   await user.click(within(editor).getByRole("button", { name: "重做本页" }));
@@ -144,6 +144,24 @@ it("user Given an unsaved page When requesting regeneration or review Then the e
   await user.type(within(editor).getByLabelText("审核意见"), "Check the source page");
   await user.click(within(editor).getByRole("button", { name: "提交修改意见" }));
   expect(callbacks.onReviewPage).toHaveBeenCalledWith("cover", "request_changes", "Check the source page");
+});
+
+it("user Given a published document When opening its optional editor Then keeps editing available without a disabled publish button", () => {
+  setup({ ...draft, status: "published", publicationId: "publication-1" });
+
+  expect(screen.getByText("课件已发布，可直接授课；需要调整时仍可编辑页面或请求修改。")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "发布课件" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "已发布" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "页面标题" })).toBeVisible();
+});
+
+it("user Given the editor is embedded in courseware management When opening it Then it omits the duplicate heading and mandatory review steps but keeps editing", () => {
+  setup(draft, true);
+
+  expect(screen.queryByText("教师课件工作台 · 第 1 版规划")).not.toBeInTheDocument();
+  expect(screen.queryByRole("list", { name: "课件制作进度" })).not.toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "编辑页面：Source-based lesson" })).toBeVisible();
+  expect(screen.getByLabelText("页面标题")).toHaveValue("Source-based lesson");
 });
 
 it("user Given a teacher selects exact pages When approving the document Then only those page IDs reach the review boundary", async () => {

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 import unittest
+from pathlib import Path
 
 from application.services.learning_funnel import build_funnel_snapshot
 from persistence.app_store import AppStore
@@ -25,13 +26,13 @@ _CONFIRMATION = {
 }
 
 
-def _mistake_item(mistake_id: str) -> dict:
+def _mistake_item(mistake_id: str, source_image_path: Path) -> dict:
     return {
         "mistakeId": mistake_id,
         "learnerId": "local-demo",
-        "sourceFilename": f"{mistake_id}.jpg",
+        "sourceFilename": "source.jpg",
         "contentType": "image/jpeg",
-        "sourceImagePath": f"/data/{mistake_id}.jpg",
+        "sourceImagePath": str(source_image_path),
         "sourceImageUrl": f"/api/mistakes/{mistake_id}/source",
         "questionPayload": {
             "question": {
@@ -69,10 +70,16 @@ class LearningFunnelTests(PostgresTestCase):
         self.reviews.list_for_mistake("warm-up")
 
     def _seed_confirmed_mistake(self, mistake_id: str, *, mastered: bool = False) -> None:
-        self.mistakes.create(_mistake_item(mistake_id))
+        source_path = self._source_image_path(mistake_id)
+        self.mistakes.create(_mistake_item(mistake_id, source_path))
         self.mistakes.confirm(mistake_id, dict(_CONFIRMATION))
         if mastered:
             self.mistakes.mark_mastered(mistake_id)
+
+    def _source_image_path(self, mistake_id: str) -> Path:
+        source_path = self.mistakes.item_directory(mistake_id) / "source.jpg"
+        source_path.write_bytes(b"test source image")
+        return source_path
 
     def test_empty_learner_has_zero_counts_and_none_rates(self) -> None:
         snapshot = build_funnel_snapshot(self.engine, "nobody")
@@ -85,7 +92,7 @@ class LearningFunnelTests(PostgresTestCase):
         # 三道导入：两道确认（其一已 mastered），一道仍待确认
         self._seed_confirmed_mistake("m-0", mastered=True)
         self._seed_confirmed_mistake("m-1")
-        self.mistakes.create(_mistake_item("m-2"))
+        self.mistakes.create(_mistake_item("m-2", self._source_image_path("m-2")))
 
         snapshot = build_funnel_snapshot(self.engine, "local-demo")
         self.assertEqual(snapshot["mistakes"]["imported"], 3)

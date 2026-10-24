@@ -19,6 +19,8 @@ import { buildStructuredAnswer } from "../structuredAnswer";
 
 interface MistakeTutorProps {
   item: MistakeItem;
+  autoContinue?: boolean;
+  onMastered?: () => void;
 }
 
 const STAGES: Array<{ id: "understanding" | "practice" | "verify"; label: string }> = [
@@ -47,7 +49,7 @@ function messageEvidence(action: Record<string, unknown>): Record<string, unknow
     : undefined;
 }
 
-export function MistakeTutor({ item }: MistakeTutorProps) {
+export function MistakeTutor({ item, autoContinue = false, onMastered }: MistakeTutorProps) {
   const state = useMistakeTutor(item);
   const inputState = useTutorInput(state.thread?.threadId ?? "");
   const messagesEnd = useRef<HTMLDivElement>(null);
@@ -280,7 +282,9 @@ export function MistakeTutor({ item }: MistakeTutorProps) {
               <VariationPractice
                 mistakeId={item.mistakeId}
                 autoStart
+                autoContinue={autoContinue}
                 onStageChange={state.setStage}
+                onMastered={onMastered}
               />
             )}
           </>

@@ -298,6 +298,23 @@ const renderingImportResult = {
 
 async function mockApi(page: Page, result = importResult) {
   await mockFixtureImages(page);
+  const emptyContinuousQueue = {
+    learnerId: "local-demo",
+    serverTime: 1,
+    next: { kind: "none" },
+    summary: {
+      unfinishedAssignments: 0,
+      pendingConfirmationCount: 0,
+      unmasteredCount: 0,
+      dueReviewCount: 0,
+    },
+  };
+  await page.route("**/api/learning/next?*", async (route) => {
+    await route.fulfill({ json: emptyContinuousQueue });
+  });
+  await page.route("**/api/learning/next/start", async (route) => {
+    await route.fulfill({ json: emptyContinuousQueue });
+  });
   await page.route("**/api/learning/sessions/*/attempts", async (route) => {
     await route.fulfill({
       json: {
@@ -728,7 +745,7 @@ test.describe("产品入口", () => {
 
     await page.goto("/studio/import");
     await expect(page.getByRole("heading", { name: "上传试卷或教材" })).toBeVisible();
-    await expect(page.getByText("内容生产工作台")).toBeVisible();
+    await expect(page.getByText("教材与试卷导入", { exact: true })).toBeVisible();
 
   });
 
@@ -1014,6 +1031,7 @@ test.describe("产品入口", () => {
 
   test("正确提交后进入下一道未完成题，最后显示完成态且作答阶段不请求 TTS", async ({ page }) => {
     await mockApi(page);
+    await page.clock.install();
     const answerAttempts: Record<string, unknown>[] = [];
     let ttsRequests = 0;
     const first = choiceQuestion;
@@ -1064,10 +1082,16 @@ test.describe("产品入口", () => {
     await page.route("**/api/tts", async (route) => { ttsRequests += 1; await route.fulfill({ status: 204 }); });
 
     await page.goto("/learn");
+    // Freeze dwell timers so the test advances each boundary explicitly instead
+    // of racing the 2.5 second feedback window.
+    await page.clock.pauseAt(new Date(Date.now() + 60_000));
     await page.getByRole("button", { name: /推进状态测试/ }).click();
     await expect(page.getByRole("heading", { name: "数轴上的大小比较" })).toBeVisible();
     await page.getByRole("button", { name: /B/ }).click();
     await page.getByRole("button", { name: "提交答案" }).click();
+    await expect(page.locator(".student-feedback.correct")).toContainText("回答正确。");
+    await expect(page.getByRole("heading", { name: "有理数判断" })).toHaveCount(0);
+    await page.clock.runFor(2_500);
     await expect(page.getByRole("heading", { name: "有理数判断" })).toBeVisible();
     await page.getByRole("button", { name: /A/ }).click();
     await page.getByRole("button", { name: "提交答案" }).click();
@@ -1075,11 +1099,17 @@ test.describe("产品入口", () => {
     const completionHeading = page.getByRole("heading", { name: "这套练习已经完成" });
     await expect(page.locator(".student-feedback.correct")).toContainText("回答正确。");
     await expect(completionHeading).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "查看完成结果 →" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "暂停自动继续" })).toBeVisible();
+    await page.getByRole("button", { name: "暂停自动继续" }).click();
+    await expect(page.getByText("自动继续已暂停，这道题的反馈会保留。", { exact: true })).toBeVisible();
+    await page.clock.runFor(2_500);
+    await expect(page.locator(".student-feedback.correct")).toContainText("回答正确。");
+    await page.getByRole("button", { name: "继续下一项 →" }).click();
     await expect(completionHeading).toBeVisible();
     expect(ttsRequests).toBe(0);
 
     // 刷新完成态仍由最新 attempts 推导，不会把学生带回第一题。
+    await page.clock.resume();
     await page.reload();
     await expect(page.getByRole("heading", { name: "这套练习已经完成" })).toBeVisible();
   });
@@ -1184,7 +1214,7 @@ test.describe("产品入口", () => {
     await expect(page.getByText("已通过掌握门槛")).toBeVisible();
     await expect(page.getByRole("button", { name: "生成下一道" })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "← 返回我的错题本" }).click();
+    await page.getByRole("link", { name: "← 返回我的错题本" }).click();
     await page.getByRole("button", { name: /已掌握 1/ }).click();
     await expect(page.getByRole("region", { name: "错题列表" }).getByText("已掌握", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "查看验证记录" })).toBeVisible();

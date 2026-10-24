@@ -36,10 +36,11 @@ test("user Given a textbook PDF When uploading from the single entry Then type d
   await page.getByRole("button", { name: "开始识别 1 个文件" }).click();
   await expect(page.getByText(/自动识别：教材/)).toBeVisible();
   await page.getByRole("link", { name: "制作互动课件 →" }).click();
-  await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
-  await expect(page.getByLabel("学科")).toHaveValue("english");
+  await expect(page.getByRole("heading", { name: result.filename })).toBeVisible();
+  await expect(page.getByRole("region", { name: "教材制作设置" })).toBeVisible();
+  await expect(page.getByLabel("学科")).toHaveValue("");
   await expect(page.getByLabel("起始页")).toHaveValue("1");
-  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
   expect(sourceRequested).toBe(false);
   await page.getByLabel("学科").selectOption("english");
   await page.getByLabel("起始页").fill("6");
@@ -273,11 +274,11 @@ test("user Given a PDF and an English course When using the unified library Then
 
   await expect(page.getByRole("link", { name: "＋ 上传试卷或教材" })).toBeVisible();
   await page.route("**/api/courseware/profiles", (route) => route.fulfill({ json: { items: [{ subjectId: "math", label: "数学" }] } }));
-  await page.getByRole("link", { name: "为 数学教材.pdf 制作互动课件" }).click();
-  await expect(page.getByRole("heading", { name: "建立教材章节来源" })).toBeVisible();
+  await page.getByRole("link", { name: "管理教材 · 数学教材.pdf" }).click();
+  await expect(page.getByRole("heading", { name: "数学教材.pdf" })).toBeVisible();
   await expect(page.getByText(/继续生成即按所选/)).toBeVisible();
   await expect(page.getByLabel("材料类型")).toHaveValue("textbook");
-  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "自动生成教程" })).toBeDisabled();
   await page.getByLabel("材料类型").selectOption("textbook");
   await page.getByLabel("学科").selectOption("math");
   await page.getByLabel("起始页").fill("1");
@@ -306,13 +307,13 @@ test("user Given a legacy textbook tutorial When opening its directory and saved
   await expect(page.getByRole("heading", { name: "Writing Tutorial.pdf" })).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(1);
   await page.getByText("查看教程目录").click();
-  await expect(page.getByRole("link", { name: "Chapter 1 Writing", exact: true })).toHaveAttribute("href", "/studio/courseware?chapterId=tutorial");
+  await expect(page.getByRole("link", { name: "管理章节课件 · Chapter 1 Writing", exact: true })).toHaveAttribute("href", "/studio/courseware?chapterId=tutorial");
   // Existing chapter bookmarks remain usable while the directory leads to courseware.
   await page.goto("/studio/chapters/tutorial");
   await expect(page.getByRole("button", { name: "确认已复核" })).toBeEnabled();
   await expect(page.getByText("确认教程讲解与引用已经人工复核后，发布按钮才会启用。")).toBeVisible();
   await expect(page.getByRole("heading", { name: "检查题", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "← 我的教材" }).click();
+  await page.getByRole("link", { name: "← 我的教材" }).click();
   await page.getByText("查看教程目录").click();
   await page.getByRole("link", { name: "学习本章" }).click();
   await expect(page.getByRole("heading", { name: "Chapter 1 Writing" })).toBeVisible();

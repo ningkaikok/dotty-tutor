@@ -63,6 +63,26 @@ afterEach(() => {
 });
 
 describe("CoursewarePlayer user flows", () => {
+  it("user Given a detail-page preview When navigating the lesson Then omits the standalone toolbar and preserves page navigation", async () => {
+    const user = userEvent.setup();
+    const full = render(<CoursewarePlayer document={lesson} />);
+    expect(screen.getByRole("button", { name: "Help" })).toBeVisible();
+    full.unmount();
+
+    render(<CoursewarePlayer document={lesson} displayMode="embedded" />);
+    expect(screen.queryByRole("button", { name: "Help" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Class timeline sections" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Next ›" }));
+    expect(screen.getByRole("heading", { name: "Notice and write" })).toBeVisible();
+  });
+
+  it("user Given a shared route header When playing a published lesson Then hides only the duplicate player brand", () => {
+    render(<CoursewarePlayer document={lesson} showBrand={false} />);
+    expect(document.querySelector(".courseware-brand")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Help" })).toBeVisible();
+    expect(screen.getByRole("navigation", { name: "Class timeline sections" })).toBeVisible();
+  });
+
   it("user Given a saved server page When opening the lesson Then starts at that page without submitting practice", () => {
     render(<CoursewarePlayer document={lesson} initialPageId="practice-page" />);
     expect(screen.getByRole("heading", { level: 1, name: "Optional check" })).toBeVisible();
