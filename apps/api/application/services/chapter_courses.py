@@ -346,7 +346,7 @@ class ChapterCourseService:
 
         return CancellableJobResult(result, on_cancel=rollback_cancelled_generation)
 
-    def _normalize_source(self, raw: dict[str, Any]) -> dict[str, Any]:
+    def _normalize_source(self, raw: dict[str, Any], *, allow_blank_source_pages: bool = False) -> dict[str, Any]:
         source = dict(raw)
         pages = list(source.get("pages") or [])
         job = None
@@ -361,7 +361,9 @@ class ChapterCourseService:
                 persisted_by_page = {int(item["page"]): str(item["text"]).strip() for item in persisted_pages}
                 for page in pages:
                     stored_text = persisted_by_page.get(int(page["page"]))
-                    if not stored_text or " ".join(str(page.get("text") or "").split()) != " ".join(stored_text.split()):
+                    if stored_text is None and allow_blank_source_pages and not str(page.get("text") or "").strip():
+                        continue
+                    if stored_text is None or " ".join(str(page.get("text") or "").split()) != " ".join(stored_text.split()):
                         raise ValueError(f"第 {page['page']} 页文本与上传任务中的 OCR 快照不一致")
             else:
                 pages = persisted_pages
@@ -373,10 +375,13 @@ class ChapterCourseService:
             raise ValueError("页标记必须位于本次导入页段内")
         for page in pages:
             page["flags"] = list(dict.fromkeys([*(page.get("flags") or []), *flag_map.get(int(page["page"]), [])]))
+            blank_candidate = allow_blank_source_pages and not str(page.get("text") or "").strip()
+            if blank_candidate:
+                page["flags"] = [flag for flag in page["flags"] if flag != "unreadable"]
             from ocr_quality import evaluate_page_quality
 
             quality = evaluate_page_quality(str(page.get("text") or ""), page_number=int(page["page"]), provider="none", retry_count=2)
-            if quality.get("formulaReview") and "unreadable" not in page["flags"]:
+            if quality.get("formulaReview") and not blank_candidate and "unreadable" not in page["flags"]:
                 page["flags"].append("unreadable")
         pages.sort(key=lambda item: int(item["page"]))
         page_numbers = [int(item["page"]) for item in pages]
@@ -437,13 +442,14 @@ class ChapterCourseService:
         *,
         execution_context: Any | None = None,
         source_guard: dict[str, Any] | None = None,
+        allow_blank_source_pages: bool = False,
     ) -> dict[str, Any]:
-        source = self._normalize_source(request["source"])
+        source = self._normalize_source(request["source"], allow_blank_source_pages=allow_blank_source_pages)
         chapter_id = uuid.uuid4().hex
         revision_id = uuid.uuid4().hex
         for page in source["pages"]:
             page["sentences"] = sentences(page["text"], page["page"], revision_id)
-        issues = self._source_issues(source)
+        issues = self._source_issues(source, allow_blank_source_pages=allow_blank_source_pages)
         chapter = {
             "chapterId": chapter_id, "subject": request["subject"], "title": request["title"],
             "teachingMode": request.get("teachingMode", "practice"),
@@ -540,12 +546,14 @@ class ChapterCourseService:
         return self.get(chapter_id)
 
     @staticmethod
-    def _source_issues(source: dict[str, Any]) -> list[dict[str, str]]:
+    def _source_issues(
+        source: dict[str, Any], *, allow_blank_source_pages: bool = False,
+    ) -> list[dict[str, str]]:
         issues = [{"code": "missing_page", "message": f"页段缺页：{page}"} for page in source["missingPages"]]
         if source.get("distributionScope", "private") != "private" and not source.get("license"):
             issues.append({"code": "source_license_missing", "message": "请记录来源许可或材料授权依据"})
         for page in source["pages"]:
-            if not page["text"]:
+            if not page["text"] and not allow_blank_source_pages:
                 issues.append({"code": "missing_source_text", "message": f"第 {page['page']} 页没有可核对文本"})
             for problem in formula_problems(page["text"]):
                 issues.append({"code": problem, "message": f"第 {page['page']} 页公式结构损坏，请对照原页修订来源：{problem}"})

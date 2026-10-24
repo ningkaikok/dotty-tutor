@@ -5,6 +5,7 @@ import { studentPlaybackDocument, teacherPlaybackDocument, type CoursewarePresen
 import { CoursewarePrintDocument } from "./CoursewarePlayer";
 import { apiResourceUrl } from "../../api/client";
 import { useLearnerId } from "../../api/identity";
+import { Button } from "../../components/ui";
 
 /** Revalidate the fixed publication before every export; only teacher projection can include answers. */
 export function CoursewareExport({ coursewareId, publicationId, role }: {
@@ -74,14 +75,14 @@ export function CoursewareExport({ coursewareId, publicationId, role }: {
   }, [activePreview, printRequested]);
 
   return <>
-    <button type="button" disabled={busy} onClick={() => void load(false)}>导出学生版 / PDF</button>
-    {role === "teacher" && <button type="button" disabled={busy} onClick={() => void load(true)}>导出教师答案版</button>}
+    <Button type="button" disabled={busy} onClick={() => void load(false)}>导出学生版 / PDF</Button>
+    {role === "teacher" && <Button type="button" disabled={busy} onClick={() => void load(true)}>导出教师答案版</Button>}
     {busy && <span role="status">正在核对发布版本与图片…</span>}
     {error && <p role="alert">{error}</p>}
     {activePreview && createPortal(<section className="courseware-print-root" aria-label="课件打印预览">
       <nav className="courseware-print-controls"><p>固定发布第 {activePreview.document.version} 版 · {activePreview.answers ? "教师答案版（含答案）" : "学生版（不含答案）"}。在打印窗口选择“另存为 PDF”。</p>
-        <button type="button" disabled={busy} onClick={() => void load(activePreview.answers, true)}>打印 / 保存 PDF</button>
-        <button type="button" onClick={() => { request.current?.abort(); setBusy(false); setPreview(null); setPrintRequested(false); }}>关闭打印预览</button>
+        <Button type="button" disabled={busy} onClick={() => void load(activePreview.answers, true)}>打印 / 保存 PDF</Button>
+        <Button type="button" onClick={() => { request.current?.abort(); setBusy(false); setPreview(null); setPrintRequested(false); }}>关闭打印预览</Button>
       </nav><CoursewarePrintDocument document={activePreview.document} includeAnswers={role === "teacher" && activePreview.answers} />
     </section>, document.body)}
   </>;

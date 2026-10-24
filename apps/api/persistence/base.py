@@ -50,6 +50,7 @@ class DatabaseStore:
         self._active_connection: ContextVar[Connection | None] = ContextVar(
             f"store_connection_{id(self)}", default=None
         )
+        self._file_assets: Any | None = None
 
     @contextmanager
     def atomic(self):
@@ -103,6 +104,15 @@ class DatabaseStore:
         """Keep the store call sites uniform; schema creation is Alembic-owned."""
         return None
 
+    @property
+    def file_assets(self) -> Any:
+        """Return the managed-file adapter sharing this store's root and engine."""
+        if self._file_assets is None:
+            from infrastructure.files.file_storage import FileAssetStore
+
+            self._file_assets = FileAssetStore(engine=self.engine, data_root=self.root)
+        return self._file_assets
+
     def schema_status(self) -> dict[str, Any]:
         """Return a sanitized schema/readiness report for health and diagnostics."""
         self._ensure_initialized()
@@ -127,4 +137,6 @@ class DatabaseStore:
         connection.execute(statement)
 
     def close(self) -> None:
+        if self._file_assets is not None:
+            self._file_assets.close()
         self.engine.dispose()

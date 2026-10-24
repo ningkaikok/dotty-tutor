@@ -11,6 +11,10 @@ from sqlalchemy.engine import Engine
 
 from answer_evaluator import evaluate_structured_answer
 from application.services.learning_funnel import build_funnel_snapshot
+from application.services.review_task_start import (
+    ReviewTaskStartConflict,
+    start_review_task,
+)
 from auth_context import learner_for_request, require_owner
 from domain.contracts.practice import VariationAnswerRequest
 from domain.learning.mastery_policy import decide_next_action, resolve_policy
@@ -147,24 +151,21 @@ def build_review_router(
         if not task:
             raise HTTPException(status_code=404, detail="复习任务不存在")
         require_owner(request, task["learnerId"])
-        if task["status"] == "ready":
-            return student_review_task(review_policy_view(task, review_store.list_for_mistake(task["mistakeId"])))
-        if task["status"] != "scheduled":
-            raise HTTPException(status_code=409, detail="这项复习任务已经完成")
-        mistake = mistake_store.get(task["mistakeId"])
-        if not mistake or mistake["learnerId"] != task["learnerId"]:
-            raise HTTPException(status_code=404, detail="复习任务对应的错题不存在")
         try:
-            generated = variation_service.generate(mistake, 3)
+            started = start_review_task(
+                task_id=task_id,
+                learner_id=task["learnerId"],
+                mistake_store=mistake_store,
+                review_store=review_store,
+                variation_service=variation_service,
+                now=time.time(),
+            )
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ReviewTaskStartConflict as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
-        started = review_store.start(
-            task_id,
-            question_payload=generated["questionPayload"],
-            model_run=generated["modelRun"],
-        )
-        if not started:
-            raise HTTPException(status_code=409, detail="复习任务状态已变化，请刷新")
         log_event("review.started", task_id=task_id, mistake_id=task["mistakeId"])
         return student_review_task(review_policy_view(started, review_store.list_for_mistake(task["mistakeId"])))
 

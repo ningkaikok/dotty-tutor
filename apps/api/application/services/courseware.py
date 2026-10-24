@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import time
 import uuid
 from contextlib import nullcontext
@@ -31,6 +32,7 @@ from domain.contracts.courseware import (
     CoursewarePublicPage,
     CoursewareSourceRef,
 )
+from domain.contracts.whole_book import WholeBookPlanDraftOutput
 from domain.courseware.assessment import assess_activity
 from domain.courseware.batches import (
     active_plan_versions,
@@ -88,6 +90,7 @@ class CoursewareService:
 
     def _chapter(
         self, chapter_id: str, *, subject: str | None = None, lock: bool = False,
+        verify_source_file: bool = True,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         chapter = self.store.load_chapter(chapter_id, lock=lock)
         if not chapter or chapter.get("deletedAt"):
@@ -105,7 +108,7 @@ class CoursewareService:
                 raise ValueError("教材来源尚未完成识别")
             # Keep the immutable chapter revision as the source of truth while still
             # detecting an upload whose original file was replaced on disk.
-            if source.get("sourceFileSha256"):
+            if source.get("sourceFileSha256") and verify_source_file:
                 from application.services.chapter_source_preview import (
                     file_hash,
                     source_file,
@@ -119,6 +122,7 @@ class CoursewareService:
     @staticmethod
     def _selected_pages(
         source: dict[str, Any], page_start: int | None = None, page_end: int | None = None,
+        *, allow_empty_candidates: bool = False, allowed_skip_pages: set[int] | None = None,
     ) -> list[dict[str, Any]]:
         start = int(page_start if page_start is not None else source.get("pageStart", 1))
         end = int(page_end if page_end is not None else source.get("pageEnd", start))
@@ -129,10 +133,69 @@ class CoursewareService:
         if missing:
             raise ValueError("课件范围包含缺失来源页：" + ", ".join(map(str, missing[:12])))
         pages = [by_page[number] for number in range(start, end + 1)]
-        issues = source_readiness_issues(pages)
+        allowed_skips = allowed_skip_pages or set()
+        readiness_pages = [
+            page for page in pages
+            if int(page["page"]) not in allowed_skips
+            and not (allow_empty_candidates and not str(page.get("text") or "").strip())
+        ]
+        issues = source_readiness_issues(readiness_pages)
         if issues:
             raise ValueError("来源未就绪，不能确认或发布课件：" + issues[0]["message"])
         return pages
+
+    @staticmethod
+    def _verified_whole_book_skip_pages(record: dict[str, Any], source: dict[str, Any]) -> set[int]:
+        """Return skip pages only from a disposition ledger bound to this source revision and file hash."""
+        audit: dict[str, Any] = (
+            record["generationAudit"] if isinstance(record.get("generationAudit"), dict) else {}
+        )
+        if (audit.get("wholeBookSourceRevisionId") != source.get("sourceRevisionId")
+                or audit.get("wholeBookSourceFileSha256") != source.get("sourceFileSha256")):
+            return set()
+        raw = audit.get("wholeBookPageDispositions")
+        if not isinstance(raw, str):
+            return set()
+        try:
+            dispositions = json.loads(raw)
+        except (TypeError, ValueError):
+            return set()
+        if not isinstance(dispositions, list):
+            return set()
+        source_pages = {int(page["page"]) for page in source.get("pages", [])}
+        return {
+            int(item["page"])
+            for item in dispositions
+            if isinstance(item, dict)
+            and item.get("disposition") == "skipped"
+            and type(item.get("page")) is int
+            and int(item["page"]) in source_pages
+        }
+
+    @staticmethod
+    def _reject_references_to_skipped_pages(value: Any, skipped_pages: set[int]) -> None:
+        """Keep later edits from reintroducing a page already classified as non-instructional."""
+        if not skipped_pages:
+            return
+        referenced: set[int] = set()
+
+        def collect(item: Any) -> None:
+            if isinstance(item, dict):
+                refs = item.get("sourceRefs")
+                if isinstance(refs, list):
+                    referenced.update(
+                        int(ref["page"]) for ref in refs
+                        if isinstance(ref, dict) and type(ref.get("page")) is int
+                    )
+                for child in item.values():
+                    collect(child)
+            elif isinstance(item, list):
+                for child in item:
+                    collect(child)
+
+        collect(value)
+        if referenced & skipped_pages:
+            raise ValueError("课件引用不能包含已经记录为非教学内容的教材页")
 
     @staticmethod
     def _source_assets(source: dict[str, Any], selected_pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -284,11 +347,11 @@ class CoursewareService:
             )} | {"pageCount": len(document.get("pages", []))})
         return {"items": items}
 
-    def get_coverage(self, chapter_id: str) -> dict[str, Any]:
+    def get_coverage(self, chapter_id: str, *, verify_source_file: bool = True) -> dict[str, Any]:
         """Report complete-unit physical-page gaps without asserting teaching quality."""
         from application.services.courseware_coverage import coverage_report
 
-        chapter, source = self._chapter(chapter_id)
+        chapter, source = self._chapter(chapter_id, verify_source_file=verify_source_file)
         return coverage_report(chapter, source, self.store)
 
     def get_completion(self, chapter_id: str, *, max_pages_per_batch: int = 5) -> dict[str, Any]:
@@ -332,10 +395,24 @@ class CoursewareService:
             plan = {**plan, "status": "superseded"}
         return plan
 
-    def create_plan(self, chapter_id: str, request: CoursewarePlanCreate, *, idempotency_key: str | None = None) -> dict[str, Any]:
+    def create_plan(
+        self,
+        chapter_id: str,
+        request: CoursewarePlanCreate,
+        *,
+        idempotency_key: str | None = None,
+        whole_book: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         profile = self.profiles.get(request.subject)
         template = self._prompt(profile.plan_prompt_id)
-        request_hash = hashlib.sha256(request.model_dump_json().encode()).hexdigest()
+        if whole_book:
+            request_fingerprint = {"request": request.model_dump(mode="json"), "wholeBook": whole_book}
+            request_hash_source = json.dumps(
+                request_fingerprint, sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+            )
+        else:
+            request_hash_source = request.model_dump_json()
+        request_hash = hashlib.sha256(request_hash_source.encode()).hexdigest()
         command_key = (idempotency_key or request_hash).strip()[:128]
         job_key = f"courseware-plan:{chapter_id}:{command_key}"
         now = time.time()
@@ -348,7 +425,9 @@ class CoursewareService:
                     raise ValueError("教材章节已更新，请刷新后重新规划")
                 page_start = request.pageStart if request.pageStart is not None else int(source["pageStart"])
                 page_end = request.pageEnd if request.pageEnd is not None else int(source["pageEnd"])
-                pages = self._selected_pages(source, page_start, page_end)
+                pages = self._selected_pages(
+                    source, page_start, page_end, allow_empty_candidates=bool(whole_book),
+                )
                 if len(pages) > 30:
                     raise ValueError("一次规划最多选择 30 个物理页；请按教学范围拆分课时")
                 source_json = self._source_view(source, pages)
@@ -376,6 +455,11 @@ class CoursewareService:
                     "runtimeSnapshot": runtime_snapshot,
                     "autoGeneratePages": request.autoGeneratePages,
                     "autoPublish": request.autoPublish,
+                    **({"wholeBook": {
+                        "runId": str(whole_book["runId"]),
+                        "batchIndex": int(whole_book["batchIndex"]),
+                        "pageBudget": min(45, max(1, int(whole_book["pageBudget"]))),
+                    }} if whole_book else {}),
                     "frozenTemplate": self._frozen_template(template), "requestHash": request_hash,
                 }
                 previous_job = self.jobs.get_by_idempotency_key(job_key, connection=connection, lock=True)
@@ -454,12 +538,22 @@ class CoursewareService:
             raise TerminalJobError("教材章节已变化，旧规划未写入")
         if current_source["sourceRevisionId"] != payload["sourceRevisionId"]:
             raise TerminalJobError("教材来源已变化，旧规划未写入")
-        pages = self._selected_pages(current_source, int(payload["pageStart"]), int(payload["pageEnd"]))
+        pages = self._selected_pages(
+            current_source, int(payload["pageStart"]), int(payload["pageEnd"]),
+            allow_empty_candidates=bool(payload.get("wholeBook")),
+        )
         existing_plan = self.store.load_plan(str(payload["chapterId"]))
         if (existing_plan and existing_plan.get("generationJobId") == context.job_id
                 and existing_plan.get("generationStatus") == "completed"
                 and existing_plan.get("status") in {"awaiting_confirmation", "approved"}):
             return self._finish_plan_generation(payload, existing_plan, cancellation_check, context)
+        if (payload.get("wholeBook") and existing_plan
+                and existing_plan.get("generationJobId") == context.job_id
+                and existing_plan.get("generationStatus") == "completed"
+                and existing_plan.get("status") == "draft"
+                and self._whole_book_dispositions(existing_plan)):
+            return {"chapterId": payload["chapterId"], "planVersion": existing_plan["planVersion"],
+                    "status": "completed_non_instructional"}
         if cancellation_check():
             raise JobCancelled()
         source_view = {"sourceRevisionId": current_source["sourceRevisionId"], "pages": payload["sourcePages"]}
@@ -472,7 +566,20 @@ class CoursewareService:
             objectives=json.dumps(payload["requestedObjectives"], ensure_ascii=False),
             source=json.dumps(source_view, ensure_ascii=False),
         )
-        schema = generation_schema(CoursewarePlanDraftOutput, source=current_source, pages=pages,
+        whole_book = payload.get("wholeBook") if isinstance(payload.get("wholeBook"), dict) else None
+        whole_book_page_budget = int(whole_book["pageBudget"]) if whole_book else 45
+        if whole_book:
+            prompt += (
+                "\nWHOLE-BOOK PAGE LEDGER: return pageDispositions for every physical page in this batch, exactly once. "
+                "For instructional material use disposition=covered and cite that page from at least one session page. "
+                "Only skip a clearly non-instructional cover/title, table of contents, copyright/legal notice, blank page, "
+                "or index/glossary; provide its matching reason code and a short explanation. Do not skip an instructional "
+                "page to save space. If the entire batch contains only those non-instructional pages, return empty "
+                "objectives, sessions, and coverageMap with all pages explicitly skipped. Keep authored session pages "
+                f"within the fixed budget of {int(whole_book['pageBudget'])}.\n"
+            )
+        plan_output_model = WholeBookPlanDraftOutput if whole_book else CoursewarePlanDraftOutput
+        schema = generation_schema(plan_output_model, source=current_source, pages=pages,
             asset_ids=[str(asset["assetId"]) for asset in self._source_assets(current_source, pages)])
         selection = payload["runtimeSnapshot"]["generation"]
         with use_job_runtime_snapshot(payload):
@@ -480,7 +587,25 @@ class CoursewareService:
                 prompt, schema, max_tokens=6500, task="courseware_plan_generation",
                 selection=ModelSelection(selection["provider"], selection["model"]),
             )
-        parsed = CoursewarePlanDraftOutput.model_validate(draft)
+        whole_book_output = WholeBookPlanDraftOutput.model_validate(draft) if whole_book else None
+        parsed = CoursewarePlanDraftOutput.model_validate({
+            key: draft.get(key) for key in ("objectives", "sessions", "coverageMap")
+        }) if whole_book_output and (whole_book_output.objectives or whole_book_output.sessions or whole_book_output.coverageMap) else (
+            CoursewarePlanDraftOutput.model_validate(draft) if not whole_book else None
+        )
+        dispositions: list[dict[str, Any]] = []
+        if whole_book_output:
+            dispositions = self._validate_whole_book_plan(
+                whole_book_output, current_source, pages,
+                page_budget=whole_book_page_budget,
+                chapter_id=str(chapter["chapterId"]),
+            )
+            if parsed is None:
+                return self._save_whole_book_skipped_plan(
+                    payload, current_source, context, run, dispositions,
+                )
+        if parsed is None:
+            raise ValueError("教学规划没有目标、课时或可用来源覆盖")
         for objective in parsed.objectives:
             self._validate_refs(objective.sourceRefs, current_source, pages)
         for session in parsed.sessions:
@@ -494,6 +619,7 @@ class CoursewareService:
         current_plan = self.store.load_plan(str(payload["chapterId"]))
         if current_plan is None:
             raise TerminalJobError("课件规划草稿不存在")
+        audit = self._runtime_audit(run, payload["frozenTemplate"])
         result = {
             **current_plan,
             "objectives": [item.model_dump() for item in parsed.objectives],
@@ -502,9 +628,21 @@ class CoursewareService:
             "status": "awaiting_confirmation",
             "generationStatus": "completed",
             "planVersion": int(payload["planVersion"]),
-            "generationAudit": self._runtime_audit(run, payload["frozenTemplate"]),
+            "generationAudit": audit,
             "updatedAt": time.time(),
         }
+        if whole_book_output:
+            audit["wholeBookPageDispositions"] = json.dumps(
+                dispositions, ensure_ascii=False, separators=(",", ":"),
+            )
+            audit["wholeBookPageBudget"] = whole_book_page_budget
+            audit["wholeBookSourceRevisionId"] = str(current_source["sourceRevisionId"])
+            audit["wholeBookSourceFileSha256"] = str(current_source.get("sourceFileSha256") or "")
+            audit["wholeBookGeneratedPageCount"] = sum(
+                len(section.get("pages", []))
+                for session in draft.get("sessions", [])
+                for section in session.get("sections", [])
+            )
         result["generationAudit"]["timingDerivedFromPages"] = True
         result["generationAudit"]["minimumTimingAdjusted"] = any(
             sum(int(page.get("estimatedMinutes", 0)) for section in session.get("sections", []) for page in section.get("pages", [])) < 10
@@ -523,6 +661,205 @@ class CoursewareService:
             now=time.time(),
         )
         return self._finish_plan_generation(payload, saved, cancellation_check, context)
+
+    @staticmethod
+    def _whole_book_dispositions(plan: dict[str, Any]) -> list[dict[str, Any]]:
+        raw = (plan.get("generationAudit") or {}).get("wholeBookPageDispositions")
+        if not isinstance(raw, str):
+            return []
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return []
+        return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+    def _whole_book_skip_is_supported(
+        self, reason: str, page: dict[str, Any], source: dict[str, Any], chapter_id: str,
+    ) -> bool:
+        text = str(page.get("text") or "").strip()
+        first_lines = "\n".join(text.splitlines()[:5]).lower()
+        if page.get("flags"):
+            return False
+        if reason == "blank_page":
+            if text:
+                return False
+            return self._source_page_is_visually_blank(chapter_id, source, int(page["page"]))
+        if reason == "table_of_contents":
+            return bool(re.search(r"^(目录|table\s+of\s+contents|contents)\b", first_lines, re.I))
+        if reason == "copyright_or_legal":
+            return len(text) <= 600 and bool(re.search(
+                r"copyright|all rights reserved|版权所有|版权声明|出版信息", first_lines, re.I,
+            ))
+        if reason == "index_or_glossary":
+            return bool(re.search(r"^(index|glossary|索引|词汇表|术语表)\b", first_lines, re.I))
+        if reason == "cover_or_title":
+            return int(page.get("page", 999)) <= 3 and len(text) <= 220 and not re.search(
+                r"[.!?。！？]{2,}", text,
+            ) and bool(re.search(
+                r"textbook|student.?s? book|coursebook|isbn|publisher|出版社|教科书|教材|年级|学年|封面|课程标准",
+                first_lines, re.I,
+            ))
+        return False
+
+    def _source_page_is_visually_blank(self, chapter_id: str, source: dict[str, Any], page_number: int) -> bool:
+        """Treat OCR-empty pages as blank only when neither PDF text nor raster ink remains."""
+        try:
+            from PIL import Image
+            from pypdf import PdfReader
+
+            from application.services.chapter_source_preview import (
+                ChapterSourcePreview,
+                file_hash,
+                source_file,
+            )
+
+            upload_id = source.get("uploadId")
+            if not upload_id:
+                return False
+            upload = self.chapters.store.load_job(str(upload_id))
+            if not upload:
+                return False
+            original_pdf = source_file(self.chapters.store, upload)
+            if (original_pdf is None or not source.get("sourceFileSha256")
+                    or file_hash(original_pdf) != source["sourceFileSha256"]):
+                return False
+            pdf_pages = PdfReader(original_pdf).pages
+            if page_number < 1 or page_number > len(pdf_pages):
+                return False
+            if (pdf_pages[page_number - 1].extract_text() or "").strip():
+                return False
+
+            preview = ChapterSourcePreview(self.chapters.store).get(
+                chapter_id, str(source["sourceRevisionId"]), page_number,
+            )
+            with Image.open(preview) as raster:
+                gray = raster.convert("L")
+                histogram = gray.histogram()
+                if sum(histogram[:246]) < 8:
+                    return True
+                ink = gray.point([255 if value < 246 else 0 for value in range(256)]).tobytes()
+                width, height = gray.size
+            # At render resolution, a connected cluster of a few antialiased
+            # strokes is content. Isolated scan specks may still be ignored.
+            visited = bytearray(len(ink))
+            for offset, value in enumerate(ink):
+                if not value or visited[offset]:
+                    continue
+                visited[offset] = 1
+                stack = [offset]
+                cluster_size = 0
+                while stack:
+                    current = stack.pop()
+                    cluster_size += 1
+                    if cluster_size >= 8:
+                        return False
+                    x = current % width
+                    y = current // width
+                    for neighbor_y in range(max(0, y - 1), min(height, y + 2)):
+                        row = neighbor_y * width
+                        for neighbor_x in range(max(0, x - 1), min(width, x + 2)):
+                            neighbor = row + neighbor_x
+                            if ink[neighbor] and not visited[neighbor]:
+                                visited[neighbor] = 1
+                                stack.append(neighbor)
+            return True
+        except Exception:
+            # Missing renderer or an untrusted/stale preview means this page needs
+            # a human check; an OCR-empty image alone is never proof of blankness.
+            return False
+
+    def _validate_whole_book_plan(
+        self,
+        output: WholeBookPlanDraftOutput,
+        source: dict[str, Any],
+        pages: list[dict[str, Any]],
+        *,
+        page_budget: int,
+        chapter_id: str,
+    ) -> list[dict[str, Any]]:
+        expected = {int(page["page"]) for page in pages}
+        dispositions = [item.model_dump(mode="json") for item in output.pageDispositions]
+        by_page = {int(item["page"]): item for item in dispositions}
+        if len(by_page) != len(dispositions) or set(by_page) != expected:
+            raise ValueError("整本规划必须为本批每个原PDF页码提供且只提供一条处理记录")
+        outlines = [
+            page
+            for session in output.sessions
+            for section in session.sections
+            for page in section.pages
+        ]
+        if len(outlines) > page_budget:
+            raise ValueError(f"本批规划超过 {page_budget} 个课件页面的制作预算，请缩小或复核原页范围")
+        covered = {number for number, item in by_page.items() if item["disposition"] == "covered"}
+        referenced: set[int] = set()
+        for outline in outlines:
+            referenced.update(int(ref.page) for ref in outline.sourceRefs)
+        all_cited: set[int] = set(referenced)
+        for objective in output.objectives:
+            all_cited.update(int(ref.page) for ref in objective.sourceRefs)
+        for refs in output.coverageMap.values():
+            all_cited.update(int(ref.page) for ref in refs)
+        if referenced != covered or not all_cited.issubset(covered):
+            raise ValueError("整本规划必须覆盖每个有效教学页；已跳过的非教学页不能进入课时引用")
+        pages_by_number = {int(page["page"]): page for page in pages}
+        for page_number, item in by_page.items():
+            if item["disposition"] == "skipped" and not self._whole_book_skip_is_supported(
+                str(item.get("reason") or ""), pages_by_number[page_number], source, chapter_id,
+            ):
+                raise ValueError(f"第 {page_number} 页不符合声明的跳过原因，请保留教学内容或人工核对原页")
+        for objective in output.objectives:
+            self._validate_refs(objective.sourceRefs, source, pages)
+        for session in output.sessions:
+            for section in session.sections:
+                for outline in section.pages:
+                    if not set(outline.objectiveIds).issubset({item.objectiveId for item in output.objectives}):
+                        raise ValueError("整本规划页面引用了不存在的教学目标")
+                    self._validate_refs(outline.sourceRefs, source, pages)
+        for refs in output.coverageMap.values():
+            self._validate_refs(refs, source, pages)
+        return dispositions
+
+    def _save_whole_book_skipped_plan(
+        self,
+        payload: dict[str, Any],
+        source: dict[str, Any],
+        context: JobExecutionContext,
+        runtime_result: dict[str, Any],
+        dispositions: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        current_plan = self.store.load_plan(str(payload["chapterId"]))
+        if current_plan is None:
+            raise TerminalJobError("整本规划草稿不存在")
+        if any(item.get("disposition") != "skipped" for item in dispositions):
+            raise ValueError("本批包含教学页，不能将整批记录为非教学页")
+        audit = self._runtime_audit(runtime_result, payload["frozenTemplate"])
+        audit.update({
+            "wholeBookPageDispositions": json.dumps(dispositions, ensure_ascii=False, separators=(",", ":")),
+            "wholeBookPageBudget": int((payload.get("wholeBook") or {}).get("pageBudget", 45)),
+            "wholeBookSourceRevisionId": str(source["sourceRevisionId"]),
+            "wholeBookSourceFileSha256": str(source.get("sourceFileSha256") or ""),
+            "wholeBookGeneratedPageCount": 0,
+        })
+        plan = CoursewarePlan.model_validate({
+            **current_plan,
+            "objectives": [], "sessions": [], "coverageMap": {},
+            "status": "draft", "generationStatus": "completed",
+            "generationAudit": audit,
+            "updatedAt": time.time(),
+        }).model_dump()
+        saved = self.store.checkpoint_plan(
+            context=context,
+            chapter_id=str(payload["chapterId"]),
+            chapter_version=int(payload["chapterVersion"]),
+            source_revision_id=str(source["sourceRevisionId"]),
+            expected_plan_record_version=int(payload["expectedPlanRecordVersion"]),
+            plan=plan,
+            now=time.time(),
+        )
+        return {
+            "chapterId": payload["chapterId"], "planVersion": saved["planVersion"],
+            "status": "completed_non_instructional",
+        }
 
     def _finish_plan_generation(self, payload: dict[str, Any], plan: dict[str, Any], cancellation_check: Any, context: JobExecutionContext) -> dict[str, Any]:
         """Automatic mode advances validated outlines; generated pages remain unreviewed."""
@@ -548,13 +885,18 @@ class CoursewareService:
                     raise ValueError("教材来源已变化，请重新生成规划")
                 start = edit.pageStart if edit.pageStart is not None else int(plan["pageStart"])
                 end = edit.pageEnd if edit.pageEnd is not None else int(plan["pageEnd"])
-                selected_pages = self._selected_pages(source, start, end)
+                skipped_pages = self._verified_whole_book_skip_pages(plan, source)
+                selected_pages = self._selected_pages(source, start, end, allowed_skip_pages=skipped_pages)
                 if len(selected_pages) > 30:
                     raise ValueError("一次规划最多选择 30 个物理页；请拆分教学范围")
                 if retained_page_ranges(plan) & set(range(start, end + 1)):
                     raise ValueError("规划范围不能包含已保留课时的原页；请只编辑本次补齐的页段")
                 self._validate_refs(edit.objectives, source, selected_pages)
                 self._validate_refs(edit.sessions, source, selected_pages)
+                self._reject_references_to_skipped_pages(
+                    [item.model_dump() for item in edit.objectives] + [item.model_dump() for item in edit.sessions],
+                    skipped_pages,
+                )
                 coverage = {
                     item.objectiveId: [ref.model_dump() for ref in item.sourceRefs]
                     for item in edit.objectives
@@ -625,12 +967,23 @@ class CoursewareService:
                     raise ValueError("确认前必须包含教学目标、课时与页面")
                 if set(plan.get("coverageMap", {})) != {item["objectiveId"] for item in plan["objectives"]}:
                     raise ValueError("每个教学目标都必须有来源覆盖")
-                pages = self._selected_pages(source, int(plan["pageStart"]), int(plan["pageEnd"]))
+                skipped_pages = self._verified_whole_book_skip_pages(plan, source)
+                pages = self._selected_pages(
+                    source, int(plan["pageStart"]), int(plan["pageEnd"]), allowed_skip_pages=skipped_pages,
+                )
                 self._validate_refs(plan["coverageMap"], source, pages)
                 self._validate_refs(plan["sessions"], source, pages)
                 profile = self.profiles.get(str(plan["subject"]))
                 template = self._prompt(profile.page_prompt_id)
                 template_data = self._frozen_template(template)
+                plan_audit = plan.get("generationAudit") or {}
+                document_audit: dict[str, Any] = {}
+                if plan_audit.get("wholeBookPageDispositions"):
+                    document_audit["wholeBookPageDispositions"] = plan_audit["wholeBookPageDispositions"]
+                    document_audit["wholeBookPageBudget"] = plan_audit.get("wholeBookPageBudget")
+                    document_audit["wholeBookSourceRevisionId"] = plan_audit.get("wholeBookSourceRevisionId")
+                    document_audit["wholeBookSourceFileSha256"] = plan_audit.get("wholeBookSourceFileSha256")
+                    document_audit["wholeBookGeneratedPageCount"] = plan_audit.get("wholeBookGeneratedPageCount")
                 now = time.time()
                 documents: list[dict[str, Any]] = []
                 jobs: list[dict[str, Any]] = []
@@ -695,6 +1048,7 @@ class CoursewareService:
                         "generationJobId": None,
                         "reviewRecords": [],
                         "automation": {"status": "generating"} if plan.get("generationAudit", {}).get("automaticPublication") else None,
+                        "generationAudit": document_audit,
                         "createdAt": now,
                         "updatedAt": now,
                     }).model_dump()
@@ -765,7 +1119,10 @@ class CoursewareService:
 
     def get_document(self, courseware_id: str) -> dict[str, Any]:
         _, source, document = self._document(courseware_id)
-        selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self._verified_whole_book_skip_pages(document, source)
+        selected = self._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         self._validate_refs(document, source, selected)
         result = CoursewareDocument.model_validate(self.store.with_automation_status(document)).model_dump()
         return self._with_asset_urls(result)
@@ -875,7 +1232,10 @@ class CoursewareService:
                     raise LookupError("课件页面不存在")
                 profile = self.profiles.get(str(document["subject"]))
                 template = self._prompt(profile.page_prompt_id)
-                selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+                skipped_pages = self._verified_whole_book_skip_pages(document, source)
+                selected = self._selected_pages(
+                    source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+                )
                 page_source_numbers = {int(ref["page"]) for ref in page.get("sourceRefs", [])}
                 page_source = [item for item in selected if int(item["page"]) in page_source_numbers]
                 if not page_source:
@@ -934,7 +1294,10 @@ class CoursewareService:
             raise TerminalJobError("页面生成任务已被新编辑或新任务取代")
         if int(document["planVersion"]) != int(payload["planVersion"]):
             raise TerminalJobError("课件规划已变化，旧页面生成未写入")
-        selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self._verified_whole_book_skip_pages(document, source)
+        selected = self._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         source_pages_by_number = {int(item["page"]): item for item in payload["sourcePages"]}
         template = self._template_from_payload(payload["frozenTemplate"])
         selection = payload["runtimeSnapshot"]["generation"]
@@ -1092,8 +1455,12 @@ class CoursewareService:
         page = next((item for item in document["pages"] if item["pageId"] == page_id), None)
         if not page:
             raise LookupError("课件页面不存在")
-        selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self._verified_whole_book_skip_pages(document, source)
+        selected = self._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         self._validate_refs(content, source, selected)
+        self._reject_references_to_skipped_pages(content.model_dump(), skipped_pages)
         plan = self.store.load_plan(chapter["chapterId"], lock=True)
         objectives = {item["objectiveId"] for item in objectives_for_version(plan, int(document["planVersion"]))}
         if not set(content.objectiveIds).issubset(objectives):
@@ -1153,7 +1520,10 @@ class CoursewareService:
             raise ValueError("课件已更新，请刷新后重新审核")
         if document.get("automation"):
             document["automation"].update(status="paused", message="已切换为手动处理。")
-        selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self._verified_whole_book_skip_pages(document, source)
+        selected = self._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         pages = document.get("pages", [])
         targets = page_ids or [item["pageId"] for item in pages]
         if len(targets) != len(set(targets)):
@@ -1227,7 +1597,10 @@ class CoursewareService:
         scope = str(source.get("distributionScope") or "private")
         if scope != "private" and (not source.get("license") or not source.get("attributionText")):
             raise ValueError("发布前必须登记教材许可与署名文本")
-        selected = self._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self._verified_whole_book_skip_pages(document, source)
+        selected = self._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         issues = document_page_issues(self._with_asset_urls(document), selected)
         if issues:
             raise ValueError("课件未通过结构与来源质量检查：" + "; ".join(str(item["message"]) for item in issues[:8]))

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLearnerId } from "../../api/identity";
 import {
   loadPublishedPublication,
 } from "../../api/publications";
@@ -7,6 +8,7 @@ import { requestHelp } from "../../api/tutoring";
 import { assembleSubQuestionText, hasMeaningfulSubQuestionAnswer } from "../../answerAssembly";
 import { LessonPlayer } from "../../lesson/LessonPlayer";
 import { speak, stopSpeech } from "../../speech";
+import { AppHeader } from "../../components/ui";
 import type {
   ExerciseAttemptRecord,
   PublicationDetail,
@@ -37,9 +39,13 @@ interface StudentQuestionDraft {
  */
 export function PublishedPaperApp() {
   const navigate = useNavigate();
+  const learnerId = useLearnerId();
   const { publicationId = "" } = useParams();
   const [searchParams] = useSearchParams();
   const assignmentId = searchParams.get("assignmentId") || undefined;
+  const serverSessionId = searchParams.get("sessionId") || undefined;
+  const continuousMode = searchParams.get("continuous") === "1";
+  const interactionScopeKey = `${learnerId}:${publicationId}:${assignmentId || "practice"}:${serverSessionId || ""}`;
   const [publication, setPublication] = useState<PublicationDetail | null>(null);
   const [questionIndex, setQuestionIndex] = useState(0);
   const [studentInput, setStudentInput] = useState("");
@@ -62,13 +68,64 @@ export function PublishedPaperApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [reviewCompleted, setReviewCompleted] = useState(false);
+  const [autoAdvancePaused, setAutoAdvancePaused] = useState(false);
+  const [continuousAdvanceReady, setContinuousAdvanceReady] = useState(false);
+  const learnerIdAtRender = useRef(learnerId);
+  const interactionScopeRef = useRef(interactionScopeKey);
   const activeQuestionIdRef = useRef("");
   const interactionRequestId = useRef(0);
   const initializedPaperRef = useRef("");
   const explanationSectionRef = useRef<HTMLElement>(null);
   const wasShowingExplanationRef = useRef(false);
-  const { queueAttempt, syncMessage, mastery, attempts, sessionReady } = usePublishedLearningSession(publication?.publicationId, assignmentId);
-  const paperProgress = usePublishedPaperProgress(publication, attempts);
+  const autoContinueAfterSyncScopeRef = useRef("");
+  const { queueAttempt, syncMessage, mastery, attempts, pendingAttemptIds, sessionReady } = usePublishedLearningSession(
+    publication?.publicationId,
+    assignmentId,
+    serverSessionId,
+  );
+  const pendingAttemptIdSet = new Set(pendingAttemptIds);
+  const confirmedAttempts = attempts.filter((attempt) => !pendingAttemptIdSet.has(attempt.attemptId));
+  const paperProgress = usePublishedPaperProgress(publication, confirmedAttempts);
+  const paperHeader = <AppHeader
+    backTo="/learn"
+    backLabel="返回今日"
+    subtitle={publication?.title ?? "学生练习"}
+    className="student-paper-header"
+    actions={publication ? <span className="active-model live paper-sync-badge">{syncMessage}</span> : undefined}
+  />;
+
+  useLayoutEffect(() => {
+    if (interactionScopeRef.current === interactionScopeKey) return;
+    const identityChanged = learnerIdAtRender.current !== learnerId;
+    interactionScopeRef.current = interactionScopeKey;
+    learnerIdAtRender.current = learnerId;
+    // Any pending judgement or dwell timer belongs to the previous learner/session.
+    interactionRequestId.current += 1;
+    activeQuestionIdRef.current = "";
+    stopSpeech();
+    if (identityChanged) {
+      initializedPaperRef.current = "";
+      autoContinueAfterSyncScopeRef.current = "";
+    }
+  }, [interactionScopeKey, learnerId]);
+
+  useEffect(() => {
+    if (learnerIdAtRender.current !== learnerId) return;
+    setReply(null);
+    setShowExplanation(false);
+    setMistakeNotice("");
+    setPendingAdvance(null);
+    setAutoAdvancePaused(false);
+    setContinuousAdvanceReady(false);
+    setDrafts({});
+    setStudentInput("");
+    setSelectedOptions([]);
+    setBlankAnswers({});
+    setNumericAnswer("");
+    setDrawConnections([]);
+    setSubQuestionAnswers({});
+    setHintLevel(0);
+  }, [interactionScopeKey, learnerId]);
 
   const payload = publication?.lessons[questionIndex]?.questionPayload ?? null;
   const currentQuestionId = payload?.question.id ?? "";
@@ -77,15 +134,17 @@ export function PublishedPaperApp() {
 
   useEffect(() => {
     if (!publication || !sessionReady) return;
-    const key = publication.publicationId;
+    const key = `${learnerId}:${publication.publicationId}:${assignmentId || "practice"}`;
     if (initializedPaperRef.current === key) return;
     initializedPaperRef.current = key;
     setReviewCompleted(false);
+    setAutoAdvancePaused(false);
+    setContinuousAdvanceReady(false);
     // 首次进入从第一道未完成题开始；全部完成时由完成态接管，不停在最后一次
     // 提交的题目上等待学生猜下一步。离线回退也会走这里，因为 sessionReady
     // 在恢复失败时同样会置为 true。
     if (paperProgress.firstIncompleteIndex >= 0) setQuestionIndex(paperProgress.firstIncompleteIndex);
-  }, [publication, paperProgress.firstIncompleteIndex, sessionReady]);
+  }, [assignmentId, learnerId, publication, paperProgress.firstIncompleteIndex, sessionReady]);
 
   const restoreAttempt = (attempt?: ExerciseAttemptRecord, draft?: StudentQuestionDraft) => {
     const response = attempt?.response ?? {};
@@ -206,11 +265,21 @@ export function PublishedPaperApp() {
 
   const askTutor = async (mode: "answer" | "help") => {
     if (!payload || loading) return;
+    const requestLearnerId = learnerId;
+    const requestScopeKey = interactionScopeKey;
+    if (interactionScopeRef.current !== requestScopeKey) return;
     // 作答是静音阶段：如果学生刚看过提示后开始重新选择或提交答案，
     // 立即停止旧语音，避免 TTS 与当前的思考过程并行占用请求。
     if (mode === "answer") stopSpeech();
+    if (mode === "answer") {
+      setAutoAdvancePaused(false);
+      setContinuousAdvanceReady(false);
+    }
     const questionId = payload.question.id;
     const requestId = ++interactionRequestId.current;
+    const isCurrentInteraction = () => requestId === interactionRequestId.current
+      && learnerIdAtRender.current === requestLearnerId
+      && interactionScopeRef.current === requestScopeKey;
     const questionType = payload.question.questionType;
     const interactionResult = payload.question.subQuestions?.length
       ? { subQuestionAnswers }
@@ -246,7 +315,7 @@ export function PublishedPaperApp() {
         interactionResult,
       });
       // 切题后旧的辅导请求可能晚返回；不允许它重新触发旧题目的回复或 TTS。
-      if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
+      if (!isCurrentInteraction() || activeQuestionIdRef.current !== questionId) return;
       setReply(response);
       setHintLevel(response.nextHintLevel);
       // 学生提交答案是判题动作，不应隐式启动昂贵的 TTS 请求。
@@ -255,9 +324,7 @@ export function PublishedPaperApp() {
       if (mode === "help") speak(response.reply.replace(/\n/g, " "));
       if (mode === "answer" && response.guideContext.assessment) {
         const assessment = response.guideContext.assessment;
-        const nextIndex = assessment === "correct"
-          ? paperProgress.nextIncompleteIndex(questionIndex, questionId)
-          : null;
+        const nextIndex = paperProgress.nextIncompleteIndex(questionIndex, questionId);
         // attempt 持久化可能会立刻让整套练习进入 completed；先保留当前反馈，
         // 再排队保存，避免完成页抢先卸载题目工作台。
         if (assessment === "correct" && nextIndex === null) setPendingAdvance("completion");
@@ -270,23 +337,33 @@ export function PublishedPaperApp() {
           durationMs: Math.round(performance.now() - startedAt),
           createdAt: Date.now() / 1000,
         });
-        if (requestId !== interactionRequestId.current || activeQuestionIdRef.current !== questionId) return;
+        if (!isCurrentInteraction() || activeQuestionIdRef.current !== questionId) return;
         if (assessment === "correct") {
           // 先完成本地快照/离线排队，再推进；nextIncompleteIndex 用刚提交的题目
           // 作为“已完成”覆盖值，避免 React 尚未完成下一轮渲染时又回到当前题。
-          if (nextIndex !== null) setPendingAdvance(nextIndex);
+          if (attemptResult.status === "saved" && nextIndex !== null) setPendingAdvance(nextIndex);
+          else if (attemptResult.status === "queued") {
+            // A queued result is visible feedback, not a completion fact. Keep
+            // this question active until the server accepts the attempt.
+            setPendingAdvance(null);
+            setContinuousAdvanceReady(false);
+          }
         } else {
           setShowExplanation(true);
           setMistakeNotice(attemptResult.status === "saved" && attemptResult.autoMistake
             ? "这道错题已自动加入错题本，不需要再次上传。"
             : "错题记录已在本机排队，网络恢复后会自动加入错题本。");
         }
+        if (nextIndex === null && attemptResult.status === "saved" && (continuousMode || assessment === "correct")) {
+          setPendingAdvance("completion");
+          setContinuousAdvanceReady(true);
+        }
       }
     } catch (requestError) {
-      if (requestId !== interactionRequestId.current) return;
+      if (!isCurrentInteraction()) return;
       setError(requestError instanceof Error ? requestError.message : "请求失败");
     } finally {
-      if (requestId === interactionRequestId.current) setLoading(false);
+      if (isCurrentInteraction()) setLoading(false);
     }
   };
 
@@ -295,21 +372,37 @@ export function PublishedPaperApp() {
     interactionRequestId.current += 1;
     stopSpeech();
     setPendingAdvance(null);
+    setAutoAdvancePaused(false);
+    setContinuousAdvanceReady(false);
     setQuestionIndex(nextIndex);
   };
 
   useEffect(() => {
-    if (pendingAdvance === null) return;
+    if (pendingAdvance === null || autoAdvancePaused) return;
+    const scheduledScopeKey = interactionScopeKey;
     // 答对是学习闭环里最该被看见的时刻：延迟 1.2 秒再切题，让“回答正确”的反馈
     // 有机会被学生读到，而不是在同一帧就被切题 effect 的 setReply(null) 清空。
     const timer = window.setTimeout(() => {
+      if (interactionScopeRef.current !== scheduledScopeKey) return;
       if (pendingAdvance !== "completion") changeQuestion(pendingAdvance);
+      else if (continuousMode && continuousAdvanceReady) navigate("/learn/continue");
       setPendingAdvance(null);
-    }, 1200);
+    }, 2500);
     // 组件卸载或提前切题（例如学生点了“继续下一题”）都必须清理，否则定时器
     // 会在稍后对一道无关的题目重复触发 changeQuestion。
     return () => window.clearTimeout(timer);
-  }, [pendingAdvance]);
+  }, [autoAdvancePaused, continuousAdvanceReady, continuousMode, interactionScopeKey, navigate, pendingAdvance]);
+
+  useEffect(() => {
+    const scope = `${learnerId}:${publicationId}:${assignmentId || "practice"}`;
+    if (autoContinueAfterSyncScopeRef.current !== scope) autoContinueAfterSyncScopeRef.current = "";
+    if (!continuousMode || !sessionReady || !paperProgress.completed || syncMessage !== "离线学习记录已补传"
+      || autoContinueAfterSyncScopeRef.current === scope) return;
+    autoContinueAfterSyncScopeRef.current = scope;
+    if (interactionScopeRef.current === interactionScopeKey && learnerIdAtRender.current === learnerId) {
+      navigate("/learn/continue");
+    }
+  }, [assignmentId, continuousMode, interactionScopeKey, learnerId, navigate, paperProgress.completed, publicationId, sessionReady, syncMessage]);
 
   useEffect(() => {
     // 只在 showExplanation 由 false 变为 true 的那一次滚动；讲解区在页面最
@@ -347,19 +440,20 @@ export function PublishedPaperApp() {
     setError("");
   };
 
-  if (error && !publication) return <main className="center-state"><strong>无法打开练习</strong><span>{error}</span><button onClick={() => navigate("/learn")}>返回今日</button></main>;
+  if (error && !publication) return <main className="app-shell student-paper-shell">
+    {paperHeader}
+    <section className="student-paper-route-state" role="alert"><strong>无法打开练习</strong><span>{error}</span></section>
+  </main>;
   // 会话恢复完成前不开放输入。否则学生可能已经在第 1 题作答，随后历史 attempts
   // 才把页面定位到另一道未完成题，造成草稿看似丢失。
-  if (!publication || !payload || !sessionReady) return <main className="center-state"><span>正在打开练习…</span></main>;
+  if (!publication || !payload || !sessionReady) return <main className="app-shell student-paper-shell">
+    {paperHeader}
+    <section className="student-paper-route-state" role="status"><span>正在打开练习…</span></section>
+  </main>;
 
   return (
     <main className="app-shell student-paper-shell">
-      <header className="topbar student-paper-topbar">
-        <button className="product-home-button" onClick={() => navigate("/learn")}>← 返回今日</button>
-        <div className="brand-mark">D</div>
-        <div><strong>Dotty</strong><span>{publication.title}</span></div>
-        <span className="active-model live paper-sync-badge">{syncMessage}</span>
-      </header>
+      {paperHeader}
       <PaperQuestionProgress
         lessons={publication.lessons}
         currentIndex={questionIndex}
@@ -374,6 +468,7 @@ export function PublishedPaperApp() {
         <StudentPaperCompleted
           questionCount={publication.lessons.length}
           onBack={() => navigate("/learn")}
+          syncMessage={syncMessage}
           onReview={() => {
             setReviewCompleted(true);
             setQuestionIndex(0);
@@ -396,13 +491,18 @@ export function PublishedPaperApp() {
         hasSubmitted={Boolean(latestAttempt)}
         lastAssessment={latestAttempt?.assessment}
         autoAdvancing={pendingAdvance !== null}
+        autoAdvancePaused={autoAdvancePaused}
         finishingPaper={pendingAdvance === "completion"}
         onAdvanceNow={() => {
+          if (interactionScopeRef.current !== interactionScopeKey || learnerIdAtRender.current !== learnerId) return;
+          setAutoAdvancePaused(false);
           if (pendingAdvance !== null) {
             if (pendingAdvance !== "completion") changeQuestion(pendingAdvance);
+            else if (continuousMode && continuousAdvanceReady) navigate("/learn/continue");
             setPendingAdvance(null);
           }
         }}
+        onPauseAutoAdvance={() => setAutoAdvancePaused(true)}
         onPrevious={() => changeQuestion(Math.max(0, questionIndex - 1))}
         onNext={() => changeQuestion(Math.min(publication.lessons.length - 1, questionIndex + 1))}
         onSelectOption={selectOption}

@@ -80,6 +80,14 @@ class TextbookStore(DatabaseStore):
         result = job.get("result")
         import_id = result.get("importId") if isinstance(result, dict) else job.get("importId")
         now = time.time()
+        directory = Path(job["directory"]).expanduser().resolve(strict=False)
+        try:
+            relative_directory = directory.relative_to(self.root.resolve()).as_posix()
+        except ValueError:
+            # Legacy test/import callers may provide an external temporary path.
+            # Production uploads are always below data_root and use the portable
+            # marker below; an external path is never made into a remote object.
+            relative_directory = f"uploads/{job['uploadId']}"
         values = {
             "upload_id": job["uploadId"],
             "import_id": import_id,
@@ -89,7 +97,7 @@ class TextbookStore(DatabaseStore):
             "chunk_size": job["chunkSize"],
             "total_chunks": job["totalChunks"],
             "source_text": job.get("sourceText", ""),
-            "directory": str(job["directory"]),
+            "directory": f"@data/{relative_directory}",
             "status": job["status"],
             "progress": job.get("progress", 0),
             "message": job.get("message", ""),
@@ -151,6 +159,26 @@ class TextbookStore(DatabaseStore):
             if item["batch_id"] in retired_batches or (question_id is not None and str(question_id) in retired_questions):
                 continue
             visible_rows.append(item)
+        stored_directory = str(row["directory"] or "")
+        if stored_directory.startswith("@data/"):
+            directory = (self.root / stored_directory.removeprefix("@data/")).resolve(strict=False)
+        else:
+            legacy_directory = Path(stored_directory).expanduser()
+            try:
+                # Old rows created on this same machine remain valid.
+                legacy_directory.resolve(strict=False).relative_to(self.root.resolve())
+                directory = legacy_directory.resolve(strict=False)
+            except ValueError:
+                # A database row must not pin a different machine or cache's
+                # absolute path. Relocate old rows to this instance's upload root.
+                directory = self.upload_root / str(row["upload_id"])
+        try:
+            directory.resolve(strict=False).relative_to(self.root.resolve())
+        except ValueError:
+            # A malformed relative marker must not escape the configured cache.
+            directory = self.upload_root / str(row["upload_id"])
+        directory = directory.resolve(strict=False)
+
         return {
             "uploadId": row["upload_id"],
             "importId": row["import_id"],
@@ -160,7 +188,7 @@ class TextbookStore(DatabaseStore):
             "chunkSize": row["chunk_size"],
             "totalChunks": row["total_chunks"],
             "sourceText": row["source_text"],
-            "directory": Path(row["directory"]),
+            "directory": directory,
             "status": row["status"],
             "progress": row["progress"],
             "message": row["message"],

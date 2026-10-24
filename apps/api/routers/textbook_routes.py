@@ -53,6 +53,7 @@ from domain.questions.contracts import (
     StudentTutorReply,
 )
 from domain.questions.student_view import student_mistake_item, student_tutor_reply
+from infrastructure.files.file_storage import FileStorageError
 from infrastructure.files.upload_registry import (
     UploadRegistry,
     resolve_inside_upload_root,
@@ -264,6 +265,12 @@ async def upload_pdf_chunk(upload_id: str, index: int, request: Request) -> dict
 
     chunk_path = job["directory"] / f"chunk-{index:06d}.part"
     chunk_path.write_bytes(content)
+    if getattr(store.file_assets, "enabled", False):
+        try:
+            store.file_assets.persist_upload_file(upload_id, chunk_path, content_type="application/pdf")
+        except Exception as error:
+            detail = str(error) if isinstance(error, (FileStorageError, FileNotFoundError)) else "请稍后重试"
+            raise HTTPException(status_code=503, detail=f"PDF 分块未能完成远端持久化：{detail}") from error
     uploaded_count = len(list(job["directory"].glob("chunk-*.part")))
     update_upload_job(
         job,
@@ -644,6 +651,13 @@ def get_pdf_asset(upload_id: str, batch_id: str, filename: str) -> FileResponse:
     """Serve only raster assets located inside the requested batch directory."""
     job = upload_job(upload_id)
     asset_path = resolve_inside_upload_root(job["directory"] / "assets", batch_id, filename)
+    if asset_path is not None and getattr(store.file_assets, "enabled", False):
+        try:
+            store.file_assets.restore_upload_file(upload_id, asset_path)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="题目图片不存在") from error
+        except FileStorageError as error:
+            raise HTTPException(status_code=503, detail=f"题目图片暂不可恢复：{error}") from error
     if asset_path is None or not asset_path.is_file():
         raise HTTPException(status_code=404, detail="题目图片不存在")
     if asset_path.suffix.lower() not in ASSET_SUFFIXES:
@@ -659,6 +673,13 @@ def get_pdf_artifact(upload_id: str, batch_id: str, filename: str) -> FileRespon
     """Expose a small allowlist of review artifacts without directory access."""
     job = upload_job(upload_id)
     artifact_path = resolve_inside_upload_root(job["directory"] / "assets", batch_id, filename)
+    if artifact_path is not None and artifact_path.name in ARTIFACT_NAMES and getattr(store.file_assets, "enabled", False):
+        try:
+            store.file_assets.restore_upload_file(upload_id, artifact_path)
+        except FileNotFoundError as error:
+            raise HTTPException(status_code=404, detail="中间产物不存在") from error
+        except FileStorageError as error:
+            raise HTTPException(status_code=503, detail=f"中间产物暂不可恢复：{error}") from error
     if (
         artifact_path is None
         or artifact_path.name not in ARTIFACT_NAMES

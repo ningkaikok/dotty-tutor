@@ -33,6 +33,7 @@ Dotty Tutor 是个人技术 Demo，不追求微服务数量或企业框架完整
 [用户任务与消融审视](user-task-ablation.md)。学生今日入口的四路读取在
 `useStudentTodayQueue` 中形成绑定 learnerId 的单一快照；`StudentLearningApp`
 把待办、自由练习、已完成作业回看分开呈现，不用本机会话记录推断完成状态。
+`/learn/continue` 通过 `continuous_learning.py` 读取服务端作业、错题和复习证据，明确开始后仍进入原有学习流程。
 
 ```text
 dotty-tutor/
@@ -54,6 +55,8 @@ dotty-tutor/
 │   │   │   ├── courseware_routes.py # 课件规划确认、逐页编辑、审核发布与独立学生投影
 │   │   │   ├── courseware_unit_routes.py # 教师/学生单元目录、本人续学位置
 │   │   │   ├── courseware_search_routes.py # 当前发布教材原文检索、引用讲解与证据原页
+│   │   │   ├── continuous_learning_routes.py # 学生只读下一项与显式开始 API
+│   │   │   ├── whole_book_routes.py # 教师整本制作启动、进度、暂停与继续 API
 │   │   │   ├── courseware_delivery_routes.py # 课件视频和语音到已有领域服务的薄路由
 │   │   │   ├── quality_review_runs_routes.py # 受限模型对照、匿名评分、统计与金标准门禁
 │   │   │   ├── quality_review_routes.py # 教师案例导入、来源复核与追加决定
@@ -67,6 +70,9 @@ dotty-tutor/
 │   │   │   └── ...             # 学习、发布、运行时和错题路由
 │   │   ├── application/services/ # 可由 HTTP 或 Worker 调用的业务编排
 │   │   │   ├── material_courses.py # 受管原页 OCR 检查点与自动来源→规划→页面链路
+│   │   │   ├── continuous_learning.py # 按服务端进度选择下一项；GET 不创建学习任务
+│   │   │   ├── review_task_start.py # 显式开始后准备或恢复一项复习题
+│   │   │   ├── whole_book.py # 整本教材有界批次、进度、暂停和恢复编排
 │   │   │   ├── courseware.py # 来源规划、逐页生成、编辑、审核与不可变课件发布
 │   │   │   ├── courseware_assets.py # 可信区域裁图、原页回退与哈希缓存
 │   │   │   ├── courseware_coverage.py # 完整来源页段的规划/生成/审核/发布缺口
@@ -98,6 +104,7 @@ dotty-tutor/
 │   │   │   └── learning_funnel.py # 学习效果漏斗聚合（GET /api/funnel）
 │   │   ├── application/chapter_jobs.py # 章节 AI 草稿 Worker 注册、取消与错误分类
 │   │   ├── application/courseware_jobs.py # 规划与逐页课件 Worker 注册、租约/认领门禁
+│   │   ├── application/whole_book_jobs.py # 整本控制任务与现有来源/课件阶段完成钩子
 │   │   ├── application/ai_review_jobs.py # AI 初审/参考意见 Worker 注册；格式错误重试一次后可见失败
 │   │   ├── application/quality_review_sources.py # 受管素材哈希、原句与既有 PDF 预览适配
 │   │   ├── application/quality_review_runs_jobs.py # 共用 Worker 的一次性有界模型对照
@@ -113,6 +120,7 @@ dotty-tutor/
 │   │   ├── domain/             # 跨业务域契约、题目、学习和陪练规则
 │   │   │   ├── contracts/      # 稳定请求/响应契约
 │   │   │   │                   # courseware.py、quality_review.py、quality_review_runs.py、lesson_media.py、voice.py 定义新增协议
+│   │   │   │   ├── whole_book.py # 整本启动、批次进度与暂停/继续契约
 │   │   │   ├── chapters/       # material.py 文档分类与章节边界；source.py 定位；templates.py 有限模板；quality.py AI 草稿引用校验；english.py 依据判定
 │   │   │   ├── courseware/     # profiles.py 学科配置；quality.py 来源与页面发布门禁；assessment.py 可选练习判分；model_output.py 严格模型输出协议；batches.py 当前规划与保留批次的课件归属；ai_review.py AI 初审输入哈希、确定性抽检、分流与一致率
 │   │   │   ├── questions/      # 题目来源、IR、Schema 和质量纯函数
@@ -140,7 +148,10 @@ dotty-tutor/
 │   │   │   │   ├── voice_audio.py # 受限容器、协议、字节与时长校验
 │   │   │   │   ├── local_whisper_stt.py # 独立模型 Python 中的离线 CLI
 │   │   │   │   └── job_snapshot.py # 后台任务入队时的 generation/review/OCR 非密钥配置快照及执行期绑定
-│   │   │   └── files/          # 上传注册和文件边界
+│   │   │   └── files/          # 上传注册、目录校验和可选私有文件恢复
+│   │   │       ├── file_storage.py # 私有对象分块、manifest 校验与缓存恢复
+│   │   │       ├── storage_migration.py # 只读盘点或显式、非破坏性本地文件迁移
+│   │   │       └── upload_registry.py # 上传状态缓存、路径映射与命名空间恢复
 │   │   ├── evaluation/         # 脱敏语料、Badcase、重放、Judge 和 Tutor 评测工具
 │   │   │   ├── chapter/        # 合成基线与 real_sources.py 真实材料待复核包/人工决策导入
 │   │   │   ├── benchmark/      # 人工金标准契约、合成案例匿名审核包、校验、只读 readiness 诊断和配对统计
@@ -166,13 +177,14 @@ dotty-tutor/
 │   │       ├── assignment_planning_store.py # 脱敏计划、最终个性化 plan 与确认事务
 │   │       ├── metrics_store.py # 模型调用追加指标与报告级聚合
 │   │       ├── tutoring_store.py # TutorInput、线程、工具事件
+│   │       ├── mistake_store.py # 错题状态、归因和学生原图/识别资产路径恢复
 │   │       ├── auth_store.py   # opaque 会话/邀请令牌哈希、过期和撤销
 │   │       ├── search_store.py # PostgreSQL FTS 文档和证据引用
-│   │       └── schema.py        # 教材/学习领域表声明
+│   │       └── schema.py        # 教材/学习领域表及托管文件 manifest 声明
 │   │   ├── alembic.ini          # Alembic 配置；连接串来自环境变量
 │   │   └── migrations/           # 唯一正式 schema migration 版本链（含 Tutor 多模态/工具/检索）
 │   │       ├── env.py            # registry target metadata、事务和 PostgreSQL advisory lock
-│   │       └── versions/         # adoption、mastery、assignment、review/variation、题目编辑与身份会话迁移
+│   │       └── versions/         # adoption、mastery、assignment、review/variation、身份会话与托管文件迁移
 │   │   └── tests/                # 纯逻辑测试与隔离 PostgreSQL 数据库测试
 │   │       ├── postgres_test_support.py # 一次性 PG admin/runtime 数据库生命周期
 │   │       ├── postgres_test_runner.py # 按模块多进程并行运行后端测试，每个进程独立运行时库
@@ -184,10 +196,10 @@ dotty-tutor/
 │   │   │   ├── components/ui/ # Bright token、布局、表单、反馈、导航、原生对话框与开发目录
 │   │   │   ├── apps/teacher/useTeacherClassroomWorkspace.ts # 教师工作台请求、并发状态与派生视图
 │   │   │   ├── apps/home/      # 角色入口选择
-│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 读取 PDF、章节与实际课件；MaterialCoursewareSummary 展示页数及直接授课；来源样例为可选抽检；MaterialsHeader 复用制作页导航，MaterialDeleteAction 确认软删除
-│   │   │   ├── apps/student/   # 学生学习空间；PublishedChapterApp 固定发布版本课程
+│   │   │   ├── apps/materials/ # 统一教材列表；useMaterials 读取 PDF、章节与实际课件；MaterialCoursewareSummary 展示页数及直接授课；来源样例为可选抽检；MaterialsHeader 供课件规划工作区复用，MaterialDeleteAction 确认软删除
+│   │   │   ├── apps/student/   # 学生学习空间；ContinuousLearningApp 统一入口，PublishedChapterApp 固定发布版本课程
 │   │   │   ├── apps/chapters/  # 章节工作台、来源/课程复核；useChapterPublishedMedia 读取冻结发布课时
-│   │   │   ├── apps/courseware/ # 来源准备/规划确认/逐页审核与 Deck/Rail 播放；useCoursewarePlanWorkflow/useCoursewareDocumentWorkflow/useCoursewarePresentation 网络 Hook、完整编辑 DTO 与学生安全播放视图
+│   │   │   ├── apps/courseware/ # 来源准备/规划确认/逐页审核与 Deck/Rail 播放；useCoursewarePlanWorkflow/useCoursewareDocumentWorkflow/useCoursewarePresentation 网络 Hook、完整编辑 DTO 与学生安全播放视图；coursewareDocumentStatus.ts 课件管理状态与发布动作视图；coursewareWorkspaceView.ts 章节列表中文状态
 │   │   │   ├── apps/quality-review/ # CaseReviewPanel 与 useQualityReviewInbox 共享来源复核，保留模型运行组件
 │   │   │   ├── apps/media/     # useLessonMediaStudio 管理版本切换；教师分镜审校与学生视频/字幕播放器
 │   │   │   ├── apps/voice/     # 录音、转写回放、明确确认与可打断追问
@@ -234,6 +246,21 @@ dotty-tutor/
 OCR 公式结构检查由 `ocr_quality.formula_problems` 统一提供，题目发布、章节来源 issues 与课件来源就绪检查复用。
 `formula_mismatch` 是来源页人工标记，经章节来源修订进入课件规划、审核和发布边界；修订不改写历史发布内容。
 
+连续学习与整本制作使用既有业务能力：
+
+```mermaid
+flowchart LR
+  Student[学生] --> Next[GET /api/learning/next]
+  Next --> Queue[ContinuousLearningService / 作业、错题、复习证据]
+  Queue --> Start[显式 POST /api/learning/next/start]
+  Start --> Existing[既有作答、订正或复习页面]
+  Teacher[教师] --> StartBook[POST /api/uploads/{id}/courseware/whole-book]
+  StartBook --> WholeBook[WholeBookService / 最多 1000 页、最多 34 批、每批 30 页]
+  WholeBook --> Shared[共享 Worker 与来源/课件任务]
+  Shared --> Hooks[阶段完成后幂等续做]
+  Hooks --> WholeBook
+```
+
 ```mermaid
 flowchart LR
   Source[上传 PDF / 逐页来源] --> Prepare[MaterialCourseService / source.prepare]
@@ -268,7 +295,8 @@ flowchart LR
 `CoursewareUnitNavigation`/`useCoursewareUnitProgress` 连接学生学习空间与多课时播放器；`useCoursewareUnitProgress` 串行保存阅读位置：网络失败或可重试的 5xx/429 沿用同一 commandId/页面/期望版本，下次翻页补发，409 等明确拒绝则停止并提示刷新。`SourceSearchPanel`/`useCoursewareSourceSearch` 管理提问、取消和身份/发布切换。
 `CoursewareFunctionExplorer` 复用 `InteractiveMathCanvas` 与原活动判题；`CoursewareExport` 用固定发布投影和现有 `BlockView` 打印为 PDF，不创建另一套公式渲染器。
 `evaluation/benchmark/images.py` 校验图像路径/指纹并交给模型 Runtime，SVG 使用已有转换器；`evaluation/chapter/source_review_report.py` 对照原始文字与人工转写，输出待审差异，不改教材或批准状态。
-默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；`confirmReview` 将最终确认与发布作为一个事务。`CoursewareDocumentWorkspace` 默认展示教师草稿预览，覆盖、AI 参考意见和逐页编辑在可选详情中；`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
+默认低干预模式以 `autoGenerate` 串联来源、规划和页面任务，`autoGeneratePages` 控制规划自动推进；手动发布仍通过 `confirmReview` 请求完成现有发布事务。`CoursewareDocumentWorkspace` 复用 `MaterialsHeader`，按已发布、制作中、需要处理和未发布状态展示操作；默认草稿预览使用 `CoursewarePlayer` 的嵌入展示模式，只去掉独立授课工具栏，并把唯一翻页导航放在预览内容前，覆盖、AI 参考意见和逐页编辑仍在可选详情中；发布动作由管理页统一提供，展开编辑不会再出现第二个发布按钮。`draftPlaybackDocument` 与正式投影复用同一播放器转换，预览不产生学习证据。
+`CoursewarePlanWorkspace` 将已有章节课件和可授课入口放在新制作之前，有内容时折叠制作设置、新教材直接展开；`useCoursewarePlanWorkflow` 分开处理学科、章节、课件读取失败和重试，并拒绝旧章节晚返回。`coursewareWorkspaceView.ts` 是纯状态展示映射。导入和试卷预览使用 `AppHeader.onBack` 保留返回时的清理回调；教师单元目录和播放外层复用 `MaterialsHeader`，播放器可通过 `showBrand=false` 避免重复品牌。
 来源任务 ID 保存在制作页面查询参数中，刷新后继续轮询既有任务；发布响应丢失时先读取已持久化结果，避免要求重复发布。
 清理工具保留来源和真实学习记录，其工程与真实内容验收结果单独记录，不能由图示推断已通过。
 
@@ -350,7 +378,9 @@ flowchart LR
 
 ```text
 apps/api/routers/textbook_routes.py（HTTP、上传状态）
+  → infrastructure/files/upload_registry.py（状态读数据库快照；不在轮询时恢复文件）
   → application/services/textbook_processing.py（PDF 合并、首批/后续批次编排）
+  → infrastructure/files/file_storage.py（Worker 合并前按需取回分块/原 PDF；资源 GET 只恢复请求文件）
   → textbook_ocr_pipeline.py（页面探测 → 预检分类 → pypdf/MinerU → 局部升级 → 缓存）
   → ocr_pipeline.py / ocr_preflight.py / ocr_quality.py（无副作用路由、预检与质量决策）
   → domain/questions/source.py（按题号提出候选边界；显式图注优先，独立题号 bbox 高置信纠正线性图片归属，歧义 fail closed 并审计；
@@ -362,6 +392,8 @@ apps/api/routers/textbook_routes.py（HTTP、上传状态）
   → persistence/textbook_store.py（题目和上传任务）
   → persistence/learning_store.py（生成后的课程文档）
 ```
+
+可选私有存储不会改变 `/api/uploads/{id}/status` 的响应和缓存边界。合并任务在 Worker 中按需恢复原件或分块；教材题图/中间产物出口各自只读取单个受管路径。新缓存使用数据库保存的相对目录定位文件，不把旧实例的 `DOTTY_DATA_DIR` 绝对路径写回任务。
 
 `TextbookProcessingService` 和 `question_processing.py` 已把长流程与 APIRouter 分离。Route 只创建
 `background_jobs` 并返回 `202`；`application/textbook_jobs.py` 从 payload 调用 `complete_upload()` 或
@@ -463,7 +495,8 @@ provider、model 和回退状态；前端继续消费原有的 `questionPayload`
 ```text
 apps/api/routers/mistake_routes.py
   → mistake_recognition.py（复用 OCR 与课程生成）
-  → persistence/mistake_store.py（独立 mistake_items 表）
+  → persistence/mistake_store.py（独立 mistake_items 表、相对路径与学生资产恢复）
+  → infrastructure/files/file_storage.py（可选私有保存原图和 OCR 题图；按学生分区校验）
   → apps/api/routers/tutoring_routes.py（线程 HTTP 边界）
   → application/services/stateful_tutor.py（判题、提示和状态转换）
   → persistence/tutoring_store.py（线程与消息）

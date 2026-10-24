@@ -50,7 +50,7 @@ async function fixture(browser: Page, existing = false, planFailure = false, sou
   return mutations;
 }
 
-test("user Given a unit gap When selecting a bounded range on a narrow screen Then the existing plan form receives only that range and requires teacher confirmation", async ({ page }) => {
+test("user Given a unit gap When selecting a bounded range on a narrow screen Then the teacher can explicitly choose manual planning for only that range", async ({ page }) => {
   const mutations = await fixture(page);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`/studio/courseware?chapterId=${chapterId}`);
@@ -67,7 +67,7 @@ test("user Given a unit gap When selecting a bounded range on a narrow screen Th
   await page.getByLabel("授课语言策略").fill("英语授课，中文释义");
   await page.getByLabel("学习目标（每行一个）").fill("用原文支持一个观点");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.getByRole("button", { name: "生成规划供教师确认" }).click();
+  await page.getByRole("button", { name: "手动生成规划并编辑" }).click();
   await expect(page.getByRole("heading", { name: "确认课时与页面规划" })).toBeVisible();
   expect(mutations).toEqual([{ path: `/api/chapters/${chapterId}/courseware-plan`, body: expect.objectContaining({ pageStart: 4, pageEnd: 8, expectedRecordVersion: 1 }) }]);
   expect(mutations.some((item) => /approve|publish|regenerate/.test(item.path))).toBe(false);
@@ -81,7 +81,7 @@ test("user Given forty available source pages When requesting thirty-one pages T
   await page.getByLabel("学习目标（每行一个）").fill("找到原文依据");
   await page.getByLabel("起始页", { exact: true }).fill("1");
   await page.getByLabel("结束页", { exact: true }).fill("31");
-  await page.getByRole("button", { name: "生成规划供教师确认" }).click();
+  await page.getByRole("button", { name: "手动生成规划并编辑" }).click();
   await expect(page.getByRole("alert")).toContainText("最多处理 30 页");
   expect(mutations).toEqual([]);
 });
@@ -97,7 +97,7 @@ test("user Given an unavailable existing plan When opening suggestions Then no n
   const mutations = await fixture(page, false, true);
   await page.goto(`/studio/courseware?chapterId=${chapterId}`);
   await expect(page.getByRole("heading", { name: "暂时无法确认现有规划" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "生成规划供教师确认" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "手动生成规划并编辑" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /规划教材原页/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "重新读取规划" })).toBeEnabled();
   expect(mutations).toEqual([]);

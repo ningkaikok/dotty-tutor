@@ -43,7 +43,14 @@ flowchart LR
     API --> JobStore["PostgreSQL Job Store"]
     JobStore --> Worker["独立 Python Worker"]
     Worker --> Processing["PDF 完成与批次处理"]
+    Worker --> WholeBook["整本教材续做控制器"]
+    WholeBook --> Processing
+    WholeBook --> Courseware["课件规划与自动制作"]
     API --> Learning["课程与学习记录"]
+    API --> ContinuousLearning["连续学习入口"]
+    ContinuousLearning --> Learning
+    ContinuousLearning --> MistakeStore
+    ContinuousLearning --> ReviewStore["ReviewStore"]
     API --> ClassroomAPI["班级与作业指派"]
     ClassroomAPI --> ClassroomStore["ClassroomStore"]
     ClassroomAPI --> Planning["AssignmentPlanningService"]
@@ -57,6 +64,7 @@ flowchart LR
     Processing --> Model
     Processing --> Review
     Processing --> Store
+    Store --> FileAssets["FileAssetStore"]
     Learning --> Store
     ClassroomAPI --> Store
     ClassroomStore --> PostgreSQL
@@ -64,6 +72,7 @@ flowchart LR
     Metrics --> MetricsStore["MetricsStore"]
     API --> TTS["TTS Router"]
     API --> MistakeStore["MistakeStore"]
+    MistakeStore --> FileAssets
     API --> Tutor["StatefulTutor"]
     Tutor --> ThreadStore["TutoringStore"]
     Review --> Model
@@ -81,6 +90,7 @@ flowchart LR
   MetricsStore --> PostgreSQL
   MistakeStore --> MistakeFiles["错题原图 / 题图"]
   Store --> Files["PDF / Markdown / 题图"]
+  FileAssets --> PrivateStorage["可选私有对象存储"]
   TTS --> Azure["Azure Speech"]
   TTS --> Qwen["Qwen3-TTS :8020"]
   Web -. "音频失败" .-> BrowserTTS["浏览器 speechSynthesis"]
@@ -162,6 +172,7 @@ flowchart TB
 | 教师工作台 | `apps/web/src/apps/teacher/TeacherClassroomApp.tsx`、`AssignmentComposer.tsx`、`AssignmentPlanReview.tsx` | 生成/审阅班级分析计划，按需生成全班共享的新试卷，确认后指派并查看看板 |
 | 讲评清单 | `LectureChecklistPanel.tsx`、`useLectureChecklist.ts`、`lecture_checklist.py` | assignment 级只读聚合共性错题、错因分布、学生和 evidenceRefs；限制 1–50，附 `attributionSource`/`mistakeEvidenceRef`；不生成教案或修改学习状态 |
 | 学生学习空间 | `apps/web/src/apps/student/StudentLearningApp.tsx` | 汇总互动试卷、错题本和复习入口；不加载生产配置 |
+| 连续学习页面 | `apps/web/src/apps/student/ContinuousLearningApp.tsx`、`apps/web/src/api/continuousLearning.ts` | 读取下一项并在明确开始后导航到既有作答、订正或复习页面；刷新恢复使用服务端状态 |
 | 已发布试卷播放器 | `apps/web/src/apps/student/PublishedPaperApp.tsx` | 读取已发布试卷、提交作答、离线排队和恢复学习会话 |
 | 学生题目工作区 | `apps/web/src/apps/student/StudentQuestionWorkspace.tsx` | 只展示作答、按需提示与学生反馈，不包含生产诊断和重新生成 |
 | 学生学习会话 Hook | `apps/web/src/apps/student/usePublishedLearningSession.ts` | 恢复失效会话、持久化离线队列、批量补传和幂等重试 |
@@ -189,6 +200,8 @@ flowchart TB
 | 教材处理服务 | `apps/api/application/services/textbook_processing.py` | PDF 合并校验、首批 OCR/生成和后续批次编排，可由 Route 或 Worker 调用 |
 | 后台任务用例 | `apps/api/application/textbook_jobs.py` | 把任务 payload 还原为应用服务调用；不复制 OCR 或生成业务流程 |
 | Worker 循环 | `apps/api/application/job_worker.py`、`apps/api/worker.py` | 原子领取任务、续租、取消检查、有限重试和最终状态收敛 |
+| 连续学习入口 | `apps/api/routers/continuous_learning_routes.py`、`apps/api/application/services/continuous_learning.py` | GET 只读聚合学生的作业、错题和到期复习；显式 start 才会准备一项复习题 |
+| 整本教材续做 | `apps/api/routers/whole_book_routes.py`、`apps/api/application/services/whole_book.py`、`apps/api/application/whole_book_jobs.py` | 教师明确启动后以持久任务按批编排来源准备、课件自动制作与续批；接入共享 Worker 注册表 |
 | Job Store | `apps/api/persistence/job_store.py` | 持久化任务、幂等键、租约、运行快照、错误和结果；PostgreSQL 负责并发领取 |
 | 应用错误契约 | `apps/api/application/errors.py` | 将业务失败映射为稳定错误码、可重试标记和请求 ID |
 | 批次题目处理 | `apps/api/application/services/question_processing.py` | 与 HTTP 解耦的生成、审校、规范化和质量门禁 |
@@ -200,7 +213,8 @@ flowchart TB
 | OCR 题源切分 | `apps/api/domain/questions/source.py` | 按题号切分 Markdown；显式图注优先、独立题号 bbox 高置信绑定、否则线性回退；歧义图片 fail closed 并审计 |
 | 导入质量报告 | `apps/api/domain/questions/quality.py` | 在整本生成前汇总题数、题号序列、未识别页和图片归属冲突，决定是否允许继续 |
 | 应用工厂 | `apps/api/app_factory.py` | FastAPI 初始化、中间件、安全响应头和请求日志 |
-| 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、恢复、状态更新与 PDF 边界校验 |
+| 上传状态注册 | `apps/api/infrastructure/files/upload_registry.py` | 上传任务缓存、相对数据目录映射、PDF 边界校验及可选私有文件命名空间恢复 |
+| 文件资产适配器 | `apps/api/infrastructure/files/file_storage.py`、`storage_migration.py` | 默认沿用本机目录；可选使用 Supabase 私有桶，按文件指纹拆分并校验对象，通过数据库 manifest 跨 DOTTY_DATA_DIR 缓存恢复；迁移命令只盘点或显式复制，不删除原件 |
 | 课程与学习路由 | `apps/api/routers/learning_routes.py` | 课程、学习会话、作答和掌握度接口 |
 | 班级路由 | `apps/api/routers/classroom_routes.py` | 班级、成员、作业计划、个性化作业生成、确认式作业指派和教师看板接口 |
 | 作业计划服务 | `apps/api/application/services/assignment_planning.py`、`apps/api/domain/assignment_planning.py` | 脱敏聚合、三套错因统计、确定性目标排序、模型受约束表达和 stale/fallback 校验 |
@@ -217,7 +231,7 @@ flowchart TB
 | OCR 适配 | `apps/api/infrastructure/runtime/ocr_runtime.py` | MinerU、页范围识别、产物落盘和 pypdf 回退 |
 | 统一模型审校 | `apps/api/infrastructure/runtime/review_runtime.py` | OCR 规范化、文字复核、题图复核和冲突修复；文字与图片复用同一个审核模型选择 |
 | 持久化基础 | `apps/api/persistence/base.py`、`database.py`、`schema.py`、`schema_registry.py` | PostgreSQL 引擎生命周期、数据库配置、按领域 metadata 注册和 Upsert；业务运行时不执行 DDL |
-| 数据库迁移 | `apps/api/alembic.ini`、`apps/api/migrations/`、`persistence/migration_support.py`、`persistence/migration_cli.py`、Compose `db-migrate` | 唯一版本链、adoption/增量升级、幂等回填、readiness 检查；PostgreSQL 使用事务 advisory lock，容器启动在迁移成功前阻断 API/Worker |
+| 数据库迁移 | `apps/api/alembic.ini`、`apps/api/migrations/`、`persistence/migration_support.py`、`persistence/migration_cli.py`、Compose `db-migrate` | 唯一版本链、adoption/增量升级、幂等回填、readiness 检查；PostgreSQL 使用事务 advisory lock，容器启动在迁移成功前阻断 API/Worker；迁移 0028 注册托管文件 manifest |
 | 教材与学习存储 | `apps/api/persistence/app_store.py`、`learning_store.py`、`schema.py` | 应用组合 Store 共享引擎；`knowledge_points` 建立发布版本作用域内的实体身份，作答保存 `knowledge_point_id`，掌握度按最新不同题证据派生 |
 | 班级与作业存储 | `apps/api/persistence/classroom_store.py`、`schema.py` | 保存班级成员和 plan-backed 作业指派；按 assignment 关联学习会话，追加教师复核证据并聚合有效掌握度与看板指标 |
 | 作业计划存储 | `apps/api/persistence/assignment_planning_store.py`、`schema.py` | 保存脱敏输入快照、结构化结果、提醒和 sourceFingerprint；确认计划与创建 assignment 使用同一事务 |
@@ -229,7 +243,7 @@ flowchart TB
 | 语音步骤追问 | `apps/api/application/services/voice_tutor.py`、`persistence/voice_store.py`、`infrastructure/runtime/voice_transcription.py` | 绑定学生及固定发布步骤，录音转写须确认；取消与旧响应隔离，不写作答或掌握度 |
 | 错题路由与契约 | `apps/api/routers/mistake_routes.py`、`apps/api/domain/contracts/mistake.py` | 图片校验、错题确认和稳定错误原因枚举 |
 | 错题识别适配 | `apps/api/mistake_recognition.py` | 以依赖注入方式复用 OCR、题目生成和内容块构建 |
-| 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、原图路径和错题状态；旧归因列作为兼容投影保留 |
+| 错题持久化 | `apps/api/persistence/mistake_store.py` | 独立维护 `mistake_items`、append-only `mistake_attributions`、相对原图路径和错题状态；注入 FileAssetStore 后可恢复学生原图与 OCR 题图；旧归因列作为兼容投影保留 |
 | 多轮辅导 | `apps/api/application/services/stateful_tutor.py`、`apps/api/routers/tutoring_routes.py` | 状态转换、有限上下文和线程 API |
 | 辅导输入与观察 | `apps/api/application/services/tutor_input_service.py`、`domain/tutoring/observations.py`、`infrastructure/runtime/tutor_observation_adapter.py` | 统一文字/结构化/图片/公式/画布输入，输出置信度与证据区域，低置信度要求学生确认 |
 | 辅导持久化 | `apps/api/persistence/tutoring_store.py` | 原子保存每轮消息、摘要、阶段、TutorInput 和工具策略 shadow 事件；通过 message_count 条件提交拦截旧生成，并持久化 Idempotency-Key 响应 |
@@ -246,15 +260,17 @@ flowchart TB
 
 ## 来源关联章节课程与英语阅读
 
-我的教材与自动制作课程页共用 `MaterialsHeader`，沿用工作台的品牌导航和返回按钮；材料卡片、任务状态和课程列表在 `materials.css` 维护一致的布局与移动端样式。`MaterialDeleteAction` 提供就地确认与失败重试，`useMaterials` 在接口成功后移除对应卡片；试卷、教材课程与待识别材料可筛选。章节软删除写入现有 JSON 中的删除时间，保留发布与作答记录并取消当前生成任务。
+教材库、章节编辑、课件管理、教师目录与授课页复用 `MaterialsHeader`；导入和试卷预览通过 `AppHeader.onBack` 保留清理状态的返回回调，并使用同一品牌、返回和操作位置。管理页以 `PageHeader` 保持单一页面标题，表单与卡片沿用 Bright UI 变量。教师播放器在外围已有导航时关闭内部品牌，授课工具与互动保持完整。材料卡片、任务状态和课程列表在 `materials.css` 维护一致的布局与移动端样式。`MaterialDeleteAction` 提供就地确认与失败重试，`useMaterials` 在接口成功后移除对应卡片；试卷、教材课程与待识别材料可筛选。章节软删除写入现有 JSON 中的删除时间，保留发布与作答记录并取消当前生成任务。
 
 教材库按章节读取现有课件列表，独立于旧版课程计数，直接展示课件份数、页数和可授课数量。已发布课件链接冻结 publication ID，打开教师播放不要求重新生成或审核；教程目录同样进入课件工作区，以实际发布状态代替旧章节的草稿状态。课件列表读取失败保持原材料可见并提示重试，不冒报为零。来源评测样例保留在可选抽检中，不计入主制作待办；真实课程、课件异常和视频任务仍保留处理入口。
+
+`CoursewarePlanWorkspace` 优先显示已有课件和真实制作进度；已有课件时将新制作收起，新教材直接显示来源设置。`useCoursewarePlanWorkflow` 分别保存学科、章节和课件的读取状态与失败重试，旧章节请求不能覆盖新章节；读取失败不会被当作没有课件。`coursewareWorkspaceView.ts` 将服务端制作和发布状态映射为中文展示。唯一且已配置的关联章节学科自动带入，整本制作仍需明确启动，刷新和普通读取不创建制作任务。
 
 上传入口统一为“上传试卷或教材”，通过首批 OCR 自动识别类型。教材不会先拆成考试题；原文件与 OCR
 保存后，从 `/studio/courseware?uploadId=...` 选择学科及物理页段。默认自动模式一次最多 30 页，串联来源准备、规划与页面生成，检查与有限修复通过后直接保存为可播放教程；详细规划和逐页修订保持可选。
 `MaterialCourseService` 复用保存的逐页来源；首批 MinerU 整段文本不能确定物理页码时，从受管原 PDF 对所选页逐页使用既有 OCR 路由与内容缓存。`ChapterStore.checkpoint_courseware_source` 在活跃 Worker 租约与上传版本保护下保存 `coursewareSource` 页快照和 OCR 记录；原始上传文本不被替换。手动来源模式最多 80 页，不自动生成页面。
 准备任务及子章节生成任务共享现有持久化 Worker、运行选择快照、幂等与取消机制；重试复用来源记录。
-许可默认未确认，发布前仍需补齐授权依据并由教师复核；自动识别结果不代表教材质量或授权已审核。
+许可默认未确认；课堂或公开分发沿用授权依据与现有发布门禁，私有教程按既有自动检查流程保存。自动识别结果不代表已取得分发许可。
 
 章节制作从统一“我的教材”入口进入；PDF 与课程分别持久化，前端合并导航及列表，使用 `domain/contracts/chapter.py`、
 `application/services/chapter_courses.py` 和 `persistence/chapter_store.py`。
@@ -394,6 +410,12 @@ erDiagram
 
 线程摘要最多保留 2,000 个字符；模型提示只包含摘要尾部、最近六条消息以及当前错题信息。数据库可
 保留更多审计消息，但读取 API 默认最多返回 40 条，避免页面和模型上下文无限增长。
+
+## 连续学习入口与整本教材续做
+
+`GET /api/learning/next` 将班级作业进度、错题阶段和到期复习按固定顺序投影为下一项，不创建学习会话、验证题或复习任务，也不调用模型。学生明确点击开始后，`POST /api/learning/next/start` 才能准备或恢复到期复习题；作业、订正和其他练习继续复用既有页面与提交接口。
+
+整本教材任务只在教师针对已完成识别的教材显式选择“整本”后创建。`WholeBookService` 把最多 1000 个物理页切为最多 34 个、每批不超过 30 页的批次，调用现有来源准备和课件自动制作服务；773 页教材为 26 批，每批生成课件页上限为 45 页。Worker 注册表通过 `add_whole_book_completion_hooks` 包装现有来源/课件任务，阶段完成后追加幂等续做任务。暂停、继续和来源变化沿用持久 Job Store 状态；已发布或人工编辑内容保持原样。该链路不替代试卷生产路径。
 
 ## 页面初始化
 
@@ -803,6 +825,10 @@ POST /api/tts
 - `data/mistakes/{mistakeId}/` 保存错题原图和识别产生的题图。
 - 内存中的任务和题目只作为读取缓存，未命中时从 PostgreSQL 恢复。
 
+文件恢复默认关闭，`DOTTY_FILE_STORAGE_BACKEND=local` 继续使用现有 `DOTTY_DATA_DIR`。可选配置 Supabase 私有 Storage 后，API 与 Worker 通过共享的 `managed_file_objects` manifest 找到私有对象；每个文件按 4 MiB 切块，逐块读回校验后才登记完整清单。恢复时会再次校验块与整文件 SHA-256，缓存目录变化时重新落盘到当前实例的数据根目录。该边界覆盖教材原 PDF、上传分块、OCR 题图和学生错题照片/识别图；source.pdf 会在开始 OCR 和清理分块前持久化。路由与 Worker 仍执行原有上传、文件名、学生身份和来源指纹校验。
+
+现有 500 MB PDF 上传上限不因对象存储变小；4 MiB 对象低于 Supabase 单对象 50 MB 限制。对象桶必须预先创建为私有，服务端密钥仅由 API/Worker 环境读取。`storage_migration.py inspect` 只读盘点，`migrate` 显式复制并可重复运行，不删除本机原文件。配置步骤、限制与恢复命令见[部署文档](deployment.md#可选私有-supabase-文件存储)。
+
 ### Schema 生命周期与隔离
 
 数据库设计从本地文件/SQLite 快速开发到当前 PostgreSQL + Alembic 治理的完整演进记录见
@@ -835,7 +861,7 @@ Docker Compose 使用一次性 `db-migrate` 服务执行相同的 Alembic upgrad
 
 评测与画像均保持实验边界：人工金标准校验器只把 `sourceKind=human` 且 annotator/reviewer 独立的 case 计入 50 条门槛，并拒绝少于 50 条、缺 reviewer、标注/复核同人、重复 ID 或覆盖不足；synthetic/public/fixture 不计入，仓库只提供少量明确的测试 fixture。Prefix probe 只读取离线 warm/cold/control fixture；只有 warm 阶段高于 cold/control 缓存基线的增量 `cacheHitTokens`，或 explicit 状态有官方 source，才能判支持。三阶段相同的 hidden baseline 不能证明应用前缀复用，缺增量证据时为 `unknown`/`inconclusive`。学习者画像是 feature-flag/shadow context，事实过期、冲突、跨 publication 或包含聊天/敏感字段时排除，不直接改变 mastery 或排期；工具执行仍是 shadow。
 
-当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性、对象存储等）
+当前架构以仓库实际布局与本文件为准；后续演进项（worker 拆分、可观测性等）
 统一记录在 [路线图](roadmap.md) 与 [engineering-roadmap](engineering-roadmap.md)，
 不再维护外部架构图，避免与代码脱节。
 ### 班级个性化作业 MVP
@@ -924,7 +950,7 @@ Content-Length 超过 12 MiB 返回 413 REQUEST_TOO_LARGE，无效长度返回 4
 
 短教材默认选择全文，唯一配置学科自动带入。未知材料在教材制作入口选择教材并生成即表达教材用途，去掉重复勾选，服务端仍拒绝已识别试卷；多学科仍需选择，长教材仍需限定页段。教学要求、手动规划、逐页修改和审核保留为可选入口。
 
-最终预览复用既有课件播放器，草稿预览不创建发布或学习作答。一次确认在同一事务内保存审核记录与不可变发布，失败全部回滚。课堂/公开分发仍校验许可和署名；私有教程可以不先登记分发许可，但学生无法读取私有发布。讲解不强制包含练习。
+详情页复用 `MaterialsHeader` 和既有课件播放器：管理预览保留内容、来源与翻页导航，独立授课页保留完整工具栏；草稿预览不创建发布或学习作答。详情按发布、制作、待处理和未发布状态展示操作，已发布版本提供直接授课入口；手动发布继续沿用现有事务与权限门禁，课堂/公开分发仍校验许可和署名，私有教程可以不先登记分发许可但学生无法读取私有发布。讲解不强制包含练习。
 
 生成协议按当前冻结原页限制 revision、页码、句子、区域与素材 ID，仍保留生成后的来源校验。模型输出的页面建议时长合计不足十分钟时，按页面均匀补足现有课时下限并记录 `minimumTimingAdjusted`，原始输入不修改；手工编辑继续校验完整时长关系。Codex 子进程超时会停止整个进程组，错误不回显教材提示词。
 教师播放投影提供讲稿与逐步揭晓；学生只读安全发布投影。页面状态按发布和角色/学习者隔离恢复，可选回答不影响原数学试卷掌握度。封面与普通页复用输入、检查表和活动状态；多选由公开的 selectionMode 控制，单填空接受 text 输入；开放作答保持 needs_review。桌面长页在课件区内滚动，环节和翻页导航保持可见。

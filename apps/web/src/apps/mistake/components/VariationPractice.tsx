@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { QuestionAnswer } from "../../../components/QuestionAnswer";
 import { Button, Notice, Skeleton } from "../../../components/ui";
 import { EvaluationEvidence } from "../../../components/EvaluationEvidence";
@@ -15,11 +16,40 @@ interface VariationPracticeProps {
   mistakeId: string;
   autoStart?: boolean;
   onStageChange?: (stage: TutorStage) => void;
+  autoContinue?: boolean;
+  onMastered?: () => void;
 }
 
 /** 巩固练习承载 practice/verify 两个后端阶段，学生只需完成一道验证题。 */
-export function VariationPractice({ mistakeId, autoStart = false, onStageChange }: VariationPracticeProps) {
-  const state = useVariationPractice(mistakeId, autoStart, onStageChange);
+export function VariationPractice({ mistakeId, autoStart = false, onStageChange, autoContinue = false, onMastered }: VariationPracticeProps) {
+  const [autoContinuationPaused, setAutoContinuationPaused] = useState(false);
+  const notifiedMastery = useRef("");
+  const autoContinuationPausedRef = useRef(autoContinuationPaused);
+  const previousAttemptId = useRef("");
+  useLayoutEffect(() => { autoContinuationPausedRef.current = autoContinuationPaused; }, [autoContinuationPaused]);
+  const state = useVariationPractice(mistakeId, autoStart, onStageChange, autoContinue, autoContinuationPaused);
+  const activeAttemptId = state.active?.attemptId ?? "";
+
+  useEffect(() => {
+    if (activeAttemptId && previousAttemptId.current !== activeAttemptId) {
+      previousAttemptId.current = activeAttemptId;
+      setAutoContinuationPaused(false);
+    }
+  }, [activeAttemptId]);
+
+  useEffect(() => {
+    const active = state.active;
+    const mastered = Boolean(active?.mastery?.mastered || active?.nextAction === "advance" || active?.nextAction === "test_out");
+    if (!autoContinue || !mastered || !active?.attemptId || autoContinuationPaused
+      || notifiedMastery.current === active.attemptId) return;
+    const attemptId = active.attemptId;
+    const timeout = window.setTimeout(() => {
+      if (autoContinuationPausedRef.current) return;
+      notifiedMastery.current = attemptId;
+      onMastered?.();
+    }, 1200);
+    return () => window.clearTimeout(timeout);
+  }, [autoContinue, autoContinuationPaused, onMastered, state.active]);
 
   if (state.loading) return <Skeleton label="正在恢复掌握验证记录…" />;
   if (!state.active) {
@@ -89,10 +119,51 @@ export function VariationPractice({ mistakeId, autoStart = false, onStageChange 
           <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.submit()}>
             {state.submitting ? "正在判定…" : retryable ? "重新提交" : "提交验证答案"}
           </Button>
+        ) : autoContinue && !mastered ? (
+          state.automaticContinuationCapped ? (
+            <div className="variation-cap-continuation">
+              <p role="status">
+                自动连续补练已到本轮上限，当前证据尚未达到掌握门槛。点击“再练一道”只会准备一题，之后由你决定是否继续。
+              </p>
+              <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.generate()}>
+                {state.submitting ? "正在准备…" : state.error ? "重试准备这一道" : "再练一道"}
+              </Button>
+            </div>
+          ) : state.error ? (
+            <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.generate()}>
+              {state.submitting ? "正在准备…" : "重试准备下一道"}
+            </Button>
+          ) : autoContinuationPaused ? (
+            <>
+              <p role="status">自动继续已暂停，这道题的反馈会保留。</p>
+              <Button variant="primary" className="mistake-primary-action compact" onClick={() => setAutoContinuationPaused(false)}>
+                继续巩固练习
+              </Button>
+            </>
+          ) : (
+            <>
+              <p role="status">系统正在根据本次作答准备下一道巩固题…</p>
+              <Button onClick={() => setAutoContinuationPaused(true)}>留在这道题</Button>
+            </>
+          )
         ) : !mastered ? (
           <Button variant="primary" className="mistake-primary-action compact" busy={state.submitting} onClick={() => void state.generate()}>
             {state.submitting ? "正在生成…" : "开始下一道巩固练习"}
           </Button>
+        ) : autoContinue && activeAttemptId ? (
+          autoContinuationPaused ? (
+            <>
+              <p role="status">自动继续已暂停，这道题的反馈会保留。</p>
+              <Button variant="primary" className="mistake-primary-action compact" onClick={() => setAutoContinuationPaused(false)}>
+                继续下一项
+              </Button>
+            </>
+          ) : (
+            <>
+              <p role="status">已通过掌握门槛，即将进入下一项。</p>
+              <Button onClick={() => setAutoContinuationPaused(true)}>留在这道题</Button>
+            </>
+          )
         ) : null}
       </div>
     </section>

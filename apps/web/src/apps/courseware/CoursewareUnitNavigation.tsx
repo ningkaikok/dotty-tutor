@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { listCoursewareUnits, loadChapterCoursewareUnit, loadCoursewareUnit, type CoursewareReadingPosition, type CoursewareUnit } from "../../api/coursewareUnit";
 import { useLearnerId } from "../../api/identity";
+import { MaterialsHeader } from "../materials/MaterialsHeader";
 import "./courseware.css";
 
 export function coursewareLessonUrl(coursewareId: string, publicationId: string, role: "student" | "teacher", pageId?: string) {
@@ -70,7 +71,8 @@ export function CoursewareTeacherUnit({ chapterId, coursewareId }: { chapterId?:
     });
     return () => controller.abort();
   }, [chapterId, coursewareId]);
-  return <main className="courseware-route-state"><Link to={coursewareId ? `/studio/courseware/${encodeURIComponent(coursewareId)}` : `/studio/courseware?chapterId=${encodeURIComponent(chapterId ?? "")}`}>返回教材制作</Link>
+  const backTo = coursewareId ? `/studio/courseware/${encodeURIComponent(coursewareId)}` : `/studio/courseware?chapterId=${encodeURIComponent(chapterId ?? "")}`;
+  return <main className="courseware-route-state app-shell"><MaterialsHeader backTo={backTo} backLabel="教材课件" subtitle="单元授课目录" />
     {error && <p role="alert">{error}</p>}{unit ? <CoursewareUnitNavigation unit={unit} role="teacher" /> : !error && <p role="status">正在读取单元目录…</p>}
   </main>;
 }

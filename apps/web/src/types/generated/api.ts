@@ -1187,6 +1187,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courseware/whole-book-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_courseware_whole_book_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/whole-book-runs/{run_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pause */
+        post: operations["pause_api_courseware_whole_book_runs__run_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courseware/whole-book-runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume */
+        post: operations["resume_api_courseware_whole_book_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/debug/errors": {
         parameters: {
             query?: never;
@@ -1350,6 +1401,46 @@ export interface paths {
         get: operations["list_mastery_api_learning_mastery__learner_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learning/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Next Learning Action
+         * @description Read the next action without creating sessions, questions, or review tasks.
+         */
+        get: operations["get_next_learning_action_api_learning_next_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learning/next/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Next Learning Action
+         * @description Apply an explicit start, then project a ready review without its answer key.
+         */
+        post: operations["start_next_learning_action_api_learning_next_start_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2844,6 +2935,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/uploads/{upload_id}/courseware/whole-book": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Latest */
+        get: operations["latest_api_uploads__upload_id__courseware_whole_book_get"];
+        put?: never;
+        /** Start */
+        post: operations["start_api_uploads__upload_id__courseware_whole_book_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/uploads/{upload_id}/full-paper": {
         parameters: {
             query?: never;
@@ -3480,6 +3589,11 @@ export interface components {
              * @default
              */
             sourceText: string;
+        };
+        /** Body_start_next_learning_action_api_learning_next_start_post */
+        Body_start_next_learning_action_api_learning_next_start_post: {
+            /** Learnerid */
+            learnerId?: string | null;
         };
         /** Body_transcribe_api_voice_sessions__session_id__transcribe_post */
         Body_transcribe_api_voice_sessions__session_id__transcribe_post: {
@@ -7006,6 +7120,128 @@ export interface components {
             /** Text */
             text: string;
         };
+        /**
+         * WholeBookBatchView
+         * @description Durable progress for one source-derived range of up to 30 PDF pages.
+         */
+        WholeBookBatchView: {
+            /** Batchindex */
+            batchIndex: number;
+            /** Chapterid */
+            chapterId?: string | null;
+            /** Coursewareids */
+            coursewareIds?: string[];
+            /** Error */
+            error?: {
+                [key: string]: string | boolean;
+            } | null;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Pageend */
+            pageEnd: number;
+            /** Pagestart */
+            pageStart: number;
+            /** Publicationids */
+            publicationIds?: string[];
+            /** Skippedpages */
+            skippedPages?: {
+                [key: string]: string | number;
+            }[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "source_preparation" | "planning" | "generating" | "checking" | "repairing" | "published" | "completed" | "needs_attention" | "failed" | "source_changed";
+            /** Title */
+            title: string;
+        };
+        /** WholeBookControlRequest */
+        WholeBookControlRequest: {
+            /** Commandid */
+            commandId: string;
+        };
+        /**
+         * WholeBookRunView
+         * @description A read-only, resumable view of a whole-book run.
+         */
+        WholeBookRunView: {
+            /** Batchcount */
+            batchCount: number;
+            /** Batches */
+            batches: components["schemas"]["WholeBookBatchView"][];
+            /**
+             * Canpause
+             * @default false
+             */
+            canPause: boolean;
+            /**
+             * Canresume
+             * @default false
+             */
+            canResume: boolean;
+            /** Completedbatches */
+            completedBatches: number;
+            /** Completedpages */
+            completedPages: number;
+            /** Createdat */
+            createdAt: number;
+            /** Currentbatchindex */
+            currentBatchIndex?: number | null;
+            /** Filename */
+            filename: string;
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Runid */
+            runId: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "running" | "waiting_for_source" | "paused" | "needs_attention" | "source_changed" | "completed";
+            /** Totalpages */
+            totalPages: number;
+            /** Updatedat */
+            updatedAt: number;
+            /** Uploadid */
+            uploadId: string;
+        };
+        /**
+         * WholeBookStartRequest
+         * @description Book-level settings; physical page ranges are always server-derived.
+         */
+        WholeBookStartRequest: {
+            /** Attributiontext */
+            attributionText?: string | null;
+            /** Confirmedmaterialkind */
+            confirmedMaterialKind?: "textbook" | null;
+            /**
+             * Distributionscope
+             * @default private
+             * @enum {string}
+             */
+            distributionScope: "private" | "classroom" | "public";
+            /** License */
+            license?: string | null;
+            /**
+             * Mode
+             * @constant
+             */
+            mode: "whole_book";
+            /** Sourcetitle */
+            sourceTitle?: string | null;
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Subject */
+            subject: string;
+            /** Title */
+            title?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -9599,6 +9835,107 @@ export interface operations {
             };
         };
     };
+    status_api_courseware_whole_book_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeBookRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_api_courseware_whole_book_runs__run_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WholeBookControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeBookRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_api_courseware_whole_book_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WholeBookControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeBookRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     debug_errors_api_debug_errors_get: {
         parameters: {
             query?: {
@@ -9843,6 +10180,74 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_next_learning_action_api_learning_next_get: {
+        parameters: {
+            query?: {
+                learnerId?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_next_learning_action_api_learning_next_start_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Body_start_next_learning_action_api_learning_next_start_post"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -12803,6 +13208,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BackgroundJobSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    latest_api_uploads__upload_id__courseware_whole_book_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeBookRunView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_api_uploads__upload_id__courseware_whole_book_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                upload_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WholeBookStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WholeBookRunView"];
                 };
             };
             /** @description Validation Error */

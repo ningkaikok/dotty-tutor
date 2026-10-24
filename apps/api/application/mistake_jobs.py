@@ -52,6 +52,12 @@ def cleanup_queued_mistake_capture(job: dict[str, Any], *, data_root: Path) -> b
     allowed_directories = {directory}
     if job_id:
         allowed_directories.add(directory / job_id)
+    if source_path.parent not in allowed_directories:
+        # Worker metadata can outlive a machine-local cache path. Rebuild the
+        # target from validated learner-scoped IDs and the stored safe basename.
+        basename = Path(str(payload.get("sourcePath") or "")).name
+        if basename and basename not in {".", ".."}:
+            source_path = (directory / job_id / basename) if job_id else (directory / basename)
     if directory.parent != root or source_path.parent not in allowed_directories:
         return False
     target = source_path.parent if job_id else directory
@@ -78,9 +84,18 @@ def build_mistake_registry(
         learner_id = str(payload.get("learnerId") or "local-demo")
         mistake_id = str(payload.get("mistakeId") or mistake_id_for_capture(capture_id, learner_id))
         source_image_path = str(payload["sourcePath"])
-        source_path = Path(source_image_path).expanduser().resolve()
         expected_root = store.mistake_root.resolve()
         job_id = str(payload.get("jobId") or "")
+        source_path = Path(source_image_path).expanduser()
+        try:
+            source_path.resolve(strict=False).relative_to(expected_root)
+            source_path = source_path.resolve(strict=False)
+        except ValueError:
+            basename = source_path.name
+            if not basename or basename in {".", ".."}:
+                raise RetryableJobError("错题图片文件名无效")
+            source_path = (expected_root / mistake_id / job_id / basename) if job_id else (expected_root / mistake_id / basename)
+            source_image_path = str(source_path)
         legacy_directory = expected_root / mistake_id_for_capture(capture_id)
         allowed_directories = {legacy_directory}
         if job_id:
@@ -89,6 +104,13 @@ def build_mistake_registry(
             allowed_directories.add(expected_root / mistake_id)
         if source_path.parent not in allowed_directories:
             raise RetryableJobError("错题图片路径不在数据目录内")
+
+        file_assets = getattr(store, "file_assets", None)
+        if file_assets is not None and getattr(file_assets, "enabled", False):
+            try:
+                file_assets.restore_mistake_file(learner_id, mistake_id, source_path)
+            except FileNotFoundError as error:
+                raise RetryableJobError("已登记的错题原图暂不可恢复") from error
 
         asset_directory = source_path.parent / "assets"
         asset_prefix = f"/api/mistakes/{mistake_id}/assets"
@@ -147,6 +169,12 @@ def build_mistake_registry(
             raise RetryableJobError(f"错题识别失败：{error}") from error
 
         payload_data, guide_cards, ocr_run, model_run = result
+        persist_capture_files = getattr(store, "persist_capture_files", None)
+        if persist_capture_files is not None:
+            try:
+                persist_capture_files(learner_id, mistake_id, source_path.parent)
+            except Exception as error:
+                raise RetryableJobError(f"错题识别图片暂未能持久化：{type(error).__name__}") from error
         check("final_write_before")
         question = payload_data.get("question", {})
         now = time.time()

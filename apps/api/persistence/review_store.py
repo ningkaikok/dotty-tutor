@@ -19,6 +19,7 @@ from sqlalchemy import (
     UniqueConstraint,
     create_engine,
     select,
+    update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
@@ -323,6 +324,80 @@ class ReviewStore:
                 )
             )
         return self.get(task_id) if result.rowcount else None
+
+    def claim_start(self, task_id: str, *, now: float, stale_after: float = 900) -> str:
+        """Atomically reserve model generation; return claimed/ready/in-progress/missing."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                update(review_tasks)
+                .where(review_tasks.c.task_id == task_id, review_tasks.c.status == "scheduled")
+                .values(status="generating", started_at=now)
+            )
+            if result.rowcount:
+                return "claimed"
+            # A process may disappear while calling a model. Reclaim only after a
+            # generous lease so a slow, live generation cannot be duplicated.
+            reclaimed = connection.execute(
+                update(review_tasks)
+                .where(
+                    review_tasks.c.task_id == task_id,
+                    review_tasks.c.status == "generating",
+                    review_tasks.c.started_at <= now - stale_after,
+                )
+                .values(started_at=now)
+            )
+            if reclaimed.rowcount:
+                return "claimed"
+            status = connection.execute(
+                select(review_tasks.c.status).where(review_tasks.c.task_id == task_id)
+            ).scalar_one_or_none()
+        if status == "ready":
+            return "ready"
+        if status == "generating":
+            return "in_progress"
+        return "missing" if status is None else "unavailable"
+
+    def finish_start(
+        self,
+        task_id: str,
+        *,
+        claimed_at: float,
+        question_payload: dict[str, Any],
+        model_run: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Persist a generated question only for the worker that owns the claim."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                update(review_tasks)
+                .where(
+                    review_tasks.c.task_id == task_id,
+                    review_tasks.c.status == "generating",
+                    review_tasks.c.started_at == claimed_at,
+                )
+                .values(
+                    status="ready",
+                    question_payload_json=question_payload,
+                    model_run_json=model_run,
+                )
+            )
+        return self.get(task_id) if result.rowcount else None
+
+    def release_start(self, task_id: str, *, claimed_at: float) -> bool:
+        """Return a failed generation claim to scheduled without changing its due time."""
+        self._ensure_initialized()
+        with self.engine.begin() as connection:
+            result = connection.execute(
+                update(review_tasks)
+                .where(
+                    review_tasks.c.task_id == task_id,
+                    review_tasks.c.status == "generating",
+                    review_tasks.c.started_at == claimed_at,
+                )
+                .values(status="scheduled", started_at=None)
+            )
+        return bool(result.rowcount)
 
     def answer(
         self,

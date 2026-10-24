@@ -109,7 +109,10 @@ class CoursewareAiReviewService:
         return reviewable_page(CoursewarePage.model_validate(page).model_dump(mode="json"))
 
     def _page_sources(self, source: dict[str, Any], document: dict[str, Any], page: dict[str, Any]) -> list[dict[str, Any]]:
-        selected = self.courseware._selected_pages(source, int(document["pageStart"]), int(document["pageEnd"]))
+        skipped_pages = self.courseware._verified_whole_book_skip_pages(document, source)
+        selected = self.courseware._selected_pages(
+            source, int(document["pageStart"]), int(document["pageEnd"]), allowed_skip_pages=skipped_pages,
+        )
         cited = {int(ref["page"]) for ref in page.get("sourceRefs", [])}
         return [{"page": int(item["page"]), "text": str(item.get("text") or "")}
                 for item in selected if int(item["page"]) in cited]

@@ -12,7 +12,8 @@ test("user enters prompt management from content studio while teacher workspace 
     return route.fulfill({ json: { items: [] } });
   });
   await page.goto("/studio/import");
-  await page.getByRole("link", { name: "教学策略 · 提示词管理" }).click();
+  await page.getByText("工具", { exact: true }).click();
+  await page.getByRole("link", { name: "教学策略与提示词" }).click();
   await expect(page).toHaveURL(/\/studio\/prompts/);
   await page.getByLabel("内容平台凭据").fill("test-editor");
   await page.getByRole("button", { name: "进入管理" }).click();

@@ -250,6 +250,11 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 | `POST` | `/api/uploads/{uploadId}/batches/{batchId}/process` | 创建后续批次处理或重生成任务，返回 `202 + jobId` |
 | `POST` | `/api/uploads/{uploadId}/full-paper` | 快速预览后排队整卷生成任务（默认上限 100 题）；Worker 会先生成 `summary.qualityReport`，阻断项存在时暂停模型调用；显式 `MODEL_PROVIDER=mock` 时仅保留 OCR 来源题干并返回标记为 synthetic 的预览，答案与讲解待人工确认且题目保持 `needs_review`，不会直接发布；返回 `202 + jobId`；支持 `Idempotency-Key` |
 | `GET` | `/api/uploads/{uploadId}/full-paper/summary` | 读取整卷任务按批次持久化的成功/失败/隔离/跳过汇总、`summary.qualityReport`、各批次 `examIRByBatch` 和题目载荷；批次循环连续命中系统性失败（API key 过期/配额耗尽、429 限流、上游超时）达到阈值时会提前停止剩余批次，此时 `summary.haltedEarly=true` 且 `summary.haltReason` 给出具体原因（如 `rate_limit: 429 ...`），已成功批次不受影响 |
+| `POST` | `/api/uploads/{upload_id}/courseware/whole-book` | 教师明确选择整本教材制作后创建或恢复同一来源任务，返回 `202` 与完整批次进度；试卷材料拒绝进入此流程 |
+| `GET` | `/api/uploads/{upload_id}/courseware/whole-book` | 读取该教材最近一次整本任务及批次状态；未启动时返回 `404` |
+| `GET` | `/api/courseware/whole-book-runs/{run_id}` | 读取整本任务状态、已完成页数、当前批次和异常信息 |
+| `POST` | `/api/courseware/whole-book-runs/{run_id}/pause` | 用唯一 `commandId` 请求暂停续做，返回 `202` |
+| `POST` | `/api/courseware/whole-book-runs/{run_id}/resume` | 用唯一 `commandId` 从未完成批次继续，返回 `202` |
 | `GET` | `/api/jobs/{jobId}` | 教师查询后台任务状态、进度、结果或失败详情；受保护模式下学生仅能查询自己发起的错题图片导入任务，响应去除运行时错误详情 |
 | `POST` | `/api/jobs/{jobId}/cancel` | 教师取消任意任务；受保护模式下学生只能取消本人错题图片导入任务 |
 | `POST` | `/api/jobs/{jobId}/retry` | 教师重试任意失败任务；受保护模式下学生只能重试本人错题图片导入任务 |
@@ -265,6 +270,8 @@ AI 任务同一来源/记录版本重复入队返回同一任务，单次执行�
 PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF` 结束标记。文件缺少
 `%%EOF` 通常表示源 PDF 本身被截断，需要重新下载或重新导出。
 
+默认文件后端仍为本机 `DOTTY_DATA_DIR`。可选启用 Supabase 私有存储时，已校验的分块会在分块接口确认成功前持久化；合并后的 `source.pdf` 会在 OCR/模型处理和删除分块前保存。状态查询只读数据库进度，不下载文件；Worker 在处理时按需恢复原 PDF 或所需上传分块，原页和题图资源接口只恢复被请求的文件。错题导入也会在成功响应前保存学生原图，识别后的题图与 `/source`、`/assets/{filename}` 读取同样支持跨缓存恢复。存储配置、私有桶要求和迁移说明见[部署文档](deployment.md#可选私有-supabase-文件存储)；未配置远端时保留现有本机行为。
+
 后台任务状态为 `queued`、`running`、`succeeded`、`failed` 或 `cancelled`。任务创建请求可以携带稳定
 `Idempotency-Key`；相同任务和幂等键不会重复入队。前端应以 `jobId` 轮询，不要持续占用创建任务的 HTTP
 连接。失败详情中的 `code` 与 `retryable` 用于决定展示“重试”还是“重新上传”，不要解析 Python 异常字符串。
@@ -275,6 +282,8 @@ PDF 会在浏览器上传前和后端合并后检查 `%PDF-` 文件头与 `%%EOF
 向后兼容保留 `image`、`status`、`reason`，并可提供 `previousQuestionNumber`、`candidates`（含分数）、
 `selectedQuestionNumber`、`attributionSource` 和 `abstainReason`；显式图注优先于 bbox，bbox 低置信/相对路径歧义
 会移除旧线性归属并进入 `needs_review`，因此 `readyForFullPaper` 为 `false`。
+
+整本教材续做由教师显式启动，不改变原试卷生产入口。服务端从已完成识别的 PDF 与来源目录确定批次，最多接受 1000 个物理页，并按 `ceil(pageCount / 30)` 分为最多 34 批；每批最多 30 个物理页、45 个生成课件页。773 页教材为 26 批；未解决的来源或内容问题会进入异常状态，已发布和人工编辑的内容不会被覆盖。进度读取不创建后台任务；启动、暂停和继续均需显式写请求。
 
 题目来源优先读取批次目录中的 `source.content_list.json` 与 `source.middle.json`，并写入
 `assets/{batchId}/exam-ir.json`。每个 `QuestionIR` 保留真实 `sourceBlockIds`、页码、bbox、`textHash`、
@@ -541,6 +550,8 @@ curl -X POST http://127.0.0.1:8010/api/help \
 | `GET` | `/api/mistakes/{mistakeId}/source` | 读取持久化错题原图 |
 | `GET` | `/api/mistakes/{mistakeId}/assets/{filename}` | 读取 OCR 提取题图 |
 
+当启用可选私有文件存储时，普通导入会在 `200` 响应前保存学生照片；后台导入会在 `202` 返回前保存排队原图，识别生成的题图在完成写入前保存。读取原图或题图时，服务端仅在确认错题及学生归属后恢复到当前缓存目录；私有存储不可用或指纹校验失败时返回服务端错误，不返回外部存储凭据。默认 `local` 后端不改变已有接口行为。
+
 `import-jobs` 返回的 `jobId` 使用通用后台任务接口：`GET /api/jobs/{jobId}` 查询，`POST /api/jobs/{jobId}/cancel` 请求取消，`POST /api/jobs/{jobId}/retry` 对失败任务增加一次有限重试预算。运行中的取消在 Worker 安全点收敛，并以租约和终态检查防止取消与完成竞态下旧 Worker 覆盖状态；不承诺回滚已完成的 OCR/模型副作用。演示模式教师端可见失败详情；受保护模式学生只能操作与本人会话 `learnerId` 匹配的错题导入任务，且返回文案和结果经过学生视图投影，不包含 worker 异常、文件路径或内部题目答案。
 
 互动试卷自动记录的错题先进入 `pending_confirmation`，不会根据一次错答自动填写 `errorReason`；学生确认错误原因后才进入
@@ -630,6 +641,8 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
+| `GET` | `/api/learning/next?learnerId=local-demo` | 只读汇总作业、错题和复习证据，按服务端顺序给出下一项与计数；不创建会话或调用模型 |
+| `POST` | `/api/learning/next/start` | 学生明确开始后返回下一项；当下一项是到期复习时准备或恢复一题，其他项目导航到既有学习流程 |
 | `GET` | `/api/reviews?learnerId=local-demo` | 读取按到期时间排序的 versioned review schedule 和服务器时间；缺少策略元数据的旧任务标记为 `unknown:legacy` |
 | `POST` | `/api/reviews/{taskId}/start` | 生成或恢复该任务的同知识点迁移题，允许提前复习 |
 | `POST` | `/api/reviews/{taskId}/answer` | 提交一次结构化复习答案，响应返回并持久化确定性判题结果及客观判题证据 |
@@ -643,6 +656,8 @@ TutorInput 的 `schemaVersion` 为 `tutor-input-v1`。图片观察返回 `facts`
 `supersededAt`。相同 `(mistakeId, scheduleVersion, sequenceNo)` 幂等，网络重试不会重复排期；这不承诺固定三任务。
 缺少策略元数据的旧任务使用 `unknown:legacy` 与 legacy 1/3/7 天兼容行为。任务状态依次为
 `scheduled → ready → completed`；已完成任务不能重复提交，定性 gate 未取得可靠证据时保持 `needs_review`。
+
+连续学习入口按未完成作业续做、待确认错题、已确认错题订正、到期复习和新的自由练习排序；服务端仍以学习会话、作答、错题阶段和复习计划作为事实来源。`GET /api/learning/next` 只读取这些记录，复习变式题只由显式 `POST /api/learning/next/start` 准备；完成某一步后，前端继续使用既有作答、订正或复习接口。
 
 本地运行后可访问 <http://127.0.0.1:8010/docs> 查看 FastAPI 自动生成的完整 OpenAPI 页面。
 

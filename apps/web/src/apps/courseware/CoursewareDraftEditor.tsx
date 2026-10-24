@@ -33,6 +33,8 @@ export function CoursewareDraftEditor({
   onReviewPage,
   onReviewDocument,
   onPublish,
+  showPublishAction = true,
+  embedded = false,
   onReload,
   onPresent,
   onLearn,
@@ -48,6 +50,10 @@ export function CoursewareDraftEditor({
   onReviewPage: (pageId: string, decision: "approve" | "request_changes", note: string) => Promise<void>;
   onReviewDocument: (decision: "approve" | "request_changes", pageIds: string[], note: string) => Promise<void>;
   onPublish: () => Promise<void>;
+  /** The management page owns its single publish action above the optional editor. */
+  showPublishAction?: boolean;
+  /** Hide the standalone workbench chrome when the editor sits inside document management. */
+  embedded?: boolean;
   onReload: () => Promise<void>;
   onPresent: () => void;
   onLearn: () => void;
@@ -94,17 +100,17 @@ export function CoursewareDraftEditor({
     try { await onPublish(); } catch (error) { setActionError(error instanceof Error ? error.message : "课件发布失败。"); }
   };
 
-  return <main className="courseware-authoring-shell">
-    <header className="courseware-authoring-header">
+  const content = <>
+    {!embedded && <header className="courseware-authoring-header">
       <div><span className="courseware-eyebrow">教师课件工作台 · 第 {document.planVersion} 版规划</span><h1>{document.title}</h1><p>{subjectLabel(document.subject)} · {document.durationMinutes} 分钟 · {document.pages.length} 页</p></div>
       <div className="courseware-authoring-header-actions"><span className={`courseware-status-pill is-${document.status}`}>{statusLabel[document.status]}</span><Button type="button" onClick={() => void onReload()} disabled={busy}>刷新</Button><Button type="button" onClick={onPresent} disabled={!document.publicationId}>教师授课预览</Button>{document.publicationId && document.sourceDistributionScope !== "private" && <Button type="button" onClick={onLearn}>学生发布版</Button>}</div>
-    </header>
+    </header>}
 
-    <ol className="courseware-authoring-steps" aria-label="课件制作进度">
+    {!embedded && <ol className="courseware-authoring-steps" aria-label="课件制作进度">
       <li aria-current={document.generationStatus === "completed" ? undefined : "step"}>1 逐页生成</li>
       <li aria-current={document.status === "in_review" || document.status === "draft" && document.generationStatus === "completed" ? "step" : undefined}>2 教师审核</li>
       <li aria-current={document.status === "ready" || document.status === "published" ? "step" : undefined}>3 发布授课</li>
-    </ol>
+    </ol>}
 
     {notice && <p className="courseware-authoring-notice" role="status">{notice}</p>}
     {actionError && <p className="courseware-editor-error" role="alert">{actionError}</p>}
@@ -128,17 +134,36 @@ export function CoursewareDraftEditor({
 
     <div className="courseware-authoring-layout">
       <aside className="courseware-page-list" aria-label="页面目录">
-        <div className="courseware-page-list-heading"><h2>Deck</h2><span>{document.pages.length} pages</span></div>
-        {document.sections.map((section) => <section key={section.sectionId} className="courseware-page-list-section"><h3>{section.title}<small>{section.estimatedMinutes} min</small></h3>{(section.pageIds ?? []).map((id) => {
+        <div className="courseware-page-list-heading"><h2>页面目录</h2><span>{document.pages.length} 页</span></div>
+        {document.sections.map((section) => <section key={section.sectionId} className="courseware-page-list-section"><h3>{section.title}<small>{section.estimatedMinutes} 分钟</small></h3>{(section.pageIds ?? []).map((id) => {
           const item = document.pages.find((candidate) => candidate.pageId === id);
           if (!item) return null;
-          return <div className="courseware-page-list-item" key={item.pageId}><Button type="button" disabled={pageDirty && page?.pageId !== item.pageId} aria-current={page?.pageId === item.pageId ? "page" : undefined} onClick={() => setPageId(item.pageId)}><span>{item.title}</span><small>{item.generationStatus === "completed" ? "已生成" : item.generationStatus}</small><small>{item.reviewStatus === "approved" ? "已审" : item.reviewStatus === "changes_requested" ? "需修改" : "待审"}</small></Button><label><input type="checkbox" aria-label={`选择审核 ${item.title}`} checked={selectedPages.includes(item.pageId)} onChange={() => togglePage(item.pageId)} />选审</label></div>;
+          return <div className="courseware-page-list-item" key={item.pageId}><Button type="button" disabled={pageDirty && page?.pageId !== item.pageId} aria-current={page?.pageId === item.pageId ? "page" : undefined} onClick={() => setPageId(item.pageId)}><span>{item.title}</span><small>{generationStatusLabel(item.generationStatus)}</small><small>{reviewStatusLabel(item.reviewStatus)}</small></Button><label><input type="checkbox" aria-label={`选择审核 ${item.title}`} checked={selectedPages.includes(item.pageId)} onChange={() => togglePage(item.pageId)} />选审</label></div>;
         })}</section>)}
       </aside>
 
       {page ? <CoursewarePageEditor key={`${page.pageId}:${page.version}`} page={page} busy={busy || running} onSave={onSavePage} onRegenerate={onRegeneratePage} onReview={onReviewPage} onDirtyChange={setPageDirty} /> : <section className="courseware-page-editor"><h2>正在等待页面生成</h2><p>任务完成后，这里会显示每一页及其来源依据。</p></section>}
     </div>
 
-    <section className="courseware-document-review"><div><h2>最终预览与发布</h2><p>已生成 {document.pages.filter((item) => item.generationStatus === "completed").length} / {document.pages.length} 页。预览后可一次确认并发布，无需逐页批准；需要调整时仍可编辑页面或请求修改。</p></div><div className="courseware-review-issues">{document.reviewIssues.map((issue, index) => <p key={`${issue.code}-${issue.pageId ?? "doc"}-${index}`} role="alert">{issue.message}</p>)}{hasReviewIssues && <p role="status">请先处理上方的来源、内容或发布范围问题，再发布。</p>}</div><div className="courseware-document-actions"><Button type="button" disabled={busy || running || document.sourceReadiness !== "ready" || !selectedPages.length || selectedPages.some((id) => !reviewablePageIds.has(id))} onClick={() => void reviewSelected("approve")}>审核所选页</Button><Button type="button" disabled={busy || running || !selectedPages.length || selectedPages.some((id) => !reviewablePageIds.has(id))} onClick={() => setReviewOpen((open) => !open)}>请求修改</Button><Button type="button" className="is-primary" disabled={busy || running || pageDirty || document.status === "published" || !document.pages.length || document.generationStatus !== "completed" || document.pages.some((item) => item.generationStatus !== "completed") || hasReviewIssues || document.sourceReadiness !== "ready"} onClick={() => void publish()}>{busy ? "发布中…" : document.status === "published" ? "已发布" : document.sourceDistributionScope === "private" ? "确认并保存私有教程" : document.status === "ready" ? "发布课件" : "确认并发布教程"}</Button></div>{reviewOpen && <div className="courseware-editor-command"><label>修改意见<textarea rows={2} maxLength={2000} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="说明需要修改的页面和原因" /></label><Button type="button" disabled={busy || !reviewNote.trim()} onClick={() => void reviewSelected("request_changes")}>提交审核意见</Button><Button type="button" onClick={() => setReviewOpen(false)}>取消</Button></div>}</section>
-  </main>;
+    <section className="courseware-document-review"><div><h2>最终预览与发布</h2><p>{document.status === "published"
+      ? "课件已发布，可直接授课；需要调整时仍可编辑页面或请求修改。"
+      : `已生成 ${document.pages.filter((item) => item.generationStatus === "completed").length} / ${document.pages.length} 页。预览后可直接${document.sourceDistributionScope === "private" ? "保存并使用" : "发布课件"}；需要调整时仍可编辑页面或请求修改。`}</p></div><div className="courseware-review-issues">{document.reviewIssues.map((issue, index) => <p key={`${issue.code}-${issue.pageId ?? "doc"}-${index}`} role="alert">{issue.message}</p>)}{hasReviewIssues && <p role="status">请先处理上方的来源、内容或发布范围问题，再发布。</p>}</div><div className="courseware-document-actions"><Button type="button" disabled={busy || running || document.sourceReadiness !== "ready" || !selectedPages.length || selectedPages.some((id) => !reviewablePageIds.has(id))} onClick={() => void reviewSelected("approve")}>审核所选页</Button><Button type="button" disabled={busy || running || !selectedPages.length || selectedPages.some((id) => !reviewablePageIds.has(id))} onClick={() => setReviewOpen((open) => !open)}>请求修改</Button>{showPublishAction && document.status !== "published" && <Button type="button" className="is-primary" disabled={busy || running || pageDirty || !document.pages.length || document.generationStatus !== "completed" || document.pages.some((item) => item.generationStatus !== "completed") || hasReviewIssues || document.sourceReadiness !== "ready"} onClick={() => void publish()}>{busy ? "发布中…" : document.sourceDistributionScope === "private" ? "保存并使用" : "发布课件"}</Button>}</div>{reviewOpen && <div className="courseware-editor-command"><label>修改意见<textarea rows={2} maxLength={2000} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="说明需要修改的页面和原因" /></label><Button type="button" disabled={busy || !reviewNote.trim()} onClick={() => void reviewSelected("request_changes")}>提交审核意见</Button><Button type="button" onClick={() => setReviewOpen(false)}>取消</Button></div>}</section>
+  </>;
+  return embedded
+    ? <section className="courseware-authoring-shell" aria-label="课件页面编辑">{content}</section>
+    : <main className="courseware-authoring-shell">{content}</main>;
+}
+
+function generationStatusLabel(status: CoursewareAuthoringDocument["pages"][number]["generationStatus"]) {
+  if (status === "completed") return "已生成";
+  if (status === "running" || status === "queued") return "制作中";
+  if (status === "failed") return "制作失败";
+  return "待制作";
+}
+
+function reviewStatusLabel(status: CoursewareAuthoringDocument["pages"][number]["reviewStatus"]) {
+  if (status === "approved") return "已审核";
+  if (status === "changes_requested") return "需修改";
+  if (status === "pending") return "待处理";
+  return "尚未审核";
 }

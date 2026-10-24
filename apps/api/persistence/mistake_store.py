@@ -8,6 +8,7 @@ root with the rest of the application.
 from __future__ import annotations
 
 import hashlib
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -125,6 +126,13 @@ def _decode(value: Any) -> Any:
     return value
 
 
+def _valid_mistake_id(value: str) -> bool:
+    """Accept one opaque directory name without path or platform separators."""
+    return bool(value) and value not in {".", ".."} and not any(
+        separator in value for separator in ("/", "\\", "\x00")
+    )
+
+
 class MistakeStore:
     def __init__(
         self,
@@ -132,6 +140,7 @@ class MistakeStore:
         engine: Engine | None = None,
         database_url: str | None = None,
         data_root: str | Path,
+        file_assets: Any | None = None,
     ) -> None:
         if engine is None:
             if not database_url:
@@ -142,15 +151,159 @@ class MistakeStore:
         self.root = Path(data_root).expanduser().resolve()
         self.mistake_root = self.root / "mistakes"
         self.mistake_root.mkdir(parents=True, exist_ok=True)
+        self.file_assets = file_assets
 
     def _ensure_initialized(self) -> None:
         """Keep store call sites uniform; schema creation is Alembic-owned."""
         return None
 
     def item_directory(self, mistake_id: str) -> Path:
+        if not _valid_mistake_id(mistake_id):
+            raise ValueError("错题标识无效")
+        if self.mistake_root.is_symlink():
+            raise ValueError("错题数据根目录不能是符号链接")
         directory = self.mistake_root / mistake_id
+        if directory.is_symlink():
+            raise ValueError("错题目录不能是符号链接")
         directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.resolve().relative_to(self.mistake_root.resolve())
+        except ValueError as error:
+            raise ValueError("错题目录超出受管目录") from error
         return directory
+
+    def _stored_source_path(self, value: str, mistake_id: str) -> str:
+        """Persist a data-root-relative source pointer, never a cache's absolute path."""
+        if not value:
+            return ""
+        if not _valid_mistake_id(mistake_id):
+            raise ValueError("错题标识无效")
+        candidate = Path(value).expanduser()
+        if ".." in candidate.parts:
+            raise ValueError("错题原图路径不能包含父目录跳转")
+        if not candidate.is_absolute():
+            candidate = self.root / candidate
+        candidate = Path(os.path.abspath(candidate))
+        if self.mistake_root.is_symlink():
+            raise ValueError("错题数据根目录不能是符号链接")
+        root = self.mistake_root.resolve()
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError as error:
+            raise ValueError("错题原图必须位于当前实例的错题数据目录内") from error
+        if not relative.parts or relative.parts[0] != mistake_id:
+            raise ValueError("错题原图与错题身份不匹配")
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError("错题原图路径不能包含符号链接")
+        return f"mistakes/{relative.as_posix()}"
+
+    def _current_source_path(self, stored_path: str, mistake_id: str) -> str:
+        """Project new relative pointers and legacy absolute rows into this cache."""
+        if not stored_path:
+            return ""
+        if not _valid_mistake_id(mistake_id) or "\x00" in stored_path:
+            return ""
+        candidate = Path(stored_path).expanduser()
+        if ".." in candidate.parts:
+            return ""
+        if candidate.is_absolute():
+            parts = candidate.parts
+            anchors = [index for index, part in enumerate(parts) if part == "mistakes"]
+            if not anchors:
+                return ""
+            relative_parts = parts[anchors[-1] + 1:]
+        else:
+            raw_parts = tuple(part for part in stored_path.replace("\\", "/").split("/") if part)
+            relative_parts = raw_parts[1:] if raw_parts and raw_parts[0] == "mistakes" else ()
+        if not relative_parts or relative_parts[0] != mistake_id or any(part in {".", ".."} for part in relative_parts):
+            return ""
+        if self.mistake_root.is_symlink():
+            return ""
+        candidate = self.mistake_root.joinpath(*relative_parts)
+        current = self.mistake_root
+        for part in relative_parts:
+            current = current / part
+            if current.is_symlink():
+                return ""
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(self.mistake_root.resolve())
+        except ValueError:
+            return ""
+        return str(resolved)
+
+    def _safe_local_path(self, path: Path, mistake_id: str) -> Path | None:
+        """Reject symlinked parents and paths that leave this mistake's directory."""
+        root = self.mistake_root
+        if not _valid_mistake_id(mistake_id):
+            return None
+        if root.is_symlink():
+            return None
+        root_path = Path(os.path.abspath(root))
+        candidate = Path(os.path.abspath(path.expanduser()))
+        try:
+            relative = candidate.relative_to(root_path)
+        except ValueError:
+            return None
+        if not relative.parts or relative.parts[0] != mistake_id or any(part in {".", ".."} for part in relative.parts):
+            return None
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                return None
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(root.resolve())
+        except ValueError:
+            return None
+        return candidate
+
+    def persist_capture_files(self, learner_id: str, mistake_id: str, directory: Path) -> int:
+        """Persist a capture's original image and OCR assets before acknowledging it."""
+        if not _valid_mistake_id(mistake_id) or self.mistake_root.is_symlink():
+            raise ValueError("错题目录身份无效")
+        root = Path(os.path.abspath(self.mistake_root))
+        candidate = Path(os.path.abspath(directory.expanduser()))
+        try:
+            relative = candidate.relative_to(root)
+        except ValueError as error:
+            raise ValueError("错题文件必须位于受管目录内") from error
+        if (
+            not relative.parts
+            or relative.parts[0] != mistake_id
+            or any(part in {".", ".."} for part in relative.parts)
+        ):
+            raise ValueError("错题目录与学生记录不匹配")
+        current = root
+        for part in relative.parts:
+            current = current / part
+            if current.is_symlink():
+                raise ValueError("错题文件目录中出现符号链接")
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(self.mistake_root.resolve())
+        except ValueError as error:
+            raise ValueError("错题目录超出受管目录") from error
+        files: list[Path] = []
+        for path in sorted(resolved.rglob("*")):
+            if path.is_symlink():
+                raise ValueError("错题文件目录中出现符号链接")
+            current = resolved
+            for part in path.relative_to(resolved).parts:
+                current = current / part
+                if current.is_symlink():
+                    raise ValueError("错题文件目录中出现符号链接")
+            if path.is_file() and not path.name.endswith((".partial", ".part")):
+                files.append(path)
+        if self.file_assets is None or not getattr(self.file_assets, "enabled", False):
+            return 0
+        for path in files:
+            self.file_assets.persist_mistake_file(learner_id, mistake_id, path)
+        return len(files)
 
     def create(self, item: dict[str, Any]) -> dict[str, Any]:
         self._ensure_initialized()
@@ -159,7 +312,9 @@ class MistakeStore:
             "learner_id": item.get("learnerId", DEMO_LEARNER_ID),
             "source_filename": item["sourceFilename"],
             "content_type": item["contentType"],
-            "source_image_path": item["sourceImagePath"],
+            "source_image_path": self._stored_source_path(
+                str(item.get("sourceImagePath") or ""), str(item["mistakeId"]),
+            ),
             "source_image_url": item["sourceImageUrl"],
             "question_payload_json": item["questionPayload"],
             "guide_cards_json": item.get("guideCards", []),
@@ -206,11 +361,12 @@ class MistakeStore:
         reused the same stable capture-derived id.
         """
         self._ensure_initialized()
+        portable_path = self._stored_source_path(source_image_path, mistake_id)
         with self.engine.begin() as connection:
             result = connection.execute(
                 delete(mistake_items).where(
                     mistake_items.c.mistake_id == mistake_id,
-                    mistake_items.c.source_image_path == source_image_path,
+                    mistake_items.c.source_image_path == portable_path,
                     mistake_items.c.status == "pending_confirmation",
                 )
             )
@@ -256,14 +412,14 @@ class MistakeStore:
             "knowledge_point": str(question.get("knowledgePoint") or "未归类知识点"),
             "error_reason": None,
             "notes": "由互动试卷答错后自动记录",
-            # 自动记录只保存客观错答，错误原因必须由学生在确认页选择，不能由
-            # 这条作答记录推断；因此首次进入错题本仍是 pending_confirmation。
-            "status": "pending_confirmation",
+            # The published question already passed the teacher's release gate.
+            # Accept its wording automatically, while leaving errorReason empty
+            # so the tutor can ask for the learner's own explanation.
+            "status": "unmastered",
             "created_at": timestamp,
             "updated_at": timestamp,
             "confirmed_at": None,
         }
-        existing = self.get(mistake_id)
         update_values = {
             "question_payload_json": values["question_payload_json"],
             "guide_cards_json": values["guide_cards_json"],
@@ -271,12 +427,12 @@ class MistakeStore:
             "original_answer": answer_text,
             "chapter": values["chapter"],
             "knowledge_point": values["knowledge_point"],
-            # 学生再次做错已经掌握的题时，应重新回到待掌握状态。
-            "status": "unmastered" if existing and existing.get("errorReason") else "pending_confirmation",
+            # Repeated offline delivery and a later re-error both point to the
+            # same source question; objective evidence reopens it without
+            # pretending the learner confirmed a cause or edited the prompt.
+            "status": "unmastered",
             "updated_at": timestamp,
         }
-        if not existing or not existing.get("errorReason"):
-            update_values.update({"error_reason": None, "confirmed_at": None})
         statement = postgresql_insert(mistake_items).values(**values).on_conflict_do_update(
             index_elements=[mistake_items.c.mistake_id],
             set_=update_values,
@@ -287,6 +443,36 @@ class MistakeStore:
             "mistakeId": mistake_id,
             **values,
         }
+
+    def activate_published_attempt(self, mistake_id: str, learner_id: str) -> dict[str, Any] | None:
+        """Repair a legacy published-paper mistake on explicit learning start.
+
+        Published source content is already quality-reviewed; this transition
+        changes only its workflow state. It does not write ``confirmed_at`` or
+        an error attribution, which remain learner-owned evidence.
+        """
+        self._ensure_initialized()
+        current = self.get(mistake_id)
+        if (
+            not current
+            or current.get("learnerId") != learner_id
+            or current.get("contentType") != "application/vnd.dotty.publication+json"
+        ):
+            return None
+        if current.get("status") != "pending_confirmation":
+            return current
+        with self.engine.begin() as connection:
+            connection.execute(
+                mistake_items.update()
+                .where(
+                    mistake_items.c.mistake_id == mistake_id,
+                    mistake_items.c.learner_id == learner_id,
+                    mistake_items.c.content_type == "application/vnd.dotty.publication+json",
+                    mistake_items.c.status == "pending_confirmation",
+                )
+                .values(status="unmastered", updated_at=time.time())
+            )
+        return self.get(mistake_id)
 
     def get(self, mistake_id: str) -> dict[str, Any] | None:
         self._ensure_initialized()
@@ -454,7 +640,10 @@ class MistakeStore:
         current = self.get(mistake_id)
         if not current:
             return None
-        next_status = "archived" if archived else ("unmastered" if current["confirmedAt"] else "pending_confirmation")
+        trusted_publication = current.get("contentType") == "application/vnd.dotty.publication+json"
+        next_status = "archived" if archived else (
+            "unmastered" if trusted_publication or current["confirmedAt"] else "pending_confirmation"
+        )
         with self.engine.begin() as connection:
             connection.execute(
                 mistake_items.update()
@@ -496,18 +685,43 @@ class MistakeStore:
         stored_path = str(item.get("sourceImagePath") or "")
         if not stored_path:
             return None
-        path = Path(stored_path).expanduser().resolve()
-        expected_root = self.mistake_root.resolve()
-        return path if expected_root in path.parents and path.is_file() else None
+        path = self._safe_local_path(Path(stored_path), mistake_id)
+        if path is None:
+            return None
+        if self.file_assets is not None and getattr(self.file_assets, "enabled", False):
+            try:
+                self.file_assets.restore_mistake_file(str(item["learnerId"]), mistake_id, path)
+            except FileNotFoundError:
+                return None
+        return path if path.is_file() and not path.is_symlink() else None
 
-    @staticmethod
-    def _serialize(row: Any) -> dict[str, Any]:
+    def asset_path(self, mistake_id: str, filename: str) -> Path | None:
+        """Restore one OCR image only after the route has checked its learner owner."""
+        if not filename or Path(filename).name != filename or "\\" in filename:
+            return None
+        item = self.get(mistake_id)
+        source = self.source_path(mistake_id)
+        if not item or not source:
+            return None
+        path = self._safe_local_path(source.parent / "assets" / filename, mistake_id)
+        if path is None:
+            return None
+        if self.file_assets is not None and getattr(self.file_assets, "enabled", False):
+            try:
+                self.file_assets.restore_mistake_file(str(item["learnerId"]), mistake_id, path)
+            except FileNotFoundError:
+                return None
+        return path if path.is_file() and not path.is_symlink() else None
+
+    def _serialize(self, row: Any) -> dict[str, Any]:
         return {
             "mistakeId": row["mistake_id"],
             "learnerId": row["learner_id"],
             "sourceFilename": row["source_filename"],
             "contentType": row["content_type"],
-            "sourceImagePath": row["source_image_path"],
+            "sourceImagePath": self._current_source_path(
+                str(row["source_image_path"] or ""), str(row["mistake_id"]),
+            ),
             "sourceImageUrl": row["source_image_url"],
             "questionPayload": _decode(row["question_payload_json"]),
             "guideCards": _decode(row["guide_cards_json"]),

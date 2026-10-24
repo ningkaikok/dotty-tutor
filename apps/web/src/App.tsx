@@ -11,6 +11,7 @@ import { ProtectedAccess } from "./auth/ProtectedAccess";
 const PromptManagerApp = lazy(() => import("./apps/prompts/PromptManagerApp").then((module) => ({ default: module.PromptManagerApp })));
 const ProductHome = lazy(() => import("./apps/home/ProductHome").then((module) => ({ default: module.ProductHome })));
 const StudentLearningApp = lazy(() => import("./apps/student/StudentLearningApp").then((module) => ({ default: module.StudentLearningApp })));
+const ContinuousLearningApp = lazy(() => import("./apps/student/ContinuousLearningApp").then((module) => ({ default: module.ContinuousLearningApp })));
 const PublishedPaperApp = lazy(() => import("./apps/student/PublishedPaperApp").then((module) => ({ default: module.PublishedPaperApp })));
 const MistakeCoachApp = lazy(() => import("./apps/mistake/MistakeCoachApp").then((module) => ({ default: module.MistakeCoachApp })));
 const MaterialsApp = lazy(() => import("./apps/materials/MaterialsApp").then((module) => ({ default: module.MaterialsApp })));
@@ -58,6 +59,7 @@ function AppRoutes() {
           <Route path="learn/courseware/:coursewareId" element={<CoursewareApp />} />
           <Route path="learn/chapters/:chapterId" element={<PublishedChapterApp />} />
           <Route path="learn/papers/:publicationId" element={<PublishedPaperApp />} />
+          <Route path="learn/continue" element={<ContinuousLearningApp />} />
           <Route path="learn/*" element={<StudentLearningApp />} />
           <Route path="studio" element={<MaterialsApp />} />
           <Route path="studio/courseware" element={<CoursewareApp />} />

@@ -74,7 +74,7 @@ describe("ModelMetricsApp", () => {
 
     expect(screen.getByRole("status", { name: "报告加载中…" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "学习效果与模型成本报告" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "学习效果漏斗" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "学习效果漏斗" })).toBeVisible();
     expect(screen.getByText("模型调用边界指标（最近 7 天）")).toBeVisible();
     expect(screen.getByText("test-model")).toBeVisible();
     const tabs = screen.getByRole("tablist", { name: "指标与评测" });

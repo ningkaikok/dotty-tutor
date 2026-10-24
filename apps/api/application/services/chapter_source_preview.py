@@ -9,6 +9,7 @@ from typing import Any
 
 from pypdf import PdfReader
 
+from infrastructure.files.file_storage import FileStorageError
 from infrastructure.runtime.ocr_runtime import runtime as ocr_runtime
 
 
@@ -17,7 +18,17 @@ def source_file(store: Any, job: dict[str, Any]) -> Path | None:
     root = Path(store.upload_root).resolve()
     directory = Path(job["directory"]).resolve()
     path = (directory / "source.pdf").resolve()
-    if not directory.is_relative_to(root) or path.parent != directory or not path.is_file():
+    if not directory.is_relative_to(root) or path.parent != directory:
+        return None
+    file_assets = getattr(store, "file_assets", None)
+    if file_assets is not None and getattr(file_assets, "enabled", False):
+        try:
+            file_assets.restore_upload_file(str(job["uploadId"]), path)
+        except FileNotFoundError:
+            return None
+        except FileStorageError as error:
+            raise ValueError(f"教材原件暂不可恢复：{error}") from error
+    if not path.is_file():
         return None
     return path
 

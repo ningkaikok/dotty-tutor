@@ -159,6 +159,39 @@ class MistakeCaptureApiTests(PostgresTestCase):
         self.assert_public_mistake(archived.json(), prompt="解方程 $x + 1 = 3$")
         self.assertEqual(self.cleared, [(imported["mistakeId"], "local-demo")])
         self.assertEqual(self.client.get("/api/mistakes").json()["items"], [])
+        restored = self.client.patch(
+            f"/api/mistakes/{imported['mistakeId']}/archive",
+            json={"archived": False},
+        )
+        self.assertEqual(restored.json()["status"], "unmastered")
+
+    def test_published_mistake_archive_restore_does_not_fake_confirmation(self) -> None:
+        self.store.create({
+            "mistakeId": "published-auto-mistake",
+            "learnerId": "local-demo",
+            "sourceFilename": "已发布练习",
+            "contentType": "application/vnd.dotty.publication+json",
+            "sourceImagePath": "",
+            "sourceImageUrl": "",
+            "questionPayload": {"question": {"id": "paper-question", "prompt": "原题"}},
+            "guideCards": [],
+            "ocrRun": {},
+            "modelRun": {},
+            "originalAnswer": "错误答案",
+            "chapter": "章节",
+            "knowledgePoint": "知识点",
+            "status": "unmastered",
+            "confirmedAt": None,
+            "createdAt": 1,
+            "updatedAt": 1,
+        })
+
+        self.store.set_archived("published-auto-mistake", True)
+        restored = self.store.set_archived("published-auto-mistake", False)
+
+        self.assertEqual(restored["status"], "unmastered")
+        self.assertIsNone(restored["confirmedAt"])
+        self.assertIsNone(restored["errorReason"])
 
     def test_rejects_non_image_upload(self) -> None:
         response = self.client.post(

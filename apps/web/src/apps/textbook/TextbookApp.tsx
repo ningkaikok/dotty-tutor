@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Notice } from "../../components/ui";
+import { AppHeader, Notice, PageHeader } from "../../components/ui";
 import { useNavigate } from "react-router";
 import {
   cancelBackgroundJob,
@@ -27,6 +27,7 @@ import type {
   TutorReply,
 } from "../../types/index";
 import { usePaperPublication } from "./usePaperPublication";
+import "../materials/materials.css";
 
 const INITIAL_ACTION: CanvasAction = "show-base";
 const QUICK_QUESTION_LIMIT = 5;
@@ -406,19 +407,14 @@ export function TextbookApp() {
   }
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <button className="back-home" onClick={returnToLibrary} title="返回教材库">← 返回教材库</button>
-        <div className="brand-mark">D</div>
-        <div>
-          <strong>Dotty</strong>
-          <span>内容生产预览 · Dotty Tutor MVP</span>
-        </div>
-        <span className="status" title="当前教材"><i /> {textbookImport.filename}</span>
-        <span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
+    <main className="app-shell textbook-review-shell">
+      <AppHeader className="materials-header textbook-review-header" subtitle="试卷题目预览" onBack={returnToLibrary} backLabel="返回我的教材" actions={<>
+        <details className="textbook-preview-tools"><summary>技术信息</summary><span className={`active-model ${payload.modelRun.fallback ? "fallback" : "live"}`}>
           {payload.modelRun.provider} · {payload.modelRun.model}
-        </span>
-      </header>
+        </span></details>
+      </>} />
+      <PageHeader className="textbook-preview-heading" eyebrow="内容制作" title="题目质量预览"
+        description="检查识别结果、练习交互和发布状态；返回教材库不会创建学生学习记录。" />
 
       <PublicationStatusBar
         publication={publication}

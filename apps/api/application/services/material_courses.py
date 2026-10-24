@@ -51,6 +51,7 @@ class MaterialCourseService:
         request: Any,
         *,
         idempotency_key: str | None = None,
+        whole_book: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Validate classification and enqueue a frozen source selection."""
         upload = self.store.load_job(upload_id)
@@ -81,11 +82,20 @@ class MaterialCourseService:
             raise ValueError("所选页码超出教材原文件范围")
         by_page = {int(page["page"]): page for page in pages}
         missing = sorted(set(range(start, end + 1)) - set(by_page))
+        whole_book_missing_pages: list[int] = []
         path = source_file(self.store, upload)
+        if missing and whole_book and self.ocr is None and path is not None:
+            # Keep OCR-omitted physical pages in the book ledger. Planning must
+            # still prove a skip from the original PDF render before publication.
+            whole_book_missing_pages = missing.copy()
+            for number in missing:
+                by_page[number] = {"page": number, "text": "", "flags": []}
+            missing = []
         if missing and (self.ocr is None or path is None):
             raise ValueError("教材来源缺少所选页：" + ", ".join(map(str, missing[:12])))
         selected = [by_page[number] for number in range(start, end + 1) if number in by_page]
-        if self.ocr is None and any(not str(page.get("text") or "").strip() for page in selected):
+        if (self.ocr is None and not whole_book
+                and any(not str(page.get("text") or "").strip() for page in selected)):
             raise ValueError("所选页包含未识别页面，请先完成 OCR")
 
         source_file_sha256 = file_hash(path) if path else None
@@ -110,6 +120,12 @@ class MaterialCourseService:
             "title": request.title or Path(str(upload.get("filename") or "教材")).stem[:200],
             "subject": profile.subject_id,
             "runtimeSnapshot": current_job_runtime_snapshot(),
+            **({"wholeBook": {
+                "runId": str(whole_book["runId"]),
+                "batchIndex": int(whole_book["batchIndex"]),
+                "pageBudget": int(whole_book["pageBudget"]),
+                "missingPages": whole_book_missing_pages,
+            }} if whole_book else {}),
         }
         return self.jobs.create_job(
             self.JOB_TYPE,
@@ -154,12 +170,23 @@ class MaterialCourseService:
         request = payload["request"]
         pages = pages_from_upload(upload)
         by_page = {int(page["page"]): page for page in pages}
+        whole_book = payload.get("wholeBook")
+        missing_pages = whole_book.get("missingPages") if isinstance(whole_book, dict) else None
+        if isinstance(missing_pages, list):
+            for number in missing_pages:
+                if type(number) is int and int(payload["pageStart"]) <= number <= int(payload["pageEnd"]):
+                    by_page.setdefault(number, {"page": number, "text": "", "flags": []})
         start, end = int(payload["pageStart"]), int(payload["pageEnd"])
         with use_job_runtime_snapshot(payload):
             for number in range(start, end + 1):
                 if cancellation_check():
                     raise JobCancelled()
                 if number in by_page and str(by_page[number].get("text") or "").strip():
+                    continue
+                if number in by_page and whole_book and self.ocr is None:
+                    # Whole-book planning may classify a verified blank physical
+                    # page as non-instructional. A nonblank scan without OCR will
+                    # fail that later source-image check and stop for review.
                     continue
                 if self.ocr is None or path is None or current_file_hash is None:
                     raise ValueError("所选页缺少可识别的教材原件")
@@ -229,6 +256,7 @@ class MaterialCourseService:
                 "uploadId": payload["uploadId"],
                 "sourceTextSha256": payload["sourceTextSha256"],
             },
+            allow_blank_source_pages=bool(payload.get("wholeBook")),
         )
         source = created["sourceRevisions"][-1]
 
@@ -265,7 +293,11 @@ class MaterialCourseService:
             autoPublish=bool(payload["request"].get("autoPublish")),
         )
         with use_job_runtime_snapshot(payload):
-            planned = self.courseware.create_plan(chapter["chapterId"], request, idempotency_key=f"auto-source-{chapter['sourcePreparationJobId']}")
+            planned = self.courseware.create_plan(
+                chapter["chapterId"], request,
+                idempotency_key=f"auto-source-{chapter['sourcePreparationJobId']}",
+                whole_book=payload.get("wholeBook"),
+            )
         result["planJobId"] = planned["job"]["jobId"]
         return result
 

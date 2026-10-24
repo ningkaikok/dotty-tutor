@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from domain.contracts.courseware import CoursewarePlanDraftOutput
+from domain.contracts.whole_book import WholeBookPlanDraftOutput
 
 
 def generation_schema(model: type[BaseModel], *, source: dict[str, Any] | None = None,
@@ -36,7 +37,7 @@ def generation_schema(model: type[BaseModel], *, source: dict[str, Any] | None =
         image_properties = schema.get("$defs", {}).get("CoursewareImageBlock", {}).get("properties", {})
         if image_properties and asset_ids:
             image_properties["assetId"]["enum"] = sorted(set(asset_ids))
-    if model is CoursewarePlanDraftOutput:
+    if model in {CoursewarePlanDraftOutput, WholeBookPlanDraftOutput}:
         schema["properties"]["coverageMap"] = {
             "type": "array", "minItems": 1, "maxItems": 12,
             "items": {"type": "object", "properties": {
@@ -45,6 +46,8 @@ def generation_schema(model: type[BaseModel], *, source: dict[str, Any] | None =
                                "items": {"$ref": "#/$defs/CoursewareSourceRef"}},
             }},
         }
+        if model is WholeBookPlanDraftOutput:
+            schema["properties"]["coverageMap"]["minItems"] = 0
 
     def close(node: Any) -> None:
         if isinstance(node, list):

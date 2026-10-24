@@ -1,19 +1,6 @@
 /* 错题本 / 拍照录入 / 确认 / 陪练 / 复习（Bright）。token 定义在 src/styles.css，规范见 docs/design-system.md。 */
 .mistake-shell { position: relative; width: min(1180px, calc(100% - 40px)); margin: 20px auto 72px; color: var(--c-ink); font-family: var(--font-bright); }
-/*
- * 三列 grid：两侧各占 1fr，即使右侧没有元素（phase-badge 已删除）也会保留和
- * 左侧按钮对称的空白列，brand 才能稳定居中，而不是被 flex 的 margin:auto
- * 按左右两侧实际内容宽度的差值顶偏。
- */
-.mistake-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 14px; }
-.mistake-header > .route-back-button { justify-self: start; border: 0; color: var(--c-ink); background: var(--c-surface); font-weight: 800; }
-.mistake-header > .route-back-button:hover { background: var(--c-surface-tint); }
-/* 列表态（library/progress）用 StudentNav 顶替返回按钮占同一列；宽度比单个按钮
-   大，缩窄时收紧内边距和字号，避免和居中的品牌区挤在一起。 */
-.mistake-header > .student-nav { justify-self: start; margin-top: 0; }
-.mistake-brand { display: flex; align-items: center; gap: 9px; justify-self: center; }
-.mistake-brand > span { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px 12px 12px 4px; color: var(--c-surface); background: var(--c-brand); font-weight: 900; }
-.mistake-brand strong { font-size: 15px; font-weight: 900; }
+.mistake-shell > .student-nav { margin-top: 0; }
 .mistake-library-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 16px 0 16px; padding: clamp(20px, 4vw, 28px); border-radius: var(--radius-lg); background: var(--c-surface); }
 .mistake-library-hero > div { max-width: 720px; }
 .mistake-library-hero h1, .mistake-section-heading h1 { margin: 6px 0 8px; font-size: clamp(28px, 4vw, 40px); font-weight: 900; line-height: 1.15; }
@@ -183,6 +170,8 @@
 .variation-mastery-note { margin-top: 10px; padding-top: 10px; border-top: 1px dashed currentColor; }
 .variation-mastery-note p { margin: 4px 0 0; font-size: 13px; }
 .variation-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
+.variation-cap-continuation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.variation-cap-continuation p { flex: 1 1 18rem; margin: 0; color: var(--c-ink-soft); line-height: 1.55; }
 .progress-page { padding-bottom: 40px; }
 .progress-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .progress-summary div { padding: 18px; border-radius: 20px; background: var(--c-surface); }
@@ -230,11 +219,6 @@
 
 @media (max-width: 520px) {
   .mistake-shell { width: calc(100% - 24px); margin-top: 16px; }
-  .mistake-header { grid-template-columns: 1fr auto; gap: 8px; }
-  .mistake-header > .student-nav { grid-column: 1 / -1; width: 100%; flex-wrap: wrap; }
-  .mistake-brand strong { display: none; }
-  .mistake-header > .student-nav { gap: 4px; }
-  .mistake-header > .student-nav .student-nav-link { flex: 1 1 0; justify-content: center; min-width: 0; padding: 6px 8px; font-size: 14px; }
   .mistake-library-hero { align-items: stretch; flex-direction: column; }
   .mistake-hero-actions { align-items: stretch; flex-direction: column-reverse; }
   .progress-summary { grid-template-columns: repeat(2, 1fr); }

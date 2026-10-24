@@ -19,7 +19,17 @@ interface QueueRow {
 /** 今日只计算仍需行动的任务；已完成作业保留独立回看入口。 */
 export function StudentLearningApp() {
   const navigate = useNavigate();
-  const { pendingConfirmCount, dueReviewCount, unmasteredCount, papers, assignments, loading, error, allFailed } = useStudentTodayQueue();
+  const {
+    pendingConfirmCount,
+    dueReviewCount,
+    unmasteredCount,
+    papers,
+    assignments,
+    nextLearningAction,
+    loading,
+    error,
+    allFailed,
+  } = useStudentTodayQueue();
 
   const rows: QueueRow[] = [];
   const completedRows: QueueRow[] = [];
@@ -37,7 +47,11 @@ export function StudentLearningApp() {
       description: `${statusLabel} · ${assignment.className || "班级作业"}${assignment.dueAt ? ` · 截止 ${new Date(assignment.dueAt * 1000).toLocaleDateString("zh-CN")}` : ""}`,
       badge: `${assignment.attemptedCount}/${assignment.questionCount} 题`,
       actionLabel: assignment.learnerStatus === "completed" ? "回看" : assignment.learnerStatus === "in_progress" ? "继续" : "开始",
-      onAction: () => navigate(`/learn/papers/${assignment.publicationId}?assignmentId=${encodeURIComponent(assignment.assignmentId)}`),
+      onAction: () => {
+        const query = new URLSearchParams({ assignmentId: assignment.assignmentId });
+        if (assignment.sessionId) query.set("sessionId", assignment.sessionId);
+        navigate(`/learn/papers/${encodeURIComponent(assignment.publicationId)}?${query.toString()}`);
+      },
     });
   });
 
@@ -91,7 +105,6 @@ export function StudentLearningApp() {
       <AppHeader backTo="/" subtitle="学生学习空间" actions={<Badge tone="brand">{PRODUCT_TERMS.demoBadge}</Badge>} />
 
       <StudentNav />
-      <CoursewareUnitLibrary />
 
       <section className="student-hero">
         <span className="eyebrow">今日</span>
@@ -111,11 +124,31 @@ export function StudentLearningApp() {
               ? "作业、错题、复习和练习都没有加载成功。请检查网络后刷新页面重试。"
               : error
                 ? "部分内容还未加载成功，当前列表可能不完整。请刷新后重试。"
+                : taskCount === 0 && nextLearningAction?.kind === "practice"
+                  ? "今天的待办已处理，可以继续已发布的练习。"
                 : taskCount > 0
                   ? "可以从下面的任务开始，也可以选择你现在需要的练习。"
-                  : "当前没有未完成作业、待确认或待订正错题，也没有到期复习。可以自由练习或回看已完成作业。"}
+                  : "当前没有未完成作业、待确认或待订正错题，也没有到期复习。仍可从下面选择已发布练习或课程。"}
         </p>
       </section>
+
+      {!loading && nextLearningAction && nextLearningAction.kind !== "none" && (
+        <section className="student-continuous-entry" aria-label="连续学习入口">
+          <div>
+            <span className="eyebrow">下一项</span>
+            <h2>{nextLearningAction.title || "继续学习"}</h2>
+            <p>按已保存的作答、订正和复习进度继续，完成当前任务后自动准备下一项。</p>
+          </div>
+          <Button
+            variant="primary"
+            className="continuous-entry-action"
+            aria-label={`${continuousActionLabel(nextLearningAction.kind, nextLearningAction.learnerStatus)}：${nextLearningAction.title || "下一项学习任务"}`}
+            onClick={() => navigate("/learn/continue")}
+          >
+            {continuousActionLabel(nextLearningAction.kind, nextLearningAction.learnerStatus)}
+          </Button>
+        </section>
+      )}
 
       {error && <p className="student-empty-note" role="alert">部分内容未能加载：{error}</p>}
 
@@ -161,8 +194,18 @@ export function StudentLearningApp() {
           </ol>
         </section>
       )}
+      <CoursewareUnitLibrary />
     </PageShell>
   );
+}
+
+function continuousActionLabel(kind: string, learnerStatus?: string): string {
+  if (kind === "assignment") return learnerStatus === "in_progress" || learnerStatus === "overdue" ? "继续学习" : "开始学习";
+  if (kind === "practice") return "继续练习";
+  if (kind === "confirm_mistake") return "核对并继续";
+  if (kind === "correct_mistake") return "继续订正";
+  if (kind === "review") return "开始复习";
+  return "开始学习";
 }
 
 function QueueItem({ row, index }: { row: QueueRow; index: number | string }) {

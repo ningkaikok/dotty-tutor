@@ -90,6 +90,11 @@ class CoursewareAutomationService:
         document["automation"].update(status="needs_attention", message=message[:1000])
         return self._save(document)
 
+    @staticmethod
+    def _included_source_pages(selected: list[dict[str, Any]], skipped_pages: set[int]) -> list[dict[str, Any]]:
+        """Remove only skips whose ledger was validated against this frozen source revision."""
+        return [page for page in selected if int(page["page"]) not in skipped_pages]
+
     def run(self, payload: dict[str, Any], cancellation_check: Any, context: JobExecutionContext) -> dict[str, Any]:
         """Check every page, repair only failures, then reuse the publication gate."""
         courseware_id = payload["coursewareId"]
@@ -125,12 +130,16 @@ class CoursewareAutomationService:
                 if not current:
                     return {"coursewareId": payload["coursewareId"], "status": "superseded"}
                 chapter, source, document = current
-                selected = self.courseware._selected_pages(source, document["pageStart"], document["pageEnd"])
-                source_issues = source_readiness_issues(selected)
+                skipped_pages = self.courseware._verified_whole_book_skip_pages(document, source)
+                selected = self.courseware._selected_pages(
+                    source, document["pageStart"], document["pageEnd"], allowed_skip_pages=skipped_pages,
+                )
+                teaching_pages = self._included_source_pages(selected, skipped_pages)
+                source_issues = source_readiness_issues(teaching_pages)
                 if source_issues:
                     self._attention(document, "; ".join(issue["message"] for issue in source_issues))
                     return {"status": "needs_attention"}
-                issues = document_page_issues(self.courseware._with_asset_urls(document), selected)
+                issues = document_page_issues(self.courseware._with_asset_urls(document), teaching_pages)
                 reasons: dict[str, list[str]] = {}
                 for issue in issues:
                     reasons.setdefault(str(issue["pageId"]), []).append(str(issue["message"]))
